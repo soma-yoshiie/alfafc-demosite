@@ -1,0 +1,24 @@
+{
+  "name": "soccer-tactics-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "少年・学校サッカー向け 戦術ボード/スタメン作成・戦術アニメーション（MVP初期版）",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "export": "next build && node scripts/relativize-export.cjs",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.5.19",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}
