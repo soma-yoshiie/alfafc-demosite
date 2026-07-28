@@ -8,8 +8,6 @@ import type {
   DeliverKind,
   MeetingDeliver,
   PracticeMenuDeliver,
-  QuizDeliver,
-  QuizQuestion,
 } from "@/lib/types";
 import {
   ASSIGNMENT_STATUS_LABEL,
@@ -19,13 +17,16 @@ import {
 import { useBoard } from "./BoardProvider";
 import { E } from "./Emoji";
 
-/* ====== 一覧ブロック（練習タブ・試合タブに埋め込む） ====== */
+/* ====== 一覧ブロック（ホーム・配信タブに埋め込む） ====== */
 export function DeliverBlock({
   kinds,
+  heading = "コーチから",
   onOpen,
   onCreate,
 }: {
   kinds: DeliverKind[];
+  /** ブロック見出し。null で非表示 */
+  heading?: string | null;
   onOpen: (id: string) => void;
   onCreate: (kind: DeliverKind) => void;
 }) {
@@ -36,14 +37,18 @@ export function DeliverBlock({
   const items = useMemo(() => {
     let list = board.deliverables.filter((d) => kinds.includes(d.kind));
     if (!isCoach) list = list.filter((d) => deliverTargets(d, me));
-    return [...list].sort((a, b) => b.ts - a.ts);
+    // 選手は未回答を上に（要対応が埋もれないように）
+    const undone = (d: CoachDeliverable) => (!isCoach && !d.responses[me] ? 0 : 1);
+    return [...list].sort((a, b) => undone(a) - undone(b) || b.ts - a.ts);
   }, [board.deliverables, kinds, isCoach, me]);
 
   return (
     <div className="dlvblock">
-      <div className="dlvblock-h">
-        <span><E n="megaphone" /> コーチから</span>
-      </div>
+      {heading != null && (
+        <div className="dlvblock-h">
+          <span><E n="megaphone" /> {heading}</span>
+        </div>
+      )}
       {isCoach && (
         <div className="dlvcreate">
           {kinds.map((k) => (
@@ -125,10 +130,6 @@ export function DeliverComposer({
   const [matchLabel, setMatchLabel] = useState((edit as MeetingDeliver)?.matchLabel ?? "");
   const [attack, setAttack] = useState<string[]>((edit as MeetingDeliver)?.attack ?? empty());
   const [defense, setDefense] = useState<string[]>((edit as MeetingDeliver)?.defense ?? empty());
-  // quiz
-  const [questions, setQuestions] = useState<QuizQuestion[]>(
-    (edit as QuizDeliver)?.questions ?? [{ q: "", options: ["", ""], correct: 0 }]
-  );
 
   const targetPlayerIds = targetMode === "one" && targetId ? [targetId] : undefined;
 
@@ -143,7 +144,7 @@ export function DeliverComposer({
       data = { kind, ...base, category: category.trim() || undefined, desc: desc.trim() || undefined } as Omit<PracticeMenuDeliver, "id" | "ts">;
     } else if (kind === "assignment") {
       data = { kind, ...base, detail: detail.trim() || undefined } as Omit<AssignmentDeliver, "id" | "ts">;
-    } else if (kind === "meeting") {
+    } else {
       data = {
         kind,
         ...base,
@@ -151,15 +152,6 @@ export function DeliverComposer({
         attack: attack.map((s) => s.trim()).filter(Boolean),
         defense: defense.map((s) => s.trim()).filter(Boolean),
       } as Omit<MeetingDeliver, "id" | "ts">;
-    } else {
-      const qs = questions
-        .map((q) => ({ q: q.q.trim(), options: q.options.map((o) => o.trim()).filter(Boolean), correct: q.correct }))
-        .filter((q) => q.q && q.options.length >= 2);
-      if (qs.length === 0) {
-        board.toast("設問と選択肢を入力してください");
-        return;
-      }
-      data = { kind, ...base, questions: qs } as Omit<QuizDeliver, "id" | "ts">;
     }
     if (edit) board.updateDeliverable({ ...data, id: edit.id, ts: edit.ts } as CoachDeliverable);
     else board.addDeliverable(data);
@@ -171,7 +163,7 @@ export function DeliverComposer({
       <h2>{DELIVER_KIND_LABEL[kind]}を{edit ? "編集" : "作成"}</h2>
       <div className="formfield">
         <label>タイトル</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={kind === "quiz" ? "例）ポジション理解度テスト" : "例）3対2のポゼッション"} />
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例）3対2のポゼッション" />
       </div>
 
       <div className="formfield">
@@ -226,10 +218,6 @@ export function DeliverComposer({
         </>
       )}
 
-      {kind === "quiz" && (
-        <QuizEditor questions={questions} setQuestions={setQuestions} />
-      )}
-
       <button className="bigbtn" onClick={submit}>
         {edit ? "更新する" : "配信する"}
       </button>
@@ -262,61 +250,17 @@ function DynList({
   );
 }
 
-function QuizEditor({
-  questions,
-  setQuestions,
-}: {
-  questions: QuizQuestion[];
-  setQuestions: (q: QuizQuestion[]) => void;
-}) {
-  const setQ = (i: number, patch: Partial<QuizQuestion>) =>
-    setQuestions(questions.map((q, j) => (j === i ? { ...q, ...patch } : q)));
-  return (
-    <div className="formfield">
-      <label>設問</label>
-      {questions.map((q, i) => (
-        <div key={i} className="phasecard">
-          <div className="phasehd">
-            <span>Q{i + 1}</span>
-            {questions.length > 1 && (
-              <button className="dynx" onClick={() => setQuestions(questions.filter((_, j) => j !== i))}>×</button>
-            )}
-          </div>
-          <input value={q.q} onChange={(e) => setQ(i, { q: e.target.value })} placeholder="例）右SB保持時、左WGはどこに立つ？" />
-          <div className="quizopts">
-            {q.options.map((o, oi) => (
-              <div key={oi} className="dynrow">
-                <button
-                  type="button"
-                  className={`quizcorrect${q.correct === oi ? " on" : ""}`}
-                  onClick={() => setQ(i, { correct: oi })}
-                  title="正解に設定"
-                >
-                  {q.correct === oi ? "正解" : "○"}
-                </button>
-                <input
-                  value={o}
-                  onChange={(e) => setQ(i, { options: q.options.map((x, j) => (j === oi ? e.target.value : x)) })}
-                  placeholder={`選択肢${oi + 1}`}
-                />
-                {q.options.length > 2 && (
-                  <button className="dynx" onClick={() => setQ(i, { options: q.options.filter((_, j) => j !== oi) })}>×</button>
-                )}
-              </div>
-            ))}
-            <button className="dynadd" onClick={() => setQ(i, { options: [...q.options, ""] })}>＋ 選択肢</button>
-          </div>
-        </div>
-      ))}
-      <button className="dynadd" onClick={() => setQuestions([...questions, { q: "", options: ["", ""], correct: 0 }])}>
-        ＋ 設問を追加
-      </button>
-    </div>
-  );
-}
-
 /* ====== 詳細（選手＝回答 / コーチ＝結果） ====== */
-export function DeliverDetail({ id, onBack }: { id: string; onBack: () => void }) {
+export function DeliverDetail({
+  id,
+  onBack,
+  onWritePractice,
+}: {
+  id: string;
+  onBack: () => void;
+  /** 練習メニュー配信から「このメニューで練習ノートを書く」を選んだときに呼ばれる */
+  onWritePractice?: (menuId: string) => void;
+}) {
   const board = useBoard();
   const d = board.deliverables.find((x) => x.id === id);
   const isCoach = board.auth.role === "coach";
@@ -340,7 +284,12 @@ export function DeliverDetail({ id, onBack }: { id: string; onBack: () => void }
       {d.kind === "menu" && <MenuBody d={d} isCoach={isCoach} />}
       {d.kind === "assignment" && <AssignmentBody d={d} isCoach={isCoach} />}
       {d.kind === "meeting" && <MeetingBody d={d} isCoach={isCoach} />}
-      {d.kind === "quiz" && <QuizBody d={d} isCoach={isCoach} />}
+
+      {d.kind === "menu" && !isCoach && (
+        <button className="bigbtn ghost" style={{ marginTop: 12 }} onClick={() => onWritePractice?.(d.id)}>
+          このメニューで練習ノートを書く
+        </button>
+      )}
 
       {isCoach && (
         <button className="linkdanger" style={{ marginTop: 16 }} onClick={() => { board.removeDeliverable(d.id); onBack(); }}>
@@ -471,92 +420,6 @@ function MeetingBody({ d, isCoach }: { d: MeetingDeliver; isCoach: boolean }) {
         </div>
       )}
     </>
-  );
-}
-
-/* --- ⑨ 理解度テスト --- */
-function QuizBody({ d, isCoach }: { d: QuizDeliver; isCoach: boolean }) {
-  const board = useBoard();
-  const me = board.auth.playerId ?? "";
-  const mine = d.responses[me];
-  const [answers, setAnswers] = useState<number[]>(mine?.answers ?? d.questions.map(() => -1));
-
-  if (isCoach) {
-    // チーム可視化：設問ごとの正答率
-    const responders = Object.entries(d.responses);
-    return (
-      <>
-        <div className="notesec">
-          <div className="notesec-h">チーム理解度（回答 {responders.length}人）</div>
-          {d.questions.map((q, qi) => {
-            const answered = responders.filter(([, r]) => r.answers[qi] != null && r.answers[qi] >= 0);
-            const correct = answered.filter(([, r]) => r.answers[qi] === q.correct).length;
-            const rate = answered.length ? Math.round((correct / answered.length) * 100) : 0;
-            return (
-              <div key={qi} className="notesec-b">
-                Q{qi + 1}. {q.q}
-                <div className="achbar" style={{ marginTop: 4 }}>
-                  <span style={{ width: rate + "%" }} />
-                </div>
-                <div className="dlvsub">正答率 {rate}%（正解：{q.options[q.correct]}）</div>
-              </div>
-            );
-          })}
-        </div>
-        <ResultsList
-          d={d}
-          render={(r) => {
-            const sc = d.questions.reduce((n, q, qi) => n + (r.answers[qi] === q.correct ? 1 : 0), 0);
-            return `${sc}/${d.questions.length} 正解`;
-          }}
-        />
-      </>
-    );
-  }
-
-  const submitted = !!mine;
-  const score = submitted ? d.questions.reduce((n, q, qi) => n + (mine!.answers[qi] === q.correct ? 1 : 0), 0) : 0;
-  return (
-    <div className="notesec">
-      {d.questions.map((q, qi) => (
-        <div key={qi} className="quizq">
-          <div className="quizqh">Q{qi + 1}. {q.q}</div>
-          {q.options.map((o, oi) => {
-            const chosen = (submitted ? mine!.answers : answers)[qi] === oi;
-            const showCorrect = submitted && oi === q.correct;
-            const wrongChosen = submitted && chosen && oi !== q.correct;
-            return (
-              <button
-                key={oi}
-                type="button"
-                className={`quizopt${chosen ? " chosen" : ""}${showCorrect ? " correct" : ""}${wrongChosen ? " wrong" : ""}`}
-                disabled={submitted}
-                onClick={() => setAnswers(answers.map((a, j) => (j === qi ? oi : a)))}
-              >
-                {o}
-                {showCorrect ? " ✓" : wrongChosen ? " ✗" : ""}
-              </button>
-            );
-          })}
-        </div>
-      ))}
-      {submitted ? (
-        <div className="aibox">スコア：{score} / {d.questions.length} 正解</div>
-      ) : (
-        <button
-          className="bigbtn"
-          onClick={() => {
-            if (answers.some((a) => a < 0)) {
-              board.toast("すべての設問に回答してください");
-              return;
-            }
-            board.respondDeliverable(d.id, me, { answers, ts: Date.now() });
-          }}
-        >
-          回答する
-        </button>
-      )}
-    </div>
   );
 }
 

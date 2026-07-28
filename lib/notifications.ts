@@ -66,17 +66,19 @@ export function buildEventNotifications(input: NotifInput): Notification[] {
       });
     });
   } else if (playerId) {
-    // 自分宛/全員宛の配信
-    deliverables.filter((d) => deliverTargets(d, playerId)).forEach((d) => {
-      const answered = !!d.responses[playerId];
-      list.push({
-        id: "dlv-" + d.id,
-        ts: d.ts,
-        level: answered ? "good" : "warn",
-        text: `コーチから${DELIVER_KIND_LABEL[d.kind]}「${d.title}」${answered ? "（回答済み）" : "が届いています"}`,
-        target: { kind: "deliver", id: d.id },
+    // 自分宛/全員宛の配信（廃止済みkindの過去データが残っていた場合はスキップ）
+    deliverables
+      .filter((d) => deliverTargets(d, playerId) && d.kind in DELIVER_KIND_LABEL)
+      .forEach((d) => {
+        const answered = !!d.responses[playerId];
+        list.push({
+          id: "dlv-" + d.id,
+          ts: d.ts,
+          level: answered ? "good" : "warn",
+          text: `コーチから${DELIVER_KIND_LABEL[d.kind]}「${d.title}」${answered ? "（回答済み）" : "が届いています"}`,
+          target: { kind: "deliver", id: d.id },
+        });
       });
-    });
     // 自分のノートに付いたコメント
     notebook
       .filter((n) => n.playerId === playerId && n.staffComment && n.staffCommentTs)
@@ -131,9 +133,9 @@ export function buildDigest(input: NotifInput): Notification[] {
     });
   } else if (playerId) {
     const player = players.find((p) => p.id === playerId);
-    // 未回答の配信
+    // 未回答の配信（廃止済みkindの過去データが残っていた場合はスキップ）
     deliverables
-      .filter((d) => deliverTargets(d, playerId) && !d.responses[playerId])
+      .filter((d) => deliverTargets(d, playerId) && !d.responses[playerId] && d.kind in DELIVER_KIND_LABEL)
       .forEach((d) =>
         out.push({
           id: "dg-todo-" + d.id,
@@ -145,8 +147,8 @@ export function buildDigest(input: NotifInput): Notification[] {
       );
     if (player) {
       const k = computePlayerKpi(player, notebook, deliverables, team);
-      if (k.soloStreak >= 5)
-        out.push({ id: "dg-streak", ts: Date.now(), level: "good", text: `自主練${k.soloStreak}日連続！この調子で続けよう。` });
+      if (k.soloStreak >= 3)
+        out.push({ id: "dg-streak", ts: Date.now(), level: "good", text: `自主練を${k.soloStreak}週連続で記録中です。` });
     }
   }
   return out;

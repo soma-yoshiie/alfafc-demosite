@@ -1,28 +1,102 @@
 /* =========================================================
-   テーマ / 全体（football lineup のダーク×ライムを踏襲）
+   デザイントークン
+   分析サイト風ハイブリッド：白地・クールグレー × 1px罫線。
+   基本の意味色は緑（CTA・達成・選択・フォーカス等）。
+   ブルーは緑と役割が被らない箇所（本人・役割バッジ／情報リンク）のみに限定使用する。
    ========================================================= */
 :root {
-  /* 3色テーマ：クリーム × ディープグリーン × ダークネイビー（赤のみ危険色として残す） */
-  --bg: #fcfaf5;          /* ページ背景（ごく淡いクリーム・ほぼ白） */
-  --panel: #ffffff;       /* カード面（白） */
-  --panel2: #f7f5ee;      /* 補助面（ほぼ白のクリーム） */
-  --line: #ece7da;        /* 罫線（淡いウォームグレー） */
-  --grass-a: #1f8c4f;     /* ピッチ芝（緑） */
+  /* ---- サーフェス（6段） ---- */
+  --surface: #eef1f5;           /* ページ背景（カード外にはっきり薄色を敷く） */
+  --surface-lowest: #ffffff;    /* 浮いたカード */
+  --surface-low: #f3f5f7;       /* 沈んだ面・入力欄（白カード内で使用） */
+  --surface-container: #e7ebef; /* コンテナ面 */
+  --surface-high: #dfe4e9;      /* 強調面 */
+  --outline: #e3e6ea;           /* 罫線（面の区切りの基本） */
+  --outline-strong: #d5dae1;
+
+  /* ---- 文字 ---- */
+  --ink: #1d1f24;
+  --mut: #6b7280;
+
+  /* ---- アクセント（ブルー）: クローム・選択・リンクの色 ---- */
+  --accent: #2c6fd6;
+
+  /* ---- プライマリ（緑）: CTA・達成・ポジティブ指標のみ ---- */
+  --primary: #15803d;
+  --primary-dim: #11632f;
+  --primary-container: #dcefe2;
+  --on-primary: #ffffff;
+
+  /* ---- セマンティック ---- */
+  --danger: #d92d20;
+  --warn: #b45309;
+  --info: #1d4ed8;
+
+  /* ---- チャート用カテゴリカラー（案D準拠。クロームとは分離） ---- */
+  --cat1: #3b82f6;
+  --cat2: #10a15c;
+  --cat3: #f59e0b;
+  --cat4: #ec4899;
+  --cat5: #8b5cf6;
+
+  /* ---- 芝 ---- */
+  --grass-a: #1f8c4f;
   --grass-b: #15803d;
-  --lime: #15803d;        /* アクセント／CTA（ディープグリーン） */
-  --lime-dim: #11632f;    /* 濃いグリーン */
-  --ink: #15233c;         /* 文字・構造（ダークネイビー） */
-  --mut: #586074;         /* 補助文字（スレート） */
-  --red: #d6324b;         /* 危険・警告（残す） */
-  --gold: #15233c;        /* 旧:注意 → ダークネイビーへ集約 */
-  --blue: #15233c;        /* 旧:情報 → ダークネイビーへ集約 */
-  --orange: #15233c;      /* 旧:強調 → ダークネイビーへ集約 */
-  --shadow: 0 10px 28px rgba(21, 35, 60, 0.12);
+
+  /* ---- タイポグラフィ ---- */
+  --font-ui: var(--font-manrope), var(--font-noto), "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  --font-display: var(--font-bebas), var(--font-manrope), sans-serif;
+  --fs-label: 11px;
+  --fs-body-s: 12px;
+  --fs-body: 14px;
+  --fs-title-s: 15px;
+  --fs-title: 17px;
+  --fs-headline: 20px;
+  --fs-display: 24px;
+  --fs-stat: 26px;
+
+  /* ---- 角丸（5段） ---- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 20px;
+  --r-full: 999px;
+
+  /* ---- エレベーション（ネイビー低不透明・2層） ---- */
+  --elev-1: 0 1px 2px rgba(21, 35, 60, 0.05), 0 2px 6px rgba(21, 35, 60, 0.05);
+  --elev-2: 0 2px 4px rgba(21, 35, 60, 0.06), 0 8px 20px rgba(21, 35, 60, 0.08);
+  --elev-3: 0 4px 8px rgba(21, 35, 60, 0.08), 0 14px 32px rgba(21, 35, 60, 0.14);
+
+  /* ---- モーション ---- */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-decel: cubic-bezier(0, 0, 0, 1);
+  --ease-accel: cubic-bezier(0.3, 0, 1, 1);
+  --dur-s: 150ms;
+  --dur-m: 300ms;
+  --dur-l: 400ms;
+
+  /* ---- 旧トークン互換（コンポーネントのインラインstyleが参照） ---- */
+  --bg: var(--surface);
+  --panel: var(--surface-lowest);
+  --panel2: var(--surface-low);
+  --line: var(--outline);
+  --lime: var(--primary);
+  --lime-dim: var(--primary-dim);
+  --red: var(--danger);
+  --shadow: var(--elev-2);
+  /* 旧:注意/情報/強調 は新パレットに対応エイリアスが無いため、他画面の見た目を変えないよう旧リテラル値のまま維持 */
+  /* 旧デザインで--inkへ集約されていた3色。新inkに追随させてトーンを統一 */
+  --gold: var(--ink);
+  --blue: var(--ink);
+  --orange: var(--ink);
 }
+
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
+
 /* テキスト中に置く絵文字代替SVG（1emサイズ・currentColor） */
 .emj {
   display: inline-block;
@@ -37,6 +111,7 @@
   height: 100%;
   display: block;
 }
+
 html,
 body {
   margin: 0;
@@ -44,13 +119,30 @@ body {
   height: 100%;
 }
 body {
-  background: radial-gradient(120% 80% at 50% -10%, #fefdfa 0%, var(--bg) 55%) fixed;
+  /* 新パレット(クールグレー)に合わせ、上端のハイライトもクール系へ */
+  background: radial-gradient(120% 80% at 50% -10%, #fbfcfe 0%, var(--bg) 55%) fixed;
   color: var(--ink);
-  font-family: "Manrope", system-ui, sans-serif;
+  font-family: var(--font-ui);
+  font-feature-settings: "palt" 1;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
 }
+button,
+input,
+select,
+textarea {
+  font-family: var(--font-ui);
+}
+
+/* フォーカスリング（キーボード操作時のみ）。基本色=ブルー(アクセント)に統一 */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -83,7 +175,7 @@ header {
   flex-shrink: 1;
 }
 .logo {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 21px;
   letter-spacing: 1px;
   line-height: 0.9;
@@ -107,7 +199,7 @@ header {
   border: 0;
   padding: 0;
   cursor: pointer;
-  font-family: "Manrope";
+  font-family: var(--font-ui);
 }
 .tag.team {
   letter-spacing: 0.3px;
@@ -173,7 +265,7 @@ header {
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--panel);
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 16px;
   letter-spacing: 1.5px;
   color: var(--mut);
@@ -359,7 +451,7 @@ header {
 }
 .role {
   margin-top: 11px;
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 11px;
   letter-spacing: 1px;
   color: rgba(255, 255, 255, 0.82);
@@ -468,7 +560,7 @@ header {
   text-transform: uppercase;
 }
 .stat .v {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 22px;
   letter-spacing: 1px;
   color: var(--lime);
@@ -477,7 +569,7 @@ header {
 .stat .v small {
   font-size: 12px;
   color: var(--mut);
-  font-family: "Manrope";
+  font-family: var(--font-ui);
   font-weight: 600;
 }
 
@@ -492,7 +584,7 @@ header {
   margin: 10px 2px 11px;
 }
 .bench .bh b {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 21px;
   letter-spacing: 1.5px;
   color: var(--ink);
@@ -551,7 +643,7 @@ header {
   text-overflow: ellipsis;
 }
 .bcard .bp {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 12px;
   letter-spacing: 0.5px;
   color: var(--lime-dim);
@@ -599,7 +691,7 @@ header {
   gap: 8px;
 }
 .stitle b {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 20px;
   letter-spacing: 1.5px;
 }
@@ -659,7 +751,7 @@ header {
   border-radius: 9px;
   padding: 8px 6px;
   font-weight: 700;
-  font-family: "Manrope";
+  font-family: var(--font-ui);
   font-size: 13px;
 }
 .scrub {
@@ -742,7 +834,7 @@ header {
   background: var(--panel2);
   color: var(--ink);
   font-size: 13px;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
   line-height: 1.5;
 }
 .nlexrow {
@@ -765,7 +857,7 @@ header {
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .nlex:active {
   transform: scale(0.96);
@@ -780,7 +872,7 @@ header {
   font-weight: 800;
   font-size: 14px;
   cursor: pointer;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .nlrun:disabled {
   opacity: 0.6;
@@ -958,7 +1050,7 @@ header {
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .tlchip:active {
   transform: scale(0.95);
@@ -1188,7 +1280,7 @@ header {
   background: var(--line);
 }
 .sheet h2 {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 24px;
   letter-spacing: 1.5px;
   margin: 4px 16px 8px;
@@ -1198,7 +1290,7 @@ header {
 }
 .sheet h2 span {
   font-size: 11px;
-  font-family: "Manrope";
+  font-family: var(--font-ui);
   font-weight: 700;
   color: var(--lime);
   background: rgba(19, 138, 77, 0.12);
@@ -1218,7 +1310,7 @@ header {
   padding: 11px 13px;
   color: var(--ink);
   font-size: 15px;
-  font-family: "Manrope";
+  font-family: var(--font-ui);
   outline: none;
 }
 .search::placeholder {
@@ -1250,7 +1342,7 @@ header {
 .prow .pos {
   flex: 0 0 40px;
   text-align: center;
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 14px;
   letter-spacing: 0.5px;
   color: #ffffff;
@@ -1285,7 +1377,7 @@ header {
   color: var(--mut);
 }
 .prow .num {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 18px;
   color: var(--lime);
   letter-spacing: 0.5px;
@@ -1347,6 +1439,60 @@ header {
   color: var(--red);
 }
 
+/* 選手詳細シート: 役割メモ */
+.rolememo {
+  margin: 4px 2px 14px;
+}
+.rolememo label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--lime-dim);
+  margin-bottom: 6px;
+}
+.rolememo .rmrole {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--lime);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.rolememo textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--ink);
+  font-size: 14.5px;
+  font-family: inherit;
+  line-height: 1.5;
+}
+.rmsave {
+  margin-top: 8px;
+  width: 100%;
+  padding: 9px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.rmsave.on {
+  border-color: var(--lime);
+  background: var(--lime);
+  color: var(--bg);
+}
+.rmsave:disabled {
+  cursor: default;
+}
+
 /* form */
 .formfield {
   margin: 0 16px 12px;
@@ -1368,7 +1514,7 @@ header {
   padding: 12px 13px;
   color: var(--ink);
   font-size: 15px;
-  font-family: "Manrope";
+  font-family: var(--font-ui);
   outline: none;
 }
 .formrow {
@@ -1392,7 +1538,7 @@ header {
   border-radius: 14px;
   border: 0;
   cursor: pointer;
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 20px;
   letter-spacing: 1.5px;
   background: var(--lime);
@@ -1491,7 +1637,7 @@ header {
 }
 .fptag {
   margin-left: auto;
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 20px;
   letter-spacing: 1.5px;
   color: rgba(234, 255, 240, 0.85);
@@ -1514,7 +1660,7 @@ header {
   border: 0;
   cursor: pointer;
   user-select: none;
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   letter-spacing: 1px;
   text-align: center;
 }
@@ -1719,7 +1865,7 @@ header {
   font-size: 14px;
 }
 .pcprice {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 30px;
   color: var(--lime);
   letter-spacing: 1px;
@@ -1728,7 +1874,7 @@ header {
 .pcprice small {
   font-size: 13px;
   color: var(--mut);
-  font-family: "Manrope";
+  font-family: var(--font-ui);
 }
 .plancard ul {
   margin: 0 0 12px;
@@ -1822,7 +1968,7 @@ header {
   padding: 9px 12px;
   font-weight: 800;
   font-size: 14px;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -1971,7 +2117,7 @@ header {
   padding: 8px 10px;
   font-weight: 700;
   font-size: 13px;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .teamapp .rolehint {
   font-size: 10px;
@@ -2199,7 +2345,7 @@ header {
   margin-bottom: 10px;
 }
 .calnav b {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 22px;
   letter-spacing: 1px;
 }
@@ -2332,7 +2478,7 @@ header {
   letter-spacing: 1px;
 }
 .statbox .sv {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 24px;
   color: var(--lime);
   letter-spacing: 1px;
@@ -2419,7 +2565,7 @@ header {
   margin-top: 2px;
 }
 .mscore {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 26px;
   letter-spacing: 1px;
 }
@@ -2430,7 +2576,7 @@ header {
 
 .mvscore {
   text-align: center;
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 56px;
   letter-spacing: 2px;
   color: var(--lime);
@@ -2502,7 +2648,7 @@ header {
   padding: 9px 8px;
   color: var(--ink);
   font-size: 13px;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
   min-width: 0;
 }
 .dynrow select {
@@ -2547,64 +2693,6 @@ header {
   max-width: 880px;
 }
 
-@media (min-width: 1024px) {
-  .app {
-    max-width: 1220px;
-  }
-
-  /* 戦術ボード: ピッチを大きく左、操作パネルを右の2カラム（ボード画面のみ） */
-  .boardapp:not(.fullplay) .scroll {
-    display: flex;
-    gap: 22px;
-    padding: 14px 22px 0;
-    overflow: hidden;
-  }
-  .boardapp:not(.fullplay) .pitchwrap {
-    flex: 1.5;
-    min-width: 0;
-    padding: 0;
-  }
-  .boardapp:not(.fullplay) .pitch {
-    height: calc(100dvh - 150px);
-    max-height: 880px;
-  }
-  /* アニメ編集中もピッチを縮めない（大画面で見やすく） */
-  .app.anim:not(.fullplay) .pitch {
-    height: calc(100dvh - 150px) !important;
-    max-height: 880px !important;
-  }
-
-  .boardside {
-    flex: 0 0 410px;
-    min-width: 340px;
-    max-width: 430px;
-    height: calc(100dvh - 150px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding-bottom: 24px;
-  }
-  /* PCではスクロール誘導は不要 */
-  .scrollcue {
-    display: none;
-  }
-  /* スタジオはサイドカラムに馴染ませる */
-  .app.anim:not(.fullplay) .studio {
-    background: transparent;
-    border-top: 0;
-    padding: 0 0 24px;
-  }
-  .app.anim:not(.fullplay) .clips {
-    max-height: none;
-  }
-
-  /* 全画面アニメの操作UIもPC幅に広げる */
-  .fpover {
-    max-width: 1220px;
-  }
-  .fphint {
-    font-size: 13px;
-  }
-}
 
 /* ============================================================
    Splash（タイトル演出） & Login
@@ -2643,7 +2731,7 @@ header {
   animation: sp-ball 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) 0.35s both;
 }
 .splash-title {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 40px;
   letter-spacing: 3px;
   margin-top: 10px;
@@ -2711,7 +2799,7 @@ header {
 }
 .login-mark svg { width: 100%; height: 100%; }
 .login-logo {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 30px;
   letter-spacing: 2px;
 }
@@ -2738,7 +2826,7 @@ header {
   padding: 12px 13px;
   color: var(--ink);
   font-size: 15px;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
   outline: none;
 }
 .login-or {
@@ -3016,12 +3104,12 @@ header {
   padding: 8px 14px;
   cursor: pointer;
   color: var(--ink);
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .formbtn:active { transform: scale(0.97); }
 .formbtn .fb-label { font-weight: 700; font-size: 13px; }
 .formbtn .fb-cur {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 17px;
   letter-spacing: 1px;
   color: #ffffff;
@@ -3043,7 +3131,7 @@ header {
   border-radius: 13px;
   padding: 16px 10px;
   color: var(--ink);
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 22px;
   letter-spacing: 1.5px;
   cursor: pointer;
@@ -3068,7 +3156,7 @@ header {
   border-radius: 999px;
   padding: 8px 13px;
   color: var(--ink);
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
   font-weight: 700;
   font-size: 13px;
   cursor: pointer;
@@ -3096,7 +3184,7 @@ header {
   letter-spacing: 1px;
 }
 .profcell .pv {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 22px;
   letter-spacing: 0.5px;
   color: var(--ink);
@@ -3104,7 +3192,7 @@ header {
 .profcell .pv small {
   font-size: 11px;
   color: var(--mut);
-  font-family: "Manrope";
+  font-family: var(--font-ui);
   margin-left: 1px;
 }
 .detail .bigbtn.ghost { width: calc(100% - 32px); margin: 0 16px 12px; }
@@ -3242,7 +3330,7 @@ header {
   padding: 15px 14px;
   cursor: pointer;
   color: var(--ink);
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .homecard:active { transform: scale(0.99); background: var(--panel2); }
 .homeicon {
@@ -3290,98 +3378,6 @@ header {
   line-height: 1.5;
 }
 
-@media (min-width: 1024px) {
-  /* ===== PCホーム：説明つき横長カードを幅いっぱいに ===== */
-  .homeapp .scroll {
-    max-width: 1040px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  .homeapp .appgrid {
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 14px;
-    padding: 18px 4px;
-  }
-  .homeapp .apptile {
-    flex-direction: row;
-    align-items: center;
-    gap: 16px;
-    padding: 18px 20px;
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    background: var(--panel);
-    transition: border-color 0.15s, transform 0.1s;
-  }
-  .homeapp .apptile:hover {
-    border-color: var(--lime);
-    transform: translateY(-1px);
-  }
-  .homeapp .apptile:active {
-    transform: none;
-  }
-  .homeapp .appicon {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    flex: none;
-  }
-  .homeapp .appicon svg {
-    width: 28px;
-    height: 28px;
-  }
-  .homeapp .appmeta {
-    align-items: flex-start;
-    flex: 1;
-  }
-  .homeapp .applabel {
-    font-size: 16px;
-    font-weight: 800;
-    text-align: left;
-  }
-  .homeapp .appdesc {
-    display: block;
-    font-size: 12.5px;
-    color: var(--mut);
-    text-align: left;
-    margin-top: 3px;
-    line-height: 1.4;
-  }
-
-  /* ===== PCノート/チャット：中央寄せ・全幅活用 ===== */
-  .noteapp .scroll,
-  .chatapp .scroll {
-    max-width: 1040px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  /* ノート一覧カード・会話一覧・検索結果・KPIを2カラムに */
-  .noteapp .notecards,
-  .noteapp .kpigrid,
-  .noteapp .convlist,
-  .chatapp .convlist {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 12px;
-    align-items: start;
-  }
-  .noteapp .notecards .notecard,
-  .noteapp .kpigrid .kpicard {
-    margin-bottom: 0;
-  }
-  /* 選手チャットは横幅を活かしつつ読みやすい行長に */
-  .chatapp .chattab {
-    max-width: 860px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  /* 記入フォーム・ノート詳細は単一カラム。全幅に間延びさせず読みやすい幅で中央寄せ */
-  .noteapp .noteform,
-  .noteapp .notedetail {
-    max-width: 640px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-}
 
 /* ---------- パスワード表示トグル ---------- */
 .pwwrap { position: relative; }
@@ -3431,7 +3427,7 @@ header {
   font-size: 15px;
   padding: 8px 10px;
   cursor: pointer;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .sheetback:active { opacity: 0.6; }
 .sheet.full .sheetBody { padding-top: 4px; }
@@ -3456,7 +3452,7 @@ header {
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .catchip.on {
   background: var(--lime);
@@ -3516,7 +3512,7 @@ header {
   padding: 8px 0;
 }
 .agdate b {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 24px;
   line-height: 1;
 }
@@ -3583,7 +3579,7 @@ header {
   padding: 10px 12px;
   color: var(--ink);
   font-size: 14px;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
   outline: none;
 }
 .attreason::placeholder { color: var(--mut); }
@@ -4051,7 +4047,7 @@ header {
   border: 1px solid var(--line);
   background: linear-gradient(180deg, rgba(19, 138, 77, 0.06), rgba(19, 138, 77, 0.02));
   cursor: pointer;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .todayevent:active {
   transform: scale(0.99);
@@ -4109,7 +4105,7 @@ header {
   border: 1px solid var(--line);
   background: var(--panel2);
   cursor: pointer;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
 .todaystat:active {
   transform: scale(0.96);
@@ -4179,6 +4175,23 @@ header {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+.appbadge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg);
 }
 .appmeta {
   display: flex;
@@ -4265,76 +4278,443 @@ header {
   margin-top: 2px;
 }
 
+.noteapp .scroll {
+  padding: 4px 16px calc(env(safe-area-inset-bottom) + 24px);
+}
+
+/* ---------- Header ---------- */
+.noteapp header {
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.noteapp .brand {
+  min-width: 0;
+  flex-shrink: 1;
+}
+.noteapp .logo {
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 18px;
+  letter-spacing: 0.3px;
+  line-height: 1.05;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.noteapp .logo b {
+  color: var(--primary);
+  font-weight: 700;
+}
+.noteapp .tag {
+  font-size: var(--fs-label);
+  letter-spacing: 1px;
+  color: var(--mut);
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.noteapp .tag.team {
+  letter-spacing: 0.3px;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(35, 96, 216, 0.08);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+}
+.noteapp .tag.team::before {
+  content: "●";
+  font-size: 7px;
+}
+.noteapp .fpback {
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: var(--fs-body);
+  white-space: nowrap;
+  color: var(--ink);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  padding: 10px 16px;
+  border-radius: var(--r-full);
+}
+.noteapp .fpback:active {
+  transform: scale(0.97);
+}
+/* PCトップバー専用（＋作成/配信ボタン・ログインユーザー表示）。モバイルは非表示 */
+.noteapp .hdrcta,
+.noteapp .hdrusr {
+  display: none;
+}
+
+/* ---------- 種別タブ（チップ） ---------- */
+.noteapp .fbar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 16px 10px;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.noteapp .fbar::-webkit-scrollbar {
+  display: none;
+}
+.noteapp .chip {
+  flex: 0 0 auto;
+  padding: 8px 15px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mut);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.noteapp .chip.on {
+  background: rgba(44, 111, 214, 0.1);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.noteapp .chip:active {
+  transform: scale(0.97);
+}
+
+/* ---------- 検索入力 ---------- */
+.noteapp .search {
+  width: 100%;
+  background: var(--surface-low);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+  color: var(--ink);
+  font-size: var(--fs-title-s);
+  font-family: var(--font-ui);
+  outline: none;
+}
+.noteapp .search:focus {
+  border-color: var(--accent);
+  background: var(--surface-lowest);
+  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+}
+.noteapp .search::placeholder {
+  color: var(--mut);
+}
+.noteapp .empty-msg {
+  text-align: center;
+  color: var(--mut);
+  padding: 40px 20px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ---------- フォーム部品 ---------- */
+.noteapp .formfield {
+  margin: 0 16px 12px;
+}
+.noteapp .formfield label {
+  display: block;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mut);
+  margin: 0 2px 6px;
+}
+.noteapp .formfield input,
+.noteapp .formfield select,
+.noteapp .formfield textarea {
+  width: 100%;
+  background: var(--surface-low);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 12px 13px;
+  color: var(--ink);
+  font-size: var(--fs-title-s);
+  font-family: var(--font-ui);
+  outline: none;
+}
+.noteapp .formfield input:focus,
+.noteapp .formfield select:focus,
+.noteapp .formfield textarea:focus {
+  border-color: var(--accent);
+  background: var(--surface-lowest);
+  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+}
+.noteapp .formfield textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.noteapp .formgrid {
+  margin: 0 16px 12px;
+  display: flex;
+  gap: 10px;
+}
+.noteapp .bigbtn {
+  width: calc(100% - 32px);
+  margin: 6px 16px 14px;
+  padding: 15px;
+  border-radius: var(--r-md);
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: var(--fs-title-s);
+  letter-spacing: 0.02em;
+  background: var(--primary);
+  color: var(--on-primary);
+  box-shadow: var(--elev-1);
+}
+.noteapp .bigbtn:active {
+  transform: scale(0.98);
+}
+.noteapp .bigbtn.ghost {
+  background: var(--surface-lowest);
+  color: var(--ink);
+  border: 1px solid var(--outline-strong);
+  box-shadow: none;
+}
+
+.noteapp .toast {
+  position: fixed;
+  left: 50%;
+  bottom: 96px;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--ink);
+  color: #ffffff;
+  padding: 11px 18px;
+  border-radius: var(--r-full);
+  font-weight: 700;
+  font-size: 13px;
+  z-index: 90;
+  opacity: 0;
+  transition: opacity var(--dur-m) var(--ease-standard), transform var(--dur-m) var(--ease-standard);
+  pointer-events: none;
+  box-shadow: var(--elev-3);
+  max-width: 90%;
+  text-align: center;
+}
+.noteapp .toast.on {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.noteapp .evnote {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  margin-top: 4px;
+}
+.noteapp .dynrow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  align-items: center;
+}
+.noteapp .dynrow select,
+.noteapp .dynrow input {
+  background: var(--surface-low);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  padding: 10px 9px;
+  color: var(--ink);
+  font-size: 13px;
+  font-family: var(--font-ui);
+  min-width: 0;
+  outline: none;
+}
+.noteapp .dynrow select:focus,
+.noteapp .dynrow input:focus {
+  border-color: var(--accent);
+  background: var(--surface-lowest);
+  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+}
+.noteapp .dynrow select {
+  flex: 1;
+}
+/* .formfield input の width:100% が同居する要素を潰さないように */
+.noteapp .dynrow input {
+  flex: 1.4;
+  width: auto;
+}
+.noteapp .dynrow input[type="number"] {
+  width: 54px;
+  flex: 0 0 auto;
+  text-align: center;
+}
+.noteapp .dynx {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 38px;
+  border-radius: var(--r-sm);
+  border: 0;
+  background: var(--surface-low);
+  color: var(--danger);
+  font-size: 16px;
+  cursor: pointer;
+}
+.noteapp .dynadd {
+  width: 100%;
+  background: transparent;
+  border: 1px dashed var(--outline-strong);
+  color: var(--primary-dim);
+  border-radius: var(--r-sm);
+  padding: 10px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+/* ---------- 配信先セレクタ ---------- */
+.noteapp .sendtgt {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.noteapp .sendtgt label {
+  flex: 1;
+  min-width: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  background: var(--surface-low);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.noteapp .sendtgt label.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(44, 111, 214, 0.1);
+}
+.noteapp .sendtgt input {
+  accent-color: var(--primary);
+}
+.noteapp .convchev {
+  color: var(--mut);
+  font-size: 20px;
+}
+
+/* ---------- 検索の種別フィルタ ---------- */
+.noteapp .cmpbar {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding: 12px 2px 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.noteapp .cmpchip {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: var(--r-full);
+  border: 1px solid transparent;
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.noteapp .cmpchip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(44, 111, 214, 0.1);
+}
+
 /* =========================================================
-   サッカーノート
+   サッカーノート：一覧カード
    ========================================================= */
-.notecard {
+.noteapp .notecard {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
   text-align: left;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel);
+  padding: 13px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
   color: var(--ink);
   cursor: pointer;
   margin-bottom: 8px;
 }
-.notecard:active {
+.noteapp .notecard:active {
   transform: scale(0.99);
 }
-.notecond {
+.noteapp .notecond {
   flex: 0 0 auto;
   width: 42px;
   height: 42px;
-  border-radius: 12px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-low);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 22px;
+  color: var(--mut);
 }
-.notecond.big {
+.noteapp .notecond.big {
   width: 54px;
   height: 54px;
   font-size: 30px;
 }
-.notemain {
+.noteapp .notemain {
   flex: 1;
   min-width: 0;
 }
-.notetop {
+.noteapp .notetop {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.notewho {
+.noteapp .notewho {
   font-weight: 700;
-  font-size: 14.5px;
+  font-size: var(--fs-title-s);
 }
-.notedate {
-  font-size: 12px;
+.noteapp .notedate {
+  font-size: var(--fs-body-s);
   color: var(--mut);
 }
-.notetag {
+.noteapp .notetag {
   margin-left: auto;
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   font-weight: 700;
   padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--panel2);
+  border-radius: var(--r-full);
+  background: var(--surface-low);
   color: var(--mut);
-  border: 1px solid var(--line);
 }
-.notetag.done {
-  color: var(--lime);
-  border-color: rgba(19, 138, 77, 0.4);
-  background: rgba(19, 138, 77, 0.08);
+.noteapp .notetag.done {
+  color: var(--primary-dim);
+  background: var(--primary-container);
 }
-.notebody {
+.noteapp .notetag.share {
+  color: var(--primary-dim);
+  background: var(--primary-container);
+}
+.noteapp .notebody {
   font-size: 13px;
   color: var(--mut);
   margin-top: 3px;
@@ -4342,143 +4722,216 @@ header {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.noteform h2 {
-  margin: 12px 2px 8px;
+
+/* =========================================================
+   記入フォーム
+   ========================================================= */
+.noteapp .noteform h2,
+.noteapp .notetools h2 {
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
-/* ① 「くわしく記録する」トグル（詳細モードの入口） */
-.detailtoggle {
+.noteapp .noteform h2 {
+  margin: 12px 2px 10px;
+}
+.noteapp .notetools h2 {
+  margin: 10px 2px 10px;
+}
+/* 「詳細を記録する」トグル（詳細モードの入口） */
+.noteapp .detailtoggle {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 2px;
   width: 100%;
   margin-top: 14px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px dashed var(--line);
-  background: var(--panel2);
+  padding: 13px;
+  border-radius: var(--r-md);
+  border: 1px dashed var(--outline-strong);
+  background: var(--surface-low);
   color: var(--ink);
-  font-size: 14px;
-  font-weight: 800;
+  font-size: var(--fs-body);
+  font-weight: 700;
   cursor: pointer;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
-.detailtoggle:active {
+.noteapp .detailtoggle:active {
   opacity: 0.7;
 }
-.detailtoggle-sub {
-  font-size: 11px;
+.noteapp .detailtoggle-sub {
+  font-size: var(--fs-label);
   font-weight: 600;
   color: var(--mut);
 }
-.detailwrap {
+.noteapp .detailwrap {
   margin-top: 14px;
   padding: 12px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
+  border-radius: var(--r-lg);
+  border: 0;
+  background: var(--surface-low);
 }
-.detailwrap-h {
+.noteapp .detailwrap-h {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 800;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.5px;
   color: var(--mut);
 }
-.detailhide {
+.noteapp .detailhide {
   border: 0;
   background: transparent;
-  color: var(--lime);
-  font-size: 12px;
+  color: var(--accent);
+  font-size: var(--fs-body-s);
   font-weight: 700;
   cursor: pointer;
   padding: 4px 6px;
-  font-family: "Manrope", sans-serif;
+  font-family: var(--font-ui);
 }
-.detailhide:active {
+.noteapp .detailhide:active {
   opacity: 0.6;
 }
-.condrow {
+.noteapp .condrow {
   display: flex;
   gap: 6px;
 }
-.condbtn {
+.noteapp .condbtn {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 3px;
-  padding: 8px 2px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
+  padding: 9px 2px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: var(--surface-low);
   color: var(--mut);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   font-weight: 600;
   cursor: pointer;
 }
-.condbtn span {
+.noteapp .condbtn span {
   font-size: 21px;
 }
-.condbtn.on {
-  border-color: var(--lime);
-  color: var(--lime);
-  background: rgba(19, 138, 77, 0.08);
+.noteapp .condbtn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(44, 111, 214, 0.1);
 }
-.notedetail {
+
+/* =========================================================
+   ノート詳細
+   ========================================================= */
+.noteapp .notedetail {
   padding: 6px 2px;
 }
-.notedhead {
+.noteapp .notedhead {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-bottom: 14px;
 }
-.notesec {
-  margin-bottom: 14px;
+.noteapp .notesec {
+  margin-bottom: 16px;
 }
-.notesec-h {
-  font-size: 12px;
+.noteapp .notesec-h {
+  font-size: var(--fs-label);
   font-weight: 700;
-  color: var(--lime-dim);
-  margin-bottom: 5px;
+  letter-spacing: 0.5px;
+  color: var(--mut);
+  margin-bottom: 6px;
 }
-.notesec-b {
-  font-size: 14.5px;
-  line-height: 1.6;
+.noteapp .notesec-b {
+  font-size: var(--fs-body);
+  line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
 }
-.notesec textarea {
+.noteapp .notesec textarea {
   width: 100%;
   resize: vertical;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
+  padding: 11px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: var(--surface-low);
   color: var(--ink);
-  font-size: 14.5px;
+  font-size: var(--fs-body);
   font-family: inherit;
   line-height: 1.5;
+  outline: none;
 }
-.notesec.staffcmt .notesec-b {
-  background: rgba(19, 138, 77, 0.08);
-  border: 1px solid rgba(19, 138, 77, 0.3);
-  border-radius: 12px;
-  padding: 10px 12px;
+.noteapp .notesec textarea:focus {
+  border-color: var(--accent);
+  background: var(--surface-lowest);
+  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
 }
-.notedacts {
+.noteapp .notesec.staffcmt .notesec-b {
+  background: var(--primary-container);
+  border: 0;
+  border-radius: var(--r-md);
+  padding: 11px 13px;
+}
+/* コーチのワンタップリアクション */
+.noteapp .reactrow {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.noteapp .reactbtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 4px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  cursor: pointer;
+}
+.noteapp .reactbtn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(44, 111, 214, 0.1);
+}
+/* 選手側：コーチのリアクション表示 */
+.noteapp .reactpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--primary-dim);
+  margin-bottom: 6px;
+}
+/* コメント・リアクションはないが既読済み */
+.noteapp .seenpill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--mut);
+  margin: 12px 2px;
+}
+.noteapp .notedacts {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin-top: 18px;
 }
-.linkdanger {
+.noteapp .linkdanger {
   background: none;
   border: none;
-  color: var(--red);
+  color: var(--danger);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
@@ -4486,197 +4939,170 @@ header {
 }
 
 /* =========================================================
-   役割メモ（スロットメニュー内）
+   一覧の補助（スコープ切替・ストリーク・ポジション集計）
    ========================================================= */
-.rolememo {
-  margin: 4px 2px 14px;
-}
-.rolememo label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--lime-dim);
-  margin-bottom: 6px;
-}
-.rolememo .rmrole {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--bg);
-  background: var(--lime);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-.rolememo textarea {
-  width: 100%;
-  resize: vertical;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--ink);
-  font-size: 14.5px;
-  font-family: inherit;
-  line-height: 1.5;
-}
-.rmsave {
-  margin-top: 8px;
-  width: 100%;
-  padding: 9px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--mut);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.rmsave.on {
-  border-color: var(--lime);
-  background: var(--lime);
-  color: var(--bg);
-}
-.rmsave:disabled {
-  cursor: default;
-}
-
-/* =========================================================
-   サッカーノート強化（3バケツ・ミニピッチ・AI）
-   ========================================================= */
-/* 練習ノートの 自分/共有 切替 */
-.scopebar {
+.noteapp .scopebar {
   display: flex;
   gap: 8px;
   padding: 10px 0 4px;
 }
-.scopechip {
+.noteapp .scopechip {
   flex: 1;
-  padding: 8px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
+  padding: 9px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: var(--surface-low);
   color: var(--mut);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
-.scopechip.on {
-  border-color: var(--lime);
-  color: var(--lime);
-  background: rgba(19, 138, 77, 0.08);
+.noteapp .scopechip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(44, 111, 214, 0.1);
 }
-.streakcard {
-  margin: 10px 0 6px;
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: rgba(19, 138, 77, 0.1);
-  border: 1px solid rgba(19, 138, 77, 0.4);
-  color: var(--lime);
-  font-weight: 800;
+.noteapp .phasebar {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
 }
-.possummary {
-  margin: 10px 0 4px;
-  padding: 11px 13px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-}
-.possummary .ps-h {
-  font-size: 12px;
+.noteapp .phasechip {
+  flex: 1;
+  padding: 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: var(--fs-body-s);
   font-weight: 700;
-  color: var(--lime-dim);
+  cursor: pointer;
+}
+.noteapp .phasechip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(44, 111, 214, 0.1);
+}
+.noteapp .canvasbar { display: flex; gap: 6px; margin: 0 0 8px; flex-wrap: wrap; }
+.noteapp .canvaschip { padding: 6px 12px; border-radius: var(--r-sm); border: 1px solid transparent; background: var(--surface-low); color: var(--mut); font-size: var(--fs-label); font-weight: 700; cursor: pointer; font-family: var(--font-ui); }
+.noteapp .canvaschip.on { border-color: var(--accent); color: var(--accent); background: rgba(44, 111, 214, 0.08); }
+.noteapp .canvaschip.add { border: 1px dashed var(--outline-strong); background: transparent; }
+.noteapp .streakcard {
+  margin: 10px 0 6px;
+  padding: 11px 14px;
+  border-radius: var(--r-md);
+  background: var(--primary-container);
+  border: 0;
+  color: var(--primary-dim);
+  font-weight: 700;
+}
+.noteapp .possummary {
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+}
+.noteapp .possummary .ps-h {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mut);
   margin-bottom: 7px;
 }
-.ps-row {
+.noteapp .ps-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
 }
-.ps-chip {
-  font-size: 12.5px;
-  padding: 4px 9px;
-  border-radius: 999px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+.noteapp .ps-chip {
+  font-size: var(--fs-body-s);
+  padding: 4px 10px;
+  border-radius: var(--r-full);
+  background: var(--surface-low);
+  border: 0;
 }
-.ps-chip b {
-  color: var(--lime);
+.noteapp .ps-chip b {
+  color: var(--primary-dim);
 }
-.notetag.share {
-  color: var(--lime);
-  border-color: rgba(19, 138, 77, 0.4);
-  background: rgba(19, 138, 77, 0.08);
-}
-.sharetoggle {
+.noteapp .sharetoggle {
   display: flex;
   align-items: center;
   gap: 9px;
   margin: 4px 2px 12px;
-  font-size: 13.5px;
+  font-size: 13px;
   color: var(--ink);
 }
-.sharetoggle input {
+.noteapp .sharetoggle input {
   width: 18px;
   height: 18px;
-  accent-color: var(--lime);
+  accent-color: var(--primary);
 }
 
-/* ミニピッチ */
-.mpitch {
+/* =========================================================
+   ミニピッチ（フォーメーション・プレーエリア）
+   ========================================================= */
+.noteapp .mpitch {
   position: relative;
   width: 100%;
   aspect-ratio: 3 / 4;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   overflow: hidden;
   background: linear-gradient(180deg, var(--grass-a), var(--grass-b));
-  border: 1px solid var(--line);
+  border: 0;
   margin-top: 6px;
+  user-select: none;
+  -webkit-user-select: none;
 }
-/* ⑤ フォーム内のピッチはコンパクトに（縦に占有しない） */
-.formpitch {
+/* フォーム内のピッチはコンパクトに（縦に占有しない） */
+.noteapp .formpitch {
   max-width: 240px;
   margin: 6px auto 2px;
 }
-.formpitch .mpitch {
+.noteapp .formpitch .mpitch {
   margin-top: 0;
 }
-.mpitch.play.editable {
+.noteapp .mpitch.play.editable {
   cursor: crosshair;
   touch-action: none;
 }
 /* プレー軌道のSVG */
-.mplines {
+.noteapp .mplines {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
-  color: var(--lime);
+  /* 矢印(marker)の色。軌道は種別ごとに芝に映える明色を使う */
+  color: #ffffff;
   z-index: 2;
 }
-.mpline-path {
+.noteapp .mpline-path {
   fill: none;
-  stroke: var(--lime);
+  stroke: #ffffff;
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }
-.mpline-path.pass {
+.noteapp .mpline-path.pass {
+  stroke: #ffffff;
   stroke-dasharray: 5 3;
 }
-.mpline-path.dribble {
+.noteapp .mpline-path.dribble {
+  stroke: #4fc3f7;
   stroke-dasharray: 1.6 2.6;
 }
-.mpline-path.shot {
+.noteapp .mpline-path.shot {
+  stroke: #ffd166;
   stroke-width: 2.7;
 }
-.mpmk {
+.noteapp .mpmk {
   position: absolute;
   inset: 0;
   pointer-events: none;
 }
-.mpline {
+.noteapp .mpline {
   position: absolute;
   top: 50%;
   left: 0;
@@ -4684,7 +5110,7 @@ header {
   height: 1px;
   background: rgba(255, 255, 255, 0.22);
 }
-.mpcircle {
+.noteapp .mpcircle {
   position: absolute;
   top: 50%;
   left: 50%;
@@ -4694,22 +5120,22 @@ header {
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 50%;
 }
-.mpbox {
+.noteapp .mpbox {
   position: absolute;
   left: 25%;
   width: 50%;
   height: 14%;
   border: 1px solid rgba(255, 255, 255, 0.22);
 }
-.mpbox.top {
+.noteapp .mpbox.top {
   top: 0;
   border-top: none;
 }
-.mpbox.bot {
+.noteapp .mpbox.bot {
   bottom: 0;
   border-bottom: none;
 }
-.mpgoalhint {
+.noteapp .mpgoalhint {
   position: absolute;
   top: 4px;
   left: 6px;
@@ -4717,689 +5143,1530 @@ header {
   color: rgba(255, 255, 255, 0.5);
   pointer-events: none;
 }
-.mtok {
+.noteapp .mtok {
   position: absolute;
   transform: translate(-50%, -50%);
   min-width: 26px;
   padding: 2px 5px;
-  border-radius: 7px;
+  border-radius: var(--r-sm);
   font-size: 9.5px;
-  font-weight: 800;
+  font-weight: 700;
   text-align: center;
   line-height: 1.1;
   border: 1.5px solid;
 }
-.mtok.own {
-  background: rgba(19, 138, 77, 0.18);
-  border-color: var(--lime);
+/* 芝の上でも読めるよう不透明の白地にする */
+.noteapp .mtok.own {
+  background: #ffffff;
+  border-color: var(--primary);
   color: var(--ink);
   cursor: pointer;
 }
-.mtok.own.sel {
-  background: var(--lime);
+.noteapp .mtok.own.sel {
+  background: var(--primary);
   color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(19, 138, 77, 0.35);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55);
 }
-.mtok.opp {
-  background: rgba(255, 91, 110, 0.14);
-  border-color: var(--red);
-  color: #d6324b;
-  opacity: 0.85;
+.noteapp .mtok.opp {
+  background: rgba(255, 255, 255, 0.88);
+  border-color: var(--danger);
+  color: var(--danger);
 }
-.mdot {
+/* プレー記録の点：芝に映える明色＋白フチ */
+.noteapp .mdot {
   position: absolute;
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  border: 1.5px solid rgba(0, 0, 0, 0.45);
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
-.mdot.receive {
-  background: var(--lime);
+.noteapp .mdot.receive {
+  background: #35c072;
 }
-.mdot.shot {
-  background: var(--orange);
+.noteapp .mdot.shot {
+  background: #ffd166;
 }
-.mdot.miss {
-  background: var(--red);
+.noteapp .mdot.miss {
+  background: #ff5b6e;
 }
 
+/* ゴール正面図（シュートコース） */
+.noteapp .goalview { position: relative; width: 100%; aspect-ratio: 2 / 1; background: var(--surface-low); border-radius: var(--r-md); overflow: hidden; }
+.noteapp .goalview.editable { cursor: crosshair; }
+.noteapp .goalview svg { display: block; width: 100%; height: 100%; }
+.noteapp .goalres { display: flex; gap: 8px; margin: 10px 0; }
+.noteapp .goalresbtn { flex: 1; padding: 10px; border-radius: var(--r-sm); border: 1px solid transparent; background: var(--surface-low); color: var(--mut); font-size: 13px; font-weight: 700; cursor: pointer; }
+.noteapp .goalresbtn.on.goal { border-color: var(--primary); color: var(--primary-dim); background: var(--primary-container); }
+.noteapp .goalresbtn.on.nogoal { border-color: var(--danger); color: var(--danger); background: rgba(217, 45, 32, 0.08); }
+.noteapp .shotlist { margin-top: 8px; }
+.noteapp .shotrow { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 9px 11px; border: 1px solid var(--outline); border-radius: var(--r-sm); background: var(--surface-lowest); margin-bottom: 6px; font-size: var(--fs-body-s); color: var(--ink); cursor: pointer; }
+.noteapp .shotrow small { color: var(--mut); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.noteapp .shotmark { width: 12px; height: 12px; border-radius: 50%; border: 2.5px solid var(--primary); flex: none; }
+.noteapp .shotmark.nogoal { border-color: var(--danger); }
+.noteapp .shotmark.none { border-style: dashed; border-color: var(--outline-strong); }
+
 /* 試合ノートのフェーズ */
-.phasecard {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
+.noteapp .phasecard {
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  padding: 12px;
   margin-bottom: 10px;
-  background: var(--panel);
+  background: var(--surface-lowest);
 }
-.phasehd {
+.noteapp .phasehd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-weight: 800;
-  color: var(--lime);
+  font-weight: 700;
+  color: var(--ink);
   margin-bottom: 8px;
 }
-.phasehint {
-  font-size: 12px;
+.noteapp .phasehint {
+  font-size: var(--fs-body-s);
   color: var(--mut);
   margin: 6px 0 2px;
 }
-.phaseadd {
+.noteapp .phaseadd {
   display: flex;
   gap: 8px;
   margin-bottom: 4px;
 }
 
 /* フォームのグループ（練習ノート等を見やすく整理） */
-.formgroup {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px 12px 4px;
+.noteapp .formgroup {
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  padding: 14px 12px 6px;
   margin-bottom: 12px;
-  background: var(--panel);
+  background: var(--surface-lowest);
 }
-.formgroup-h {
-  font-size: 12px;
-  font-weight: 800;
-  color: var(--lime-dim);
+.noteapp .formgroup-h {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mut);
   margin-bottom: 8px;
 }
-.formgroup .formfield label {
+.noteapp .formgroup .formfield label {
   color: var(--mut);
 }
+.noteapp .formgroup .formfield input,
+.noteapp .formgroup .formfield select,
+.noteapp .formgroup .formfield textarea {
+  background: var(--surface-low);
+}
 
-/* プレー種別 */
-.playtools {
+/* 練習ノート：スタッフ配信の練習メニュー選択 */
+.noteapp .menupick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: var(--fs-body-s);
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.noteapp .menupick.on {
+  border-color: var(--accent);
+  background: rgba(44, 111, 214, 0.1);
+  color: var(--accent);
+}
+.noteapp .menupick .mpk-check {
+  margin-left: auto;
+  font-weight: 700;
+}
+.noteapp .menuview {
+  padding: 11px 13px;
+  border-radius: var(--r-md);
+  background: var(--surface-low);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.noteapp .menuview b {
+  display: block;
+  margin-bottom: 2px;
+}
+
+/* プレー種別ツール */
+.noteapp .playtools {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin: 6px 0 2px;
 }
-.playtoolrow {
+.noteapp .playtoolrow {
   display: flex;
   gap: 8px;
 }
-.playline {
+.noteapp .playline {
   flex: 1;
-  padding: 8px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--mut);
+  padding: 9px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
   font-size: 12.5px;
   font-weight: 700;
   cursor: pointer;
 }
-.playline.on {
-  border-color: var(--lime);
-  color: var(--lime);
-  background: rgba(19, 138, 77, 0.1);
-}
-.playkinds {
-  display: flex;
-  gap: 8px;
-  margin: 6px 0 2px;
-}
-.playkind {
+.noteapp .playkind {
   flex: 1;
-  padding: 8px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--mut);
+  padding: 9px 8px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
-.playkind.on.receive {
-  border-color: var(--lime);
-  color: var(--lime);
-  background: rgba(19, 138, 77, 0.1);
+/* 選択中は濃紺ベタ＋白文字ではっきり区別する */
+.noteapp .playkind.on,
+.noteapp .playline.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
 }
-.playkind.on.shot {
-  border-color: var(--orange);
-  color: var(--orange);
-  background: rgba(255, 138, 101, 0.12);
+/* ピッチ上のマークと同じ色の凡例をボタンに付ける */
+.noteapp .playkind::before,
+.noteapp .playline::before {
+  content: "";
+  display: inline-block;
+  vertical-align: -1px;
+  margin-right: 6px;
+  border: 1px solid rgba(21, 35, 60, 0.25);
 }
-.playkind.on.miss {
-  border-color: var(--red);
-  color: var(--red);
-  background: rgba(255, 91, 110, 0.12);
+.noteapp .playkind::before {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
 }
-.playacts {
+.noteapp .playkind.receive::before {
+  background: #35c072;
+}
+.noteapp .playkind.shot::before {
+  background: #ffd166;
+}
+.noteapp .playkind.miss::before {
+  background: #ff5b6e;
+}
+.noteapp .playline::before {
+  width: 15px;
+  height: 3px;
+  border-radius: 2px;
+}
+.noteapp .playline.dribble::before {
+  background: #4fc3f7;
+}
+.noteapp .playline.pass::before {
+  background: #ffffff;
+}
+.noteapp .playline.shot::before {
+  background: #ffd166;
+}
+.noteapp .playacts {
   display: flex;
   gap: 8px;
   margin-top: 8px;
 }
-.playacts .dynadd {
+.noteapp .playacts .dynadd {
   flex: 1;
-}
-.dynadd.ai {
-  border-color: var(--blue);
-  color: var(--blue);
 }
 
 /* AI出力 */
-.aibox {
+.noteapp .aibox {
   margin-top: 10px;
-  padding: 11px 13px;
-  border-radius: 12px;
-  background: rgba(19, 138, 77, 0.08);
-  border: 1px solid rgba(19, 138, 77, 0.3);
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--surface-low);
+  border: 0;
   color: var(--ink);
-  font-size: 13.5px;
-  line-height: 1.6;
+  font-size: 13px;
+  line-height: 1.7;
+  user-select: text;
+  -webkit-user-select: text;
 }
-.aistats {
+.noteapp .aistats {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 10px;
 }
-.aistat {
+.noteapp .aistat {
   flex: 1;
   min-width: 60px;
   text-align: center;
-  padding: 8px 4px;
-  border-radius: 10px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+  padding: 9px 4px;
+  border-radius: var(--r-md);
+  background: var(--surface-low);
+  border: 0;
 }
-.aisv {
-  font-weight: 800;
-  color: var(--lime);
-  font-size: 15px;
+.noteapp .aisv {
+  font-weight: 700;
+  color: var(--ink);
+  font-size: var(--fs-title-s);
 }
-.aisl {
-  font-size: 10.5px;
+.noteapp .aisl {
+  font-size: var(--fs-label);
   color: var(--mut);
   margin-top: 2px;
 }
 
 /* 達成度バー */
-.achbar {
-  height: 10px;
-  border-radius: 999px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+.noteapp .achbar {
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--surface-high);
+  border: 0;
   overflow: hidden;
 }
-.achbar span {
+.noteapp .achbar span {
   display: block;
   height: 100%;
-  background: var(--lime);
+  border-radius: var(--r-full);
+  background: var(--primary);
 }
-.noteform input[type="range"] {
+.noteapp .noteform input[type="range"] {
   width: 100%;
-  accent-color: var(--lime);
+  accent-color: var(--primary);
 }
 
 /* =========================================================
    コーチからの配信物（練習メニュー/個人課題/ミーティング/テスト）
    ========================================================= */
-.dlvblock {
+.noteapp .dlvblock {
   margin: 8px 0 6px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: rgba(19, 138, 77, 0.05);
+  padding: 12px;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--surface-container);
 }
-.dlvblock-h {
-  font-size: 12.5px;
-  font-weight: 800;
-  color: var(--lime-dim);
-  margin-bottom: 6px;
+.noteapp .dlvblock-h {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mut);
+  margin-bottom: 8px;
 }
-.dlvcreate {
+.noteapp .dlvcreate {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
 }
-.dlvcreate .dynadd {
+.noteapp .dlvcreate .dynadd {
   flex: 1;
   min-width: 44%;
-  background: var(--panel);
-  border: 1.5px solid var(--lime);
-  color: var(--lime-dim);
-  box-shadow: 0 1px 2px rgba(21, 35, 60, 0.08);
+  background: var(--surface-lowest);
+  border: 1px solid var(--primary);
+  color: var(--primary-dim);
+  box-shadow: var(--elev-1);
 }
-.dlvcreate .dynadd:active {
-  background: var(--panel2);
+.noteapp .dlvcreate .dynadd:active {
+  background: var(--primary-container);
 }
-.dlvcard {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  text-align: left;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  color: var(--ink);
-  cursor: pointer;
-  margin-bottom: 7px;
-}
-.dlvtag {
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 3px 7px;
-  border-radius: 7px;
-  border: 1px solid;
-}
-.dlvtag.menu,
-.dlvtag.assignment,
-.dlvtag.meeting,
-.dlvtag.quiz { color: var(--lime-dim); border-color: rgba(19, 138, 77, 0.45); }
-.dlvmain { flex: 1; min-width: 0; }
-.dlvtitle { font-weight: 700; font-size: 14px; }
-.dlvsub { font-size: 12px; color: var(--mut); margin-top: 2px; }
-.dlvdot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--red);
-  flex: 0 0 auto;
-}
-.dlvdot.done { background: var(--lime); }
-
-/* 星評価（理解度・難易度） */
-.stars { display: flex; gap: 6px; }
-.star {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--mut);
-  font-size: 12px;
-  cursor: pointer;
-}
-.star.on { color: var(--lime); border-color: var(--lime); background: rgba(19, 138, 77, 0.12); }
-
-/* クイズ作成 */
-.quizopts { margin-top: 6px; }
-.quizcorrect {
-  flex: 0 0 auto;
-  min-width: 44px;
-  padding: 0 8px;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--mut);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.quizcorrect.on { border-color: var(--lime); color: var(--bg); background: var(--lime); }
-
-/* クイズ回答 */
-.quizq { margin-bottom: 14px; }
-.quizqh { font-weight: 700; margin-bottom: 7px; }
-.quizopt {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 10px 12px;
-  margin-bottom: 6px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--ink);
-  font-size: 14px;
-  cursor: pointer;
-}
-.quizopt.chosen { border-color: var(--lime); background: rgba(19, 138, 77, 0.1); }
-.quizopt.correct { border-color: var(--lime); color: var(--lime); background: rgba(19, 138, 77, 0.14); }
-.quizopt.wrong { border-color: var(--red); color: var(--red); background: rgba(255, 91, 110, 0.12); }
-.quizopt:disabled { cursor: default; }
-
-/* 回答一覧（コーチ） */
-.resrow {
-  display: flex;
-  gap: 10px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--line);
-  font-size: 13px;
-}
-.resnm { font-weight: 700; flex: 0 0 88px; }
-.resval { color: var(--mut); flex: 1; }
-.videolink {
-  display: inline-block;
-  margin-top: 6px;
-  color: var(--blue);
-  font-weight: 700;
-  font-size: 13.5px;
-  text-decoration: none;
-}
-
-/* =========================================================
-   ノート横断検索＋コーチ・ダッシュボード
-   ========================================================= */
-.notetoolbtns {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  align-self: flex-start;
-}
-.notetoolbtn {
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  font-size: 17px;
-  cursor: pointer;
-}
-.notetools h2 {
-  margin: 10px 2px 10px;
-}
-.searchcount {
-  font-size: 12px;
-  color: var(--mut);
-  margin: 6px 2px 8px;
-}
-
-/* チームサマリ */
-.dashsum {
-  display: flex;
-  gap: 8px;
-  margin: 4px 0 14px;
-}
-.dashbox {
-  flex: 1;
-  text-align: center;
-  padding: 11px 4px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-}
-.dbv {
-  font-weight: 800;
-  font-size: 18px;
-  color: var(--lime);
-}
-.dbl {
-  font-size: 10.5px;
-  color: var(--mut);
-  margin-top: 3px;
-}
-
-/* 選手KPIカード */
-.kpicard {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 12px;
-  margin-bottom: 9px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel);
-  color: var(--ink);
-  cursor: pointer;
-}
-.kpihd {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.kpiname {
-  font-weight: 800;
-  font-size: 15px;
-}
-.kpicond {
-  font-size: 17px;
-}
-.kpistats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 12px;
-  margin-top: 6px;
-  font-size: 12.5px;
-  color: var(--mut);
-}
-.kpialerts {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  margin-top: 9px;
-}
-.kpialert {
-  font-size: 12.5px;
-  padding: 6px 10px;
-  border-radius: 9px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-}
-.kpialert.warn {
-  color: var(--red);
-  border-color: rgba(255, 91, 110, 0.4);
-  background: rgba(255, 91, 110, 0.08);
-}
-.kpialert.info {
-  color: var(--gold);
-  border-color: rgba(255, 209, 102, 0.35);
-  background: rgba(255, 209, 102, 0.07);
-}
-.kpialert.good {
-  color: var(--lime);
-  border-color: rgba(19, 138, 77, 0.35);
-  background: rgba(19, 138, 77, 0.07);
-}
-
-/* =========================================================
-   通知（バッジ・通知センター）
-   ========================================================= */
-.notetoolbtn {
-  position: relative;
-}
-.notifbadge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: 9px;
-  background: var(--red);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--bg);
-}
-.appbadge {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 5px;
-  border-radius: 10px;
-  background: var(--red);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid var(--bg);
-}
-.digestbox {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel);
-  margin-bottom: 6px;
-}
-.notifrow {
+.noteapp .dlvcard {
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
   text-align: left;
   padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
   color: var(--ink);
   cursor: pointer;
   margin-bottom: 7px;
 }
-.notifrow.unread {
-  border-color: rgba(19, 138, 77, 0.4);
-  background: rgba(19, 138, 77, 0.05);
+.noteapp .dlvtag {
+  flex: 0 0 auto;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: var(--r-xs);
+  border: 0;
 }
-.notifdot {
+.noteapp .dlvtag.menu,
+.noteapp .dlvtag.assignment,
+.noteapp .dlvtag.meeting {
+  color: var(--primary-dim);
+  background: var(--primary-container);
+}
+.noteapp .dlvmain {
+  flex: 1;
+  min-width: 0;
+}
+.noteapp .dlvtitle {
+  font-weight: 700;
+  font-size: var(--fs-body);
+}
+.noteapp .dlvsub {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  margin-top: 2px;
+}
+.noteapp .dlvdot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: 0 0 auto;
+}
+.noteapp .dlvdot.done {
+  background: var(--primary);
+}
+
+/* 星評価（理解度・難易度） */
+.noteapp .stars {
+  display: flex;
+  gap: 6px;
+}
+.noteapp .star {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 12px;
+  cursor: pointer;
+}
+.noteapp .star.on {
+  color: var(--primary-dim);
+  border-color: var(--primary);
+  background: var(--primary-container);
+}
+
+/* 回答一覧（コーチ） */
+.noteapp .resrow {
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--outline);
+  font-size: 13px;
+}
+.noteapp .resnm {
+  font-weight: 700;
+  flex: 0 0 88px;
+}
+.noteapp .resval {
+  color: var(--mut);
+  flex: 1;
+}
+.noteapp .videolink {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  text-decoration: none;
+}
+.noteapp .searchcount {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  margin: 6px 2px 8px;
+}
+
+/* =========================================================
+   ダッシュボード（チームサマリ・選手KPI）
+   ========================================================= */
+/* 集計期間メタはPC×コーチの分析コンソール専用（モバイルは簡潔さ優先で非表示） */
+.noteapp .dashmeta {
+  display: none;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  margin: -4px 2px 12px;
+}
+.noteapp .dashsum {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+/* 選手別 提出ヒート（コーチPCの分析コンソールのみ表示） */
+.noteapp .heatcard {
+  display: none;
+}
+/* 提出ヒートの開閉トグル（コーチPCの分析コンソールのみ表示） */
+.noteapp .heattoggle {
+  display: none;
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 12px;
+  border: 1px dashed var(--outline-strong);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.noteapp .dashbox {
+  flex: 1 1 40%;
+  text-align: center;
+  padding: 13px 4px 11px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+}
+.noteapp .dbv {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  color: var(--ink);
+}
+.noteapp .dbl {
+  font-size: var(--fs-label);
+  color: var(--mut);
+  margin-top: 5px;
+}
+.noteapp .dbd {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 3px;
+}
+.noteapp .dbd.up {
+  color: var(--primary);
+}
+.noteapp .dbd.down {
+  color: var(--danger);
+}
+.noteapp .dbd.flat {
+  color: var(--mut);
+}
+
+.noteapp .chart-line svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.noteapp .chart-line .clg {
+  stroke: var(--outline);
+  stroke-width: 1;
+}
+.noteapp .chart-line .cla {
+  fill: var(--primary);
+  opacity: 0.08;
+}
+.noteapp .chart-line .cl {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.noteapp .chart-line .clp {
+  fill: var(--primary);
+}
+.noteapp .chart-line .clv {
+  fill: var(--mut);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+}
+.noteapp .chart-line .cll {
+  fill: var(--mut);
+  font-size: 9px;
+  text-anchor: middle;
+}
+.noteapp .chart-line .cl2 { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 4 3; stroke-linecap: round; stroke-linejoin: round; }
+.noteapp .cl-legend { display: flex; gap: 14px; margin-top: 6px; font-size: var(--fs-label); font-weight: 600; }
+.noteapp .cl-legend .lg1 { color: var(--primary); }
+.noteapp .cl-legend .lg2 { color: var(--accent); }
+.noteapp .spark { margin-top: 8px; }
+.noteapp .spark svg { width: 100%; height: 26px; display: block; }
+.noteapp .spark .sp { fill: none; stroke: var(--primary); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* 多系列チャート（案D） */
+.noteapp .mlchart svg { width: 100%; height: auto; display: block; }
+.noteapp .mlchart .gr { stroke: var(--outline); }
+.noteapp .mlchart text { font-size: 8.5px; fill: var(--mut); }
+
+/* 分析パネル（案D） */
+.noteapp .apanel { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 12px; }
+.noteapp .apanel-h { display: flex; align-items: center; padding: 13px 15px 8px; font-size: var(--fs-title-s); font-weight: 700; }
+.noteapp .apanel-f { display: flex; gap: 8px; padding: 0 15px 10px; flex-wrap: wrap; }
+.noteapp .afchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--outline-strong); background: var(--surface-lowest); border-radius: 6px; padding: 5px 10px; font-size: var(--fs-body-s); color: var(--ink); cursor: pointer; font-family: var(--font-ui); }
+.noteapp .afchip.static { cursor: default; color: var(--mut); }
+.noteapp .apanel-tabs { display: flex; gap: 18px; padding: 0 15px; border-bottom: 1px solid var(--outline); font-size: var(--fs-body-s); font-weight: 600; color: var(--mut); }
+.noteapp .apanel-tabs button { background: none; border: 0; padding: 7px 1px 9px; color: inherit; font: inherit; cursor: pointer; }
+.noteapp .apanel-tabs button.on { color: var(--ink); box-shadow: inset 0 -2px 0 var(--accent); }
+.noteapp .apanel-sum { display: flex; overflow-x: auto; padding: 11px 4px; }
+.noteapp .apanel-sum .cell { min-width: 96px; padding: 2px 13px; border-left: 1px solid var(--outline); }
+.noteapp .apanel-sum .cell:first-child { border-left: 0; }
+.noteapp .apanel-sum .k { display: flex; align-items: center; gap: 6px; font-size: var(--fs-label); color: var(--mut); font-weight: 600; white-space: nowrap; }
+.noteapp .apanel-sum .k i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.noteapp .apanel-sum .n { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.noteapp .apanel .mlchart { padding: 4px 10px 12px; }
+
+/* バイタルカード（案D d-vitals 準拠。ホーム=KPIの下・分析パネルの上） */
+.noteapp .vitals { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--r-lg); padding: 13px 15px; margin-bottom: 12px; }
+.noteapp .vitals .vrow { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: center; margin: 8px 0; font-size: var(--fs-label); font-weight: 600; color: var(--mut); }
+.noteapp .vitals .vbar { height: 9px; border-radius: 2px; background: var(--surface-high); overflow: hidden; display: flex; }
+.noteapp .vitals .vbar i { display: block; height: 100%; }
+
+.noteapp .dashbox {
+  font-family: var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+}
+.noteapp button.dashbox:active {
+  transform: scale(0.98);
+}
+.noteapp .weekdot {
+  border: 0;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.noteapp .statbig {
+  font-family: var(--font-display);
+  font-size: 34px;
+  line-height: 1;
+  color: var(--ink);
+  letter-spacing: 0.5px;
+}
+.noteapp .statbig small {
+  font-size: 13px;
+  font-family: var(--font-ui);
+  font-weight: 700;
+  color: var(--mut);
+  margin-left: 4px;
+}
+.noteapp .statrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: var(--fs-body-s);
+}
+.noteapp .statrow .srl {
+  flex: 0 0 52px;
+  font-weight: 700;
+}
+.noteapp .statrow .srb {
+  flex: 1;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--surface-high);
+  overflow: hidden;
+}
+.noteapp .statrow .srb span {
+  display: block;
+  height: 100%;
+  border-radius: var(--r-full);
+  background: var(--primary);
+}
+.noteapp .statrow .srv {
+  flex: 0 0 auto;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.noteapp .statheat {
+  display: grid;
+  grid-template-rows: repeat(7, 12px);
+  grid-auto-flow: column;
+  grid-auto-columns: 12px;
+  gap: 3px;
+  margin-top: 8px;
+}
+.noteapp .statheat .shc {
+  border-radius: 3px;
+  background: var(--surface-high);
+}
+.noteapp .statheat .shc.l1 {
+  background: #b7dcc0;
+}
+.noteapp .statheat .shc.l2 {
+  background: #6cb886;
+}
+.noteapp .statheat .shc.l3 {
+  background: var(--primary);
+}
+
+/* 選手KPIカード */
+.noteapp .kpicard {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 13px 14px;
+  margin-bottom: 9px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  cursor: pointer;
+}
+.noteapp .kpihd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.noteapp .kpiname {
+  font-weight: 700;
+  font-size: var(--fs-title-s);
+}
+.noteapp .kpicond {
+  font-size: 17px;
+}
+.noteapp .kpistats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.noteapp .kpialerts {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 9px;
+}
+.noteapp .kpialert {
+  font-size: var(--fs-body-s);
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  border: 0;
+  background: var(--surface-low);
+}
+.noteapp .kpialert.warn {
+  color: var(--danger);
+  background: rgba(217, 45, 32, 0.08);
+}
+.noteapp .kpialert.info {
+  color: var(--warn);
+  background: rgba(180, 83, 9, 0.08);
+}
+.noteapp .kpialert.good {
+  color: var(--primary-dim);
+  background: var(--primary-container);
+}
+.noteapp .kpireport {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--primary-dim);
+  border: 1px solid var(--primary);
+  border-radius: var(--r-full);
+  padding: 3px 9px;
+}
+
+/* =========================================================
+   通知
+   ========================================================= */
+.noteapp .digestbox {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  margin-bottom: 6px;
+}
+.noteapp .notifrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  cursor: pointer;
+  margin-bottom: 7px;
+}
+.noteapp .notifrow.unread {
+  background: #edf6f0;
+}
+.noteapp .notifdot {
   flex: 0 0 auto;
   width: 9px;
   height: 9px;
   border-radius: 50%;
   background: var(--mut);
 }
-.notifdot.warn { background: var(--red); }
-.notifdot.info { background: var(--gold); }
-.notifdot.good { background: var(--lime); }
-.notiftext {
+.noteapp .notifdot.warn {
+  background: var(--danger);
+}
+.noteapp .notifdot.info {
+  background: var(--warn);
+}
+.noteapp .notifdot.good {
+  background: var(--primary);
+}
+.noteapp .notiftext {
   flex: 1;
   min-width: 0;
-  font-size: 13.5px;
+  font-size: 13px;
 }
-.notifdate {
+.noteapp .notifdate {
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: var(--fs-label);
   color: var(--mut);
 }
 
 /* =========================================================
    シーズンレポート
    ========================================================= */
-.kpireport {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--lime-dim);
-  border: 1px solid rgba(19, 138, 77, 0.4);
-  border-radius: 999px;
-  padding: 3px 9px;
-}
-.reportacts {
+.noteapp .reportacts {
   display: flex;
   gap: 8px;
   margin: 10px 0 14px;
 }
-.reportacts .bigbtn {
+.noteapp .reportacts .bigbtn {
   flex: 1;
 }
 
-/* レポート本体＝白い紙（印刷でそのまま使える） */
-.reportsheet {
+/* レポート本体＝白い紙（印刷でそのまま使える・ライト固定） */
+.noteapp .reportsheet {
   background: #ffffff;
   color: #16201a;
-  border-radius: 14px;
+  border-radius: var(--r-lg);
   padding: 22px 20px 26px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--outline);
+  user-select: text;
+  -webkit-user-select: text;
 }
-.rephead {
+.noteapp .rephead {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   border-bottom: 2px solid #16201a;
   padding-bottom: 12px;
 }
-.repbrand {
-  font-size: 12px;
-  font-weight: 800;
+.noteapp .repbrand {
+  font-size: var(--fs-body-s);
+  font-weight: 700;
   letter-spacing: 0.5px;
   color: #2f7d00;
 }
-.repbrand b {
+.noteapp .repbrand b {
   color: #16201a;
 }
-.repname {
+.noteapp .repname {
   font-size: 26px;
-  font-weight: 800;
+  font-weight: 700;
   margin-top: 6px;
 }
-.repname span {
+.noteapp .repname span {
   display: block;
-  font-size: 12px;
+  font-size: var(--fs-body-s);
   font-weight: 600;
   color: #5a6b62;
   margin-top: 2px;
 }
-.reprange {
-  font-size: 12px;
+.noteapp .reprange {
+  font-size: var(--fs-body-s);
   color: #5a6b62;
   text-align: right;
   white-space: nowrap;
 }
-.repgrid {
+.noteapp .repgrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin: 16px 0 6px;
 }
-.repstat {
+.noteapp .repstat {
   text-align: center;
-  padding: 10px 4px;
-  border-radius: 10px;
+  padding: 12px 4px 10px;
+  border-radius: var(--r-md);
   background: #f1f5ef;
-  border: 1px solid #e0e7dd;
+  border: 0;
 }
-.repsv {
-  font-size: 20px;
-  font-weight: 800;
+.noteapp .repsv {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: 0.5px;
   color: #2f7d00;
 }
-.repsl {
+.noteapp .repsl {
   font-size: 10px;
   color: #5a6b62;
-  margin-top: 3px;
+  margin-top: 4px;
 }
-.repsec {
+.noteapp .repsec {
   margin-top: 16px;
 }
-.repsec-h {
-  font-size: 12px;
-  font-weight: 800;
+.noteapp .repsec-h {
+  font-size: var(--fs-body-s);
+  font-weight: 700;
   color: #2f7d00;
   border-left: 3px solid #2f7d00;
   padding-left: 8px;
   margin-bottom: 8px;
 }
-.repsummary {
-  font-size: 14px;
+.noteapp .repsummary {
+  font-size: var(--fs-body);
   line-height: 1.7;
 }
-.repline {
-  font-size: 13.5px;
+.noteapp .repline {
+  font-size: 13px;
   line-height: 1.6;
   margin-bottom: 3px;
 }
-.reportsheet .ps-chip {
+.noteapp .reportsheet .ps-chip {
   background: #f1f5ef;
-  border-color: #e0e7dd;
+  border: 0;
   color: #16201a;
 }
-.reportsheet .ps-chip b {
+.noteapp .reportsheet .ps-chip b {
   color: #2f7d00;
 }
-.repfoot {
+.noteapp .repheat {
+  display: grid;
+  grid-template-rows: repeat(7, 10px);
+  grid-auto-flow: column;
+  grid-auto-columns: 10px;
+  gap: 3px;
+  margin-top: 4px;
+}
+.noteapp .repheat-c {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #eef1ec;
+}
+.noteapp .repheat-c.l1 { background: #b7dcc0; }
+.noteapp .repheat-c.l2 { background: #6cb886; }
+.noteapp .repheat-c.l3 { background: #2f7d00; }
+.noteapp .repfoot {
   margin-top: 20px;
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   color: #8a978f;
   border-top: 1px solid #e0e7dd;
   padding-top: 10px;
 }
 
+/* =========================================================
+   ボトムナビ / FAB / 書くシート / ホーム
+   ========================================================= */
+.noteapp .notenav {
+  flex-shrink: 0;
+  display: flex;
+  border: 0;
+  border-top: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
+  z-index: 300;
+}
+.noteapp .notenav-item {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--mut);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* アイコンをピルで包む（M3流の選択インジケータ） */
+.noteapp .notenav-item .emj {
+  width: 22px;
+  height: 22px;
+  box-sizing: content-box;
+  padding: 3px 14px;
+  border-radius: var(--r-full);
+  transition: background-color var(--dur-s) var(--ease-standard);
+}
+.noteapp .notenav-item.on {
+  color: var(--accent);
+}
+.noteapp .notenav-item.on .emj {
+  background: rgba(44, 111, 214, 0.1);
+}
+.noteapp .notenav-item:active .emj {
+  background: var(--surface-low);
+}
+/* ナビラベル文字。PC(1024px以上)ではアイコンレール化のため非表示 */
+.noteapp .navlb {
+  display: inline;
+}
+/* コーチPCのボトムナビ用セクション見出し・ユーザー表示（モバイルでは非表示） */
+.noteapp .navsec {
+  display: none;
+}
+.noteapp .navuser {
+  display: none;
+}
+.noteapp .notenav-badge {
+  position: absolute;
+  top: 0;
+  left: calc(50% + 6px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+  background: var(--danger);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--surface-lowest);
+}
+
+.noteapp .fab {
+  position: absolute;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom) + 80px);
+  z-index: 320;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-lg);
+  border: 0;
+  background: var(--primary);
+  color: var(--on-primary);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: var(--elev-3);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.noteapp .fab:active {
+  transform: scale(0.95);
+}
+
+.noteapp .wsheetback {
+  position: absolute;
+  inset: 0;
+  z-index: 340;
+  background: rgba(21, 35, 60, 0.4);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.noteapp .wsheet {
+  background: var(--surface);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  padding: 12px 14px calc(env(safe-area-inset-bottom) + 14px);
+  box-shadow: var(--elev-3);
+  animation: wsheetup var(--dur-l) var(--ease-decel);
+}
+/* ドラッグハンドル */
+.noteapp .wsheet::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--outline-strong);
+  margin: 0 auto 14px;
+}
+@keyframes wsheetup {
+  from {
+    transform: translateY(48px);
+    opacity: 0.4;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+.noteapp .wsheet-h {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mut);
+  margin: 0 4px 10px;
+}
+.noteapp .wsheetopt {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.noteapp .wsheetopt:active {
+  transform: scale(0.98);
+}
+.noteapp .wsheetic {
+  width: 42px;
+  height: 42px;
+  border-radius: var(--r-md);
+  background: var(--primary-container);
+  color: var(--primary-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex: none;
+}
+.noteapp .wsheetopt b {
+  display: block;
+  font-size: var(--fs-title-s);
+}
+.noteapp .wsheetopt small {
+  display: block;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  margin-top: 1px;
+}
+.noteapp .daybadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--primary-dim);
+  background: var(--primary-container);
+  border-radius: var(--r-full);
+  padding: 2px 8px;
+  margin-left: 8px;
+  vertical-align: 1px;
+}
+.noteapp .wsheetcancel {
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  background: none;
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+
+/* ホーム（選手） */
+.noteapp .notehome {
+  padding-top: 4px;
+}
+/* PC(1024px以上)の2カラム化用ラッパー。モバイルでは透過（レイアウトに影響しない） */
+.noteapp .homecol {
+  display: contents;
+}
+.noteapp .homedate {
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--mut);
+  margin: 4px 2px 8px;
+}
+.noteapp .homecta {
+  padding: 18px 16px 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  margin-bottom: 12px;
+}
+.noteapp .homecta-msg {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.noteapp .homecta-done {
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  color: var(--primary-dim);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.noteapp .homecta-streak {
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--primary-dim);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.noteapp .weekdots {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+.noteapp .weekdot {
+  flex: 1;
+  height: 30px;
+  border-radius: var(--r-sm);
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.noteapp .weekdot.on {
+  background: var(--primary-container);
+  color: var(--primary-dim);
+}
+.noteapp .weekdot.today {
+  box-shadow: inset 0 0 0 1.5px var(--primary);
+}
+.noteapp .weekdot.sel {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.noteapp .daypanel {
+  margin-top: 12px;
+  border-top: 1px solid var(--outline);
+  padding-top: 10px;
+  text-align: left;
+}
+.noteapp .daypanel-h {
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.noteapp .dayevent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-body-s);
+  padding: 7px 0;
+}
+.noteapp .dayevent .devt {
+  color: var(--mut);
+  margin-left: auto;
+}
+.noteapp .pill {
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: var(--r-full);
+  padding: 2px 8px;
+}
+.noteapp .pill.prac {
+  background: var(--primary-container);
+  color: var(--primary-dim);
+}
+.noteapp .pill.match {
+  background: rgba(35, 96, 216, 0.1);
+  color: var(--accent);
+}
+.noteapp .homesec-h {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mut);
+  margin: 16px 2px 7px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 検索バー風ボタン（一覧の上） */
+.noteapp .searchbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px 14px;
+  margin: 6px 0 8px;
+  border-radius: var(--r-full);
+  border: 0;
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.noteapp .searchbar:active {
+  opacity: 0.7;
+}
+
+/* =========================================================
+   インタラクション（共通トランジション）
+   ========================================================= */
+.noteapp .chip,
+.noteapp .bigbtn,
+.noteapp .fpback,
+.noteapp .notecard,
+.noteapp .dlvcard,
+.noteapp .notenav-item,
+.noteapp .fab,
+.noteapp .wsheetopt,
+.noteapp .condbtn,
+.noteapp .scopechip,
+.noteapp .phasechip,
+.noteapp .cmpchip,
+.noteapp .playkind,
+.noteapp .playline,
+.noteapp .goalresbtn,
+.noteapp .shotrow,
+.noteapp .reactbtn,
+.noteapp .dynadd,
+.noteapp .dynx,
+.noteapp .menupick,
+.noteapp .star,
+.noteapp .notifrow,
+.noteapp .kpicard,
+.noteapp .searchbar,
+.noteapp .detailtoggle,
+.noteapp .sendtgt label,
+.noteapp .mtok.own,
+.noteapp .formfield input,
+.noteapp .formfield select,
+.noteapp .formfield textarea,
+.noteapp .dynrow input,
+.noteapp .dynrow select,
+.noteapp .search {
+  transition:
+    transform var(--dur-s) var(--ease-standard),
+    background-color var(--dur-s) var(--ease-standard),
+    color var(--dur-s) var(--ease-standard),
+    border-color var(--dur-s) var(--ease-standard),
+    box-shadow var(--dur-s) var(--ease-standard),
+    opacity var(--dur-s) var(--ease-standard);
+}
+
+/* ============================================================
+   PC (min-width: 1024px) レイアウト群
+   ※ 同一詳細度の基底ルールに勝つため、ファイル末尾にまとめて配置
+   ============================================================ */
+@media (min-width: 1024px) {
+  .app {
+    max-width: 1220px;
+  }
+
+  /* 戦術ボード: ピッチを大きく左、操作パネルを右の2カラム（ボード画面のみ） */
+  .boardapp:not(.fullplay) .scroll {
+    display: flex;
+    gap: 22px;
+    padding: 14px 22px 0;
+    overflow: hidden;
+  }
+  .boardapp:not(.fullplay) .pitchwrap {
+    flex: 1.5;
+    min-width: 0;
+    padding: 0;
+  }
+  .boardapp:not(.fullplay) .pitch {
+    height: calc(100dvh - 150px);
+    max-height: 880px;
+  }
+  /* アニメ編集中もピッチを縮めない（大画面で見やすく） */
+  .app.anim:not(.fullplay) .pitch {
+    height: calc(100dvh - 150px) !important;
+    max-height: 880px !important;
+  }
+
+  .boardside {
+    flex: 0 0 410px;
+    min-width: 340px;
+    max-width: 430px;
+    height: calc(100dvh - 150px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 24px;
+  }
+  /* PCではスクロール誘導は不要 */
+  .scrollcue {
+    display: none;
+  }
+  /* スタジオはサイドカラムに馴染ませる */
+  .app.anim:not(.fullplay) .studio {
+    background: transparent;
+    border-top: 0;
+    padding: 0 0 24px;
+  }
+  .app.anim:not(.fullplay) .clips {
+    max-height: none;
+  }
+
+  /* 全画面アニメの操作UIもPC幅に広げる */
+  .fpover {
+    max-width: 1220px;
+  }
+  .fphint {
+    font-size: 13px;
+  }
+}
+@media (min-width: 1024px) {
+  /* ===== PCホーム：説明つき横長カードを幅いっぱいに ===== */
+  .homeapp .scroll {
+    max-width: 1040px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .homeapp .appgrid {
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+    padding: 18px 4px;
+  }
+  .homeapp .apptile {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 20px;
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    background: var(--panel);
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .homeapp .apptile:hover {
+    border-color: var(--lime);
+    transform: translateY(-1px);
+  }
+  .homeapp .apptile:active {
+    transform: none;
+  }
+  .homeapp .appicon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    flex: none;
+  }
+  .homeapp .appicon svg {
+    width: 28px;
+    height: 28px;
+  }
+  .homeapp .appmeta {
+    align-items: flex-start;
+    flex: 1;
+  }
+  .homeapp .applabel {
+    font-size: 16px;
+    font-weight: 800;
+    text-align: left;
+  }
+  .homeapp .appdesc {
+    display: block;
+    font-size: 12.5px;
+    color: var(--mut);
+    text-align: left;
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  /* ===== PCチャット：中央寄せ・全幅活用 ===== */
+  .chatapp .scroll {
+    max-width: 1040px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  /* 会話一覧・検索結果を2カラムに */
+  .chatapp .convlist {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    align-items: start;
+  }
+  /* 選手チャットは横幅を活かしつつ読みやすい行長に */
+  .chatapp .chattab {
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+/* =========================================================
+   PC (1024px以上): 左サイドレール + マルチカラム
+   ※ 同詳細度の基底ルールに勝つため、必ずファイル末尾側に置くこと
+   ========================================================= */
+@media (min-width: 1024px) {
+  .app.noteapp { max-width: none; }
+  /* 左サイドレール構造（アイコン+名前つき） */
+  .noteapp { display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: auto auto 1fr; }
+  .noteapp > header { grid-column: 2; grid-row: 1; }
+  .noteapp > .fbar { grid-column: 2; grid-row: 2; }
+  .noteapp > .scroll { grid-column: 2; grid-row: 3; padding: 8px 32px 40px; }
+  .noteapp .notenav { grid-column: 1; grid-row: 1 / 4; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 3px; padding: 16px 10px; border-top: 0; border-right: 1px solid var(--outline); background: var(--surface-lowest); }
+  .noteapp .notenav-item { flex: none; flex-direction: row; width: 100%; height: auto; padding: 9px 12px; justify-content: flex-start; gap: 10px; border-radius: 8px; font-size: var(--fs-body-s); font-weight: 600; }
+  .noteapp .notenav-item .emj { padding: 0; width: 17px; height: 17px; box-sizing: border-box; border-radius: 0; }
+  .noteapp .notenav-item.on { background: rgba(44, 111, 214, 0.1); color: var(--accent); }
+  .noteapp .notenav-item.on .emj { background: none; }
+  .noteapp .notenav-badge { position: static; margin-left: auto; border: 0; }
+  /* コーチのレール: セクション見出しと管理者フッターを表示 */
+  .coachapp .navsec { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--mut); text-transform: uppercase; padding: 14px 12px 4px; }
+  .coachapp .navuser { display: block; margin-top: auto; padding: 12px; border-top: 1px solid var(--outline); font-size: var(--fs-body-s); color: var(--mut); }
+  .noteapp .fab { right: 28px; bottom: 28px; }
+  /* PCトップバー（アイコンレール化に伴いクロームを白+薄罫線+ブルーリンクへ） */
+  .noteapp header { background: var(--surface-lowest); border-bottom: 1px solid var(--outline); padding: 10px 18px; }
+  .noteapp .hdrcta { display: inline-block; margin-left: auto; background: var(--primary); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+  .noteapp .hdrusr { display: inline; color: var(--mut); font-size: 12px; }
+  /* コーチダッシュボード: 左=スタッツ列 / 右=分析パネル以下（案D準拠） */
+  .coachapp .dashcols { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; align-items: start; }
+  .coachapp .dashcol.side .dashsum { flex-direction: column; }
+  .coachapp .dashcol.side .dashbox { flex: none; }
+  /* シートは中央ダイアログ化 */
+  .noteapp .wsheetback { align-items: center; justify-content: center; padding: 24px; }
+  .noteapp .wsheet { width: 100%; max-width: 480px; border-radius: var(--r-xl); animation: wdialogin var(--dur-m) var(--ease-decel); }
+  .noteapp .wsheet::before { display: none; }
+  /* コンテンツのマルチカラム（案D準拠：左280pxサイド + 右可変メイン） */
+  .noteapp .notehome { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 0 24px; align-items: start; max-width: 1200px; margin: 0 auto; }
+  .noteapp .notehome > .homedate,
+  .noteapp .notehome > .homecta { grid-column: 1 / -1; }
+  .noteapp .notehome > .homecol { display: block; min-width: 0; }
+  /* 左サイド列（dashsum+vitals）はKPIを縦積みにして幅を確保 */
+  .noteapp .notehome > .homecol.side .dashsum { flex-direction: column; flex-wrap: nowrap; }
+  .noteapp .notehome > .homecol.side .dashbox { flex: none; }
+  .noteapp .notecards,
+  .noteapp .kpigrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px 14px; align-items: start; }
+  .noteapp .notecards .notecard,
+  .noteapp .kpigrid .kpicard { margin-bottom: 0; }
+  .noteapp .notehome .notecards { grid-template-columns: 1fr; }  /* ホーム右カラム内は1列 */
+  .noteapp .noteform,
+  .noteapp .notedetail { max-width: 720px; margin-left: auto; margin-right: auto; }
+  .noteapp .notetools { max-width: 1200px; margin: 0 auto; }
+  .noteapp .searchbar { max-width: 720px; }
+  .noteapp .dashsum .dbv { font-size: 30px; }
+
+  /* コーチPCのみ：分析コンソール化（提出ヒート等）。ナビのセクション見出し・ユーザー表示はアイコンレールでは非表示のまま */
+  .coachapp .dashmeta { display: block; }
+  .coachapp .heattoggle { display: block; }
+  .coachapp .heatcard { display: block; background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--r-lg); padding: 14px; margin-bottom: 12px; }
+  .coachapp .heattbl { width: 100%; border-collapse: collapse; font-size: var(--fs-body-s); font-variant-numeric: tabular-nums; }
+  .coachapp .heattbl th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--mut); padding: 2px 6px 8px; border-bottom: 1px solid var(--outline); }
+  .coachapp .heattbl td { padding: 7px 6px; border-bottom: 1px solid var(--outline); }
+  .coachapp .heattbl tr:last-child td { border-bottom: 0; }
+  .coachapp .heattbl .hdot { color: var(--outline-strong); }
+  .coachapp .heattbl .hdot.on { color: var(--primary); }
+  .coachapp .heattbl td:first-child { font-weight: 700; white-space: nowrap; }
+  .coachapp .heattbl td:last-child { font-weight: 700; text-align: right; }
+}
+@keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* =========================================================
+   印刷（シーズンレポートのみ出力）
+   ========================================================= */
 @media print {
   body * {
     visibility: hidden !important;
@@ -5415,6 +6682,7 @@ header {
     width: 100%;
     border: none;
     border-radius: 0;
+    box-shadow: none;
   }
   .noprint {
     display: none !important;

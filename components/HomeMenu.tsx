@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { loadNotifSeen } from "@/lib/storage";
+import { localDateStr } from "@/lib/dates";
 import { buildEventNotifications } from "@/lib/notifications";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
@@ -76,7 +77,7 @@ export default function HomeMenu() {
   // ⑥ スタッフの「今日やること」— 予定・未対応を1枚に集約
   const todayInfo = useMemo(() => {
     const team = teamCtx.team;
-    const todayISO = new Date().toISOString().slice(0, 10);
+    const todayISO = localDateStr();
     const events = team?.events ?? [];
     const todayEvents = events.filter((e) => e.date === todayISO);
     const nextEvent = [...events]

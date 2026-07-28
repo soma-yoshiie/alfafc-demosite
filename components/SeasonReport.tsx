@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import type { SeasonRange } from "@/lib/seasonReport";
 import { buildSeasonReport, renderSeasonImage } from "@/lib/seasonReport";
 import { downloadDataUrl } from "@/lib/exportImage";
+import { addDaysStr, countByDay, localDateStr, weekStart } from "@/lib/dates";
 import { loadTeam } from "@/lib/storage";
 import { useBoard } from "./BoardProvider";
 import { E } from "./Emoji";
 
 function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+  return localDateStr();
 }
 
 export default function SeasonReport({ playerId }: { playerId: string }) {
@@ -31,6 +32,16 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
       board.state.teamName ?? "マイチーム"
     );
   }, [player, board.notebook, board.deliverables, board.state.teamName, range]);
+
+  // 記録カレンダー（直近12週、月曜始まり）。選択中の期間ではなく常に直近を表示
+  const heatCounts = useMemo(
+    () => countByDay(board.notebook.filter((n) => n.playerId === playerId).map((n) => n.date)),
+    [board.notebook, playerId]
+  );
+  const heatWeeks = useMemo(() => {
+    const thisWeek = weekStart(todayStr());
+    return Array.from({ length: 12 }, (_, i) => addDaysStr(thisWeek, -7 * (11 - i)));
+  }, []);
 
   if (!player || !data) return <div className="empty-msg">選手が見つかりません。</div>;
 
@@ -78,10 +89,22 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
           <RepStat v={`${data.matches}`} l="試合数" />
           <RepStat v={data.attendancePct != null ? `${data.attendancePct}%` : "—"} l="出席率" />
           <RepStat v={`${data.noteCounts.total}`} l="ノート" />
-          <RepStat v={`${data.soloCount}`} l={`自主練(最長${data.soloBestStreak}日)`} />
+          <RepStat v={`${data.soloCount}`} l={`自主練(最長${data.soloBestStreak}週)`} />
           <RepStat v={data.assignmentTotal ? `${data.assignmentDone}/${data.assignmentTotal}` : "—"} l="課題達成" />
-          <RepStat v={data.quizAvgPct != null ? `${data.quizAvgPct}%` : "—"} l="テスト平均" />
         </div>
+
+        <RepSec h="記録カレンダー（直近12週）">
+          <div className="repheat">
+            {heatWeeks.flatMap((wk) =>
+              Array.from({ length: 7 }, (_, day) => {
+                const date = addDaysStr(wk, day);
+                const count = date > todayStr() ? 0 : heatCounts.get(date) ?? 0;
+                const level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : 3;
+                return <div key={date} className={`repheat-c l${level}`} />;
+              })
+            )}
+          </div>
+        </RepSec>
 
         {data.positions.length > 0 && (
           <RepSec h="出場ポジション">

@@ -247,14 +247,18 @@ export function saveNotebook(entries: NotebookEntry[]): void {
   }
 }
 
-/* ---- コーチからの配信物（練習メニュー/個人課題/ミーティング/テスト） ---- */
+/* ---- コーチからの配信物（練習メニュー/個人課題/ミーティング） ---- */
 export function loadDeliverables(): CoachDeliverable[] | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(DELIVER_KEY);
     if (!raw) return null;
     const data = JSON.parse(raw);
-    return Array.isArray(data) ? (data as CoachDeliverable[]) : null;
+    if (!Array.isArray(data)) return null;
+    // 廃止済みkind（過去に配信していた種別など）の過去データが残っていても安全に無視する互換ガード
+    return (data as CoachDeliverable[]).filter(
+      (d) => d && (d.kind === "menu" || d.kind === "assignment" || d.kind === "meeting")
+    );
   } catch {
     return null;
   }
@@ -267,6 +271,50 @@ export function saveDeliverables(items: CoachDeliverable[]): void {
   } catch {
     /* 無視 */
   }
+}
+
+/* ---- ノート下書き（フォーム自動保存。kind×playerId ごと） ---- */
+const NOTE_DRAFT_KEY = "soccer_tactics_note_draft_v1";
+
+type DraftMap = Record<string, unknown>;
+
+function loadDraftMap(): DraftMap {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(NOTE_DRAFT_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    return data && typeof data === "object" ? (data as DraftMap) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveDraftMap(map: DraftMap): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NOTE_DRAFT_KEY, JSON.stringify(map));
+  } catch {
+    /* 無視 */
+  }
+}
+
+export function loadNoteDraft<T>(key: string): T | null {
+  const map = loadDraftMap();
+  return (map[key] as T) ?? null;
+}
+
+export function saveNoteDraft(key: string, data: unknown): void {
+  const map = loadDraftMap();
+  map[key] = data;
+  saveDraftMap(map);
+}
+
+export function clearNoteDraft(key: string): void {
+  const map = loadDraftMap();
+  if (!(key in map)) return;
+  delete map[key];
+  saveDraftMap(map);
 }
 
 export function loadViewer(): TeamViewer | null {

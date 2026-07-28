@@ -24,6 +24,7 @@ import {
   saveTeam,
   saveViewer,
 } from "@/lib/storage";
+import { addDaysStr, daysAgoStr, localDateStr } from "@/lib/dates";
 import { SAMPLE_PLAYERS } from "@/lib/sampleTeam";
 import { useBoard } from "./BoardProvider";
 
@@ -31,12 +32,6 @@ let seq = 0;
 function nid(p: string) {
   seq += 1;
   return `${p}_${Date.now().toString(36)}_${seq}`;
-}
-
-function ymd(offsetDays: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
 }
 
 /** デモ用の出欠シード（大半が「出席」・空っぽ状態を避ける） */
@@ -52,34 +47,45 @@ function sampleAttendance(
 }
 
 function sampleTeam(): TeamData {
+  // ノートのカレンダー連動デモに合わせ「今日=練習日」を含める（localDateStr=ローカル日付でUTCズレなし）
+  const today = localDateStr();
   return {
     events: [
       {
-        id: "e1",
+        id: "ev_practice_today",
         kind: "practice",
-        title: "通常練習",
-        date: ymd(2),
+        title: "全体練習",
+        date: today,
         time: "17:00",
         endTime: "19:00",
-        place: "市営グラウンド",
+        place: "市民グラウンド",
         note: "ビブス忘れずに",
       },
       {
-        id: "e2",
+        id: "ev_match_next",
         kind: "match",
         title: "練習試合 vs 青空FC",
-        date: ymd(6),
-        time: "10:00",
+        date: addDaysStr(today, 2),
+        time: "9:30",
         endTime: "12:30",
-        place: "中央公園グラウンド",
+        place: "青空G",
+      },
+      {
+        id: "ev_practice_next",
+        kind: "practice",
+        title: "全体練習",
+        date: addDaysStr(today, 4),
+        time: "17:00",
+        endTime: "19:00",
+        place: "市民グラウンド",
       },
     ],
     attendance: {
-      e1: sampleAttendance(
+      ev_practice_today: sampleAttendance(
         { p05: "no", p13: "maybe" },
         { p05: "怪我のためお休みします" }
       ),
-      e2: sampleAttendance(
+      ev_match_next: sampleAttendance(
         { p05: "maybe", p16: "no" },
         { p16: "習い事と重なり遅れて参加します" }
       ),
@@ -99,7 +105,7 @@ function sampleTeam(): TeamData {
     matches: [
       {
         id: "m1",
-        date: ymd(-5),
+        date: daysAgoStr(5),
         opponent: "みどり台SC",
         competitionId: "cmp2",
         competition: "練習試合",

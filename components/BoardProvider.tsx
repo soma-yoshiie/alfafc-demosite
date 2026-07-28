@@ -23,9 +23,10 @@ import type {
   NotebookEntry,
   Player,
   PlanTier,
+  PlayLine,
+  PlayPoint,
   Point,
   Position,
-  QuizResponse,
   SavedDrill,
   SavedPlay,
   Session,
@@ -33,6 +34,7 @@ import type {
   Slot,
 } from "@/lib/types";
 import { migratePlan } from "@/lib/types";
+import { daysAgoStr } from "@/lib/dates";
 import { buildSlots } from "@/lib/formations";
 import { actorPos, animTotal, durFromPath } from "@/lib/animation";
 import {
@@ -410,8 +412,10 @@ interface BoardContextValue {
   notebook: NotebookEntry[];
   addNote: (entry: Omit<NotebookEntry, "id" | "ts">) => void;
   updateNote: (entry: NotebookEntry) => void;
+  /** トーストを出さない部分更新（既読・リアクション等の暗黙更新用） */
+  patchNote: (id: string, patch: Partial<NotebookEntry>) => void;
   deleteNote: (id: string) => void;
-  setNoteComment: (id: string, comment: string) => void;
+  setNoteComment: (id: string, comment: string, drawing?: { plays: PlayPoint[]; playLines: PlayLine[] }) => void;
   // コーチからの配信物
   deliverables: CoachDeliverable[];
   addDeliverable: (data: Omit<CoachDeliverable, "id" | "ts">) => void;
@@ -481,11 +485,7 @@ function newNoteId(): string {
 }
 
 function sampleNotebook(): NotebookEntry[] {
-  const dayAgo = (n: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d.toISOString().slice(0, 10);
-  };
+  const dayAgo = daysAgoStr;
   const ts = (n: number) => Date.now() - n * 86400_000;
   return [
     /* --- 中村 蒼空(p08)：練習＋自主練の継続例 --- */
@@ -501,8 +501,10 @@ function sampleNotebook(): NotebookEntry[] {
       insights: ["相手を見る前に首を振る", "受ける前に体の向きを作る"],
       body: "ポゼッション練習で前を向く回数が増えた。",
       isPublic: true,
+      menuId: "dlv_menu1",
       staffComment: "good！ 首振りの意識が見えていたよ。",
       staffCommentTs: ts(1) + 3600_000,
+      staffSeenAt: ts(1) + 3600_000,
     },
     {
       id: "note_solo1",
@@ -538,13 +540,15 @@ function sampleNotebook(): NotebookEntry[] {
       minutes: 60,
       lineups: [{ phase: "1st", ownFormation: "4-3-3", ownPositionIndex: 9, oppFormation: "4-4-2" }],
       plays: [
-        { x: 52, y: 84, kind: "shot" },
-        { x: 46, y: 78, kind: "shot" },
-        { x: 60, y: 66, kind: "receive" },
+        { x: 52, y: 84, kind: "shot", phase: "1st", course: { x: 70, y: 25 }, scored: true, shotNote: "右足でカーブ" },
+        { x: 46, y: 78, kind: "shot", phase: "2nd", course: { x: 28, y: 75 }, scored: false, shotNote: "トラップして浮いた球をボレー" },
+        { x: 60, y: 66, kind: "receive", phase: "1st" },
       ],
       body: "前半から主導権。サイドからのクロスに反応できた。",
       staffComment: "抜け出しが鋭かった！ 決定力◎。次は左足のシュートも増やそう。",
       staffCommentTs: ts(4),
+      staffSeenAt: ts(5) + 3600_000,
+      staffReaction: "nice",
     },
     {
       id: "note_match_p09",
@@ -558,6 +562,7 @@ function sampleNotebook(): NotebookEntry[] {
       body: "1対1で仕掛けられた場面が多かった。",
       staffComment: "仕掛けの姿勢が良い。クロスの精度をもう一段上げよう。",
       staffCommentTs: ts(4),
+      staffSeenAt: ts(5) + 3600_000,
     },
     {
       id: "note_match_p01",
@@ -582,6 +587,7 @@ function sampleNotebook(): NotebookEntry[] {
       reflectPlay: "縦パスをもう少し狙いたかった",
       staffComment: "守備の読みが良かった。ボールを奪った後の“最初の一歩”を前へ。",
       staffCommentTs: ts(4),
+      staffSeenAt: ts(5) + 3600_000,
     },
     /* --- 練習ノート（複数選手） --- */
     {
@@ -596,6 +602,7 @@ function sampleNotebook(): NotebookEntry[] {
       insights: ["半身で待つ", "相手より先にボールに触る"],
       staffComment: "対人での粘りが出てきた。良い変化！",
       staffCommentTs: ts(2) + 3600_000,
+      staffSeenAt: ts(2) + 3600_000,
     },
     {
       id: "note_practice_p06",
@@ -622,6 +629,7 @@ function sampleNotebook(): NotebookEntry[] {
       isPublic: true,
       staffComment: "立ち位置が良くなった。次は運ぶドリブルも。",
       staffCommentTs: ts(3) + 3600_000,
+      staffSeenAt: ts(3) + 3600_000,
     },
     /* --- 自主練ノート（複数選手） --- */
     {
@@ -671,6 +679,7 @@ function sampleNotebook(): NotebookEntry[] {
       body: "痛みは軽減。来週フル合流できるよう調整中。",
       staffComment: "無理せず段階的に。復帰を待ってるよ！",
       staffCommentTs: ts(1),
+      staffSeenAt: ts(2) + 3600_000,
     },
   ];
 }
@@ -698,12 +707,6 @@ function sampleDeliverables(): CoachDeliverable[] {
     assignResp[id] = { status: "done", ts: now - 6500_000 };
   });
 
-  // 理解度テスト：チーム全員宛・12名が回答（全員正解）
-  const quizResp: Record<string, QuizResponse> = {};
-  ids.slice(0, 12).forEach((id) => {
-    quizResp[id] = { answers: [0], ts: now - 7000_000 };
-  });
-
   return [
     {
       id: "dlv_menu1",
@@ -722,20 +725,6 @@ function sampleDeliverables(): CoachDeliverable[] {
       detail: "1試合で前向きの縦パスを5本以上。",
       targetPlayerIds: assignTargets,
       responses: assignResp,
-    },
-    {
-      id: "dlv_quiz1",
-      kind: "quiz",
-      ts: now - 9200_000,
-      title: "ポジション理解度テスト",
-      questions: [
-        {
-          q: "右SBがボール保持時、左WGはどこに立つ？",
-          options: ["逆サイドで幅を取る", "中央に絞る", "右SBの近くに寄る"],
-          correct: 0,
-        },
-      ],
-      responses: quizResp,
     },
   ];
 }
@@ -822,7 +811,7 @@ export function BoardProvider({
   useEffect(() => {
     saveNotebook(notebook);
   }, [notebook]);
-  // コーチからの配信物（練習メニュー/個人課題/ミーティング/テスト）
+  // コーチからの配信物（練習メニュー/個人課題/ミーティング）
   const [deliverables, setDeliverables] = useState<CoachDeliverable[]>(
     () => loadDeliverables() ?? sampleDeliverables()
   );
@@ -1181,15 +1170,26 @@ export function BoardProvider({
     },
     [showToast]
   );
+  const patchNote = useCallback((id: string, patch: Partial<NotebookEntry>) => {
+    setNotebook((list) =>
+      list.map((n) => (n.id === id ? ({ ...n, ...patch } as NotebookEntry) : n))
+    );
+  }, []);
   const deleteNote = useCallback((id: string) => {
     setNotebook((list) => list.filter((n) => n.id !== id));
   }, []);
   const setNoteComment = useCallback(
-    (id: string, comment: string) => {
+    (id: string, comment: string, drawing?: { plays: PlayPoint[]; playLines: PlayLine[] }) => {
       setNotebook((list) =>
         list.map((n) =>
           n.id === id
-            ? { ...n, staffComment: comment.trim() || undefined, staffCommentTs: Date.now() }
+            ? {
+                ...n,
+                staffComment: comment.trim() || undefined,
+                staffCommentTs: Date.now(),
+                // drawing省略時は既存の図を保持（黙って消さない）
+                ...(drawing !== undefined ? { staffDrawing: drawing } : {}),
+              }
             : n
         )
       );
@@ -1455,6 +1455,7 @@ export function BoardProvider({
       notebook,
       addNote,
       updateNote,
+      patchNote,
       deleteNote,
       setNoteComment,
       deliverables,
@@ -1527,6 +1528,7 @@ export function BoardProvider({
       notebook,
       addNote,
       updateNote,
+      patchNote,
       deleteNote,
       setNoteComment,
       deliverables,

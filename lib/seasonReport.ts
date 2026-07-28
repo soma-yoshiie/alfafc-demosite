@@ -11,6 +11,7 @@ import type {
   TeamData,
 } from "./types";
 import { deliverTargets } from "./types";
+import { localDateStr, longestWeeklyStreak } from "./dates";
 import { buildSlots } from "./formations";
 
 export interface SeasonRange {
@@ -29,10 +30,10 @@ export interface SeasonReportData {
   attendance: { yes: number; total: number };
   noteCounts: { match: number; practice: number; solo: number; total: number };
   soloCount: number;
+  /** 自主練の最長連続週数 */
   soloBestStreak: number;
   assignmentDone: number;
   assignmentTotal: number;
-  quizAvgPct: number | null;
   insights: string[];
   bestPlays: string[];
   staffComments: string[];
@@ -40,25 +41,7 @@ export interface SeasonReportData {
 }
 
 const inRange = (date: string, r: SeasonRange) => date >= r.from && date <= r.to;
-const tsDate = (ts: number) => new Date(ts).toISOString().slice(0, 10);
-
-/** 連続日数の最長（与えられた日付集合の中で） */
-function longestStreak(dates: string[]): number {
-  const sorted = [...new Set(dates)].sort();
-  let best = 0;
-  let cur = 0;
-  let prev: string | null = null;
-  for (const d of sorted) {
-    if (prev) {
-      const a = new Date(prev);
-      a.setDate(a.getDate() + 1);
-      cur = a.toISOString().slice(0, 10) === d ? cur + 1 : 1;
-    } else cur = 1;
-    best = Math.max(best, cur);
-    prev = d;
-  }
-  return best;
-}
+const tsDate = (ts: number) => localDateStr(new Date(ts));
 
 export function buildSeasonReport(
   player: Player,
@@ -97,7 +80,7 @@ export function buildSeasonReport(
     });
   }
 
-  // 個人課題・テスト（期間内の回答）
+  // 個人課題（期間内の回答）
   const assignments = deliverables.filter(
     (d): d is Extract<CoachDeliverable, { kind: "assignment" }> =>
       d.kind === "assignment" && deliverTargets(d, player.id)
@@ -106,20 +89,6 @@ export function buildSeasonReport(
     const r = d.responses[player.id];
     return r && r.status === "done" && inRange(tsDate(r.ts), range);
   }).length;
-
-  const quizzes = deliverables.filter(
-    (d): d is Extract<CoachDeliverable, { kind: "quiz" }> =>
-      d.kind === "quiz" && deliverTargets(d, player.id) && !!d.responses[player.id] && inRange(tsDate(d.responses[player.id].ts), range)
-  );
-  let quizAvgPct: number | null = null;
-  if (quizzes.length) {
-    const rates = quizzes.map((q) => {
-      const r = q.responses[player.id];
-      const c = q.questions.reduce((n, qq, i) => n + (r.answers[i] === qq.correct ? 1 : 0), 0);
-      return q.questions.length ? c / q.questions.length : 0;
-    });
-    quizAvgPct = Math.round((rates.reduce((s, v) => s + v, 0) / rates.length) * 100);
-  }
 
   const insights = practiceNotes
     .flatMap((n) => n.insights ?? [])
@@ -149,10 +118,9 @@ export function buildSeasonReport(
       total: mine.length,
     },
     soloCount: soloNotes.length,
-    soloBestStreak: longestStreak(soloNotes.map((n) => n.date)),
+    soloBestStreak: longestWeeklyStreak(soloNotes.map((n) => n.date)),
     assignmentDone,
     assignmentTotal: assignments.length,
-    quizAvgPct,
     insights,
     bestPlays,
     staffComments,
@@ -169,9 +137,8 @@ export function generateSeasonSummary(d: Omit<SeasonReportData, "summary">): str
   }
   if (d.attendancePct != null) s.push(`出席率は${d.attendancePct}%。`);
   if (d.noteCounts.total > 0) s.push(`ノートを${d.noteCounts.total}件提出し、振り返りを継続できています。`);
-  if (d.soloCount > 0) s.push(`自主練は${d.soloCount}回（最長${d.soloBestStreak}日連続）。`);
+  if (d.soloCount > 0) s.push(`自主練は${d.soloCount}回（最長${d.soloBestStreak}週連続）。`);
   if (d.assignmentTotal > 0) s.push(`個人課題は${d.assignmentDone}/${d.assignmentTotal}件を達成。`);
-  if (d.quizAvgPct != null) s.push(`理解度テスト平均は${d.quizAvgPct}%。`);
   if (d.insights[0]) s.push(`代表的な気づき：「${d.insights[0]}」。`);
   if (s.length === 0) s.push("この期間の記録はまだ少なめです。まずはノート提出から始めましょう。");
   else s.push("次のシーズンも継続して取り組んでいきましょう。");
@@ -220,7 +187,6 @@ export function renderSeasonImage(d: SeasonReportData): string {
     ["ノート", `${d.noteCounts.total}`],
     ["自主練", `${d.soloCount}`],
     ["課題達成", d.assignmentTotal ? `${d.assignmentDone}/${d.assignmentTotal}` : "—"],
-    ["テスト", d.quizAvgPct != null ? `${d.quizAvgPct}%` : "—"],
   ];
   const gx = 28;
   const gy = 200;

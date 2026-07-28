@@ -1,5 +1,28 @@
 import type { Metadata, Viewport } from "next";
+import { Bebas_Neue, Manrope, Noto_Sans_JP } from "next/font/google";
 import "./globals.css";
+
+// next/font でビルド時に自己ホスト化（CDN不要・オフライン静的配布でも崩れない）。
+// Manrope = 欧文/数字、Noto Sans JP = 和文本文、Bebas Neue = 大型数字・英字スロット専用。
+const manrope = Manrope({
+  subsets: ["latin"],
+  // 本体CSSは 500/800 も使用（見出し・スタッツ数値）。欠くと合成太字に劣化する
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-manrope",
+  display: "swap",
+});
+const notoSansJp = Noto_Sans_JP({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-noto",
+  display: "swap",
+});
+const bebas = Bebas_Neue({
+  subsets: ["latin"],
+  weight: "400",
+  variable: "--font-bebas",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "ALFA FOOTBALL — 戦術ボード / チーム運営",
@@ -22,19 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="ja">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Manrope:wght@400;500;600;700;800&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+    <html lang="ja" className={`${manrope.variable} ${notoSansJp.variable} ${bebas.variable}`}>
       <body>{children}</body>
     </html>
   );

@@ -81,25 +81,50 @@ const VBH = 133.333;
 function pathD(path: Point[]): string {
   return path.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${((100 - p.y) * VBH / 100).toFixed(1)}`).join(" ");
 }
+/** 軌道の色（芝の上で見えるよう明色。ボタンの凡例・CSSと揃える） */
+const LINE_COLOR: Record<PlayLineKind, string> = {
+  dribble: "#4fc3f7",
+  pass: "#ffffff",
+  shot: "#ffd166",
+};
+
 function PlayLinesSvg({ lines, temp }: { lines: PlayLine[]; temp: { kind: PlayLineKind; path: Point[] } | null }) {
-  const all = temp && temp.path.length > 1 ? [...lines, temp] : lines;
+  const all: (PlayLine | { kind: PlayLineKind; path: Point[] })[] = temp && temp.path.length > 1 ? [...lines, temp] : lines;
   return (
     <svg className="mplines" viewBox={`0 0 100 ${VBH}`} preserveAspectRatio="xMidYMid meet">
       <defs>
-        <marker id="mparrow" markerWidth="6" markerHeight="6" refX="4.2" refY="3" orient="auto">
-          <path d="M0,0 L5,3 L0,6 z" fill="currentColor" />
-        </marker>
+        {(Object.keys(LINE_COLOR) as PlayLineKind[]).map((k) => (
+          <marker key={k} id={`mparrow-${k}`} markerWidth="4.5" markerHeight="4.5" refX="3" refY="2.25" orient="auto">
+            <path d="M0,0 L3.8,2.25 L0,4.5 z" fill={LINE_COLOR[k]} />
+          </marker>
+        ))}
       </defs>
-      {all.map((l, i) => (
-        <path key={i} className={`mpline-path ${l.kind}`} d={pathD(l.path)} markerEnd="url(#mparrow)" />
-      ))}
+      {all.map((l, i) => {
+        const missed = "success" in l && l.success === false;
+        const end = l.path[l.path.length - 1];
+        return (
+          <g key={i} opacity={missed ? 0.55 : undefined}>
+            <path className={`mpline-path ${l.kind}`} d={pathD(l.path)} markerEnd={`url(#mparrow-${l.kind})`} />
+            {missed && end && (
+              <circle
+                cx={end.x}
+                cy={(100 - end.y) * VBH / 100}
+                r={2.6}
+                fill="none"
+                stroke="#ff5b6e"
+                strokeWidth={1.6}
+              />
+            )}
+          </g>
+        );
+      })}
     </svg>
   );
 }
 
 /**
  * ② プレーエリア記録用ピッチ。
- * 点ツール（受け/シュート/ミス）＝タップで点を追加、軌道ツール（ドリブル/パス/シュートコース）＝なぞって線を追加。
+ * 点ツール（受けた/シュート/トラップミス）＝タップで点を追加、軌道ツール（ドリブル/パス）＝なぞって線を追加。
  * y:0自陣→100敵陣（上が敵陣）。
  */
 export function PlayAreaPitch({
@@ -182,6 +207,75 @@ export function PlayAreaPitch({
           title={PLAY_KIND_LABEL[p.kind]}
         />
       ))}
+    </div>
+  );
+}
+
+/* ===== ゴール正面図（シュートコース） ===== */
+/** ゴール枠の座標（viewBox "0 0 100 50" 基準）。GoalCourseView と isInGoalFrame で共有 */
+const GOAL_LEFT = 14;
+const GOAL_RIGHT = 86;
+const GOAL_TOP = 10;
+const GOAL_BOTTOM = 46;
+
+/** course座標(x:0-100 / y:0-100)がゴール枠内かどうか（yはviewBoxのy10〜46を0-100に正規化した範囲で判定） */
+export function isInGoalFrame(x: number, y: number): boolean {
+  return x >= GOAL_LEFT && x <= GOAL_RIGHT && y >= GOAL_TOP * 2 && y <= GOAL_BOTTOM * 2;
+}
+
+/** ゴール正面図。シュートコースの打点表示・記録（高さも表現できる） */
+export function GoalCourseView({
+  shots,
+  onPick,
+}: {
+  shots: { course: Point; scored?: boolean; label?: number }[];
+  onPick?: (x: number, y: number) => void;
+}) {
+  const editable = !!onPick;
+
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!onPick) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const x = clamp(((e.clientX - r.left) / r.width) * 100, 0, 100);
+    const yHalf = clamp(((e.clientY - r.top) / r.height) * 50, 0, 50);
+    onPick(x, yHalf * 2);
+  };
+
+  return (
+    <div className={`goalview${editable ? " editable" : ""}`}>
+      <svg viewBox="0 0 100 50" preserveAspectRatio="xMidYMid meet" onClick={editable ? handleClick : undefined}>
+        {/* 枠内グリッド */}
+        {[26, 38, 50, 62, 74].map((gx) => (
+          <line key={`v${gx}`} x1={gx} y1={GOAL_TOP} x2={gx} y2={GOAL_BOTTOM} stroke="rgba(21,35,60,0.14)" strokeWidth={0.5} />
+        ))}
+        {[19, 28, 37].map((gy) => (
+          <line key={`h${gy}`} x1={GOAL_LEFT} y1={gy} x2={GOAL_RIGHT} y2={gy} stroke="rgba(21,35,60,0.14)" strokeWidth={0.5} />
+        ))}
+        {/* グラウンドライン */}
+        <line x1={2} y1={GOAL_BOTTOM} x2={98} y2={GOAL_BOTTOM} stroke="var(--ink)" strokeWidth={1.5} />
+        {/* ゴール枠（クロスバー＋両ポスト） */}
+        <polyline
+          points={`${GOAL_LEFT},${GOAL_BOTTOM} ${GOAL_LEFT},${GOAL_TOP} ${GOAL_RIGHT},${GOAL_TOP} ${GOAL_RIGHT},${GOAL_BOTTOM}`}
+          fill="none"
+          stroke="var(--ink)"
+          strokeWidth={2.5}
+        />
+        {/* シュート打点（ゴール=緑◯ / ノーゴール=赤◯） */}
+        {shots.map((s, i) => {
+          const color = s.scored === true ? "#2eb872" : "#ff5b6e";
+          const cy = s.course.y / 2;
+          return (
+            <g key={i}>
+              <circle cx={s.course.x} cy={cy} r={3.2} fill="none" stroke={color} strokeWidth={1.8} />
+              {s.label != null && (
+                <text x={s.course.x} y={cy} fontSize={3.5} fill={color} textAnchor="middle" dominantBaseline="central">
+                  {s.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }

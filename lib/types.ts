@@ -380,8 +380,8 @@ export type NoteCondition = "great" | "good" | "normal" | "tired" | "bad";
 
 export const NOTE_CONDITION_LABEL: Record<NoteCondition, string> = {
   great: "絶好調",
-  good: "good",
-  normal: "ふつう",
+  good: "好調",
+  normal: "普通",
   tired: "疲れ気味",
   bad: "不調",
 };
@@ -398,6 +398,14 @@ export const NOTE_KIND_LABEL: Record<NoteKind, string> = {
   solo: "自主練",
 };
 
+/** コーチのワンタップリアクション */
+export type StaffReaction = "ok" | "nice" | "fire";
+export const STAFF_REACTION_LABEL: Record<StaffReaction, string> = {
+  ok: "OK",
+  nice: "ナイス",
+  fire: "アツい",
+};
+
 /** 全ノート共通の基底 */
 interface NoteBase {
   id: string;
@@ -412,6 +420,12 @@ interface NoteBase {
   /** スタッフからのコメント（任意） */
   staffComment?: string;
   staffCommentTs?: number;
+  /** コーチが開いた既読時刻 */
+  staffSeenAt?: number;
+  /** コーチのワンタップリアクション */
+  staffReaction?: StaffReaction;
+  /** コーチがコメントに添えてピッチに描いた図 */
+  staffDrawing?: { plays: PlayPoint[]; playLines: PlayLine[] };
 }
 
 /* --- ① スタメン・フォーメーション記録（試合ノート） --- */
@@ -438,16 +452,26 @@ export type PlayKind = "receive" | "shot" | "miss";
 export const PLAY_KIND_LABEL: Record<PlayKind, string> = {
   receive: "受けた",
   shot: "シュート",
-  miss: "ミス",
+  miss: "トラップミス",
 };
 /** ピッチ上のプレー記録（x:左右 / y:0自陣-100敵陣） */
 export interface PlayPoint {
   x: number;
   y: number;
   kind: PlayKind;
+  /** 記録したフェーズ（未設定＝前半扱いで後方互換） */
+  phase?: MatchPhase;
+  /** 同一フェーズ内のピッチ番号（複数ピッチ記録用。未設定＝0） */
+  canvas?: number;
+  /** シュートコース（ゴール正面図上の位置。x:0-100 左→右 / y:0-100 上→下）。kind:"shot" 専用 */
+  course?: Point;
+  /** シュートが入ったか。kind:"shot" 専用 */
+  scored?: boolean;
+  /** シュートの状況メモ。kind:"shot" 専用 */
+  shotNote?: string;
 }
 
-/** プレーの軌道（ドリブル／パス／シュートコース） */
+/** プレーの軌道（ドリブル／パス／シュートコース）。shot は既存保存データの表示互換のため型のみ残す */
 export type PlayLineKind = "dribble" | "pass" | "shot";
 export const PLAY_LINE_LABEL: Record<PlayLineKind, string> = {
   dribble: "ドリブル",
@@ -458,6 +482,14 @@ export interface PlayLine {
   kind: PlayLineKind;
   /** なぞった軌道（x:左右 / y:0自陣-100敵陣） */
   path: Point[];
+  /** 記録したフェーズ（未設定＝前半扱いで後方互換） */
+  phase?: MatchPhase;
+  /** 同一フェーズ内のピッチ番号（複数ピッチ記録用。未設定＝0） */
+  canvas?: number;
+  /** パス／ドリブルの成否（未設定＝旧データ・成功扱い） */
+  success?: boolean;
+  /** 状況メモ（任意） */
+  note?: string;
 }
 
 /** 試合ノート */
@@ -466,24 +498,31 @@ export interface MatchNote extends NoteBase {
   /** 紐付く試合記録ID（任意） */
   matchId?: string;
   opponent?: string;
+  /** ◯分ハーフ（試合時間） */
+  halfMinutes?: number;
+  /** フル出場か（既定=true。false=途中出場） */
+  fullMatch?: boolean;
+  /** 途中出場時の出場開始（分） */
+  playFrom?: number;
+  /** 途中出場時の出場終了（分） */
+  playTo?: number;
   /** ① 前半/後半/延長の陣形 */
   lineups?: MatchPhaseLineup[];
   /** ② プレーエリア記録 */
   plays?: PlayPoint[];
   /** ② プレーの軌道（ドリブル/パス/シュートコース） */
   playLines?: PlayLine[];
-  /** ② AI分析（プレーエリア）の要約 */
+  /** AI分析（プレーエリア）の要約。廃止済み・旧データ表示互換のため型のみ残す */
   aiSummary?: string;
   /* --- ⑧ ベストプレー記録 --- */
   bestPlay?: string;
   reflectPlay?: string;
   /** 動画URL（任意） */
   videoUrl?: string;
-  /* --- ⑫ AI試合レポート --- */
+  /* --- 旧AI試合レポート。廃止済み・旧データ表示互換のため型のみ残す --- */
   minutes?: number;
   reportGood?: string;
   reportImprove?: string;
-  /** ⑫ AI要約（ローカル生成・将来はAPI） */
   reportSummary?: string;
 }
 
@@ -492,6 +531,8 @@ export interface PracticeNote extends NoteBase {
   kind: "practice";
   /** 紐付く練習予定ID（任意） */
   eventId?: string;
+  /** 紐付けた練習メニュー配信のID（任意） */
+  menuId?: string;
   /** ⑥ 今日の目標 */
   goalPre?: string;
   /** ⑥ 達成度 0-100 */
@@ -525,14 +566,13 @@ export interface SoloNote extends NoteBase {
 /** サッカーノート1件（選手が記入・提出、スタッフが閲覧・コメント） */
 export type NotebookEntry = MatchNote | PracticeNote | SoloNote;
 
-/* ===== コーチからの配信物（③練習メニュー / ⑤個人課題 / ⑦試合前ミーティング / ⑨理解度テスト） ===== */
+/* ===== コーチからの配信物（③練習メニュー / ⑤個人課題 / ⑦試合前ミーティング） ===== */
 
-export type DeliverKind = "menu" | "assignment" | "meeting" | "quiz";
+export type DeliverKind = "menu" | "assignment" | "meeting";
 export const DELIVER_KIND_LABEL: Record<DeliverKind, string> = {
   menu: "練習メニュー",
   assignment: "個人課題",
   meeting: "試合前ミーティング",
-  quiz: "理解度テスト",
 };
 
 interface DeliverBase {
@@ -592,27 +632,10 @@ export interface MeetingDeliver extends DeliverBase {
   responses: Record<string, MeetingResponse>;
 }
 
-/** ⑨ ポジション理解度テスト（選択式）＋回答 */
-export interface QuizQuestion {
-  q: string;
-  options: string[];
-  correct: number;
-}
-export interface QuizResponse {
-  answers: number[];
-  ts: number;
-}
-export interface QuizDeliver extends DeliverBase {
-  kind: "quiz";
-  questions: QuizQuestion[];
-  responses: Record<string, QuizResponse>;
-}
-
 export type CoachDeliverable =
   | PracticeMenuDeliver
   | AssignmentDeliver
-  | MeetingDeliver
-  | QuizDeliver;
+  | MeetingDeliver;
 
 /** 配信物が対象選手に届くか */
 export function deliverTargets(d: CoachDeliverable, playerId: string): boolean {
