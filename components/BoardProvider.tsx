@@ -75,6 +75,7 @@ type Action =
   | { type: "SET_TEAM_NAME"; name: string }
   | { type: "RESET_POSITIONS" }
   | { type: "ADD_MOVE"; actor: Actor; path: Point[] }
+  | { type: "MERGE_MOVES"; moves: Move[] }
   | { type: "UPDATE_MOVE"; index: number; patch: Partial<Move> }
   | { type: "DELETE_MOVE"; index: number }
   | { type: "CLEAR_MOVES" }
@@ -213,6 +214,16 @@ function reducer(state: BoardState, action: Action): BoardState {
       return { ...state, moves };
     }
 
+    case "MERGE_MOVES": {
+      // 生成シーンの一括適用：同じactorのルートは置換、それ以外は温存
+      const incoming = new Set(action.moves.map((m) => m.actor));
+      const moves = [
+        ...state.moves.filter((m) => !incoming.has(m.actor)),
+        ...action.moves,
+      ];
+      return { ...state, moves };
+    }
+
     case "UPDATE_MOVE": {
       const moves = state.moves.map((m, i) =>
         i === action.index ? { ...m, ...action.patch } : m
@@ -328,6 +339,8 @@ interface BoardContextValue {
   setTeamName: (name: string) => void;
   resetPositions: () => void;
   addMove: (actor: Actor, path: Point[]) => void;
+  /** 生成シーンなど複数ルートの一括適用（同actorは置換） */
+  mergeMoves: (moves: Move[]) => void;
   updateMove: (index: number, patch: Partial<Move>) => void;
   deleteMove: (index: number) => void;
   clearMoves: () => void;
@@ -1383,6 +1396,7 @@ export function BoardProvider({
       setTeamName: (name) => dispatch({ type: "SET_TEAM_NAME", name }),
       resetPositions: () => dispatch({ type: "RESET_POSITIONS" }),
       addMove: (actor, path) => dispatch({ type: "ADD_MOVE", actor, path }),
+      mergeMoves: (ms) => dispatch({ type: "MERGE_MOVES", moves: ms }),
       updateMove: (index, patch) =>
         dispatch({ type: "UPDATE_MOVE", index, patch }),
       deleteMove: (index) => dispatch({ type: "DELETE_MOVE", index }),

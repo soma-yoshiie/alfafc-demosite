@@ -1,27 +1,34 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { animTotal } from "@/lib/animation";
-import { actorColor } from "@/lib/colors";
-import type { Actor } from "@/lib/types";
+import { sceneClient } from "@/lib/tacticsScene";
 import { useBoard } from "./BoardProvider";
+import TacticsTimeline, { type TimelineHandle } from "./TacticsTimeline";
 import { E } from "./Emoji";
+
+/** 「ことばで作る」の例文（タップで入力欄へ） */
+const NL_EXAMPLES = [
+  "LBがサイドを上がったらそのスペースを埋めるようにCMが移動する",
+  "STが裏に抜けてトップ下がSTにパス",
+  "右SBがオーバーラップしながらRWが中に絞る",
+];
 
 export default function AnimationStudio() {
   const board = useBoard();
-  const { moves, slots, players } = board.state;
+  const { slots, players } = board.state;
   const scrubRef = useRef<HTMLInputElement>(null);
   const curRef = useRef<HTMLSpanElement>(null);
   const totRef = useRef<HTMLSpanElement>(null);
+  const tlRef = useRef<TimelineHandle>(null);
 
+  // ことばで作る
+  const [nlOpen, setNlOpen] = useState(false);
+  const [nlText, setNlText] = useState("");
+  const [nlBusy, setNlBusy] = useState(false);
+
+  const moves = board.state.moves;
   const T = animTotal(moves);
-
-  const actorLabel = (actor: Actor): string => {
-    if (actor === "ball") return "ボール";
-    const s = slots[actor as number];
-    const p = s.pid ? players.find((x) => x.id === s.pid) : null;
-    return `${p ? p.name : "(空き)"} · ${s.role}`;
-  };
 
   // 再生・シーク中の時間表示更新（再描画なし）
   useEffect(() => {
@@ -32,6 +39,7 @@ export default function AnimationStudio() {
         );
       if (curRef.current) curRef.current.textContent = Math.min(t, total).toFixed(1) + "s";
       if (totRef.current) totRef.current.textContent = total.toFixed(1) + "s";
+      tlRef.current?.setTime(Math.min(t, total));
     };
     return () => {
       board.onTick.current = null;
@@ -49,18 +57,41 @@ export default function AnimationStudio() {
       board.applyPlayhead(Math.min(t, T));
   }, [T, moves, board]);
 
-  const sorted = moves
-    .map((m, i) => ({ m, i }))
-    .sort((a, b) => a.m.start - b.m.start);
+  /** 文章からシーンを生成 → 即再生（タイムラインで微調整できる） */
+  const runScene = async () => {
+    const txt = nlText.trim();
+    if (!txt) {
+      board.toast("動きを文章で入力してください");
+      return;
+    }
+    setNlBusy(true);
+    const res = await sceneClient.buildScene(txt, {
+      slots,
+      players,
+      ball: board.state.ball,
+    });
+    setNlBusy(false);
+    if (res.warnings.length > 0) board.toast(res.warnings[0]);
+    if (res.moves.length === 0) return;
+    board.stopPlay();
+    board.mergeMoves(res.moves);
+    board.setSelActor(null);
+    board.toast(`${res.moves.length}本の動きを生成しました`);
+    // state反映後に先頭から自動再生
+    setTimeout(() => {
+      board.resetPlay();
+      board.startPlay();
+    }, 80);
+  };
 
   return (
     <div className="studio">
       <div className="stitle">
         <b>ANIM STUDIO</b>
         <div className="hintxt">
-          選手・ボールをピッチ上でなぞるとルートを描けます
+          選手・ボールをなぞるとルートを描けます
           <br />
-          複数描けば同時／時間差で動きます
+          下のタイムラインでタイミングを調整
         </div>
       </div>
 
@@ -139,6 +170,12 @@ export default function AnimationStudio() {
 
       <div className="sttools">
         <div
+          className={`toolchip${nlOpen ? " on" : ""}`}
+          onClick={() => setNlOpen(!nlOpen)}
+        >
+          💬 ことばで作る
+        </div>
+        <div
           className={`toolchip${board.showPaths ? " on" : ""}`}
           onClick={() => board.setShowPaths(!board.showPaths)}
         >
@@ -149,84 +186,29 @@ export default function AnimationStudio() {
         </div>
       </div>
 
-      <div className="clips">
-        {moves.length === 0 ? (
-          <div className="clipsEmpty">
-            選手やボールをピッチ上で指でなぞると、その軌道がクリップとして追加されます。
-            <br />
-            複数追加して「開始」をずらせば、時間差での連動も作れます。
+      {nlOpen && (
+        <div className="nlbox">
+          <textarea
+            value={nlText}
+            onChange={(e) => setNlText(e.target.value)}
+            rows={2}
+            placeholder="例）LBがサイドを上がったらそのスペースを埋めるようにCMが移動する"
+          />
+          <div className="nlexrow">
+            {NL_EXAMPLES.map((ex) => (
+              <button key={ex} className="nlex" onClick={() => setNlText(ex)}>
+                {ex.length > 17 ? ex.slice(0, 17) + "…" : ex}
+              </button>
+            ))}
           </div>
-        ) : (
-          sorted.map(({ m, i }) => {
-            const col = actorColor(m.actor, slots);
-            const sel = m.actor === board.selActor;
-            return (
-              <div
-                key={i}
-                className={`clip${sel ? " sel" : ""}`}
-                onClick={() => board.setSelActor(sel ? null : m.actor)}
-              >
-                <div className="crow">
-                  <span className="cdot" style={{ background: col }} />
-                  <span className="cname">{actorLabel(m.actor)}</span>
-                  <span className="ctime">
-                    開始 {m.start.toFixed(1)}s ・ {m.dur.toFixed(1)}s
-                  </span>
-                </div>
-                <div className="gantt">
-                  <div
-                    className="gbar"
-                    style={{
-                      left: `${(m.start / T) * 100}%`,
-                      width: `${(m.dur / T) * 100}%`,
-                      background: col,
-                    }}
-                  />
-                </div>
-                <div className="cedit" onClick={(e) => e.stopPropagation()}>
-                  <label>
-                    開始
-                    <input
-                      type="range"
-                      min={0}
-                      max={80}
-                      value={Math.round(m.start * 10)}
-                      onChange={(e) =>
-                        board.updateMove(i, { start: +e.target.value / 10 })
-                      }
-                    />
-                    <b>{m.start.toFixed(1)}s</b>
-                  </label>
-                  <label>
-                    長さ
-                    <input
-                      type="range"
-                      min={3}
-                      max={60}
-                      value={Math.round(m.dur * 10)}
-                      onChange={(e) =>
-                        board.updateMove(i, {
-                          dur: Math.max(0.3, +e.target.value / 10),
-                        })
-                      }
-                    />
-                    <b>{m.dur.toFixed(1)}s</b>
-                  </label>
-                  <button
-                    className="cdel"
-                    onClick={() => {
-                      if (board.selActor === m.actor) board.setSelActor(null);
-                      board.deleteMove(i);
-                      board.toast("ルートを削除しました");
-                    }}
-                  >
-                    このルートを削除
-                  </button>
-                </div>
-              </div>
-            );
-          })
-        )}
+          <button className="nlrun" onClick={runScene} disabled={nlBusy}>
+            {nlBusy ? "生成中…" : "▶ シーンを生成して再生"}
+          </button>
+        </div>
+      )}
+
+      <div className="clips">
+        <TacticsTimeline ref={tlRef} />
       </div>
     </div>
   );

@@ -723,6 +723,250 @@ header {
   border-color: rgba(19, 138, 77, 0.4);
 }
 
+/* ことばで作る（文章→シーン生成） */
+.nlbox {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.nlbox textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--ink);
+  font-size: 13px;
+  font-family: "Manrope", sans-serif;
+  line-height: 1.5;
+}
+.nlexrow {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.nlexrow::-webkit-scrollbar {
+  display: none;
+}
+.nlex {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--mut);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: "Manrope", sans-serif;
+}
+.nlex:active {
+  transform: scale(0.96);
+}
+.nlrun {
+  width: 100%;
+  padding: 11px;
+  border-radius: 11px;
+  border: 0;
+  background: var(--lime);
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: "Manrope", sans-serif;
+}
+.nlrun:disabled {
+  opacity: 0.6;
+}
+.nlrun:active {
+  transform: scale(0.98);
+}
+
+/* マルチトラック・タイムライン */
+.tlwrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tlruler {
+  position: relative;
+  height: 20px;
+  margin-left: 86px;
+  cursor: pointer;
+  touch-action: none;
+  border-bottom: 1px solid var(--line);
+}
+.tltick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.tltick i {
+  position: absolute;
+  top: 1px;
+  left: 3px;
+  font-size: 9px;
+  font-style: normal;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+.tlrows {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tlplayhead {
+  position: absolute;
+  top: -21px; /* 目盛りまで届かせる */
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  margin-left: 86px;
+  transform: translateX(-1px);
+  background: var(--red);
+  pointer-events: none;
+  z-index: 3;
+}
+.tlrow {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-height: 30px;
+}
+.tllabel {
+  flex: 0 0 86px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--mut);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  padding-right: 6px;
+}
+.tllabel.sel {
+  color: var(--ink);
+}
+.tllabel .cdot {
+  width: 9px;
+  height: 9px;
+}
+.tltrack {
+  position: relative;
+  flex: 1;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--panel2);
+  overflow: hidden;
+}
+.tlbar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  min-width: 26px;
+  border-radius: 6px;
+  opacity: 0.92;
+  cursor: grab;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tlbar.sel {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+.tlbar.drag {
+  opacity: 1;
+  cursor: grabbing;
+  z-index: 2;
+}
+.tldur {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.tlhandle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  cursor: ew-resize;
+  touch-action: none;
+  border-radius: 0 6px 6px 0;
+  background: rgba(0, 0, 0, 0.18);
+}
+.tlhandle::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 3px;
+  height: 12px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.8);
+}
+.tlhint {
+  font-size: 10px;
+  color: var(--mut);
+  text-align: center;
+  padding: 2px 0;
+}
+.tlacts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.tlselinfo {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+.tlchips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.tlchip {
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: "Manrope", sans-serif;
+}
+.tlchip:active {
+  transform: scale(0.95);
+}
+.tlchip.danger {
+  color: var(--red);
+}
+
 /* clips / timeline */
 .clips {
   max-height: 38vh;
