@@ -22,6 +22,7 @@ const MESSAGES_KEY = "soccer_tactics_messages_v1";
 const NOTEBOOK_KEY = "soccer_tactics_notebook_v1";
 const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
+const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
 
 /** localStorage から状態を復元（SSR/未保存時は null） */
 export function loadState(): BoardState | null {
@@ -159,6 +160,25 @@ export function saveTeam(team: TeamData): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(TEAM_KEY, JSON.stringify(team));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/** 最後に選んだイベントカテゴリID（予定作成フォームの初期値記憶用） */
+export function loadLastEventCategory(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(LAST_EVENT_CATEGORY_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastEventCategory(id: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAST_EVENT_CATEGORY_KEY, id);
   } catch {
     /* 無視 */
   }

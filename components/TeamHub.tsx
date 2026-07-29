@@ -3,16 +3,36 @@
 import { useState } from "react";
 import type React from "react";
 import type {
+  Announcement,
   AttendanceStatus,
+  DominantFoot,
   MatchGoal,
   MatchRecord,
   MatchSub,
   Player,
+  Position,
+  RecurrenceRule,
   TeamEvent,
   TeamEventKind,
 } from "@/lib/types";
 import { INJURY_STATUS_LABEL } from "@/lib/types";
-import { groupOf } from "@/lib/formations";
+import { ALL_POSITIONS, groupOf } from "@/lib/formations";
+import {
+  addDays,
+  byStartAsc,
+  CATEGORY_PALETTE,
+  categoryOf,
+  diffDays,
+  eventEndDate,
+  gmapsDirUrl,
+  gmapsEmbedUrl,
+  gmapsSearchUrl,
+  isMultiDay,
+  isOngoing,
+  isUpcomingOrOngoing,
+  occursOn,
+} from "@/lib/calendarUtils";
+import { loadLastEventCategory, saveLastEventCategory } from "@/lib/storage";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
@@ -32,9 +52,66 @@ function fmtTimeRange(ev: { time?: string; endTime?: string }): string {
   if (ev.time && ev.endTime) return `${ev.time}〜${ev.endTime}`;
   return ev.time ?? "";
 }
+/** 予定カード用の日時表示（単日「7/9(木) 17:00〜19:00」／複数日「7/20(月)〜7/22(水)」／終日は時刻非表示） */
+function evWhenText(e: TeamEvent): string {
+  if (isMultiDay(e)) return `${fmtDate(e.date)}〜${fmtDate(eventEndDate(e))}`;
+  if (e.allDay) return `${fmtDate(e.date)} 終日`;
+  return `${fmtDate(e.date)}${fmtTimeRange(e) ? ` ${fmtTimeRange(e)}` : ""}`;
+}
+function fmtTs(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(
+    d.getMinutes()
+  ).padStart(2, "0")}`;
+}
+/** 予定タイトルから対戦相手名を推定（「練習試合 vs 青空FC」→「青空FC」） */
+function opponentFromTitle(title: string): string {
+  const m = title.match(/(?:vs\.?|VS|ＶＳ|対)\s*(.+)$/i);
+  return m ? m[1].trim() : "";
+}
+const byDateAsc = (a: TeamEvent, b: TeamEvent) =>
+  `${a.date} ${a.time ?? ""}` < `${b.date} ${b.time ?? ""}` ? -1 : 1;
+const byDateDesc = (a: TeamEvent, b: TeamEvent) => -byDateAsc(a, b);
+
+/* ---------------- カレンダー拡張ヘルパー ---------------- */
+/** 日付文字列(YYYY-MM-DD)の曜日（0=日..6=土）。表示・初期値算出用のローカル計算 */
+function wdOf(s: string): number {
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y) return 0;
+  return new Date(y, m - 1, d).getDay();
+}
+/** ymd の nヶ月後（繰り返し終了日の初期値算出専用） */
+function addMonthsStr(s: string, months: number): string {
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y) return s;
+  const dt = new Date(y, m - 1 + months, d);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
+/** 「M/D」表記（繰り返し説明用） */
+function fmtMD(s: string): string {
+  const [, m, d] = s.split("-").map(Number);
+  return `${m}/${d}`;
+}
+/** 繰り返しルールの説明文（例: 毎週 火・木 〜9/30） */
+function ruleDesc(rule: RecurrenceRule): string {
+  const freqLabel = rule.freq === "monthly" ? "毎月" : rule.interval === 2 ? "隔週" : "毎週";
+  const wd =
+    rule.freq === "weekly" && rule.byWeekday && rule.byWeekday.length > 0
+      ? " " + rule.byWeekday.map((i) => WD[i]).join("・")
+      : "";
+  return `${freqLabel}${wd} 〜${fmtMD(rule.until)}`;
+}
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = { yes: "出席", maybe: "未定", no: "欠席" };
 const STATUS_MARK: Record<AttendanceStatus, string> = { yes: "○", maybe: "△", no: "×" };
+
+/** 利き足の表示ラベル（未設定は「—」） */
+function footLabel(f?: DominantFoot): string {
+  if (f === "right") return "右足";
+  if (f === "left") return "左足";
+  if (f === "both") return "両足";
+  return "—";
+}
 
 function Sheet({
   open,
@@ -58,25 +135,38 @@ function Sheet({
   );
 }
 
-type Tab = "att" | "cal" | "rec" | "ros";
+type Tab = "home" | "att" | "cal" | "rec" | "ros";
 
 type SheetState =
   | { type: "event"; event?: TeamEvent; date?: string }
   | { type: "attendance"; eventId: string }
   | { type: "announce" }
+  | { type: "annList" }
   | { type: "day"; date: string }
   | { type: "eventView"; id: string }
-  | { type: "match"; record?: MatchRecord }
+  | {
+      type: "match";
+      record?: MatchRecord;
+      /** 試合イベントから引き継ぐ初期値（新規記録用） */
+      prefill?: { date?: string; opponent?: string };
+    }
   | { type: "matchView"; id: string }
   | { type: "competitions" }
+  | { type: "categories" }
+  | { type: "playerDetail"; playerId: string }
+  | { type: "playerForm"; player?: Player }
   | null;
 
 function Inner() {
   const board = useBoard();
   const team = useTeam();
   const players = board.state.players;
-  const [tab, setTab] = useState<Tab>("att");
+  const [tab, setTab] = useState<Tab>("home");
   const [sheet, setSheet] = useState<SheetState>(null);
+  // カレンダーの表示月・表示モードはタブを跨いで保持する
+  const now = new Date();
+  const [calYm, setCalYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
+  const [calView, setCalView] = useState<"month" | "list">("month");
 
   const isCoach = team.viewer.role === "coach";
   const me = team.viewer.memberPlayerId
@@ -84,11 +174,14 @@ function Inner() {
     : null;
 
   const tabs: [Tab, string][] = [
+    ["home", "ホーム"],
     ["att", "出欠"],
     ["cal", "カレンダー"],
     ["rec", "試合記録"],
   ];
-  if (board.auth.role === "coach") tabs.push(["ros", "名簿"]);
+  // 名簿は表示中のロールに合わせる（選手プレビュー時は隠して見え方を揃える）
+  if (isCoach && board.auth.role === "coach") tabs.push(["ros", "名簿"]);
+  const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "home";
 
   return (
     <div className="app teamapp">
@@ -140,19 +233,33 @@ function Inner() {
 
       <div className="fbar">
         {tabs.map(([t, label]) => (
-          <div key={t} className={`chip${tab === t ? " on" : ""}`} onClick={() => setTab(t)}>
+          <div key={t} className={`chip${activeTab === t ? " on" : ""}`} onClick={() => setTab(t)}>
             {label}
           </div>
         ))}
       </div>
 
       <div className="scroll" style={{ padding: "0 14px calc(env(safe-area-inset-bottom) + 24px)" }}>
-        {tab === "att" && <AttendanceTab isCoach={isCoach} me={me} setSheet={setSheet} />}
-        {tab === "cal" && <CalendarTab isCoach={isCoach} setSheet={setSheet} />}
-        {tab === "rec" && (
+        {activeTab === "home" && (
+          <HomeTab isCoach={isCoach} me={me} setSheet={setSheet} setTab={setTab} />
+        )}
+        {activeTab === "att" && <AttendanceTab isCoach={isCoach} me={me} setSheet={setSheet} />}
+        {activeTab === "cal" && (
+          <CalendarTab
+            isCoach={isCoach}
+            setSheet={setSheet}
+            ym={calYm}
+            setYm={setCalYm}
+            view={calView}
+            setView={setCalView}
+          />
+        )}
+        {activeTab === "rec" && (
           <MatchesTab isCoach={isCoach} players={players} setSheet={setSheet} />
         )}
-        {tab === "ros" && board.auth.role === "coach" && <RosterTab players={players} />}
+        {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
+          <RosterTab players={players} setSheet={setSheet} />
+        )}
       </div>
 
       <SheetHost
@@ -161,6 +268,7 @@ function Inner() {
         setSheet={setSheet}
         players={players}
         isCoach={isCoach}
+        me={me}
       />
     </div>
   );
@@ -172,9 +280,236 @@ function sheetKey(s: SheetState): string {
   if (s.type === "attendance") return "att-" + s.eventId;
   if (s.type === "day") return "day-" + s.date;
   if (s.type === "eventView") return "ev-" + s.id;
-  if (s.type === "match") return "match-" + (s.record?.id ?? "new");
+  if (s.type === "match")
+    return (
+      "match-" +
+      (s.record?.id ??
+        (s.prefill ? `pf-${s.prefill.date ?? ""}-${s.prefill.opponent ?? ""}` : "new"))
+    );
   if (s.type === "matchView") return "mv-" + s.id;
+  if (s.type === "playerDetail") return "pd-" + s.playerId;
+  if (s.type === "playerForm") return "pf-" + (s.player?.id ?? "new");
   return s.type;
+}
+
+/* ---------------- ホーム ---------------- */
+function HomeTab({
+  isCoach,
+  me,
+  setSheet,
+  setTab,
+}: {
+  isCoach: boolean;
+  me: Player | null;
+  setSheet: (s: SheetState) => void;
+  setTab: (t: Tab) => void;
+}) {
+  const board = useBoard();
+  const team = useTeam();
+  const today = todayStr();
+  const upcoming = team.team.events
+    .filter((e) => isUpcomingOrOngoing(e, today))
+    .sort(byDateAsc);
+  const next = upcoming[0];
+  const nextCat = next ? categoryOf(next, team.categories) : null;
+  const unanswered = me
+    ? upcoming.filter((e) => !team.team.attendance[e.id]?.[me.id])
+    : [];
+  const anns = team.team.announcements;
+  const matches = [...team.team.matches].sort((a, b) => (a.date < b.date ? 1 : -1));
+  const latest = matches[0];
+  let w = 0,
+    d = 0,
+    l = 0,
+    gf = 0,
+    ga = 0;
+  matches.forEach((m) => {
+    gf += m.ourScore;
+    ga += m.theirScore;
+    if (m.ourScore > m.theirScore) w++;
+    else if (m.ourScore === m.theirScore) d++;
+    else l++;
+  });
+  const showMatches = isCoach || board.matchesPublic;
+  const s = next ? team.summary(next.id) : null;
+
+  return (
+    <>
+      {!isCoach && unanswered.length > 0 && (
+        <div className="alertcard" onClick={() => setTab("att")}>
+          <E n="bell" /> 出欠が未回答の予定が {unanswered.length} 件あります
+          <span className="seclink">回答する ›</span>
+        </div>
+      )}
+
+      {isCoach && (
+        <div className="quickrow">
+          <button className="bigbtn" onClick={() => setSheet({ type: "event" })}>
+            ＋ 予定を追加
+          </button>
+          <button className="bigbtn ghost" onClick={() => setSheet({ type: "match" })}>
+            ＋ 試合結果を記録
+          </button>
+        </div>
+      )}
+
+      <div className="sech">次の予定</div>
+      {!next ? (
+        <div className="empty-msg" style={{ padding: "14px 0" }}>
+          今後の予定はありません。
+        </div>
+      ) : (
+        <div className="evcard">
+          <div className="evhead">
+            <span className="evkind" style={{ background: nextCat?.color }}>
+              {nextCat?.label}
+            </span>
+            <span className="evtitle">{next.title}</span>
+            <span className="evopen" onClick={() => setSheet({ type: "eventView", id: next.id })}>
+              詳細 ›
+            </span>
+          </div>
+          <div className="homewhen">
+            {evWhenText(next)}
+            {isOngoing(next, today) && <span className="ongoing">開催中</span>}
+          </div>
+          {next.place && (
+            <div className="evmeta">
+              <E n="pin" /> {next.place}
+            </div>
+          )}
+          {next.note && <div className="evnote">{next.note}</div>}
+          {isCoach && s ? (
+            <div className="evsummary" onClick={() => setSheet({ type: "attendance", eventId: next.id })}>
+              <span className="att yes">出席 {s.yes}</span>
+              <span className="att maybe">未定 {s.maybe}</span>
+              <span className="att no">欠席 {s.no}</span>
+              <span className="att none">未回答 {s.none}</span>
+              <span className="evopen">回答を見る ›</span>
+            </div>
+          ) : (
+            me && <MemberAttRow eventId={next.id} playerId={me.id} />
+          )}
+        </div>
+      )}
+      {upcoming.length > 1 && (
+        <div className="seclink" style={{ textAlign: "right" }} onClick={() => setTab("att")}>
+          ほか {upcoming.length - 1} 件の予定を見る ›
+        </div>
+      )}
+
+      <div className="sech">
+        連絡
+        {anns.length > 2 && (
+          <span className="seclink" onClick={() => setSheet({ type: "annList" })}>
+            すべて見る ›
+          </span>
+        )}
+      </div>
+      {isCoach && (
+        <button className="dynadd" style={{ marginBottom: 8 }} onClick={() => setSheet({ type: "announce" })}>
+          ＋ 連絡を送る
+        </button>
+      )}
+      {anns.length === 0 ? (
+        <div className="empty-msg" style={{ padding: "8px 0" }}>
+          連絡はまだありません。
+        </div>
+      ) : (
+        anns.slice(0, 2).map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} />)
+      )}
+
+      {showMatches && (
+        <>
+          <div className="sech">
+            試合
+            <span className="seclink" onClick={() => setTab("rec")}>
+              試合記録へ ›
+            </span>
+          </div>
+          {matches.length === 0 ? (
+            <div className="empty-msg" style={{ padding: "8px 0" }}>
+              まだ試合記録がありません。
+            </div>
+          ) : (
+            <>
+              <div className="statrow" style={{ marginBottom: 8 }}>
+                <div className="statbox">
+                  <div className="sk">試合</div>
+                  <div className="sv">{matches.length}</div>
+                </div>
+                <div className="statbox">
+                  <div className="sk">勝-分-敗</div>
+                  <div className="sv">
+                    {w}-{d}-{l}
+                  </div>
+                </div>
+                <div className="statbox">
+                  <div className="sk">得点-失点</div>
+                  <div className="sv">
+                    {gf}-{ga}
+                  </div>
+                </div>
+              </div>
+              {latest &&
+                (() => {
+                  const win = latest.ourScore > latest.theirScore;
+                  const draw = latest.ourScore === latest.theirScore;
+                  return (
+                    <div
+                      className="matchcard"
+                      onClick={() => setSheet({ type: "matchView", id: latest.id })}
+                    >
+                      <div className={`mres ${win ? "w" : draw ? "d" : "l"}`}>
+                        {win ? "勝" : draw ? "分" : "敗"}
+                      </div>
+                      <div className="mmid">
+                        <div className="mopp">vs {latest.opponent}</div>
+                        <div className="msub">{fmtDate(latest.date)}</div>
+                      </div>
+                      <div className="mscore">
+                        {latest.ourScore}
+                        <span>-</span>
+                        {latest.theirScore}
+                      </div>
+                    </div>
+                  );
+                })()}
+            </>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
+/* 連絡1件の表示カード */
+function AnnCard({ a, isCoach }: { a: Announcement; isCoach: boolean }) {
+  const team = useTeam();
+  return (
+    <div className="msgcard">
+      <div className="msgtop">
+        <span className="msgfrom">スタッフ</span>
+        <span className="msgdate">{fmtTs(a.ts)}</span>
+        {isCoach && (
+          <button
+            className="msgdel"
+            onClick={() => {
+              if (window.confirm("この連絡を削除しますか？")) team.removeAnnouncement(a.id);
+            }}
+          >
+            <E n="trash" />
+          </button>
+        )}
+      </div>
+      <div className="msgtext">{a.text}</div>
+      {a.playTitle && (
+        <div className="evnote">
+          <E n="clipboard" /> 添付戦術: {a.playTitle}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ---------------- 出欠 ---------------- */
@@ -188,7 +523,14 @@ function AttendanceTab({
   setSheet: (s: SheetState) => void;
 }) {
   const team = useTeam();
-  const events = [...team.team.events].sort((a, b) => (a.date < b.date ? -1 : 1));
+  const today = todayStr();
+  const [showPast, setShowPast] = useState(false);
+  const upcoming = team.team.events
+    .filter((e) => isUpcomingOrOngoing(e, today))
+    .sort(byDateAsc);
+  const past = team.team.events
+    .filter((e) => eventEndDate(e) < today)
+    .sort(byDateDesc);
   return (
     <>
       {isCoach && (
@@ -196,52 +538,101 @@ function AttendanceTab({
           ＋ 予定を追加
         </button>
       )}
-      {events.length === 0 ? (
-        <div className="empty-msg">予定がありません。</div>
+      {upcoming.length === 0 ? (
+        <div className="empty-msg">今後の予定はありません。</div>
       ) : (
-        events.map((ev) => {
-          const s = team.summary(ev.id);
-          const mine = me ? team.team.attendance[ev.id]?.[me.id] : undefined;
-          return (
-            <div key={ev.id} className="evcard">
-              <div className="evhead">
-                <span className={`evkind ${ev.kind}`}>{ev.kind === "match" ? "試合" : "練習"}</span>
-                <span className="evtitle">{ev.title}</span>
-                {isCoach && (
-                  <span className="evacts">
-                    <button onClick={() => setSheet({ type: "event", event: ev })}>✎</button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`「${ev.title}」を削除しますか？`)) team.removeEvent(ev.id);
-                      }}
-                    >
-                      <E n="trash" />
-                    </button>
-                  </span>
-                )}
-              </div>
-              <div className="evmeta">
-                {fmtDate(ev.date)}
-                {fmtTimeRange(ev) ? ` ${fmtTimeRange(ev)}` : ""}
-                {ev.place ? ` ・ ${ev.place}` : ""}
-              </div>
-              {ev.note && <div className="evnote">{ev.note}</div>}
-              {isCoach ? (
-                <div className="evsummary" onClick={() => setSheet({ type: "attendance", eventId: ev.id })}>
-                  <span className="att yes">出席 {s.yes}</span>
-                  <span className="att maybe">未定 {s.maybe}</span>
-                  <span className="att no">欠席 {s.no}</span>
-                  <span className="att none">未回答 {s.none}</span>
-                  <span className="evopen">回答を見る ›</span>
-                </div>
-              ) : (
-                me && <MemberAttRow eventId={ev.id} playerId={me.id} />
-              )}
-            </div>
-          );
-        })
+        upcoming.map((ev) => (
+          <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} />
+        ))
+      )}
+      {past.length > 0 && (
+        <>
+          <button
+            className="dynadd"
+            style={{ margin: "14px 0 10px" }}
+            onClick={() => setShowPast((v) => !v)}
+          >
+            {showPast ? "過去の予定を隠す" : `過去の予定を表示（${past.length}件）`}
+          </button>
+          {showPast &&
+            past.map((ev) => (
+              <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} past />
+            ))}
+        </>
       )}
     </>
+  );
+}
+
+/* 予定1件のカード（出欠タブ用） */
+function EventCard({
+  ev,
+  isCoach,
+  me,
+  setSheet,
+  past = false,
+}: {
+  ev: TeamEvent;
+  isCoach: boolean;
+  me: Player | null;
+  setSheet: (s: SheetState) => void;
+  past?: boolean;
+}) {
+  const team = useTeam();
+  const s = team.summary(ev.id);
+  const mine = me ? team.team.attendance[ev.id]?.[me.id] : undefined;
+  const cat = categoryOf(ev, team.categories);
+  const ongoing = isOngoing(ev, todayStr());
+  return (
+    <div className="evcard" style={past ? { opacity: 0.72 } : undefined}>
+      <div className="evhead">
+        <span className="evkind" style={{ background: cat.color }}>
+          {cat.label}
+        </span>
+        <span className="evtitle">{ev.title}</span>
+        {!isCoach && !past && !mine && <span className="needans">未回答</span>}
+        {isCoach && (
+          <span className="evacts">
+            <button onClick={() => setSheet({ type: "event", event: ev })}>✎</button>
+            <button
+              onClick={() => {
+                if (ev.seriesId) {
+                  setSheet({ type: "eventView", id: ev.id });
+                  return;
+                }
+                if (window.confirm(`「${ev.title}」を削除しますか？`)) team.removeEventOnly(ev.id);
+              }}
+            >
+              <E n="trash" />
+            </button>
+          </span>
+        )}
+      </div>
+      <div className="evmeta">
+        {evWhenText(ev)}
+        {ongoing && <span className="ongoing">開催中</span>}
+        {ev.place ? ` ・ ${ev.place}` : ""}
+      </div>
+      {ev.note && <div className="evnote">{ev.note}</div>}
+      {isCoach ? (
+        <div className="evsummary" onClick={() => setSheet({ type: "attendance", eventId: ev.id })}>
+          <span className="att yes">出席 {s.yes}</span>
+          <span className="att maybe">未定 {s.maybe}</span>
+          <span className="att no">欠席 {s.no}</span>
+          <span className="att none">未回答 {s.none}</span>
+          <span className="evopen">回答を見る ›</span>
+        </div>
+      ) : past ? (
+        me && (
+          <div className="evmeta" style={{ marginTop: 8 }}>
+            あなたの回答: {mine ? `${STATUS_MARK[mine.status]} ${STATUS_LABEL[mine.status]}` : "未回答"}
+            {mine?.comment ? `（${mine.comment}）` : ""}
+          </div>
+        )
+      ) : (
+        me && <MemberAttRow eventId={ev.id} playerId={me.id} />
+      )}
+    </div>
   );
 }
 
@@ -272,6 +663,9 @@ function MemberAttRow({ eventId, playerId }: { eventId: string; playerId: string
           if (cur?.status) team.setAttendance(eventId, playerId, cur.status, reason || undefined);
         }}
       />
+      {!cur?.status && reason.trim() !== "" && (
+        <div className="atthint">○△×のどれかを選ぶと、理由と一緒に保存されます</div>
+      )}
     </>
   );
 }
@@ -280,14 +674,19 @@ function MemberAttRow({ eventId, playerId }: { eventId: string; playerId: string
 function CalendarTab({
   isCoach,
   setSheet,
+  ym,
+  setYm,
+  view,
+  setView,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
+  ym: { y: number; m: number };
+  setYm: (v: { y: number; m: number }) => void;
+  view: "month" | "list";
+  setView: (v: "month" | "list") => void;
 }) {
   const team = useTeam();
-  const now = new Date();
-  const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
-  const [view, setView] = useState<"month" | "list">("month");
 
   const first = new Date(ym.y, ym.m, 1);
   const startWd = first.getDay();
@@ -299,7 +698,8 @@ function CalendarTab({
 
   const dateStr = (d: number) =>
     `${ym.y}-${String(ym.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  const eventsOn = (d: number) => team.team.events.filter((e) => e.date === dateStr(d));
+  const eventsOn = (d: number) =>
+    team.team.events.filter((e) => occursOn(e, dateStr(d))).sort(byStartAsc);
   const today = todayStr();
 
   const shift = (delta: number) => {
@@ -311,6 +711,16 @@ function CalendarTab({
   const monthDays = Array.from({ length: daysInMonth }, (_, i) => i + 1)
     .map((d) => ({ d, ds: dateStr(d), evs: eventsOn(d) }))
     .filter((x) => x.evs.length > 0);
+
+  // その月に登場するカテゴリ（凡例用・最大5個＋「他◯」）
+  const monthCatMap = new Map<string, ReturnType<typeof categoryOf>>();
+  monthDays.forEach(({ evs }) =>
+    evs.forEach((e) => {
+      const c = categoryOf(e, team.categories);
+      if (!monthCatMap.has(c.id)) monthCatMap.set(c.id, c);
+    })
+  );
+  const monthCats = Array.from(monthCatMap.values());
 
   return (
     <div className="cal">
@@ -349,27 +759,57 @@ function CalendarTab({
                 <div
                   key={i}
                   className={`calcell${ds === today ? " today" : ""}`}
-                  onClick={() => setSheet({ type: "day", date: ds })}
+                  onClick={() =>
+                    // 予定が1件だけの日は日別シートを飛ばして直接詳細へ
+                    evs.length === 1
+                      ? setSheet({ type: "eventView", id: evs[0].id })
+                      : setSheet({ type: "day", date: ds })
+                  }
                 >
                   <span className={`caldate${i % 7 === 0 ? " sun" : i % 7 === 6 ? " sat" : ""}`}>{d}</span>
+                  <div className="calevs">
+                    {evs.slice(0, 2).map((e) => {
+                      const cat = categoryOf(e, team.categories);
+                      const isStart = e.date === ds;
+                      const isEnd = eventEndDate(e) === ds;
+                      const corner = isStart && isEnd ? "single" : isStart ? "start" : isEnd ? "end" : "mid";
+                      const showTime = (corner === "start" || corner === "single") && !e.allDay && e.time;
+                      return (
+                        <span
+                          key={e.id}
+                          className={`calev ${corner}`}
+                          style={{ background: cat.color }}
+                        >
+                          {showTime ? `${e.time} ${e.title}` : e.title}
+                        </span>
+                      );
+                    })}
+                    {evs.length > 2 && <span className="calmore">＋{evs.length - 2}件</span>}
+                  </div>
                   <div className="caldots">
                     {evs.slice(0, 3).map((e) => (
-                      <span key={e.id} className={`caldot ${e.kind}`} />
+                      <span
+                        key={e.id}
+                        className="caldot"
+                        style={{ background: categoryOf(e, team.categories).color }}
+                      />
                     ))}
                   </div>
                 </div>
               );
             })}
           </div>
-          <div className="callegend">
-            <span>
-              <i className="caldot practice" /> 練習
-            </span>
-            <span>
-              <i className="caldot match" /> 試合
-            </span>
-            {isCoach && <span className="calhint">日付をタップで予定を追加</span>}
-          </div>
+          {(monthCats.length > 0 || isCoach) && (
+            <div className="callegend">
+              {monthCats.slice(0, 5).map((c) => (
+                <span key={c.id}>
+                  <i className="caldot" style={{ background: c.color }} /> {c.label}
+                </span>
+              ))}
+              {monthCats.length > 5 && <span>他{monthCats.length - 5}</span>}
+              {isCoach && <span className="calhint">日付をタップで予定を追加</span>}
+            </div>
+          )}
         </>
       ) : (
         <div className="agenda">
@@ -385,17 +825,26 @@ function CalendarTab({
                     <span>{WD[wd]}</span>
                   </div>
                   <div className="agevents">
-                    {evs.map((e) => (
-                      <div
-                        key={e.id}
-                        className={`agbar ${e.kind}`}
-                        onClick={() => setSheet({ type: "eventView", id: e.id })}
-                      >
-                        <span className="agkind">{e.kind === "match" ? "試合" : "練習"}</span>
-                        <span className="agtitle">{e.title}</span>
-                        {fmtTimeRange(e) && <span className="agtime">{fmtTimeRange(e)}</span>}
-                      </div>
-                    ))}
+                    {evs.map((e) => {
+                      const timeLabel = isMultiDay(e)
+                        ? `${fmtMD(e.date)}〜${fmtMD(eventEndDate(e))}`
+                        : e.allDay
+                          ? "終日"
+                          : fmtTimeRange(e);
+                      const cat = categoryOf(e, team.categories);
+                      return (
+                        <div
+                          key={e.id}
+                          className={`agbar ${e.kind}`}
+                          style={{ borderLeftColor: cat.color }}
+                          onClick={() => setSheet({ type: "eventView", id: e.id })}
+                        >
+                          <span className="agkind" style={{ background: cat.color }}>{cat.label}</span>
+                          <span className="agtitle">{e.title}</span>
+                          {timeLabel && <span className="agtime">{timeLabel}</span>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -601,7 +1050,13 @@ function MatchesTab({
 }
 
 /* ---------------- 名簿（チーム運営内） ---------------- */
-function RosterTab({ players }: { players: Player[] }) {
+function RosterTab({
+  players,
+  setSheet,
+}: {
+  players: Player[];
+  setSheet: (s: SheetState) => void;
+}) {
   const board = useBoard();
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
@@ -627,7 +1082,7 @@ function RosterTab({ players }: { players: Player[] }) {
             <div
               key={p.id}
               className="prow"
-              onClick={() => board.openSheet({ type: "playerDetail", playerId: p.id })}
+              onClick={() => setSheet({ type: "playerDetail", playerId: p.id })}
             >
               <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
               <div className="meta">
@@ -649,7 +1104,7 @@ function RosterTab({ players }: { players: Player[] }) {
       <button
         className="bigbtn"
         style={{ width: "100%", margin: "8px 0 0" }}
-        onClick={() => board.openSheet({ type: "playerForm" })}
+        onClick={() => setSheet({ type: "playerForm" })}
       >
         ＋ 新規選手を追加
       </button>
@@ -663,11 +1118,13 @@ function SheetHost({
   setSheet,
   players,
   isCoach,
+  me,
 }: {
   sheet: SheetState;
   setSheet: (s: SheetState) => void;
   players: Player[];
   isCoach: boolean;
+  me: Player | null;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -677,13 +1134,41 @@ function SheetHost({
   // event form
   const ev = sheet?.type === "event" ? sheet.event : undefined;
   const evDefaultDate = sheet?.type === "event" ? sheet.date : undefined;
-  const [kind, setKind] = useState<TeamEventKind>(ev?.kind ?? "practice");
+  const initDate = ev?.date ?? evDefaultDate ?? todayStr();
+  const [categoryId, setCategoryId] = useState<string>(
+    ev ? ev.categoryId ?? ev.kind : loadLastEventCategory() ?? "practice"
+  );
   const [title, setTitle] = useState(ev?.title ?? "");
-  const [date, setDate] = useState(ev?.date ?? evDefaultDate ?? todayStr());
+  const [allDay, setAllDay] = useState(ev?.allDay ?? false);
+  const [date, setDate] = useState(initDate);
+  const [endDate, setEndDate] = useState(ev ? eventEndDate(ev) : initDate);
   const [time, setTime] = useState(ev?.time ?? "");
   const [endTime, setEndTime] = useState(ev?.endTime ?? "");
   const [place, setPlace] = useState(ev?.place ?? "");
+  const [address, setAddress] = useState(ev?.address ?? "");
   const [note, setNote] = useState(ev?.note ?? "");
+  // 繰り返し（新規作成時のみ使用）
+  const [freqSel, setFreqSel] = useState<"none" | "weekly" | "biweekly" | "monthly">("none");
+  const [byWeekday, setByWeekday] = useState<number[]>([]);
+  const [until, setUntil] = useState(() => addMonthsStr(initDate, 3));
+  // 編集時の適用範囲（seriesIdありかつdetachedでない場合のみ表示）
+  const [applyScope, setApplyScope] = useState<"only" | "following">("only");
+  const editSeries = !!(ev && ev.seriesId && !ev.detached);
+  const kind: TeamEventKind = categoryId === "match" ? "match" : "practice";
+
+  const onChangeStartDate = (v: string) => {
+    const span = diffDays(date, endDate);
+    setDate(v);
+    const nextEnd = addDays(v, span);
+    setEndDate(nextEnd < v ? v : nextEnd);
+  };
+
+  // カテゴリ管理
+  const [newCatLabel, setNewCatLabel] = useState("");
+  const [newCatColor, setNewCatColor] = useState(CATEGORY_PALETTE[0].color);
+  const [catEditId, setCatEditId] = useState<string | null>(null);
+  const [catEditLabel, setCatEditLabel] = useState("");
+  const [catEditColor, setCatEditColor] = useState("");
 
   // announce
   const [text, setText] = useState("");
@@ -691,8 +1176,9 @@ function SheetHost({
 
   // match form
   const mr = sheet?.type === "match" ? sheet.record : undefined;
-  const [opponent, setOpponent] = useState(mr?.opponent ?? "");
-  const [mdate, setMdate] = useState(mr?.date ?? todayStr());
+  const mpf = sheet?.type === "match" ? sheet.prefill : undefined;
+  const [opponent, setOpponent] = useState(mr?.opponent ?? mpf?.opponent ?? "");
+  const [mdate, setMdate] = useState(mr?.date ?? mpf?.date ?? todayStr());
   // 大会: 登録済みから選択（""=未設定、"__new"=新規追加）
   const [competitionId, setCompetitionId] = useState(mr?.competitionId ?? "");
   const [newCompName, setNewCompName] = useState("");
@@ -705,6 +1191,16 @@ function SheetHost({
   // 大会管理
   const [mgrComp, setMgrComp] = useState("");
 
+  // 選手フォーム
+  const pf = sheet?.type === "playerForm" ? sheet.player : undefined;
+  const [pfName, setPfName] = useState(pf?.name ?? "");
+  const [pfNumber, setPfNumber] = useState(pf?.number != null ? String(pf.number) : "");
+  const [pfPosition, setPfPosition] = useState<Position>(pf?.position ?? ALL_POSITIONS[0]);
+  const [pfHeight, setPfHeight] = useState(pf?.height != null ? String(pf.height) : "");
+  const [pfWeight, setPfWeight] = useState(pf?.weight != null ? String(pf.weight) : "");
+  const [pfFoot, setPfFoot] = useState<"" | DominantFoot>(pf?.dominantFoot ?? "");
+  const [pfEmail, setPfEmail] = useState(pf?.email ?? "");
+
   const firstPid = players[0]?.id ?? "";
 
   return (
@@ -713,38 +1209,161 @@ function SheetHost({
       <Sheet open={sheet?.type === "event"} onClose={close}>
         <h2>{ev ? "予定を編集" : "予定を追加"}</h2>
         <div className="formfield">
-          <label>種別</label>
-          <select value={kind} onChange={(e) => setKind(e.target.value as TeamEventKind)}>
-            <option value="practice">練習</option>
-            <option value="match">試合</option>
-          </select>
+          <label>カテゴリ</label>
+          <div className="catpick">
+            {team.categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                className={`evcatchip${categoryId === c.id ? " on" : ""}`}
+                style={categoryId === c.id ? { borderColor: c.color, color: c.color } : undefined}
+                onClick={() => setCategoryId(c.id)}
+              >
+                <span
+                  style={{
+                    width: 9,
+                    height: 9,
+                    borderRadius: "50%",
+                    background: c.color,
+                    flex: "0 0 auto",
+                    display: "inline-block",
+                  }}
+                />
+                {c.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="evcatchip catmanage"
+              onClick={() => setSheet({ type: "categories" })}
+            >
+              ＋ 管理
+            </button>
+          </div>
         </div>
         <div className="formfield">
           <label>タイトル</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例）通常練習 / 練習試合 vs ○○" />
         </div>
         <div className="formfield">
-          <label>日付</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <label className="daytoggle">
+            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+            <span />
+            終日
+          </label>
         </div>
         <div className="formgrid">
           <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>開始時刻</label>
-            <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            <label>開始日</label>
+            <input type="date" value={date} onChange={(e) => onChangeStartDate(e.target.value)} />
           </div>
-          <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>終了時刻</label>
-            <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-          </div>
+          {!allDay && (
+            <div className="formfield" style={{ flex: 1, margin: 0 }}>
+              <label>開始時刻</label>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </div>
+          )}
         </div>
+        <div className="formgrid">
+          <div className="formfield" style={{ flex: 1, margin: 0 }}>
+            <label>終了日</label>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value < date ? date : e.target.value)}
+            />
+          </div>
+          {!allDay && (
+            <div className="formfield" style={{ flex: 1, margin: 0 }}>
+              <label>終了時刻</label>
+              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+            </div>
+          )}
+        </div>
+        {!ev && (
+          <div className="formfield">
+            <label>繰り返し</label>
+            <select
+              value={freqSel}
+              onChange={(e) => {
+                const v = e.target.value as typeof freqSel;
+                setFreqSel(v);
+                if ((v === "weekly" || v === "biweekly") && byWeekday.length === 0) {
+                  setByWeekday([wdOf(date)]);
+                }
+              }}
+            >
+              <option value="none">繰り返しなし</option>
+              <option value="weekly">毎週</option>
+              <option value="biweekly">隔週</option>
+              <option value="monthly">毎月（同じ日）</option>
+            </select>
+          </div>
+        )}
+        {!ev && (freqSel === "weekly" || freqSel === "biweekly") && (
+          <div className="formfield">
+            <label>曜日</label>
+            <div className="wdpick">
+              {WD.map((w, i) => (
+                <button
+                  key={w}
+                  type="button"
+                  className={`wdchip${byWeekday.includes(i) ? " on" : ""}`}
+                  onClick={() =>
+                    setByWeekday((cur) =>
+                      cur.includes(i)
+                        ? cur.length === 1
+                          ? cur
+                          : cur.filter((x) => x !== i)
+                        : [...cur, i].sort((a, b) => a - b)
+                    )
+                  }
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {!ev && freqSel !== "none" && (
+          <div className="formfield">
+            <label>繰り返し終了日</label>
+            <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} />
+          </div>
+        )}
         <div className="formfield">
           <label>場所</label>
           <input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="例）市営グラウンド" />
         </div>
         <div className="formfield">
+          <label>住所</label>
+          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="地図表示用（任意）" />
+        </div>
+        <div className="formfield">
           <label>メモ</label>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="持ち物・集合など" />
         </div>
+        {editSeries && (
+          <div className="formfield">
+            <label>適用範囲</label>
+            <div className="calviewtoggle">
+              <button
+                type="button"
+                className={applyScope === "only" ? "on" : ""}
+                onClick={() => setApplyScope("only")}
+              >
+                この予定のみ
+              </button>
+              <button
+                type="button"
+                className={applyScope === "following" ? "on" : ""}
+                onClick={() => setApplyScope("following")}
+              >
+                以降すべて
+              </button>
+            </div>
+          </div>
+        )}
         <button
           className="bigbtn"
           onClick={() => {
@@ -752,9 +1371,45 @@ function SheetHost({
               board.toast("タイトルを入力してください");
               return;
             }
-            const data = { kind, title: title.trim(), date, time, endTime, place, note };
-            if (ev) team.updateEvent({ ...ev, ...data });
-            else team.addEvent(data);
+            // 組込みカテゴリ（練習/試合）は categoryId を保存せず kind のフォールバックに任せる
+            const catForSave =
+              categoryId === "practice" || categoryId === "match" ? undefined : categoryId;
+            const finalEndDate = endDate && endDate !== date ? endDate : undefined;
+            const finalAllDay = allDay || undefined;
+            const data = {
+              kind,
+              categoryId: catForSave,
+              title: title.trim(),
+              date,
+              endDate: finalEndDate,
+              allDay: finalAllDay,
+              time: allDay ? undefined : time || undefined,
+              endTime: allDay ? undefined : endTime || undefined,
+              place: place.trim() || undefined,
+              address: address.trim() || undefined,
+              note: note.trim() || undefined,
+            };
+            saveLastEventCategory(categoryId);
+            if (!ev) {
+              let rule: RecurrenceRule | undefined;
+              if (freqSel === "monthly") {
+                rule = { freq: "monthly", interval: 1, until };
+              } else if (freqSel === "weekly" || freqSel === "biweekly") {
+                rule = {
+                  freq: "weekly",
+                  interval: freqSel === "biweekly" ? 2 : 1,
+                  byWeekday: byWeekday.length > 0 ? byWeekday : [wdOf(date)],
+                  until,
+                };
+              }
+              team.addEventWithRecurrence(data, rule);
+            } else if (editSeries && applyScope === "following") {
+              const series = team.team.series?.find((s) => s.id === ev.seriesId);
+              if (series) team.updateSeriesFollowing(ev, data, series.rule);
+              else team.updateEventOnly({ ...ev, ...data });
+            } else {
+              team.updateEventOnly({ ...ev, ...data });
+            }
             close();
           }}
         >
@@ -762,42 +1417,251 @@ function SheetHost({
         </button>
       </Sheet>
 
-      {/* 出欠一覧（スタッフ） */}
-      <Sheet open={sheet?.type === "attendance"} onClose={close}>
-        {sheet?.type === "attendance" && (
-          <>
-            <h2>出欠の回答</h2>
-            <div className="list">
-              {players.length === 0 ? (
-                <div className="empty-msg">選手がいません。</div>
-              ) : (
-                players.map((p) => {
-                  const cur = team.team.attendance[sheet.eventId]?.[p.id];
-                  return (
-                    <div key={p.id} className="attrow">
-                      <div className="attname">
-                        {p.name}
-                        <small>背番号 {p.number ?? "—"}</small>
-                        {cur?.comment && <small className="attreasonshow">「{cur.comment}」</small>}
-                      </div>
-                      <div className="attpick">
-                        {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
-                          <button
-                            key={st}
-                            className={`attbtn ${st}${cur?.status === st ? " on" : ""}`}
-                            onClick={() => team.setAttendance(sheet.eventId, p.id, st, cur?.comment)}
-                          >
-                            {STATUS_MARK[st]}
-                          </button>
-                        ))}
-                      </div>
+      {/* カテゴリ管理 */}
+      <Sheet open={sheet?.type === "categories"} onClose={close}>
+        <h2>カテゴリ管理</h2>
+        <div className="list">
+          {team.categories.map((c) => (
+            <div key={c.id} className="catrow">
+              {catEditId === c.id ? (
+                <div style={{ flex: 1 }}>
+                  {c.builtin ? (
+                    <div className="cmpnm" style={{ marginBottom: 8 }}>
+                      {c.label}
                     </div>
-                  );
-                })
+                  ) : (
+                    <input
+                      value={catEditLabel}
+                      onChange={(e) => setCatEditLabel(e.target.value)}
+                      style={{ marginBottom: 8 }}
+                      autoFocus
+                    />
+                  )}
+                  <div className="swatches">
+                    {CATEGORY_PALETTE.map((p) => (
+                      <button
+                        key={p.color}
+                        type="button"
+                        className={`swatch${catEditColor === p.color ? " on" : ""}`}
+                        style={{ background: p.color }}
+                        aria-label={p.name}
+                        onClick={() => setCatEditColor(p.color)}
+                      />
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button
+                      className="bigbtn"
+                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                      onClick={() => {
+                        if (!c.builtin && !catEditLabel.trim()) {
+                          board.toast("名前を入力してください");
+                          return;
+                        }
+                        team.updateCategory({
+                          id: c.id,
+                          label: c.builtin ? c.label : catEditLabel.trim(),
+                          color: catEditColor,
+                        });
+                        setCatEditId(null);
+                      }}
+                    >
+                      保存する
+                    </button>
+                    <button
+                      className="bigbtn ghost"
+                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                      onClick={() => setCatEditId(null)}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: "50%",
+                      background: c.color,
+                      flex: "0 0 auto",
+                      display: "inline-block",
+                    }}
+                  />
+                  <div className="cmpinfo">
+                    <div className="cmpnm">{c.label}</div>
+                    {c.builtin && <div className="cmpsub">名前固定</div>}
+                  </div>
+                  <button
+                    className="msgdel"
+                    onClick={() => {
+                      setCatEditId(c.id);
+                      setCatEditLabel(c.label);
+                      setCatEditColor(c.color);
+                    }}
+                  >
+                    ✎
+                  </button>
+                  {!c.builtin && (
+                    <button
+                      className="msgdel"
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `「${c.label}」を削除しますか？（予定は残ります。カテゴリなしになります）`
+                          )
+                        )
+                          team.removeCategory(c.id);
+                      }}
+                    >
+                      <E n="trash" />
+                    </button>
+                  )}
+                </>
               )}
             </div>
-          </>
-        )}
+          ))}
+        </div>
+        <div className="formfield">
+          <label>新しいカテゴリを追加</label>
+          <input
+            value={newCatLabel}
+            onChange={(e) => setNewCatLabel(e.target.value)}
+            placeholder="例）遠征・合宿 / 保護者会"
+          />
+          <div className="swatches">
+            {CATEGORY_PALETTE.map((p) => (
+              <button
+                key={p.color}
+                type="button"
+                className={`swatch${newCatColor === p.color ? " on" : ""}`}
+                style={{ background: p.color }}
+                aria-label={p.name}
+                onClick={() => setNewCatColor(p.color)}
+              />
+            ))}
+          </div>
+        </div>
+        <button
+          className="bigbtn"
+          onClick={() => {
+            if (!newCatLabel.trim()) {
+              board.toast("名前を入力してください");
+              return;
+            }
+            team.addCategory(newCatLabel, newCatColor);
+            setNewCatLabel("");
+            setNewCatColor(CATEGORY_PALETTE[0].color);
+          }}
+        >
+          追加する
+        </button>
+      </Sheet>
+
+      {/* 出欠一覧（スタッフ）: 未回答→欠席→未定→出席の順にグルーピング */}
+      <Sheet open={sheet?.type === "attendance"} onClose={close}>
+        {sheet?.type === "attendance" &&
+          (() => {
+            const ev = team.team.events.find((e) => e.id === sheet.eventId);
+            const att = team.team.attendance[sheet.eventId] ?? {};
+            const s = team.summary(sheet.eventId);
+            const order: { key: AttendanceStatus | "none"; label: string }[] = [
+              { key: "none", label: "未回答" },
+              { key: "no", label: "欠席" },
+              { key: "maybe", label: "未定" },
+              { key: "yes", label: "出席" },
+            ];
+            const groups = order
+              .map((g) => ({
+                ...g,
+                list: players.filter((p) => (att[p.id]?.status ?? "none") === g.key),
+              }))
+              .filter((g) => g.list.length > 0);
+            const noAns = players.filter((p) => !att[p.id]);
+            const copyNoAns = async () => {
+              const txt = `【出欠回答のお願い】${ev ? `${ev.title}（${fmtDate(ev.date)}）` : ""}\n未回答: ${noAns
+                .map((p) => p.name)
+                .join("、")}`;
+              let ok = false;
+              try {
+                await navigator.clipboard.writeText(txt);
+                ok = true;
+              } catch {
+                // clipboard API が使えない環境向けフォールバック
+                const ta = document.createElement("textarea");
+                ta.value = txt;
+                ta.style.position = "fixed";
+                ta.style.opacity = "0";
+                document.body.appendChild(ta);
+                ta.select();
+                try {
+                  ok = document.execCommand("copy");
+                } catch {
+                  ok = false;
+                }
+                ta.remove();
+              }
+              board.toast(ok ? "未回答者リストをコピーしました" : "コピーできませんでした");
+            };
+            return (
+              <>
+                <h2>出欠の回答</h2>
+                {ev && (
+                  <div className="mvmeta" style={{ textAlign: "left", margin: "0 16px 10px" }}>
+                    {ev.title} ・ {fmtDate(ev.date)}
+                  </div>
+                )}
+                <div className="attsummary">
+                  <span className="att yes">出席 {s.yes}</span>
+                  <span className="att maybe">未定 {s.maybe}</span>
+                  <span className="att no">欠席 {s.no}</span>
+                  <span className="att none">未回答 {s.none}</span>
+                </div>
+                {noAns.length > 0 && (
+                  <button className="bigbtn ghost" style={{ margin: "0 16px 4px" }} onClick={copyNoAns}>
+                    未回答 {noAns.length}人の名前をコピー（催促用）
+                  </button>
+                )}
+                <div className="list">
+                  {players.length === 0 ? (
+                    <div className="empty-msg">選手がいません。</div>
+                  ) : (
+                    groups.map((g) => (
+                      <div key={g.key}>
+                        <div className={`attgh ${g.key}`}>
+                          {g.label} {g.list.length}人
+                        </div>
+                        {g.list.map((p) => {
+                          const cur = att[p.id];
+                          return (
+                            <div key={p.id} className="attrow">
+                              <div className="attname">
+                                {p.name}
+                                <small>背番号 {p.number ?? "—"}</small>
+                                {cur?.comment && <small className="attreasonshow">「{cur.comment}」</small>}
+                              </div>
+                              <div className="attpick">
+                                {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
+                                  <button
+                                    key={st}
+                                    className={`attbtn ${st}${cur?.status === st ? " on" : ""}`}
+                                    onClick={() => team.setAttendance(sheet.eventId, p.id, st, cur?.comment)}
+                                  >
+                                    {STATUS_MARK[st]}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            );
+          })()}
       </Sheet>
 
       {/* 連絡フォーム */}
@@ -844,35 +1708,65 @@ function SheetHost({
         </button>
       </Sheet>
 
+      {/* 連絡の一覧 */}
+      <Sheet open={sheet?.type === "annList"} onClose={close}>
+        <h2>連絡</h2>
+        {isCoach && (
+          <button
+            className="dynadd"
+            style={{ width: "calc(100% - 32px)", margin: "0 16px 8px" }}
+            onClick={() => setSheet({ type: "announce" })}
+          >
+            ＋ 連絡を送る
+          </button>
+        )}
+        <div className="list">
+          {team.team.announcements.length === 0 ? (
+            <div className="empty-msg">連絡はまだありません。</div>
+          ) : (
+            team.team.announcements.map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} />)
+          )}
+        </div>
+      </Sheet>
+
       {/* 日別（カレンダー） */}
       <Sheet open={sheet?.type === "day"} onClose={close}>
         {sheet?.type === "day" && (
           <>
             <h2>{fmtDate(sheet.date)} の予定</h2>
             <div className="list">
-              {team.team.events.filter((e) => e.date === sheet.date).length === 0 ? (
+              {team.team.events.filter((e) => occursOn(e, sheet.date)).length === 0 ? (
                 <div className="empty-msg">この日に予定はありません。</div>
               ) : (
                 team.team.events
-                  .filter((e) => e.date === sheet.date)
-                  .map((e) => (
-                    <div
-                      key={e.id}
-                      className="evcard"
-                      style={{ margin: "0 12px 8px", cursor: "pointer" }}
-                      onClick={() => setSheet({ type: "eventView", id: e.id })}
-                    >
-                      <div className="evhead">
-                        <span className={`evkind ${e.kind}`}>{e.kind === "match" ? "試合" : "練習"}</span>
-                        <span className="evtitle">{e.title}</span>
-                        <span className="evopen" style={{ marginLeft: "auto" }}>詳細 ›</span>
+                  .filter((e) => occursOn(e, sheet.date))
+                  .sort(byStartAsc)
+                  .map((e) => {
+                    const cat = categoryOf(e, team.categories);
+                    const timeLabel = isMultiDay(e)
+                      ? `${fmtMD(e.date)}〜${fmtMD(eventEndDate(e))}`
+                      : e.allDay
+                        ? "終日"
+                        : fmtTimeRange(e);
+                    return (
+                      <div
+                        key={e.id}
+                        className="evcard"
+                        style={{ margin: "0 12px 8px", cursor: "pointer" }}
+                        onClick={() => setSheet({ type: "eventView", id: e.id })}
+                      >
+                        <div className="evhead">
+                          <span className="evkind" style={{ background: cat.color }}>{cat.label}</span>
+                          <span className="evtitle">{e.title}</span>
+                          <span className="evopen" style={{ marginLeft: "auto" }}>詳細 ›</span>
+                        </div>
+                        <div className="evmeta">
+                          {timeLabel ? `${timeLabel} ` : ""}
+                          {e.place ?? ""}
+                        </div>
                       </div>
-                      <div className="evmeta">
-                        {fmtTimeRange(e) ? `${fmtTimeRange(e)} ` : ""}
-                        {e.place ?? ""}
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
               )}
             </div>
             {isCoach && (
@@ -891,20 +1785,58 @@ function SheetHost({
             const e = team.team.events.find((x) => x.id === sheet.id);
             if (!e) return null;
             const s = team.summary(e.id);
+            const cat = categoryOf(e, team.categories);
+            const multiDay = isMultiDay(e);
+            const ongoing = isOngoing(e, todayStr());
+            const series = e.seriesId ? team.team.series?.find((x) => x.id === e.seriesId) : undefined;
+            const mapQuery = e.address || e.place || "";
+            let whenText: string;
+            if (multiDay) {
+              whenText = `${fmtDate(e.date)}〜${fmtDate(eventEndDate(e))}`;
+            } else if (e.allDay) {
+              whenText = `${fmtDate(e.date)} 終日`;
+            } else {
+              whenText = `${fmtDate(e.date)}${fmtTimeRange(e) ? ` ${fmtTimeRange(e)}` : ""}`;
+            }
             return (
               <>
                 <h2>
-                  {e.title} <span>{e.kind === "match" ? "試合" : "練習"}</span>
+                  {e.title}
+                  <span style={{ background: cat.color, color: "#ffffff" }}>{cat.label}</span>
                 </h2>
                 <div className="detail">
                   <div className="dsec">
                     <div className="dline">
-                      <E n="calendar" /> {fmtDate(e.date)}
-                      {fmtTimeRange(e) ? ` ${fmtTimeRange(e)}` : ""}
+                      <E n="calendar" /> {whenText}
+                      {ongoing && <span className="ongoing">開催中</span>}
                     </div>
-                    {e.place && <div className="dline"><E n="pin" /> {e.place}</div>}
-                    {e.note && <div className="dline"><E n="note" /> {e.note}</div>}
+                    {series && (
+                      <div className="dline" style={{ fontSize: 12, color: "var(--mut)" }}>
+                        <E n="repeat" /> 繰り返し予定（{ruleDesc(series.rule)}）
+                      </div>
+                    )}
+                    {e.place && (
+                      <div className="dline">
+                        <E n="pin" /> {e.place}
+                      </div>
+                    )}
+                    {e.address && (
+                      <div className="dline" style={{ fontSize: 12, color: "var(--mut)" }}>
+                        {e.address}
+                      </div>
+                    )}
+                    {e.note && (
+                      <div className="dline">
+                        <E n="note" /> {e.note}
+                      </div>
+                    )}
                   </div>
+                  {!isCoach && me && (
+                    <div className="dsec">
+                      <div className="dsec-h">あなたの出欠</div>
+                      <MemberAttRow eventId={e.id} playerId={me.id} />
+                    </div>
+                  )}
                   {isCoach && (
                     <div className="dsec">
                       <div className="dsec-h">出欠状況</div>
@@ -920,23 +1852,90 @@ function SheetHost({
                     </div>
                   )}
                 </div>
+                {mapQuery && (
+                  <div className="mapframe">
+                    <iframe
+                      src={gmapsEmbedUrl(mapQuery)}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      style={{ border: 0, width: "100%", height: 220, borderRadius: 12 }}
+                    />
+                  </div>
+                )}
+                {mapQuery && (
+                  <div className="maplinks">
+                    <a href={gmapsSearchUrl(mapQuery)} target="_blank" rel="noopener noreferrer">
+                      地図で開く
+                    </a>
+                    <a href={gmapsDirUrl(mapQuery)} target="_blank" rel="noopener noreferrer">
+                      経路案内
+                    </a>
+                  </div>
+                )}
                 {isCoach && (
                   <>
-                    <button className="bigbtn" onClick={() => setSheet({ type: "event", event: e })}>
+                    {e.kind === "match" && (
+                      <button
+                        className="bigbtn"
+                        onClick={() =>
+                          setSheet({
+                            type: "match",
+                            prefill: { date: e.date, opponent: opponentFromTitle(e.title) },
+                          })
+                        }
+                      >
+                        この試合の結果を記録
+                      </button>
+                    )}
+                    <button
+                      className={`bigbtn${e.kind === "match" ? " ghost" : ""}`}
+                      onClick={() => setSheet({ type: "event", event: e })}
+                    >
                       編集する
                     </button>
-                    <button
-                      className="bigbtn ghost"
-                      style={{ color: "var(--red)" }}
-                      onClick={() => {
-                        if (window.confirm(`「${e.title}」を削除しますか？`)) {
-                          team.removeEvent(e.id);
-                          close();
-                        }
-                      }}
-                    >
-                      削除する
-                    </button>
+                    {e.seriesId ? (
+                      <>
+                        <button
+                          className="bigbtn ghost"
+                          style={{ color: "var(--red)" }}
+                          onClick={() => {
+                            if (window.confirm(`「${e.title}」を削除しますか？（この回のみ）`)) {
+                              team.removeEventOnly(e.id);
+                              close();
+                            }
+                          }}
+                        >
+                          この予定のみ削除
+                        </button>
+                        <button
+                          className="bigbtn ghost"
+                          style={{ color: "var(--red)" }}
+                          onClick={() => {
+                            if (
+                              window.confirm(`「${e.title}」以降の繰り返し予定をすべて削除しますか？`)
+                            ) {
+                              team.removeSeriesFollowing(e);
+                              close();
+                            }
+                          }}
+                        >
+                          以降すべて削除
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="bigbtn ghost"
+                        style={{ color: "var(--red)" }}
+                        onClick={() => {
+                          if (window.confirm(`「${e.title}」を削除しますか？`)) {
+                            team.removeEventOnly(e.id);
+                            close();
+                          }
+                        }}
+                      >
+                        削除する
+                      </button>
+                    )}
                   </>
                 )}
               </>
@@ -1235,6 +2234,188 @@ function SheetHost({
               </>
             );
           })()}
+      </Sheet>
+
+      {/* 選手プロフィール */}
+      <Sheet open={sheet?.type === "playerDetail"} onClose={close}>
+        {sheet?.type === "playerDetail" &&
+          (() => {
+            const p = players.find((x) => x.id === sheet.playerId);
+            if (!p) return null;
+            const isCaptain = board.state.captain === p.id;
+            return (
+              <>
+                <h2>
+                  {p.name}
+                  <span>{p.position}</span>
+                </h2>
+                <div className="detail">
+                  <div className="dsec">
+                    <div className="dsec-h">基本情報</div>
+                    <div className="dline">背番号 {p.number ?? "—"}</div>
+                    <div className="dline">ポジション {p.position}</div>
+                    <div className="dline">利き足 {footLabel(p.dominantFoot)}</div>
+                    {p.height != null && <div className="dline">身長 {p.height}cm</div>}
+                    {p.weight != null && <div className="dline">体重 {p.weight}kg</div>}
+                    {p.email && <div className="dline">{p.email}</div>}
+                    {isCaptain && <div className="dline">キャプテン (C)</div>}
+                  </div>
+                  {p.injuries && p.injuries.length > 0 && (
+                    <div className="dsec">
+                      <div className="dsec-h">怪我の記録</div>
+                      {p.injuries.map((inj) => (
+                        <div key={inj.id} className="dline">
+                          {fmtDate(inj.date)} {inj.area} {INJURY_STATUS_LABEL[inj.status]}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {p.fitness && p.fitness.length > 0 && (
+                    <div className="dsec">
+                      <div className="dsec-h">体力測定</div>
+                      {p.fitness.map((f) => (
+                        <div key={f.id} className="dline">
+                          {f.name} {f.value}（{fmtDate(f.date)}）
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {isCoach && (
+                  <>
+                    <button className="bigbtn" onClick={() => setSheet({ type: "playerForm", player: p })}>
+                      編集する
+                    </button>
+                    <button
+                      className="bigbtn ghost"
+                      onClick={() => {
+                        board.setCaptain(isCaptain ? null : p.id);
+                      }}
+                    >
+                      {isCaptain ? "キャプテンを解除" : "キャプテンにする"}
+                    </button>
+                    <button
+                      className="bigbtn ghost"
+                      style={{ color: "var(--red)" }}
+                      onClick={() => {
+                        if (window.confirm(`${p.name}を名簿から削除しますか？出欠の回答も削除されます`)) {
+                          board.deletePlayer(p.id);
+                          team.removePlayerAnswers(p.id);
+                          if (team.viewer.memberPlayerId === p.id) team.setViewer("coach", null);
+                          close();
+                        }
+                      }}
+                    >
+                      削除する
+                    </button>
+                  </>
+                )}
+              </>
+            );
+          })()}
+      </Sheet>
+
+      {/* 選手フォーム（新規追加・編集） */}
+      <Sheet open={sheet?.type === "playerForm"} onClose={close}>
+        <h2>{pf ? "選手を編集" : "選手を追加"}</h2>
+        <div className="formfield">
+          <label>名前</label>
+          <input value={pfName} onChange={(e) => setPfName(e.target.value)} placeholder="例）山田 太郎" />
+        </div>
+        <div className="formrow">
+          <div className="formfield">
+            <label>背番号</label>
+            <input
+              type="number"
+              value={pfNumber}
+              onChange={(e) => setPfNumber(e.target.value)}
+              placeholder="未設定可"
+            />
+          </div>
+          <div className="formfield">
+            <label>ポジション</label>
+            <select value={pfPosition} onChange={(e) => setPfPosition(e.target.value as Position)}>
+              {ALL_POSITIONS.map((pos) => (
+                <option key={pos} value={pos}>
+                  {pos}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="formrow">
+          <div className="formfield">
+            <label>身長（cm）</label>
+            <input
+              type="number"
+              value={pfHeight}
+              onChange={(e) => setPfHeight(e.target.value)}
+              placeholder="未設定可"
+            />
+          </div>
+          <div className="formfield">
+            <label>体重（kg）</label>
+            <input
+              type="number"
+              value={pfWeight}
+              onChange={(e) => setPfWeight(e.target.value)}
+              placeholder="未設定可"
+            />
+          </div>
+        </div>
+        <div className="formfield">
+          <label>利き足</label>
+          <select value={pfFoot} onChange={(e) => setPfFoot(e.target.value as "" | DominantFoot)}>
+            <option value="">未設定</option>
+            <option value="right">右足</option>
+            <option value="left">左足</option>
+            <option value="both">両足</option>
+          </select>
+        </div>
+        <div className="formfield">
+          <label>メール（任意）</label>
+          <input value={pfEmail} onChange={(e) => setPfEmail(e.target.value)} placeholder="ログイン用メール" />
+        </div>
+        <button
+          className="bigbtn"
+          onClick={() => {
+            const nm = pfName.trim();
+            if (!nm) {
+              board.toast("名前を入力してください");
+              return;
+            }
+            const number = pfNumber.trim() === "" ? null : parseInt(pfNumber, 10);
+            const height = pfHeight.trim() === "" ? undefined : parseFloat(pfHeight);
+            const weight = pfWeight.trim() === "" ? undefined : parseFloat(pfWeight);
+            const dominantFoot = pfFoot === "" ? undefined : pfFoot;
+            const email = pfEmail.trim() || undefined;
+            if (pf) {
+              board.updatePlayer({
+                ...pf,
+                name: nm,
+                number,
+                position: pfPosition,
+                height,
+                weight,
+                dominantFoot,
+                email,
+              });
+            } else {
+              board.addPlayer({
+                name: nm,
+                number,
+                position: pfPosition,
+                height,
+                weight,
+                dominantFoot,
+                email,
+              });
+            }
+            close();
+          }}
+        >
+          保存する
+        </button>
       </Sheet>
 
     </>

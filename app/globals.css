@@ -2157,7 +2157,7 @@ header {
   background: var(--blue);
 }
 .evkind.match {
-  background: var(--orange);
+  background: var(--match);
 }
 .evtitle {
   font-weight: 800;
@@ -2431,7 +2431,7 @@ header {
   background: var(--blue);
 }
 .caldot.match {
-  background: var(--orange);
+  background: var(--match);
 }
 /* 凡例の丸は本文サイズに合わせて少し小さく */
 .callegend .caldot {
@@ -3546,7 +3546,7 @@ header {
   cursor: pointer;
 }
 .agbar.practice { border-left-color: var(--blue); }
-.agbar.match { border-left-color: var(--orange); }
+.agbar.match { border-left-color: var(--match); }
 .agkind {
   flex: 0 0 auto;
   font-size: 10px;
@@ -3556,7 +3556,7 @@ header {
   color: #ffffff;
 }
 .agbar.practice .agkind { background: var(--blue); }
-.agbar.match .agkind { background: var(--orange); }
+.agbar.match .agkind { background: var(--match); }
 .agtitle {
   flex: 1;
   min-width: 0;
@@ -6450,6 +6450,330 @@ header {
     box-shadow var(--dur-s) var(--ease-standard),
     opacity var(--dur-s) var(--ease-standard);
 }
+
+/* ============================================================
+   チーム運営 改修：ホームタブ / 出欠グルーピング / カレンダー強化
+   ============================================================ */
+/* 試合の識別色（練習との区別専用・他用途に使わない）。チーム運営画面（.teamapp）専用スコープ */
+.teamapp {
+  --match: #d9731f;
+}
+/* ホームのセクション見出し */
+.sech {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--mut);
+  margin: 18px 2px 8px;
+}
+.seclink {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--lime);
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0;
+}
+/* 次の予定カードの日時（大きく） */
+.homewhen {
+  font-family: "Bebas Neue";
+  font-size: 26px;
+  letter-spacing: 1px;
+  margin-top: 8px;
+}
+/* 未回答アラート（選手・保護者） */
+.alertcard {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fbe6ea;
+  border: 1px solid rgba(214, 50, 75, 0.45);
+  color: var(--red);
+  border-radius: 13px;
+  padding: 12px 13px;
+  font-size: 13px;
+  font-weight: 800;
+  margin: 12px 0 2px;
+  cursor: pointer;
+}
+.alertcard .seclink {
+  color: var(--red);
+}
+/* スタッフ用クイック操作（ホーム上部） */
+.quickrow {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 2px;
+}
+.quickrow .bigbtn {
+  flex: 1;
+  width: auto;
+  margin: 0;
+  padding: 13px;
+  font-size: 18px;
+}
+/* 未回答バッジ（選手ビューの予定カード） */
+.needans {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--red);
+  border: 1px solid rgba(214, 50, 75, 0.45);
+  background: #fbe6ea;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+/* 理由入力のヒント（ステータス未選択時） */
+.atthint {
+  font-size: 11px;
+  color: var(--red);
+  margin-top: 5px;
+}
+/* 出欠回答シート：サマリー・グループ見出し */
+.attsummary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 16px 10px;
+}
+.attgh {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin: 14px 6px 2px;
+}
+.attgh.none { color: var(--mut); }
+.attgh.no { color: var(--red); }
+.attgh.maybe { color: var(--gold); }
+.attgh.yes { color: #0f6f3d; }
+/* カレンダー：広い画面ではセル内に予定タイトルを表示 */
+.calevs {
+  display: none;
+}
+@media (min-width: 700px) {
+  .teamapp .calcell {
+    aspect-ratio: auto;
+    min-height: 86px;
+    align-items: stretch;
+  }
+  .teamapp .calcell .caldate {
+    text-align: left;
+    padding-left: 2px;
+  }
+  .teamapp .caldots {
+    display: none;
+  }
+  .teamapp .calevs {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 4px;
+    width: 100%;
+    overflow: hidden;
+  }
+  .calev {
+    font-size: 11px;
+    font-weight: 700;
+    color: #ffffff;
+    border-radius: 6px;
+    padding: 2px 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .calev.practice { background: var(--blue); }
+  .calev.match { background: var(--match); }
+  .calmore {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--mut);
+    padding: 0 6px;
+  }
+}
+
+/* ============================================================
+   カレンダー機能拡張：予定フォーム／詳細シート／カテゴリ管理
+   ============================================================ */
+/* 終日トグル（チェックボックスをスイッチ風に） */
+.formfield label.daytoggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  margin: 0;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+.formfield label.daytoggle input {
+  display: none;
+}
+.formfield label.daytoggle > span {
+  display: inline-block;
+  position: relative;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 27px;
+  border-radius: 999px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  transition: background 0.15s, border-color 0.15s;
+}
+.formfield label.daytoggle > span::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.formfield label.daytoggle input:checked + span {
+  background: var(--lime);
+  border-color: var(--lime);
+}
+.formfield label.daytoggle input:checked + span::after {
+  transform: translateX(17px);
+}
+
+/* カテゴリチップ（予定フォーム・横スクロール） */
+.catpick {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 4px;
+  -webkit-overflow-scrolling: touch;
+}
+.evcatchip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.evcatchip.on {
+  border-width: 1.5px;
+  background: var(--panel);
+}
+.evcatchip.catmanage {
+  color: var(--lime-dim);
+  border-style: dashed;
+}
+
+/* パレットスウォッチ（カテゴリの色選択） */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+.swatch {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.swatch.on {
+  border-color: var(--ink);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+
+/* 曜日選択チップ（繰り返し設定） */
+.wdpick {
+  display: flex;
+  gap: 6px;
+}
+.wdchip {
+  flex: 1;
+  padding: 8px 0;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+}
+.wdchip.on {
+  border-color: var(--lime);
+  background: var(--lime);
+  color: #ffffff;
+}
+
+/* 詳細シート：埋め込み地図・リンクボタン */
+.mapframe {
+  margin: 0 16px 12px;
+}
+.maplinks {
+  display: flex;
+  gap: 8px;
+  margin: 0 16px 14px;
+}
+.maplinks a {
+  flex: 1;
+  text-align: center;
+  padding: 10px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* 開催中バッジ（複数日予定の詳細・日時行） */
+.ongoing {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #0f6f3d;
+  border: 1px solid rgba(15, 111, 61, 0.45);
+  background: #e3f5ea;
+  padding: 3px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+/* カテゴリ管理シートの行 */
+.catrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel2);
+  margin-bottom: 8px;
+}
+
+/* 複数日予定の月表示チップ：角の丸めで日をまたぐ連続感を出す（帯スパンはしない） */
+.calev.single { border-radius: 6px; }
+.calev.start { border-radius: 6px 0 0 6px; }
+.calev.mid { border-radius: 0; }
+.calev.end { border-radius: 0 6px 6px 0; }
 
 /* ============================================================
    PC (min-width: 1024px) レイアウト群

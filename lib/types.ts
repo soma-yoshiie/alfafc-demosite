@@ -256,6 +256,30 @@ export interface SavedDrill extends DrillDoc {
 
 export type TeamEventKind = "practice" | "match";
 
+/* ===== イベントカテゴリ（色分け） ===== */
+export interface EventCategory {
+  id: string; // 組込みは "practice" / "match"（kindと同じ文字列にする）
+  label: string;
+  color: string; // HEX。プリセットパレットの値のみ
+  builtin?: boolean; // true = 削除・改名不可（practice/match）
+}
+
+/* ===== 繰り返しルール ===== */
+export type RecurrenceFreq = "weekly" | "monthly";
+export interface RecurrenceRule {
+  freq: RecurrenceFreq;
+  interval: 1 | 2; // 1=毎週/毎月, 2=隔週（monthlyは常に1）
+  byWeekday?: number[]; // weekly時 0=日..6=土。省略時は開始日の曜日
+  until: string; // YYYY-MM-DD（含む）。必須
+}
+
+/* ===== シリーズ（繰り返しの生成元） ===== */
+export interface EventSeries {
+  id: string;
+  rule: RecurrenceRule;
+  createdAt: number;
+}
+
 export interface TeamEvent {
   id: string;
   kind: TeamEventKind;
@@ -268,6 +292,18 @@ export interface TeamEvent {
   endTime?: string;
   place?: string;
   note?: string;
+  /** 終了日 YYYY-MM-DD。省略=単日（date と同じ） */
+  endDate?: string;
+  /** 終日。trueのとき time/endTime は使わない */
+  allDay?: boolean;
+  /** 省略時は kind にフォールバック */
+  categoryId?: string;
+  /** 住所（地図用）。place（会場名）と併存 */
+  address?: string;
+  /** 繰り返しの束ね。省略=単発 */
+  seriesId?: string;
+  /** この回だけ手動編集済み → シリーズ再生成から保護 */
+  detached?: boolean;
 }
 
 export type AttendanceStatus = "yes" | "maybe" | "no";
@@ -674,6 +710,10 @@ export interface TeamData {
   matches: MatchRecord[];
   /** 登録した大会・カップ戦 */
   competitions: Competition[];
+  /** カスタムイベントカテゴリ（組込みの練習/試合は含まない） */
+  categories?: EventCategory[];
+  /** 繰り返し予定のシリーズ（ルール保持） */
+  series?: EventSeries[];
 }
 
 /** デモ用の閲覧者ロール。coach=管理 / member=選手・保護者 */
