@@ -33,6 +33,7 @@ import {
   occursOn,
 } from "@/lib/calendarUtils";
 import { loadLastEventCategory, saveLastEventCategory } from "@/lib/storage";
+import { localDateStr } from "@/lib/dates";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
@@ -46,7 +47,8 @@ function fmtDate(s: string): string {
   return `${m}/${d}(${WD[dt.getDay()]})`;
 }
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  // toISOString(UTC基準)だとJSTの0〜9時に「今日」が前日にズレる(lib/dates.ts参照)
+  return localDateStr();
 }
 function fmtTimeRange(ev: { time?: string; endTime?: string }): string {
   if (ev.time && ev.endTime) return `${ev.time}〜${ev.endTime}`;
