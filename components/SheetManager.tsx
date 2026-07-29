@@ -13,6 +13,8 @@ import type {
 } from "@/lib/types";
 import { INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER } from "@/lib/types";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
+import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
+import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
 import { loadTeam } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
@@ -194,7 +196,7 @@ function SlotMenu({ slot }: { slot: number }) {
           className="mitem"
           onClick={() => board.openSheet({ type: "assign", slot })}
         >
-          <div className="mi">⇄</div> 選手を入れ替える
+          <div className="mi"><E n="swap" /></div> 選手を入れ替える
         </div>
         <div
           className="mitem"
@@ -204,13 +206,13 @@ function SlotMenu({ slot }: { slot: number }) {
             board.toast(isCapt ? "キャプテンを解除しました" : `${player.name} をキャプテンに設定`);
           }}
         >
-          <div className="mi">©</div> {isCapt ? "キャプテンを解除" : "キャプテンに設定"}
+          <div className="mi"><E n="captain" /></div> {isCapt ? "キャプテンを解除" : "キャプテンに設定"}
         </div>
         <div
           className="mitem"
           onClick={() => board.openSheet({ type: "playerDetail", playerId: player.id })}
         >
-          <div className="mi">✎</div> 選手プロフィールを開く
+          <div className="mi"><E n="pencil" /></div> 選手プロフィールを開く
         </div>
         <div
           className="mitem danger"
@@ -220,7 +222,65 @@ function SlotMenu({ slot }: { slot: number }) {
             board.toast(`${player.name} をスタメンから外しました`);
           }}
         >
-          <div className="mi">↧</div> スタメンから外す（ベンチへ）
+          <div className="mi"><E n="benchout" /></div> スタメンから外す（ベンチへ）
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ---------------- Opponent token menu ---------------- */
+function OppMenu({ index }: { index: number }) {
+  const board = useBoard();
+  const o = (board.state.opponents ?? [])[index];
+  const [label, setLabel] = useState(o?.label ?? "");
+  if (!o) return null;
+  const dirty = label.trim() !== o.label;
+  return (
+    <>
+      <h2>
+        相手トークン <span>{o.label}</span>
+      </h2>
+      <div className="rolememo">
+        <label>番号・ラベル</label>
+        <input
+          className="search"
+          value={label}
+          maxLength={3}
+          onChange={(e) => setLabel(e.target.value)}
+          placeholder="例）9"
+        />
+        <button
+          className={`rmsave${dirty ? " on" : ""}`}
+          disabled={!dirty}
+          onClick={() => {
+            board.updateOpponentLabel(index, label.trim() || o.label);
+            board.toast("ラベルを変更しました");
+            board.closeSheet();
+          }}
+        >
+          {dirty ? "変更を保存" : "保存済み"}
+        </button>
+      </div>
+      <div className="menu">
+        <div
+          className="mitem"
+          onClick={() => {
+            board.addOpponent();
+            board.closeSheet();
+          }}
+        >
+          <div className="mi">＋</div> 相手トークンを追加
+        </div>
+        <div
+          className="mitem danger"
+          onClick={() => {
+            board.deleteOpponent(index);
+            board.closeSheet();
+            board.toast("相手トークンを削除しました");
+          }}
+        >
+          <div className="mi">×</div> このトークンを削除
         </div>
       </div>
     </>
@@ -501,7 +561,7 @@ function PlayerDetail({ playerId }: { playerId: string }) {
                   <div className="injarea">{f.name}：<b style={{ color: "var(--lime)" }}>{f.value}</b></div>
                   <div className="injmeta">{f.date}</div>
                 </div>
-                <button className="injbtn" onClick={() => board.openSheet({ type: "fitness", playerId, fitnessId: f.id })}>✎</button>
+                <button className="injbtn" onClick={() => board.openSheet({ type: "fitness", playerId, fitnessId: f.id })}><E n="pencil" /></button>
                 <button className="injbtn" onClick={() => removeFitness(f.id)}>×</button>
               </div>
             ))
@@ -523,7 +583,7 @@ function PlayerDetail({ playerId }: { playerId: string }) {
                   <div className="injarea">{x.area}</div>
                   <div className="injmeta">{x.date}{x.note ? ` ・ ${x.note}` : ""}</div>
                 </div>
-                <button className="injbtn" onClick={() => board.openSheet({ type: "injuryEdit", playerId, injuryId: x.id })}>✎</button>
+                <button className="injbtn" onClick={() => board.openSheet({ type: "injuryEdit", playerId, injuryId: x.id })}><E n="pencil" /></button>
                 <button className="injbtn" onClick={() => removeInjury(x.id)}>×</button>
               </div>
             ))
@@ -869,10 +929,10 @@ function PlayRow({ play }: { play: SavedPlay }) {
             if (t != null) board.renamePlay(play.id, t);
           }}
         >
-          ✎
+          <E n="pencil" />
         </button>
         <button title="複製" onClick={() => board.duplicatePlay(play.id)}>
-          ⧉
+          <E n="copy" />
         </button>
         <button
           title="削除"
@@ -958,6 +1018,15 @@ function LibrarySheet() {
 }
 
 /* ---------------- Share / export ---------------- */
+/** YYYYMMDD形式の日付文字列（ファイル名用） */
+function dateStamp(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
 function ShareSheet() {
   const board = useBoard();
   const img = useMemo(() => {
@@ -972,6 +1041,11 @@ function ShareSheet() {
   const text = `${board.state.teamName ?? "マイチーム"} の戦術${
     board.currentPlayTitle ? `「${board.currentPlayTitle}」` : ""
   }`;
+  // アニメ書き出しの進捗（null=待機中、0-1=書き出し中）
+  const [gifBusy, setGifBusy] = useState<number | null>(null);
+  const [webmBusy, setWebmBusy] = useState<number | null>(null);
+
+  const fileBase = board.currentPlayTitle ? board.currentPlayTitle : `戦術_${dateStamp()}`;
 
   const copy = async () => {
     try {
@@ -979,6 +1053,52 @@ function ShareSheet() {
       board.toast("リンクをコピーしました");
     } catch {
       window.prompt("このリンクをコピーしてください", url);
+    }
+  };
+
+  const saveGif = async () => {
+    if (gifBusy != null) return;
+    if (board.state.moves.length === 0) {
+      board.toast("アニメがありません。先にルートを描いてください");
+      return;
+    }
+    setGifBusy(0);
+    try {
+      const blob = await exportGif(board.state, (p) => setGifBusy(p));
+      downloadBlob(blob, `${fileBase}.gif`);
+      board.toast("GIFを書き出しました");
+    } catch {
+      board.toast("GIFの書き出しに失敗しました");
+    } finally {
+      setGifBusy(null);
+    }
+  };
+
+  const saveWebm = async () => {
+    if (webmBusy != null) return;
+    if (board.state.moves.length === 0) {
+      board.toast("アニメがありません。先にルートを描いてください");
+      return;
+    }
+    if (!canExportWebm()) {
+      board.toast("このブラウザは動画出力に未対応です（Chrome/Edge推奨）");
+      return;
+    }
+    setWebmBusy(0);
+    try {
+      const blob = await exportWebm(board.state, (p) => setWebmBusy(p));
+      downloadBlob(blob, `${fileBase}.webm`);
+      board.toast("動画を書き出しました");
+    } catch {
+      board.toast("動画の書き出しに失敗しました");
+    } finally {
+      setWebmBusy(null);
+    }
+  };
+
+  const printOrPdf = () => {
+    if (!openPrintView(board.state, board.currentPlayTitle)) {
+      board.toast("ポップアップを許可してください");
     }
   };
 
@@ -1005,6 +1125,15 @@ function ShareSheet() {
         onClick={() => window.open(buildLineUrl(text, url), "_blank")}
       >
         LINEで送る
+      </button>
+      <button className="bigbtn ghost" disabled={gifBusy != null} onClick={saveGif}>
+        {gifBusy != null ? `書き出し中… ${Math.round(gifBusy * 100)}%` : "GIFで保存（アニメ）"}
+      </button>
+      <button className="bigbtn ghost" disabled={webmBusy != null} onClick={saveWebm}>
+        {webmBusy != null ? `書き出し中… ${Math.round(webmBusy * 100)}%` : "動画で保存（WebM）"}
+      </button>
+      <button className="bigbtn ghost" onClick={printOrPdf}>
+        印刷・PDF
       </button>
     </>
   );
@@ -1219,6 +1348,9 @@ export default function SheetManager() {
       break;
     case "slotMenu":
       content = <SlotMenu slot={sheet.slot!} />;
+      break;
+    case "oppMenu":
+      content = <OppMenu index={sheet.opp!} />;
       break;
     case "roster":
       content = <RosterSheet />;

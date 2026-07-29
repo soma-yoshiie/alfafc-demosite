@@ -1,4 +1,14 @@
-import type { BoardState, Player, ShareSnapshot, Slot } from "./types";
+import type {
+  Actor,
+  BoardState,
+  OppToken,
+  PenStroke,
+  PitchViewMode,
+  Player,
+  ShareSnapshot,
+  Shape,
+  Slot,
+} from "./types";
 
 /* ---- base64url <-> JSON（Unicode対応） ---- */
 function b64encode(obj: unknown): string {
@@ -31,6 +41,7 @@ export function buildSnapshot(
     formation: state.formation,
     ball: state.ball,
     moves: state.moves,
+    holder: state.holder ?? undefined,
     slots: state.slots.map((s) => {
       const p = s.pid ? byId.get(s.pid) : null;
       return {
@@ -41,6 +52,12 @@ export function buildSnapshot(
         capt: p && state.captain === p.id ? true : undefined,
       };
     }),
+    opponents: state.opponents?.length ? state.opponents : undefined,
+    drawings: state.drawings?.length ? state.drawings : undefined,
+    shapes: state.shapes?.length ? state.shapes : undefined,
+    stepCount: state.stepCount,
+    guides: state.guides,
+    pitchView: state.pitchView,
   };
 }
 
@@ -67,6 +84,13 @@ export function snapshotToBoard(snap: ShareSnapshot): {
   slots: Slot[];
   ball: ShareSnapshot["ball"];
   moves: ShareSnapshot["moves"];
+  holder: Actor | null;
+  opponents: OppToken[];
+  drawings: PenStroke[];
+  shapes: Shape[];
+  stepCount: number;
+  guides: { lanes?: boolean; zones?: boolean; legend?: boolean };
+  pitchView: PitchViewMode;
 } {
   const players: Player[] = [];
   let captain: string | null = null;
@@ -92,6 +116,13 @@ export function snapshotToBoard(snap: ShareSnapshot): {
     slots,
     ball: snap.ball,
     moves: snap.moves,
+    holder: snap.holder ?? null,
+    opponents: snap.opponents ?? [],
+    drawings: snap.drawings ?? [],
+    shapes: snap.shapes ?? [],
+    stepCount: snap.stepCount ?? 1,
+    guides: snap.guides ?? {},
+    pitchView: snap.pitchView ?? "full",
   };
 }
 

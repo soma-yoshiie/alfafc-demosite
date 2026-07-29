@@ -1,18 +1,44 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { animTotal } from "@/lib/animation";
+import { animTotal, durFromPath, stepDur } from "@/lib/animation";
 import { sceneClient } from "@/lib/tacticsScene";
+import type { Actor, MoveKind } from "@/lib/types";
+import { isOppActor, moveKind, oppIndex } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import TacticsTimeline, { type TimelineHandle } from "./TacticsTimeline";
-import { E } from "./Emoji";
+import {
+  IconChat,
+  IconExpand,
+  IconMove,
+  IconPause,
+  IconPlay,
+  IconPlayAll,
+  IconRoute,
+  IconTrash,
+} from "./icons";
 
-/** 「ことばで作る」の例文（タップで入力欄へ） */
+/** 「ワードで作成」の例文（タップで入力欄へ） */
 const NL_EXAMPLES = [
   "LBがサイドを上がったらそのスペースを埋めるようにCMが移動する",
   "STが裏に抜けてトップ下がSTにパス",
   "右SBがオーバーラップしながらRWが中に絞る",
 ];
+
+/** 線種チップの選択肢。shot（シュート）はボールのルートにのみ表示する */
+const KIND_LABEL: Record<MoveKind, string> = {
+  run: "ラン",
+  pass: "パス",
+  dribble: "ドリブル",
+  shot: "シュート",
+};
+
+/** 動きの緩急ラベル */
+const EASE_LABEL: Record<"std" | "dash" | "linear", string> = {
+  std: "なめらか",
+  dash: "ダッシュ",
+  linear: "等速",
+};
 
 export default function AnimationStudio() {
   const board = useBoard();
@@ -22,13 +48,15 @@ export default function AnimationStudio() {
   const totRef = useRef<HTMLSpanElement>(null);
   const tlRef = useRef<TimelineHandle>(null);
 
-  // ことばで作る
+  // ワードで作成
   const [nlOpen, setNlOpen] = useState(false);
   const [nlText, setNlText] = useState("");
   const [nlBusy, setNlBusy] = useState(false);
+  // 詳細タイミング（タイムライン）は折りたたみ
+  const [tlOpen, setTlOpen] = useState(false);
 
   const moves = board.state.moves;
-  const T = animTotal(moves);
+  const T = animTotal(moves, board.state.stepCount);
 
   // 再生・シーク中の時間表示更新（再描画なし）
   useEffect(() => {
@@ -57,7 +85,7 @@ export default function AnimationStudio() {
       board.applyPlayhead(Math.min(t, T));
   }, [T, moves, board]);
 
-  /** 文章からシーンを生成 → 即再生（タイムラインで微調整できる） */
+  /** 文章からシーンを生成 → 現在の場面に入れて即再生 */
   const runScene = async () => {
     const txt = nlText.trim();
     if (!txt) {
@@ -76,51 +104,121 @@ export default function AnimationStudio() {
     board.stopPlay();
     board.mergeMoves(res.moves);
     board.setSelActor(null);
-    board.toast(`${res.moves.length}本の動きを生成しました`);
-    // state反映後に先頭から自動再生
-    setTimeout(() => {
-      board.resetPlay();
-      board.startPlay();
-    }, 80);
+    board.setSelMove(null);
+    board.toast(`場面${board.activeStep + 1}に${res.moves.length}本の動きを生成しました`);
+    // state反映後にこの場面を自動再生
+    setTimeout(() => board.playStep(board.activeStep), 80);
   };
+
+  /** アクター表示名 */
+  const actorLabel = (actor: Actor): string => {
+    if (actor === "ball") return "ボール";
+    if (isOppActor(actor)) {
+      const o = (board.state.opponents ?? [])[oppIndex(actor)];
+      return o ? `相手${o.label}` : "相手";
+    }
+    const s = slots[actor as number];
+    if (!s) return "選手";
+    const p = s.pid ? players.find((x) => x.id === s.pid) : null;
+    return p ? `${s.role} ${p.name.split(/\s+/)[0]}` : s.role;
+  };
+
+  // 選択中ルート（actor+場面で一意）
+  const selIndex = board.selMove
+    ? moves.findIndex(
+        (m) =>
+          m.actor === board.selMove!.actor &&
+          (m.step ?? 0) === board.selMove!.step
+      )
+    : -1;
+  const sel = selIndex >= 0 ? moves[selIndex] : null;
+
+  const setSelPatch = (patch: Parameters<typeof board.updateMove>[1]) => {
+    if (selIndex >= 0) board.updateMove(selIndex, patch);
+  };
+
+  const steps = board.stepCount;
 
   return (
     <div className="studio">
       <div className="stitle">
         <b>ANIM STUDIO</b>
         <div className="hintxt">
-          選手・ボールをなぞるとルートを描けます
-          <br />
-          下のタイムラインでタイミングを調整
+          {board.animTool === "move"
+            ? "ドラッグで配置を移動（ルートも一緒に動きます）"
+            : "ドラッグでルートを描画"}
+        </div>
+      </div>
+
+      {/* 場面（ステップ）チップ */}
+      <div className="steps">
+        {Array.from({ length: steps }).map((_, s) => (
+          <div
+            key={s}
+            className={`stepchip${s === board.activeStep ? " on" : ""}`}
+            title={
+              s === board.activeStep
+                ? "もう一度タップでこの場面を再生"
+                : `場面${s + 1}へ`
+            }
+            onClick={() =>
+              s === board.activeStep
+                ? board.playStep(s)
+                : board.setActiveStep(s)
+            }
+          >
+            <span className="steplabel">場面{s + 1}</span>
+            <span className="stepdur">{stepDur(moves, s).toFixed(1)}s</span>
+            {s === board.activeStep && steps > 1 && (
+              <button
+                className="stepdel"
+                title="この場面を削除"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  board.stopPlay();
+                  board.removeStep(s);
+                  board.toast(`場面${s + 1}を削除しました`);
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        ))}
+        <div className="stepchip add" title="新しい場面を追加" onClick={board.addStep}>
+          ＋ 場面
         </div>
       </div>
 
       <div className="transport">
         <div
           className="tbtn play"
-          onClick={() => (board.isPlaying ? board.stopPlay() : board.startPlay())}
+          title="この場面だけ再生"
+          onClick={() =>
+            board.isPlaying ? board.stopPlay() : board.playStep(board.activeStep)
+          }
         >
-          {board.isPlaying ? "⏸ 停止" : "▶ 再生"}
-        </div>
-        <div className="tbtn" title="先頭へ" onClick={board.resetPlay}>
-          ⟲
+          <span className="tlabel">
+            {board.isPlaying ? <IconPause /> : <IconPlay />}
+            {board.isPlaying ? "停止" : "この場面"}
+          </span>
         </div>
         <div
-          className="tbtn"
-          title="最後のルートを削除"
+          className="tbtn playall"
+          title="最初から通しで再生"
           onClick={() => {
-            if (!moves.length) {
-              board.toast("元に戻すルートがありません");
+            if (board.isPlaying) {
+              board.stopPlay();
               return;
             }
-            board.stopPlay();
-            const last = moves[moves.length - 1];
-            if (board.selActor === last.actor) board.setSelActor(null);
-            board.undoMove();
-            board.toast("最後のルートを削除しました");
+            board.resetPlay();
+            board.startPlay();
           }}
         >
-          ↩
+          <span className="tlabel">
+            <IconPlayAll />
+            通し
+          </span>
         </div>
         <div className="spd">
           速度
@@ -136,15 +234,16 @@ export default function AnimationStudio() {
         </div>
         <div
           className="tbtn warn"
-          title="全消去"
+          title="全場面のルートを消去"
           onClick={() => {
             board.stopPlay();
             board.clearMoves();
             board.setSelActor(null);
-            board.toast("全ルートを消去しました");
+            board.setSelMove(null);
+            board.toast("すべてのルートを消去しました");
           }}
         >
-          <E n="trash" />
+          <IconTrash />
         </div>
         <div className="tbtn done" onClick={board.closeStudio}>
           完了
@@ -160,7 +259,7 @@ export default function AnimationStudio() {
         defaultValue={0}
         onInput={(e) => {
           const v = +(e.target as HTMLInputElement).value;
-          board.seek((v / 1000) * animTotal(board.state.moves));
+          board.seek((v / 1000) * animTotal(board.state.moves, board.state.stepCount));
         }}
       />
       <div className="tline">
@@ -168,21 +267,103 @@ export default function AnimationStudio() {
         <span ref={totRef}>0.0s</span>
       </div>
 
+      {/* 選択中ルートの編集（線種・速さ・削除） */}
+      {sel && (
+        <div className="selrow">
+          <span className="tlselinfo">{actorLabel(sel.actor)}のルート</span>
+          <div className="tlchips">
+            {(Object.keys(KIND_LABEL) as MoveKind[])
+              .filter((k) => k !== "shot" || sel.actor === "ball")
+              .map((k) => (
+                <button
+                  key={k}
+                  className={`tlchip kind ${k}${moveKind(sel) === k ? " on" : ""}`}
+                  onClick={() => setSelPatch({ kind: k })}
+                >
+                  <i className={`lk ${k}`} />
+                  {KIND_LABEL[k]}
+                </button>
+              ))}
+            <span className="chipsep" />
+            <button
+              className="tlchip"
+              onClick={() =>
+                setSelPatch({
+                  dur: Math.max(0.3, +(durFromPath(sel.path) * 0.6).toFixed(2)),
+                })
+              }
+            >
+              速く
+            </button>
+            <button
+              className="tlchip"
+              onClick={() => setSelPatch({ dur: durFromPath(sel.path) })}
+            >
+              標準
+            </button>
+            <button
+              className="tlchip"
+              onClick={() =>
+                setSelPatch({ dur: +(durFromPath(sel.path) * 1.6).toFixed(2) })
+              }
+            >
+              遅く
+            </button>
+            <span className="chipsep" />
+            {(Object.keys(EASE_LABEL) as ("std" | "dash" | "linear")[]).map((k) => (
+              <button
+                key={k}
+                className={`tlchip${(sel.ease ?? "std") === k ? " on" : ""}`}
+                onClick={() => setSelPatch({ ease: k === "std" ? undefined : k })}
+              >
+                {EASE_LABEL[k]}
+              </button>
+            ))}
+            <button
+              className="tlchip danger"
+              onClick={() => {
+                board.setSelActor(null);
+                board.setSelMove(null);
+                board.deleteMove(selIndex);
+                board.toast("ルートを削除しました");
+              }}
+            >
+              削除
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="sttools">
+        {/* ドラッグ操作の切替：配置移動 / ルート描画 */}
+        <div className="toolseg" role="tablist" aria-label="ドラッグ操作">
+          <button
+            className={`tseg${board.animTool === "move" ? " on" : ""}`}
+            title="ドラッグで配置を移動（ルートも一緒に動きます）"
+            onClick={() => board.setAnimTool("move")}
+          >
+            <IconMove />
+            移動
+          </button>
+          <button
+            className={`tseg${board.animTool === "draw" ? " on" : ""}`}
+            title="ドラッグでルートを描画"
+            onClick={() => board.setAnimTool("draw")}
+          >
+            <IconRoute />
+            ルート
+          </button>
+        </div>
         <div
           className={`toolchip${nlOpen ? " on" : ""}`}
           onClick={() => setNlOpen(!nlOpen)}
         >
-          💬 ことばで作る
-        </div>
-        <div
-          className={`toolchip${board.showPaths ? " on" : ""}`}
-          onClick={() => board.setShowPaths(!board.showPaths)}
-        >
-          〰 ルート{board.showPaths ? "表示" : "非表示"}
+          <IconChat />
+          ワードで作成
         </div>
         <div className="toolchip" onClick={board.enterFullplay}>
-          ⛶ 全画面再生
+          <IconExpand />
+          全画面再生
         </div>
       </div>
 
@@ -202,14 +383,24 @@ export default function AnimationStudio() {
             ))}
           </div>
           <button className="nlrun" onClick={runScene} disabled={nlBusy}>
-            {nlBusy ? "生成中…" : "▶ シーンを生成して再生"}
+            {nlBusy ? "生成中…" : `場面${board.activeStep + 1}に生成して再生`}
           </button>
         </div>
       )}
 
-      <div className="clips">
-        <TacticsTimeline ref={tlRef} />
+      {/* 詳細タイミング（従来タイムライン）は普段は畳んでおく */}
+      <div
+        className={`tltoggle${tlOpen ? " open" : ""}`}
+        onClick={() => setTlOpen(!tlOpen)}
+      >
+        {tlOpen ? "▾" : "▸"} 詳細タイミング
+        <span className="tltogglehint">動き出しのタイミングを個別調整</span>
       </div>
+      {tlOpen && (
+        <div className="clips">
+          <TacticsTimeline ref={tlRef} />
+        </div>
+      )}
     </div>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-// 戦術アニメの「感覚的な」タイミング編集タイムライン。
-// 全ルートを1本の時間軸に並べ、バーのドラッグ＝開始時間、右端ハンドル＝長さ。
-// 他ルートの開始/終了・0秒に自動スナップするので「同時に動く」「終わったら動く」が指先で作れる。
+// 戦術アニメの「詳細タイミング」タイムライン（上級者向け・折りたたみ内）。
+// 全ルートを絶対時間軸に並べ、バーのドラッグ＝場面内の動き出しオフセット、
+// 右端ハンドル＝長さ。他ルートの開始/終了・場面頭に自動スナップする。
 
 import {
   forwardRef,
@@ -11,9 +11,15 @@ import {
   useRef,
   useState,
 } from "react";
-import { animTotal, durFromPath } from "@/lib/animation";
+import {
+  absStart,
+  animTotal,
+  stepDur,
+  stepStartTime,
+} from "@/lib/animation";
 import { actorColor } from "@/lib/colors";
 import type { Actor } from "@/lib/types";
+import { isOppActor, oppIndex } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 
 export interface TimelineHandle {
@@ -27,15 +33,21 @@ interface DragState {
   mode: "move" | "resize";
   index: number; // moves配列上のindex
   actor: Actor;
+  step: number;
+  /** 所属場面の開始絶対秒（オフセット0の位置） */
+  stepBase: number;
+  /** move移動の下限絶対秒。前の場面へ食い込ませられるよう stepBase - 前場面の長さ（先頭場面は0） */
+  lowerBound: number;
   rectW: number;
   tview: number;
   startX: number;
-  origStart: number;
+  /** 開始絶対秒（ドラッグ前） */
+  origAbs: number;
   origDur: number;
   snaps: number[];
   moved: boolean;
-  // コミット用の最新値
-  start: number;
+  // コミット用の最新値（絶対秒）
+  abs: number;
   dur: number;
 }
 
@@ -46,14 +58,14 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
   const board = useBoard();
   const { moves, slots, players } = board.state;
 
-  const [ghost, setGhost] = useState<{ index: number; start: number; dur: number } | null>(null);
+  const [ghost, setGhost] = useState<{ index: number; abs: number; dur: number } | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
   const tviewRef = useRef(4);
   const lastTRef = useRef(0);
 
   // 表示レンジ（ドラッグ中は固定してガタつきを防ぐ）
-  const T = animTotal(moves);
+  const T = animTotal(moves, board.state.stepCount);
   const tview = dragRef.current?.tview ?? Math.max(T + 0.8, 4);
   tviewRef.current = tview;
 
@@ -73,23 +85,41 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
 
   const actorLabel = (actor: Actor): string => {
     if (actor === "ball") return "ボール";
+    if (isOppActor(actor)) {
+      const o = (board.state.opponents ?? [])[oppIndex(actor)];
+      return o ? `相手${o.label}` : "相手";
+    }
     const s = slots[actor as number];
     if (!s) return "選手";
     const p = s.pid ? players.find((x) => x.id === s.pid) : null;
     return p ? `${s.role} ${p.name.split(/\s+/)[0]}` : s.role;
   };
 
-  // 行はアクター順（背番号順＋ボール最後）で固定：ドラッグ中に行が飛ばない
+  // 行は 場面→アクター順 で固定：ドラッグ中に行が飛ばない
+  const actorRank = (a: Actor) =>
+    a === "ball" ? 900 : isOppActor(a) ? 500 + oppIndex(a) : (a as number);
   const rows = moves
     .map((m, i) => ({ m, i }))
-    .sort((a, b) => {
-      const ra = a.m.actor === "ball" ? 999 : (a.m.actor as number);
-      const rb = b.m.actor === "ball" ? 999 : (b.m.actor as number);
-      return ra - rb;
-    });
+    .sort(
+      (a, b) =>
+        (a.m.step ?? 0) - (b.m.step ?? 0) ||
+        actorRank(a.m.actor) - actorRank(b.m.actor)
+    );
 
-  const selIndex = moves.findIndex((m) => m.actor === board.selActor);
-  const sel = selIndex >= 0 ? moves[selIndex] : null;
+  const isSel = (m: (typeof moves)[number]) =>
+    board.selMove != null &&
+    board.selMove.actor === m.actor &&
+    board.selMove.step === (m.step ?? 0);
+
+  const toggleSel = (m: (typeof moves)[number]) => {
+    if (isSel(m)) {
+      board.setSelMove(null);
+      board.setSelActor(null);
+    } else {
+      board.setSelMove({ actor: m.actor, step: m.step ?? 0 });
+      board.setSelActor(m.actor);
+    }
+  };
 
   /* ---- バーのドラッグ ---- */
   const onBarDown = (
@@ -101,23 +131,32 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
     const track = (e.currentTarget.closest(".tltrack") as HTMLElement) ?? null;
     if (!track) return;
     const m = moves[index];
-    const snaps = [0];
+    const step = m.step ?? 0;
+    const stepBase = stepStartTime(moves, step);
+    // 前の場面がまだ再生中のうちに動き出せるよう、下限を前場面の長さぶん手前まで許容する
+    // （場面0＝先頭は前場面が無いため従来どおり0が下限）
+    const lowerBound = step === 0 ? 0 : stepBase - stepDur(moves, step - 1);
+    const snaps = [stepBase];
     moves.forEach((x, j) => {
       if (j === index) return;
-      snaps.push(+x.start.toFixed(2), +(x.start + x.dur).toFixed(2));
+      const s = absStart(moves, x);
+      snaps.push(+s.toFixed(2), +(s + x.dur).toFixed(2));
     });
     dragRef.current = {
       mode,
       index,
       actor: m.actor,
+      step,
+      stepBase,
+      lowerBound,
       rectW: track.getBoundingClientRect().width,
       tview: tviewRef.current,
       startX: e.clientX,
-      origStart: m.start,
+      origAbs: absStart(moves, m),
       origDur: m.dur,
       snaps,
       moved: false,
-      start: m.start,
+      abs: absStart(moves, m),
       dur: m.dur,
     };
     try {
@@ -135,22 +174,26 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
     const snapS = (10 / d.rectW) * d.tview; // 10px相当でスナップ
 
     if (d.mode === "move") {
-      let ns = clamp(d.origStart + ds, 0, 120);
+      // 前の場面へ食い込ませられるよう lowerBound を下限にする（先頭場面は0が下限のまま）
+      let ns = clamp(d.origAbs + ds, d.lowerBound, d.stepBase + 120);
       for (const c of d.snaps) {
-        if (Math.abs(ns - c) < snapS) ns = c; // 開始をスナップ
-        else if (Math.abs(ns + d.origDur - c) < snapS && c - d.origDur >= 0)
+        if (Math.abs(ns - c) < snapS && c >= d.stepBase) ns = c; // 開始をスナップ
+        else if (
+          Math.abs(ns + d.origDur - c) < snapS &&
+          c - d.origDur >= d.stepBase
+        )
           ns = c - d.origDur; // 終了をスナップ
       }
-      d.start = +ns.toFixed(2);
-      setGhost({ index: d.index, start: d.start, dur: d.origDur });
+      d.abs = +ns.toFixed(2);
+      setGhost({ index: d.index, abs: d.abs, dur: d.origDur });
     } else {
       let nd = clamp(d.origDur + ds, 0.3, 30);
       for (const c of d.snaps) {
-        if (Math.abs(d.origStart + nd - c) < snapS && c - d.origStart >= 0.3)
-          nd = c - d.origStart;
+        if (Math.abs(d.origAbs + nd - c) < snapS && c - d.origAbs >= 0.3)
+          nd = c - d.origAbs;
       }
       d.dur = +nd.toFixed(2);
-      setGhost({ index: d.index, start: d.origStart, dur: d.dur });
+      setGhost({ index: d.index, abs: d.origAbs, dur: d.dur });
     }
   };
 
@@ -161,15 +204,15 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
     setGhost(null);
     if (!d.moved) {
       // タップ＝選択（ピッチ上のルートもハイライト）
-      board.setSelActor(board.selActor === d.actor ? null : d.actor);
+      toggleSel(moves[d.index]);
       return;
     }
     if (d.mode === "move") {
-      board.updateMove(d.index, { start: d.start });
-      board.seek(d.start); // その瞬間の盤面を見せる
+      board.updateMove(d.index, { start: +(d.abs - d.stepBase).toFixed(2) });
+      board.seek(d.abs); // その瞬間の盤面を見せる
     } else {
       board.updateMove(d.index, { dur: d.dur });
-      board.seek(d.origStart + d.dur);
+      board.seek(d.origAbs + d.dur);
     }
   };
 
@@ -180,27 +223,27 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
     board.seek(t);
   };
 
-  /* ---- 選択クリップのクイック操作 ---- */
-  const others = (idx: number) => moves.filter((_, j) => j !== idx);
-  const applySel = (patch: { start?: number; dur?: number }, seekTo?: number) => {
-    if (selIndex < 0) return;
-    board.updateMove(selIndex, patch);
-    if (seekTo != null) board.seek(seekTo);
-  };
-
   const ticks: number[] = [];
   for (let s = 0; s <= Math.ceil(tview); s++) ticks.push(s);
   const labelEvery = tview > 9 ? 2 : 1;
 
+  // 場面の境界線（場面2以降の開始位置）
+  const stepMarks: { s: number; t: number }[] = [];
+  for (let s = 1; s < board.stepCount; s++) {
+    stepMarks.push({ s, t: stepStartTime(moves, s) });
+  }
+
   if (moves.length === 0) {
     return (
       <div className="clipsEmpty">
-        選手やボールをピッチ上で指でなぞると、その軌道がここに並びます。
+        ルートを描くと、各選手の動きがここに一覧表示されます。
         <br />
-        バーを左右にドラッグ＝動き出しのタイミング、右端をドラッグ＝スピード調整。
+        バーを左右にドラッグ＝開始タイミング、右端をドラッグ＝所要時間。
       </div>
     );
   }
+
+  let lastStep = -1;
 
   return (
     <div className="tlwrap">
@@ -226,43 +269,59 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
 
       <div className="tlrows">
         <div ref={playheadRef} className="tlplayhead" />
+        {stepMarks.map(({ s, t }) => (
+          <div
+            key={`sm${s}`}
+            className="tlstepmark"
+            style={{ left: (t / tview) * 100 + "%" }}
+          />
+        ))}
         {rows.map(({ m, i }) => {
           const g = ghost?.index === i ? ghost : null;
-          const start = g?.start ?? m.start;
+          const abs = g?.abs ?? absStart(moves, m);
           const dur = g?.dur ?? m.dur;
           const col = actorColor(m.actor, slots);
-          const isSel = m.actor === board.selActor;
-          return (
-            <div key={String(m.actor)} className="tlrow">
-              <div
-                className={`tllabel${isSel ? " sel" : ""}`}
-                onClick={() =>
-                  board.setSelActor(board.selActor === m.actor ? null : m.actor)
-                }
-              >
-                <span className="cdot" style={{ background: col }} />
-                {actorLabel(m.actor)}
+          const selected = isSel(m);
+          const step = m.step ?? 0;
+          const header =
+            board.stepCount > 1 && step !== lastStep ? (
+              <div key={`h${step}`} className="tlstephead">
+                場面{step + 1}
               </div>
-              <div className="tltrack">
+            ) : null;
+          lastStep = step;
+          return (
+            <div key={`${String(m.actor)}-${step}`} className="tlrowwrap">
+              {header}
+              <div className="tlrow">
                 <div
-                  className={`tlbar${isSel ? " sel" : ""}${g ? " drag" : ""}`}
-                  style={{
-                    left: (start / tview) * 100 + "%",
-                    width: Math.max((dur / tview) * 100, 3) + "%",
-                    background: col,
-                  }}
-                  onPointerDown={(e) => onBarDown(e, i, "move")}
-                  onPointerMove={onBarMove}
-                  onPointerUp={onBarUp}
-                  onPointerCancel={onBarUp}
+                  className={`tllabel${selected ? " sel" : ""}`}
+                  onClick={() => toggleSel(m)}
                 >
-                  <span className="tldur">
-                    {g ? `${start.toFixed(1)}s ・ ${dur.toFixed(1)}s` : `${dur.toFixed(1)}s`}
-                  </span>
-                  <span
-                    className="tlhandle"
-                    onPointerDown={(e) => onBarDown(e, i, "resize")}
-                  />
+                  <span className="cdot" style={{ background: col }} />
+                  {actorLabel(m.actor)}
+                </div>
+                <div className="tltrack">
+                  <div
+                    className={`tlbar${selected ? " sel" : ""}${g ? " drag" : ""}`}
+                    style={{
+                      left: (abs / tview) * 100 + "%",
+                      width: Math.max((dur / tview) * 100, 3) + "%",
+                      background: col,
+                    }}
+                    onPointerDown={(e) => onBarDown(e, i, "move")}
+                    onPointerMove={onBarMove}
+                    onPointerUp={onBarUp}
+                    onPointerCancel={onBarUp}
+                  >
+                    <span className="tldur">
+                      {g ? `${abs.toFixed(1)}s ・ ${dur.toFixed(1)}s` : `${dur.toFixed(1)}s`}
+                    </span>
+                    <span
+                      className="tlhandle"
+                      onPointerDown={(e) => onBarDown(e, i, "resize")}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -271,57 +330,10 @@ const TacticsTimeline = forwardRef<TimelineHandle, object>(function TacticsTimel
       </div>
 
       <div className="tlhint">
-        バーを左右にドラッグ＝タイミング ／ 右端をつまむ＝はやさ（他の動きにピタッと揃います）
+        バーをドラッグ＝開始タイミング ／ 右端をドラッグ＝所要時間（縦点線＝場面の境界）
+        <br />
+        バーを前の場面へ食い込ませると動きを重ねられます（ワンツー等）
       </div>
-
-      {sel && selIndex >= 0 && (
-        <div className="tlacts">
-          <span className="tlselinfo">
-            {actorLabel(sel.actor)}：開始 {sel.start.toFixed(1)}s ・ {sel.dur.toFixed(1)}s
-          </span>
-          <div className="tlchips">
-            <button className="tlchip" onClick={() => applySel({ start: 0 }, 0)}>
-              最初から
-            </button>
-            <button
-              className="tlchip"
-              onClick={() => {
-                const after = Math.max(0, ...others(selIndex).map((x) => x.start + x.dur));
-                applySel({ start: +after.toFixed(2) }, after);
-              }}
-            >
-              みんなのあと
-            </button>
-            <button
-              className="tlchip"
-              onClick={() =>
-                applySel({ dur: Math.max(0.3, +(durFromPath(sel.path) * 0.6).toFixed(2)) })
-              }
-            >
-              はやく
-            </button>
-            <button className="tlchip" onClick={() => applySel({ dur: durFromPath(sel.path) })}>
-              ふつう
-            </button>
-            <button
-              className="tlchip"
-              onClick={() => applySel({ dur: +(durFromPath(sel.path) * 1.6).toFixed(2) })}
-            >
-              ゆっくり
-            </button>
-            <button
-              className="tlchip danger"
-              onClick={() => {
-                board.setSelActor(null);
-                board.deleteMove(selIndex);
-                board.toast("ルートを削除しました");
-              }}
-            >
-              削除
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 });

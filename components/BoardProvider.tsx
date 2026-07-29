@@ -17,11 +17,17 @@ import type {
   ChatMessage,
   CoachDeliverable,
   Folder,
+  HullShape,
   Library,
+  LinkShape,
   MenuResponse,
   Move,
+  MoveKind,
   NotebookEntry,
+  OppToken,
+  PenStroke,
   Player,
+  PitchViewMode,
   PlanTier,
   PlayLine,
   PlayPoint,
@@ -31,12 +37,26 @@ import type {
   SavedPlay,
   Session,
   ShareSnapshot,
+  Shape,
+  ShapePatch,
   Slot,
 } from "@/lib/types";
-import { migratePlan } from "@/lib/types";
+import { isOppActor, migratePlan, oppIndex } from "@/lib/types";
 import { daysAgoStr } from "@/lib/dates";
 import { buildSlots } from "@/lib/formations";
-import { actorPos, animTotal, durFromPath } from "@/lib/animation";
+import {
+  actorPos,
+  animTotal,
+  carryPos,
+  durFromPath,
+  holderAt,
+  stepAtTime,
+  stepCountOf,
+  stepDur,
+  stepStartTime,
+} from "@/lib/animation";
+import { convexHull } from "@/lib/geometry";
+import { topToY, yToTop } from "@/lib/pitchView";
 import {
   loadDeliverables,
   loadLibrary,
@@ -70,24 +90,62 @@ type Action =
   | { type: "SWAP"; a: number; b: number }
   | { type: "MOVE_SLOT"; slot: number; x: number; y: number; role: Position }
   | { type: "SET_BALL"; x: number; y: number }
+  | { type: "SET_HOLDER"; holder: Actor | null }
   | { type: "SET_CAPTAIN"; pid: string | null }
   | { type: "ADD_PLAYER"; player: Player }
   | { type: "UPDATE_PLAYER"; player: Player }
   | { type: "DELETE_PLAYER"; id: string }
   | { type: "SET_TEAM_NAME"; name: string }
   | { type: "RESET_POSITIONS" }
-  | { type: "ADD_MOVE"; actor: Actor; path: Point[] }
-  | { type: "MERGE_MOVES"; moves: Move[] }
+  | {
+      type: "ADD_MOVE";
+      actor: Actor;
+      path: Point[];
+      step: number;
+      /** 未指定は従来どおり0（パス/シュート生成時のみ出し手のルート終了オフセットを渡す） */
+      start?: number;
+      /** 未指定は従来どおり durFromPath(path) */
+      dur?: number;
+      /** 未指定は従来どおり defaultKind(actor)（パス/シュート生成時のみ指定） */
+      kind?: MoveKind;
+      /** ボールmoveの到達先（パス/シュート生成時のみ指定） */
+      to?: Actor | "goal";
+    }
+  | { type: "MERGE_MOVES"; moves: Move[]; step: number }
   | { type: "UPDATE_MOVE"; index: number; patch: Partial<Move> }
   | { type: "DELETE_MOVE"; index: number }
   | { type: "CLEAR_MOVES" }
   | { type: "UNDO_MOVE" }
+  | { type: "ADD_STEP" }
+  | { type: "DELETE_STEP"; step: number }
+  | { type: "ADD_OPPONENT"; x: number; y: number }
+  | { type: "MOVE_OPPONENT"; index: number; x: number; y: number }
+  | { type: "UPDATE_OPPONENT"; index: number; label: string }
+  | { type: "DELETE_OPPONENT"; index: number }
+  | { type: "TRANSLATE_ACTOR"; actor: Actor; dx: number; dy: number }
+  | { type: "ADD_STROKE"; stroke: PenStroke }
+  | { type: "UPDATE_STROKE"; id: string; patch: Partial<Pick<PenStroke, "color" | "width" | "dash">> }
+  | { type: "DELETE_STROKE"; id: string }
+  | { type: "UNDO_STROKE" }
+  | { type: "CLEAR_STROKES"; step: number | null }
+  | { type: "ADD_SHAPE"; shape: Shape }
+  | { type: "UPDATE_SHAPE"; id: string; patch: ShapePatch }
+  | { type: "DELETE_SHAPE"; id: string }
+  | { type: "SET_GUIDES"; patch: Partial<{ lanes: boolean; zones: boolean; legend: boolean }> }
+  | { type: "SET_PITCH_VIEW"; view: PitchViewMode }
   | {
       type: "LOAD_TACTIC";
       formation: string;
       slots: Slot[];
       ball: Point;
       moves: Move[];
+      holder: Actor | null;
+      opponents: OppToken[];
+      drawings: PenStroke[];
+      shapes: Shape[];
+      stepCount: number;
+      guides: BoardState["guides"];
+      pitchView: PitchViewMode;
     }
   | { type: "NEW_TACTIC"; formation: string }
   | {
@@ -99,6 +157,13 @@ type Action =
       slots: Slot[];
       ball: Point;
       moves: Move[];
+      holder: Actor | null;
+      opponents: OppToken[];
+      drawings: PenStroke[];
+      shapes: Shape[];
+      stepCount: number;
+      guides: BoardState["guides"];
+      pitchView: PitchViewMode;
     };
 
 function makeInitial(): BoardState {
@@ -114,13 +179,83 @@ function makeInitial(): BoardState {
     ball: { x: 50, y: 42 },
     moves: [],
     captain: "p08",
+    holder: null,
+    opponents: [],
+    drawings: [],
+    shapes: [],
+    stepCount: 1,
+    guides: {},
+    pitchView: "full",
   };
+}
+
+/** 旧データ（opponents/drawings/shapes/step/guides/pitchView なし）を現行形式へ補完 */
+function normalizeBoard(state: BoardState): BoardState {
+  const moves = (state.moves ?? []).map((m) => ({
+    ...m,
+    step: m.step ?? 0,
+    kind: m.kind ?? (m.actor === "ball" ? ("pass" as const) : ("run" as const)),
+  }));
+  // 旧データに残る spotlight 図形（Phase1b で削除された種別）は無視する
+  const shapes = (state.shapes ?? []).filter(
+    (s) => (s as { kind?: string }).kind !== "spotlight"
+  );
+  // 旧データ（idなし）のストロークにも選択・削除用のIDを補完する
+  const drawings = (state.drawings ?? []).map((d) =>
+    d.id ? d : { ...d, id: newStrokeId() }
+  );
+  return {
+    ...state,
+    moves,
+    opponents: state.opponents ?? [],
+    drawings,
+    shapes,
+    stepCount: stepCountOf(moves, state.stepCount),
+    guides: state.guides ?? {},
+    pitchView: state.pitchView ?? "full",
+  };
+}
+
+/** 既定の線種（ボール=パス / それ以外=ラン） */
+function defaultKind(actor: Actor): MoveKind {
+  return actor === "ball" ? "pass" : "run";
+}
+
+/** actor（ball以外）の現在のベース座標（slots/opponents）。見つからなければ null */
+function actorBasePos(state: BoardState, actor: Actor): Point | null {
+  if (actor === "ball") return null;
+  if (typeof actor === "number") {
+    const s = state.slots[actor];
+    return s ? { x: s.x, y: s.y } : null;
+  }
+  const o = (state.opponents ?? [])[oppIndex(actor)];
+  return o ? { x: o.x, y: o.y } : null;
+}
+
+/** actor の表示名（パス/シュート生成のtoast用） */
+function actorDisplayName(state: BoardState, actor: Actor): string {
+  if (actor === "ball") return "ボール";
+  if (isOppActor(actor)) {
+    const o = (state.opponents ?? [])[oppIndex(actor)];
+    return o ? `相手${o.label}` : "相手";
+  }
+  const s = state.slots[actor];
+  const p = s?.pid ? state.players.find((pl) => pl.id === s.pid) : null;
+  return p?.name ?? "選手";
+}
+
+/** holder が非null なら ball 座標を holder の現在位置＋前方オフセットへ同期する（保持なしは何もしない） */
+function syncCarriedBall(state: BoardState): BoardState {
+  if (state.holder == null) return state;
+  const p = actorBasePos(state, state.holder);
+  if (!p) return state;
+  return { ...state, ball: carryPos(p) };
 }
 
 function reducer(state: BoardState, action: Action): BoardState {
   switch (action.type) {
     case "HYDRATE":
-      return action.state;
+      return normalizeBoard(action.state);
 
     case "SET_FORMATION":
       return {
@@ -142,7 +277,12 @@ function reducer(state: BoardState, action: Action): BoardState {
     case "REMOVE": {
       const slots = state.slots.map((s) => ({ ...s }));
       slots[action.slot].pid = null;
-      return { ...state, slots };
+      // 外した slot が保持者なら保持解除する
+      return {
+        ...state,
+        slots,
+        holder: state.holder === action.slot ? null : state.holder,
+      };
     }
 
     case "SWAP": {
@@ -150,7 +290,7 @@ function reducer(state: BoardState, action: Action): BoardState {
       const t = slots[action.a].pid;
       slots[action.a].pid = slots[action.b].pid;
       slots[action.b].pid = t;
-      return { ...state, slots };
+      return syncCarriedBall({ ...state, slots });
     }
 
     case "MOVE_SLOT": {
@@ -161,11 +301,14 @@ function reducer(state: BoardState, action: Action): BoardState {
         y: action.y,
         role: action.role,
       };
-      return { ...state, slots };
+      return syncCarriedBall({ ...state, slots });
     }
 
     case "SET_BALL":
       return { ...state, ball: { x: action.x, y: action.y } };
+
+    case "SET_HOLDER":
+      return syncCarriedBall({ ...state, holder: action.holder });
 
     case "SET_CAPTAIN":
       return { ...state, captain: action.pid };
@@ -200,30 +343,65 @@ function reducer(state: BoardState, action: Action): BoardState {
       return { ...state, slots: buildSlots(state.formation, state.slots) };
 
     case "ADD_MOVE": {
-      const dur = durFromPath(action.path);
-      const existing = state.moves.find((m) => m.actor === action.actor);
+      // 1アクター1場面につき1ルート：同じ場面の同じアクターは描き直し＝置換
+      // start/kind/to は明示指定があるときだけ上書きする（通常のルート描き直しでは既存値を温存）
+      const dur = action.dur ?? durFromPath(action.path);
+      const idx = state.moves.findIndex(
+        (m) => m.actor === action.actor && (m.step ?? 0) === action.step
+      );
       let moves: Move[];
-      if (existing) {
-        moves = state.moves.map((m) =>
-          m.actor === action.actor ? { ...m, path: action.path } : m
+      if (idx >= 0) {
+        moves = state.moves.map((m, i) =>
+          i === idx
+            ? {
+                ...m,
+                path: action.path,
+                dur,
+                ...(action.start !== undefined ? { start: action.start } : {}),
+                ...(action.kind !== undefined ? { kind: action.kind } : {}),
+                ...(action.to !== undefined ? { to: action.to } : {}),
+              }
+            : m
         );
       } else {
         moves = [
           ...state.moves,
-          { actor: action.actor, path: action.path, start: 0, dur },
+          {
+            actor: action.actor,
+            path: action.path,
+            start: action.start ?? 0,
+            dur,
+            step: action.step,
+            kind: action.kind ?? defaultKind(action.actor),
+            to: action.to,
+          },
         ];
       }
-      return { ...state, moves };
+      return {
+        ...state,
+        moves,
+        stepCount: Math.max(state.stepCount ?? 1, action.step + 1),
+      };
     }
 
     case "MERGE_MOVES": {
-      // 生成シーンの一括適用：同じactorのルートは置換、それ以外は温存
+      // 生成シーンの一括適用：指定場面内の同actorルートは置換、それ以外は温存
       const incoming = new Set(action.moves.map((m) => m.actor));
       const moves = [
-        ...state.moves.filter((m) => !incoming.has(m.actor)),
-        ...action.moves,
+        ...state.moves.filter(
+          (m) => (m.step ?? 0) !== action.step || !incoming.has(m.actor)
+        ),
+        ...action.moves.map((m) => ({
+          ...m,
+          step: action.step,
+          kind: m.kind ?? defaultKind(m.actor),
+        })),
       ];
-      return { ...state, moves };
+      return {
+        ...state,
+        moves,
+        stepCount: Math.max(state.stepCount ?? 1, action.step + 1),
+      };
     }
 
     case "UPDATE_MOVE": {
@@ -240,19 +418,217 @@ function reducer(state: BoardState, action: Action): BoardState {
       };
 
     case "CLEAR_MOVES":
-      return { ...state, moves: [] };
+      // 場面ごと消えるため、場面限定の描き込み・図形は全場面共通として残す
+      return {
+        ...state,
+        moves: [],
+        stepCount: 1,
+        drawings: (state.drawings ?? []).map((d) =>
+          d.step != null ? { ...d, step: undefined } : d
+        ),
+        shapes: (state.shapes ?? []).map((sh) =>
+          sh.step != null ? { ...sh, step: undefined } : sh
+        ),
+      };
 
     case "UNDO_MOVE":
       return { ...state, moves: state.moves.slice(0, -1) };
 
-    case "LOAD_TACTIC":
+    case "ADD_STEP":
       return {
+        ...state,
+        stepCount: stepCountOf(state.moves, state.stepCount) + 1,
+      };
+
+    case "DELETE_STEP": {
+      // 場面ごと削除：その場面のルート・場面限定の描き込み・図形を消し、後続場面を繰り上げ
+      const moves = state.moves
+        .filter((m) => (m.step ?? 0) !== action.step)
+        .map((m) =>
+          (m.step ?? 0) > action.step ? { ...m, step: (m.step ?? 0) - 1 } : m
+        );
+      const drawings = (state.drawings ?? [])
+        .filter((d) => d.step == null || d.step !== action.step)
+        .map((d) =>
+          d.step != null && d.step > action.step ? { ...d, step: d.step - 1 } : d
+        );
+      const shapes = (state.shapes ?? [])
+        .filter((sh) => sh.step == null || sh.step !== action.step)
+        .map((sh) =>
+          sh.step != null && sh.step > action.step ? { ...sh, step: sh.step - 1 } : sh
+        );
+      return {
+        ...state,
+        moves,
+        drawings,
+        shapes,
+        stepCount: Math.max(1, stepCountOf(state.moves, state.stepCount) - 1),
+      };
+    }
+
+    case "ADD_OPPONENT": {
+      const opponents = [...(state.opponents ?? [])];
+      opponents.push({
+        x: action.x,
+        y: action.y,
+        label: String(opponents.length + 1),
+      });
+      return { ...state, opponents };
+    }
+
+    case "MOVE_OPPONENT": {
+      const opponents = (state.opponents ?? []).map((o, i) =>
+        i === action.index ? { ...o, x: action.x, y: action.y } : o
+      );
+      return { ...state, opponents };
+    }
+
+    case "UPDATE_OPPONENT": {
+      const opponents = (state.opponents ?? []).map((o, i) =>
+        i === action.index ? { ...o, label: action.label } : o
+      );
+      return { ...state, opponents };
+    }
+
+    case "DELETE_OPPONENT": {
+      // moves の opp インデックス参照を詰め替える
+      const opponents = (state.opponents ?? []).filter(
+        (_, i) => i !== action.index
+      );
+      const moves = state.moves
+        .filter((m) => !(isOppActor(m.actor) && oppIndex(m.actor) === action.index))
+        .map((m) => {
+          if (isOppActor(m.actor) && oppIndex(m.actor) > action.index) {
+            return { ...m, actor: `opp${oppIndex(m.actor) - 1}` as Actor };
+          }
+          return m;
+        });
+      // shapes（link/hull）の opp インデックス参照も同じルールで詰め替える。
+      // 削除された opp を参照する actor は除去し、それにより人数不足になった図形は消す
+      const remapActor = (a: Actor): Actor | null => {
+        if (!isOppActor(a)) return a;
+        const oi = oppIndex(a);
+        if (oi === action.index) return null;
+        return oi > action.index ? (`opp${oi - 1}` as Actor) : a;
+      };
+      const shapes = (state.shapes ?? [])
+        .map((sh): Shape | null => {
+          if (sh.kind === "link" || sh.kind === "hull") {
+            const actors = sh.actors
+              .map(remapActor)
+              .filter((a): a is Actor => a != null);
+            const minCount = sh.kind === "link" ? 2 : 3;
+            return actors.length < minCount ? null : { ...sh, actors };
+          }
+          return sh;
+        })
+        .filter((sh): sh is Shape => sh != null);
+      // holder（保持者）の opp インデックス参照も同じルールで詰め替える
+      const holder = state.holder != null ? remapActor(state.holder) : state.holder;
+      return { ...state, opponents, moves, shapes, holder };
+    }
+
+    case "TRANSLATE_ACTOR": {
+      // アニメ編集中の「移動」：ベース位置とその選手の全ルートを平行移動する
+      const cl = (v: number) => Math.max(2, Math.min(98, v));
+      const shift = (p: Point): Point => ({
+        x: cl(p.x + action.dx),
+        y: cl(p.y + action.dy),
+      });
+      const moves = state.moves.map((m) =>
+        m.actor === action.actor ? { ...m, path: m.path.map(shift) } : m
+      );
+      if (action.actor === "ball") {
+        // アニメ中のボール単体の移動ツール操作は従来どおり（保持追従の対象外）
+        return { ...state, moves, ball: shift(state.ball) };
+      }
+      if (isOppActor(action.actor)) {
+        const idx = oppIndex(action.actor);
+        const opponents = (state.opponents ?? []).map((o, i) =>
+          i === idx ? { ...o, ...shift(o) } : o
+        );
+        return syncCarriedBall({ ...state, moves, opponents });
+      }
+      const slots = state.slots.map((s, i) =>
+        i === action.actor ? { ...s, ...shift(s) } : s
+      );
+      return syncCarriedBall({ ...state, moves, slots });
+    }
+
+    case "ADD_STROKE":
+      return {
+        ...state,
+        drawings: [...(state.drawings ?? []), action.stroke],
+      };
+
+    case "UPDATE_STROKE":
+      return {
+        ...state,
+        drawings: (state.drawings ?? []).map((d) =>
+          d.id === action.id ? { ...d, ...action.patch } : d
+        ),
+      };
+
+    case "DELETE_STROKE":
+      return {
+        ...state,
+        drawings: (state.drawings ?? []).filter((d) => d.id !== action.id),
+      };
+
+    case "UNDO_STROKE":
+      return { ...state, drawings: (state.drawings ?? []).slice(0, -1) };
+
+    case "CLEAR_STROKES":
+      // 見えている描き込みだけ消す：全場面共通＋（アニメ中は）現在の場面のもの。
+      // 他の場面に紐づく描き込みは残す。
+      return {
+        ...state,
+        drawings: (state.drawings ?? []).filter(
+          (d) => d.step != null && d.step !== action.step
+        ),
+      };
+
+    case "ADD_SHAPE":
+      return {
+        ...state,
+        shapes: [...(state.shapes ?? []), action.shape],
+      };
+
+    case "UPDATE_SHAPE":
+      return {
+        ...state,
+        shapes: (state.shapes ?? []).map((s) =>
+          s.id === action.id ? ({ ...s, ...action.patch } as Shape) : s
+        ),
+      };
+
+    case "DELETE_SHAPE":
+      return {
+        ...state,
+        shapes: (state.shapes ?? []).filter((s) => s.id !== action.id),
+      };
+
+    case "SET_GUIDES":
+      return { ...state, guides: { ...(state.guides ?? {}), ...action.patch } };
+
+    case "SET_PITCH_VIEW":
+      return { ...state, pitchView: action.view };
+
+    case "LOAD_TACTIC":
+      return normalizeBoard({
         ...state,
         formation: action.formation,
         slots: action.slots,
         ball: action.ball,
         moves: action.moves,
-      };
+        holder: action.holder,
+        opponents: action.opponents,
+        drawings: action.drawings,
+        shapes: action.shapes,
+        stepCount: action.stepCount,
+        guides: action.guides ?? {},
+        pitchView: action.pitchView ?? "full",
+      });
 
     case "NEW_TACTIC":
       return {
@@ -261,10 +637,17 @@ function reducer(state: BoardState, action: Action): BoardState {
         slots: buildSlots(action.formation),
         ball: { x: 50, y: 42 },
         moves: [],
+        holder: null,
+        opponents: [],
+        drawings: [],
+        shapes: [],
+        stepCount: 1,
+        guides: state.guides ?? {},
+        pitchView: state.pitchView ?? "full",
       };
 
     case "IMPORT_SHARED":
-      return {
+      return normalizeBoard({
         ...state,
         teamName: action.teamName,
         players: action.players,
@@ -273,7 +656,14 @@ function reducer(state: BoardState, action: Action): BoardState {
         slots: action.slots,
         ball: action.ball,
         moves: action.moves,
-      };
+        holder: action.holder,
+        opponents: action.opponents,
+        drawings: action.drawings,
+        shapes: action.shapes,
+        stepCount: action.stepCount,
+        guides: action.guides ?? {},
+        pitchView: action.pitchView ?? "full",
+      });
 
     default:
       return state;
@@ -302,11 +692,14 @@ export type SheetType =
   | "article"
   | "importShared"
   | "chat"
+  | "oppMenu"
   | null;
 
 export interface SheetState {
   type: SheetType;
   slot?: number;
+  /** oppMenu: 対象の相手トークン index */
+  opp?: number;
   /** playerForm: 編集対象（新規は undefined） */
   player?: Player;
   /** playerForm: 作成後にこの枠へ自動配置する */
@@ -332,6 +725,8 @@ interface BoardContextValue {
   swapSlots: (a: number, b: number) => void;
   moveSlot: (slot: number, x: number, y: number, role: Position) => void;
   setBall: (x: number, y: number) => void;
+  /** ボールの保持者を設定/解除する（reducer側で ball 座標も前方位置へ同期） */
+  setHolder: (holder: Actor | null) => void;
   setCaptain: (pid: string | null) => void;
   addPlayer: (p: Omit<Player, "id">) => void;
   /** 選手を追加し、生成したIDを返す */
@@ -340,17 +735,120 @@ interface BoardContextValue {
   deletePlayer: (id: string) => void;
   setTeamName: (name: string) => void;
   resetPositions: () => void;
+  /** 現在の場面へルートを追加（同場面・同アクターは置換） */
   addMove: (actor: Actor, path: Point[]) => void;
-  /** 生成シーンなど複数ルートの一括適用（同actorは置換） */
+  /** 生成シーンなど複数ルートの一括適用（現在の場面へ・同actorは置換） */
   mergeMoves: (moves: Move[]) => void;
   updateMove: (index: number, patch: Partial<Move>) => void;
   deleteMove: (index: number) => void;
   clearMoves: () => void;
   undoMove: () => void;
+  // 場面（ステップ）
+  activeStep: number;
+  setActiveStep: (s: number) => void;
+  /** 場面数（moves から導出・最低1） */
+  stepCount: number;
+  /** 新しい場面を追加して選択 */
+  addStep: () => void;
+  /** 場面を削除（中のルートごと） */
+  removeStep: (s: number) => void;
+  /** 指定場面だけ再生 */
+  playStep: (s: number) => void;
+  // 相手チームトークン
+  addOpponent: () => void;
+  moveOpponent: (index: number, x: number, y: number) => void;
+  updateOpponentLabel: (index: number, label: string) => void;
+  deleteOpponent: (index: number) => void;
+  // フリーハンドペン
+  penMode: boolean;
+  setPenMode: (v: boolean) => void;
+  /** ペン設定（新しいストロークに適用） */
+  penColor: string;
+  setPenColor: (c: string) => void;
+  penWidth: number;
+  setPenWidth: (w: number) => void;
+  penDash: boolean;
+  setPenDash: (v: boolean) => void;
+  /** 新しい描き込みの表示範囲：全場面共通 / 現在の場面のみ（アニメ中のみ有効） */
+  penScope: "all" | "step";
+  setPenScope: (s: "all" | "step") => void;
+  /** 盤面が現在表示している場面（再生・シークに追従。ペンの場面別表示用） */
+  viewStep: number;
+  addStroke: (path: Point[]) => void;
+  /** ストロークの色・太さ・線種を部分更新する */
+  updateStroke: (id: string, patch: Partial<Pick<PenStroke, "color" | "width" | "dash">>) => void;
+  deleteStroke: (id: string) => void;
+  /** 表示中の描き込みのうち最後の1本を取り消す */
+  undoStroke: () => void;
+  /** 表示中の描き込みを消去（他の場面のものは残す） */
+  clearStrokes: () => void;
+  /** 選択中のストロークID（選択すると selShape は解除される） */
+  selStroke: string | null;
+  setSelStroke: (id: string | null) => void;
+  // 図形オブジェクト
+  /** 図形パレットの開閉 */
+  shapesOpen: boolean;
+  setShapesOpen: (v: boolean) => void;
+  /** 選択中の図形ID（選択すると selStroke は解除される） */
+  selShape: string | null;
+  setSelShape: (id: string | null) => void;
+  /** 新しい図形に適用する色 */
+  shapeColor: string;
+  setShapeColor: (c: string) => void;
+  /** 図形を中央付近に既定サイズで作成し、選択状態にする */
+  addShape: (kind: "zoneEllipse" | "zoneRect" | "text" | "arrow") => void;
+  updateShape: (id: string, patch: ShapePatch) => void;
+  deleteShape: (id: string) => void;
+  // 選手追従図形（連結ライン・囲み枠）の「選手タップ待ち」作成フロー
+  /** タップ待ち中の図形種別と、これまでにタップされた選手 */
+  pendingShape: { kind: "link" | "hull"; actors: Actor[] } | null;
+  /** usePointerDrag から同期的に読むための ref */
+  pendingShapeRef: React.RefObject<{ kind: "link" | "hull"; actors: Actor[] } | null>;
+  startPendingShape: (kind: "link" | "hull") => void;
+  /** タップされた選手/ボールを pending に反映 */
+  pendingShapeTap: (actor: Actor) => void;
+  /** link/hull を人数を満たしていれば作成する（不足時はtoast） */
+  confirmPendingShape: () => void;
+  cancelPendingShape: () => void;
+  /** 図形・ストロークのDOM要素登録。applyPlayheadから直接更新する追従図形（link/hull）や、
+   * FormatBar の位置計算（getBoundingClientRect）に使う */
+  registerShapeEl: (id: string, el: SVGElement | HTMLElement | null) => void;
+  /** registerShapeEl で登録済みのDOM要素を取得する（未登録なら undefined） */
+  getShapeEl: (id: string) => SVGElement | HTMLElement | undefined;
+  /** 連結ライン・囲み枠（link/hull）の描画点を、選手/相手/ボールの実測ディスク中心へ同期する。
+   * レンダー中の getBoundingClientRect 読み取りを避けるため、コミット後（useLayoutEffect）や
+   * 再生ループ（applyPlayhead）からのみ呼び出す。st 省略時は stateRef.current を使う */
+  syncAttachedShapes: (st?: BoardState) => void;
+  // ピッチガイド（5レーン/エリア名/凡例）
+  setGuides: (patch: Partial<{ lanes: boolean; zones: boolean; legend: boolean }>) => void;
+  // ピッチ表示モード（フル/ハーフ）
+  setPitchView: (view: PitchViewMode) => void;
+  // ゴースト残像（前の場面の開始位置を薄く表示）。永続化不要のUI状態
+  showGhost: boolean;
+  setShowGhost: (v: boolean) => void;
+  // アニメ中の描き込み（ペン・図形）表示ON/OFF。永続化不要のUI状態（既定ON）
+  showDrawings: boolean;
+  setShowDrawings: (v: boolean) => void;
+  // アニメ編集のツール（ドラッグの意味）
+  animTool: "move" | "draw";
+  setAnimTool: (t: "move" | "draw") => void;
+  /** アニメ編集中の移動（ベース位置＋ルートを平行移動） */
+  translateActor: (actor: Actor, dx: number, dy: number) => void;
   // UI mode
   mode: "edit" | "anim";
   selActor: Actor | null;
   setSelActor: (a: Actor | null) => void;
+  /** タイムライン・線種編集で選択中のルート（actor+場面で一意） */
+  selMove: { actor: Actor; step: number } | null;
+  setSelMove: (m: { actor: Actor; step: number } | null) => void;
+  /** 場面 s 開始時点のボール保持者（こぼれ球や未保持は null） */
+  holderAtStep: (s: number) => Actor | null;
+  /** 場面 s 終了時点のボール保持者（場面内のパス後の連鎖判定用） */
+  holderAtStepEnd: (s: number) => Actor | null;
+  /** 保持者(selActor)から receiver へパスを生成（前提条件は呼び出し側でガード） */
+  passTo: (receiver: Actor) => void;
+  /** 保持者(selActor)からゴールへシュートを生成（前提条件は呼び出し側でガード） */
+  shoot: () => void;
   /** 記録中の一時ルート。再描画を避けるため ref + 購読で管理 */
   tempDrawRef: React.RefObject<{ actor: Actor; pts: Point[] } | null>;
   setTempDraw: (d: { actor: Actor; pts: Point[] } | null) => void;
@@ -457,6 +955,19 @@ let pidSeq = 0;
 function newPid(): string {
   pidSeq += 1;
   return `p_${Date.now().toString(36)}_${pidSeq}`;
+}
+
+let shapeSeq = 0;
+function newShapeId(): string {
+  shapeSeq += 1;
+  return `shape_${Date.now().toString(36)}_${shapeSeq}`;
+}
+
+let strokeSeq = 0;
+/** ペンストロークの一意ID（新規作成時・旧データの補完時の両方で使用） */
+function newStrokeId(): string {
+  strokeSeq += 1;
+  return `stroke_${strokeSeq}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 let msgSeq = 0;
@@ -759,13 +1270,97 @@ export function BoardProvider({
   }, []);
   useEffect(() => {
     if (!hydrated.current) return;
-    saveState(state);
+    // 毎キーストロークでの書き込みを避けるため300msデバウンス。次の変更でタイマーをクリアする
+    const timer = setTimeout(() => {
+      saveState(state);
+    }, 300);
+    return () => clearTimeout(timer);
   }, [state]);
 
   // ---- UI state ----
   const [mode, setMode] = useState<"edit" | "anim">("edit");
   const [screen, setScreen] = useState<"home" | "board" | "drill" | "team" | "chat" | "notebook">("home");
   const [selActor, setSelActor] = useState<Actor | null>(null);
+  // イベントハンドラ（usePointerDrag等）から最新値を読むためのミラー
+  const selActorRef = useRef<Actor | null>(null);
+  useEffect(() => {
+    selActorRef.current = selActor;
+  }, [selActor]);
+  const [selMove, setSelMove] = useState<{ actor: Actor; step: number } | null>(null);
+  const [activeStep, setActiveStepState] = useState(0);
+  const activeStepRef = useRef(0);
+  useEffect(() => {
+    activeStepRef.current = activeStep;
+  }, [activeStep]);
+  const [penMode, setPenMode] = useState(false);
+  const [penColor, setPenColor] = useState("#ffe27a");
+  const [penWidth, setPenWidth] = useState(0.9);
+  const [penDash, setPenDash] = useState(false);
+  const penRef = useRef({ color: "#ffe27a", width: 0.9, dash: false });
+  useEffect(() => {
+    penRef.current = { color: penColor, width: penWidth, dash: penDash };
+  }, [penColor, penWidth, penDash]);
+  const [penScope, setPenScope] = useState<"all" | "step">("all");
+  // 図形オブジェクト
+  const [selShape, setSelShapeState] = useState<string | null>(null);
+  // 選択中のペンストローク（selShape とは常に排他：どちらかを選ぶと他方は自動で解除される）
+  const [selStroke, setSelStrokeState] = useState<string | null>(null);
+  const setSelShape = useCallback((id: string | null) => {
+    setSelShapeState(id);
+    if (id != null) setSelStrokeState(null);
+  }, []);
+  const setSelStroke = useCallback((id: string | null) => {
+    setSelStrokeState(id);
+    if (id != null) setSelShapeState(null);
+  }, []);
+  const [shapeColor, setShapeColor] = useState("#ffe27a");
+  // 選手追従図形の「選手タップ待ち」フロー。usePointerDragから同期的に読むためref併用
+  const [pendingShape, setPendingShapeState] = useState<{
+    kind: "link" | "hull";
+    actors: Actor[];
+  } | null>(null);
+  const pendingShapeRef = useRef<{ kind: "link" | "hull"; actors: Actor[] } | null>(
+    null
+  );
+  const setPendingShape = useCallback(
+    (p: { kind: "link" | "hull"; actors: Actor[] } | null) => {
+      pendingShapeRef.current = p;
+      setPendingShapeState(p);
+    },
+    []
+  );
+  const [shapesOpen, setShapesOpenState] = useState(false);
+  // パレットを閉じたら選択・選手タップ待ち（pendingShape）も解除する
+  const setShapesOpen = useCallback(
+    (v: boolean) => {
+      setShapesOpenState(v);
+      if (!v) {
+        setSelShapeState(null);
+        setPendingShape(null);
+      }
+    },
+    [setPendingShape]
+  );
+  // 図形（zone/arrow/text/link/hull）・ストロークのDOM要素。
+  // applyPlayheadからの追従図形（link/hull）の直接位置更新や、FormatBar の位置計算に使う
+  const shapeEls = useRef<Map<string, SVGElement | HTMLElement>>(new Map());
+  const registerShapeEl = useCallback((id: string, el: SVGElement | HTMLElement | null) => {
+    if (el) shapeEls.current.set(id, el);
+    else shapeEls.current.delete(id);
+  }, []);
+  const getShapeEl = useCallback(
+    (id: string) => shapeEls.current.get(id),
+    []
+  );
+  const [animTool, setAnimTool] = useState<"move" | "draw">("draw");
+  // 盤面が表示中の場面（再生・シークに追従）。ペンの場面別表示に使う
+  const [viewStep, setViewStepState] = useState(0);
+  const viewStepRef = useRef(0);
+  const setViewStep = useCallback((s: number) => {
+    if (viewStepRef.current === s) return;
+    viewStepRef.current = s;
+    setViewStepState(s);
+  }, []);
   const tempDrawRef = useRef<{ actor: Actor; pts: Point[] } | null>(null);
   const tempSubs = useRef<Set<() => void>>(new Set());
   const setTempDraw = useCallback(
@@ -782,6 +1377,10 @@ export function BoardProvider({
     };
   }, []);
   const [showPaths, setShowPaths] = useState(true);
+  // ゴースト残像の表示ON/OFF（永続化不要のUI状態。既定ON）
+  const [showGhost, setShowGhost] = useState(true);
+  // アニメ中の描き込み（ペン・図形）表示ON/OFF（永続化不要のUI状態。既定ON）
+  const [showDrawings, setShowDrawings] = useState(true);
   const [fullplay, setFullplay] = useState(false);
   const [sheet, setSheet] = useState<SheetState>({ type: null });
   const [toastMsg, setToastMsg] = useState("");
@@ -903,6 +1502,87 @@ export function BoardProvider({
     if (el) tokenEls.current.set(actor, el);
     else tokenEls.current.delete(actor);
   }, []);
+  /** 選手/相手/ボールの「ディスク実測中心」をピッチ%座標で返す（要素未登録なら null）。
+   * pr（ピッチ矩形）を引数で受け取ることで、複数アクターをまとめて処理する際に
+   * getPitchRect の呼び出しを1回にまとめられる（syncAttachedShapes 専用の内部ヘルパー。
+   * レンダー中には呼ばない） */
+  const discCenterFromRect = useCallback(
+    (actor: Actor, pr: DOMRect, pitchView: PitchViewMode | undefined): Point | null => {
+      const wrap = tokenEls.current.get(actor);
+      if (!wrap) return null;
+      const discEl = wrap.querySelector<HTMLElement>(actor === "ball" ? ".b" : ".disc");
+      if (!discEl) return null;
+      const r = discEl.getBoundingClientRect();
+      const xPct = ((r.left + r.width / 2 - pr.left) / pr.width) * 100;
+      const topPct = ((r.top + r.height / 2 - pr.top) / pr.height) * 100;
+      return { x: xPct, y: topToY(topPct, pitchView) };
+    },
+    []
+  );
+
+  /** 連結ライン・囲み枠（link/hull）の描画点を、選手/相手/ボールの実測ディスク中心へ同期する。
+   * read→write の二相：先に pitch rect と必要な全ディスク位置を読み取り（phase1）、
+   * その後にまとめて DOM へ書き込む（phase2）。読み書きを交互に行うレイアウト再計算を避けるため。
+   * st 省略時は stateRef.current を使う。呼び出しはコミット後（useLayoutEffect）や
+   * 再生ループ（applyPlayhead）からのみ行い、レンダー中には呼ばない */
+  const syncAttachedShapes = useCallback(
+    (st?: BoardState) => {
+      const s = st ?? stateRef.current;
+      const attached = (s.shapes ?? []).filter(
+        (sh): sh is LinkShape | HullShape => sh.kind === "link" || sh.kind === "hull"
+      );
+      if (attached.length === 0) return;
+      const pr = getPitchRect();
+      const t = play.current.t;
+      const step = stepAtTime(s.moves, t, s.stepCount);
+      const posFor = (a: Actor): Point =>
+        (pr && pr.width > 0 && pr.height > 0 ? discCenterFromRect(a, pr, s.pitchView) : null) ??
+        actorPos(a, t, s.moves, s.slots, s.ball, s.opponents, s.holder);
+
+      // phase 1: read（ディスク実測位置の取得。getBoundingClientRect 呼び出しはここまで）
+      const prepared = attached
+        .filter((sh) => sh.step == null || sh.step === step)
+        .map((sh) => {
+          if (sh.kind === "link") {
+            const points = sh.actors
+              .map((a) => posFor(a))
+              .map((p) => `${p.x.toFixed(1)},${yToTop(p.y, s.pitchView).toFixed(1)}`)
+              .join(" ");
+            return { id: sh.id, kind: "link" as const, points, badge: null };
+          }
+          // hull: 凸包ポリゴン＋人数バッジ（重心）
+          const screenPts = sh.actors.map((a) => {
+            const p = posFor(a);
+            return { x: p.x, y: yToTop(p.y, s.pitchView) };
+          });
+          const hull = convexHull(screenPts);
+          const points = hull.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+          const badge =
+            hull.length > 0
+              ? {
+                  cx: hull.reduce((sum, p) => sum + p.x, 0) / hull.length,
+                  cy: hull.reduce((sum, p) => sum + p.y, 0) / hull.length,
+                }
+              : null;
+          return { id: sh.id, kind: "hull" as const, points, badge };
+        });
+
+      // phase 2: write（まとめてDOMへ反映）
+      prepared.forEach((p) => {
+        if (!p.points) return;
+        const el = shapeEls.current.get(p.id);
+        if (el) el.setAttribute("points", p.points);
+        if (p.kind === "hull" && p.badge) {
+          const badgeEl = shapeEls.current.get(p.id + "_badge");
+          if (badgeEl) {
+            (badgeEl as HTMLElement).style.left = p.badge.cx + "%";
+            (badgeEl as HTMLElement).style.top = p.badge.cy + "%";
+          }
+        }
+      });
+    },
+    [getPitchRect, discCenterFromRect]
+  );
 
   // ---- playback ----
   const [isPlaying, setIsPlaying] = useState(false);
@@ -913,29 +1593,39 @@ export function BoardProvider({
     play.current.speed = speed;
   }, [speed]);
 
-  const applyPlayhead = useCallback((t: number) => {
-    const st = stateRef.current;
-    const els = tokenEls.current;
-    st.slots.forEach((_, i) => {
-      const el = els.get(i);
-      if (!el) return;
-      const q = actorPos(i, t, st.moves, st.slots, st.ball);
-      el.style.left = q.x + "%";
-      el.style.top = 100 - q.y + "%";
-    });
-    const ballEl = els.get("ball");
-    if (ballEl) {
-      const q = actorPos("ball", t, st.moves, st.slots, st.ball);
-      ballEl.style.left = q.x + "%";
-      ballEl.style.top = 100 - q.y + "%";
-    }
-  }, []);
+  const applyPlayhead = useCallback(
+    (t: number) => {
+      const st = stateRef.current;
+      const els = tokenEls.current;
+      const place = (actor: Actor) => {
+        const el = els.get(actor);
+        if (!el) return;
+        const q = actorPos(actor, t, st.moves, st.slots, st.ball, st.opponents, st.holder);
+        el.style.left = q.x + "%";
+        el.style.top = yToTop(q.y, st.pitchView) + "%";
+      };
+      st.slots.forEach((_, i) => place(i));
+      (st.opponents ?? []).forEach((_, i) => place(`opp${i}`));
+      place("ball");
+      // 場面別の描き込み表示を再生位置に追従させる
+      const step = stepAtTime(st.moves, t, st.stepCount);
+      setViewStep(step);
+
+      // 選手追従図形（連結ライン・囲み枠）を再生位置に合わせて更新。
+      // トークンの style を全て更新し終えた後に呼ぶため、ディスクの実測位置が使える。
+      syncAttachedShapes(st);
+    },
+    [setViewStep, syncAttachedShapes]
+  );
 
   const stopPlay = useCallback(() => {
     play.current.playing = false;
     cancelAnimationFrame(play.current.raf);
     setIsPlaying(false);
   }, []);
+
+  // 場面再生時の終了時刻（nullなら最後まで）
+  const playUntil = useRef<number | null>(null);
 
   const tick = useCallback(
     (ts: number) => {
@@ -945,11 +1635,13 @@ export function BoardProvider({
       const dt = ((ts - p.last) / 1000) * p.speed;
       p.last = ts;
       p.t += dt;
-      const T = animTotal(stateRef.current.moves);
-      if (p.t >= T) {
-        p.t = T;
-        applyPlayhead(T);
-        onTick.current?.(T, T);
+      const T = animTotal(stateRef.current.moves, stateRef.current.stepCount);
+      const end = Math.min(T, playUntil.current ?? T);
+      if (p.t >= end) {
+        p.t = end;
+        applyPlayhead(end);
+        onTick.current?.(end, T);
+        playUntil.current = null;
         stopPlay();
         return;
       }
@@ -962,10 +1654,11 @@ export function BoardProvider({
 
   const startPlay = useCallback(() => {
     if (!stateRef.current.moves.length) {
-      showToast("まずピッチ上でルートをなぞってください");
+      showToast("先にルートを描画してください");
       return;
     }
-    const T = animTotal(stateRef.current.moves);
+    playUntil.current = null;
+    const T = animTotal(stateRef.current.moves, stateRef.current.stepCount);
     if (play.current.t >= T) play.current.t = 0;
     play.current.playing = true;
     play.current.last = 0;
@@ -974,11 +1667,32 @@ export function BoardProvider({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tick]);
 
+  /** 指定場面だけを再生（動きが無ければ場面の頭出しのみ） */
+  const playStep = useCallback(
+    (s: number) => {
+      const st = stateRef.current;
+      const t0 = stepStartTime(st.moves, s);
+      const d = stepDur(st.moves, s);
+      stopPlay();
+      play.current.t = t0;
+      applyPlayhead(t0);
+      setViewStep(s);
+      onTick.current?.(t0, animTotal(st.moves, st.stepCount));
+      if (d <= 0) return;
+      playUntil.current = t0 + d;
+      play.current.playing = true;
+      play.current.last = 0;
+      setIsPlaying(true);
+      play.current.raf = requestAnimationFrame(tick);
+    },
+    [stopPlay, applyPlayhead, tick, setViewStep]
+  );
+
   const resetPlay = useCallback(() => {
     stopPlay();
     play.current.t = 0;
     applyPlayhead(0);
-    onTick.current?.(0, animTotal(stateRef.current.moves));
+    onTick.current?.(0, animTotal(stateRef.current.moves, stateRef.current.stepCount));
   }, [stopPlay, applyPlayhead]);
 
   const seek = useCallback(
@@ -986,7 +1700,7 @@ export function BoardProvider({
       stopPlay();
       play.current.t = t;
       applyPlayhead(t);
-      onTick.current?.(t, animTotal(stateRef.current.moves));
+      onTick.current?.(t, animTotal(stateRef.current.moves, stateRef.current.stepCount));
     },
     [stopPlay, applyPlayhead]
   );
@@ -1011,20 +1725,255 @@ export function BoardProvider({
     toastTimer.current = setTimeout(() => setToastOn(false), 1800);
   }, []);
 
+  // ---- Keynote風の選択キーボード操作（Delete/Backspace/Esc）。document keydownは1箇所に集約する ----
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      // 入力中（テキストボックス等にフォーカス）は誤発火を避けるため無視する
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selShape != null) {
+          e.preventDefault();
+          const id = selShape;
+          dispatch({ type: "DELETE_SHAPE", id });
+          setSelShapeState((cur) => (cur === id ? null : cur));
+          showToast("削除しました");
+          return;
+        }
+        if (selStroke != null) {
+          e.preventDefault();
+          const id = selStroke;
+          dispatch({ type: "DELETE_STROKE", id });
+          setSelStrokeState((cur) => (cur === id ? null : cur));
+          showToast("削除しました");
+          return;
+        }
+        if (mode === "anim" && selMove != null) {
+          const idx = stateRef.current.moves.findIndex(
+            (m) => m.actor === selMove.actor && (m.step ?? 0) === selMove.step
+          );
+          if (idx >= 0) {
+            e.preventDefault();
+            dispatch({ type: "DELETE_MOVE", index: idx });
+            setSelActor(null);
+            setSelMove(null);
+            showToast("削除しました");
+          }
+        }
+        return;
+      }
+
+      if (e.key === "Escape") {
+        setSelShapeState(null);
+        setSelStrokeState(null);
+        setPendingShape(null);
+        setSelMove(null);
+        setSelActor(null);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [selShape, selStroke, selMove, mode, showToast, setPendingShape]);
+
+  // ---- R2: ボール所有モデル（保持者判定・パス/シュート生成） ----
+  /** 場面 s 開始時点のボール保持者（holderAt の薄いラッパー） */
+  const holderAtStep = useCallback((s: number): Actor | null => {
+    const st = stateRef.current;
+    return holderAt(stepStartTime(st.moves, s), st.moves, st.holder);
+  }, []);
+
+  /** 場面 s 終了時点のボール保持者（場面内のパスで保持者が変わった後の連鎖判定用） */
+  const holderAtStepEnd = useCallback((s: number): Actor | null => {
+    const st = stateRef.current;
+    return holderAt(
+      stepStartTime(st.moves, s) + stepDur(st.moves, s) + 0.001,
+      st.moves,
+      st.holder
+    );
+  }, []);
+
+  /** パス/シュートの生成先場面を確保する。現在の場面に既にボールmoveがあれば
+   * （同actor同stepの置換で消えるのを防ぐため）新しい場面を追加して切り替える（addStep相当）。
+   * 戻り値は生成先の場面番号と、新場面を作ったかどうか */
+  const ensureBallStep = useCallback((): { step: number; created: boolean } => {
+    const st = stateRef.current;
+    const cur = activeStepRef.current;
+    const hasBallMove = st.moves.some(
+      (m) => m.actor === "ball" && (m.step ?? 0) === cur
+    );
+    if (!hasBallMove) return { step: cur, created: false };
+    const next = stepCountOf(st.moves, st.stepCount);
+    dispatch({ type: "ADD_STEP" });
+    setActiveStepState(next);
+    setSelMove(null);
+    // 新しい場面の頭＝全アニメの末尾へ（addStepと同じ挙動）
+    seek(animTotal(st.moves, st.stepCount));
+    setViewStep(next);
+    return { step: next, created: true };
+  }, [seek, setViewStep]);
+
+  /** 保持者から receiver へのパスを生成する（前提条件は呼び出し側でガード済み） */
+  const passTo = useCallback(
+    (receiver: Actor) => {
+      const st = stateRef.current;
+      // 出し手は「その場面の保持者」から特定する（selActorに依存しない＝タップ操作でもボールのドラッグ＆ドロップでも同じ結果になる）
+      const curStep = activeStepRef.current;
+      const passer = holderAtStep(curStep) ?? holderAtStepEnd(curStep);
+      if (passer == null) return;
+      // 生成先の場面（現在の場面にボールmoveが既にあれば新場面を作って連鎖）
+      const { step, created } = ensureBallStep();
+      const t0 = stepStartTime(st.moves, step);
+      // 出し手の生成先場面のルート終了オフセット（なければ0＝その場から出す。
+      // 新場面にはルートが無いため endOff=0・位置は前場面終了時点になる）
+      const passerMove = st.moves.find(
+        (m) => m.actor === passer && (m.step ?? 0) === step
+      );
+      const endOff = passerMove ? passerMove.start + passerMove.dur : 0;
+      const fromPos = actorPos(passer, t0 + endOff, st.moves, st.slots, st.ball, st.opponents, st.holder);
+      // 受け手の生成先場面のルートがあればその終点（走り込みの先）、なければ現在位置
+      const receiverMove = st.moves.find(
+        (m) => m.actor === receiver && (m.step ?? 0) === step
+      );
+      const toPos = receiverMove
+        ? { ...receiverMove.path[receiverMove.path.length - 1] }
+        : actorPos(receiver, t0, st.moves, st.slots, st.ball, st.opponents, st.holder);
+      const path = [fromPos, toPos];
+      dispatch({
+        type: "ADD_MOVE",
+        actor: "ball",
+        path,
+        step,
+        start: endOff,
+        dur: Math.max(0.4, durFromPath(path) * 0.5),
+        kind: "pass",
+        to: receiver,
+      });
+      setSelActor(receiver);
+      setSelMove(null);
+      showToast(
+        created
+          ? `${actorDisplayName(st, receiver)}へパス（場面${step + 1}に追加）`
+          : `${actorDisplayName(st, receiver)}へパス`
+      );
+      setTimeout(() => playStep(step), 60);
+    },
+    [ensureBallStep, showToast, playStep, holderAtStep, holderAtStepEnd]
+  );
+
+  /** 保持者(selActor)からゴールへのシュートを生成する（前提条件は呼び出し側でガード済み） */
+  const shoot = useCallback(() => {
+    const st = stateRef.current;
+    const passer = selActorRef.current;
+    if (passer == null) return;
+    // 生成先の場面（現在の場面にボールmoveが既にあれば新場面を作って連鎖）
+    const { step, created } = ensureBallStep();
+    const t0 = stepStartTime(st.moves, step);
+    const passerMove = st.moves.find(
+      (m) => m.actor === passer && (m.step ?? 0) === step
+    );
+    const endOff = passerMove ? passerMove.start + passerMove.dur : 0;
+    const fromPos = actorPos(passer, t0 + endOff, st.moves, st.slots, st.ball, st.opponents, st.holder);
+    const target = { x: 50, y: 97 };
+    const path = [fromPos, target];
+    dispatch({
+      type: "ADD_MOVE",
+      actor: "ball",
+      path,
+      step,
+      start: endOff,
+      dur: Math.max(0.3, durFromPath(path) * 0.35),
+      kind: "shot",
+      to: "goal",
+    });
+    setSelActor(null);
+    showToast(created ? `シュート！（場面${step + 1}に追加）` : "シュート！");
+    setTimeout(() => playStep(step), 60);
+  }, [ensureBallStep, showToast, playStep]);
+
+  // ---- 場面（ステップ） ----
+  /** 場面を選択し、その頭出し位置へ盤面を合わせる */
+  const setActiveStep = useCallback(
+    (s: number) => {
+      setActiveStepState(s);
+      setSelMove(null);
+      const st = stateRef.current;
+      seek(stepStartTime(st.moves, s));
+      // 空の場面など境界時刻では時刻からの逆算が曖昧なため明示的に合わせる
+      setViewStep(s);
+    },
+    [seek, setViewStep]
+  );
+
+  const addStep = useCallback(() => {
+    const st = stateRef.current;
+    const next = stepCountOf(st.moves, st.stepCount);
+    dispatch({ type: "ADD_STEP" });
+    setActiveStepState(next);
+    setSelMove(null);
+    // 新しい場面の頭＝全アニメの末尾へ
+    seek(animTotal(st.moves, st.stepCount));
+    setViewStep(next);
+  }, [seek, setViewStep]);
+
+  const removeStep = useCallback(
+    (s: number) => {
+      dispatch({ type: "DELETE_STEP", step: s });
+      setSelMove(null);
+      setSelActor(null);
+      const st = stateRef.current;
+      const next = Math.max(0, Math.min(s, stepCountOf(st.moves, st.stepCount) - 2));
+      setActiveStepState(next);
+      // dispatch反映前のmovesでは正確に頭出しできないため、次フレームで合わせる
+      setTimeout(() => {
+        seek(stepStartTime(stateRef.current.moves, next));
+        setViewStep(next);
+      }, 0);
+    },
+    [seek, setViewStep]
+  );
+
   // ---- studio open/close ----
   const openStudio = useCallback(() => {
     setShowPaths(true);
     setSelActor(null);
+    setSelMove(null);
+    setPenMode(false);
+    // 図形パレット・選手タップ待ちを引き継がないよう明示的に閉じる
+    setShapesOpen(false);
+    setActiveStepState(0);
+    setViewStep(0);
     play.current.t = 0;
     setMode("anim");
-  }, []);
+  }, [setViewStep, setShapesOpen]);
   const closeStudio = useCallback(() => {
     stopPlay();
+    play.current.t = 0;
+    playUntil.current = null;
+    // 再生・シークで動かしたトークンを配置位置へ戻す
+    // （インラインstyleはReactの再描画では巻き戻らないため明示的にリセット）
+    const st = stateRef.current;
+    tokenEls.current.forEach((el, actor) => {
+      const p =
+        actor === "ball"
+          ? st.ball
+          : typeof actor === "number"
+            ? st.slots[actor]
+            : (st.opponents ?? [])[oppIndex(actor)];
+      if (!p) return;
+      el.style.left = p.x + "%";
+      el.style.top = yToTop(p.y, st.pitchView) + "%";
+    });
     setFullplay(false);
     setSelActor(null);
+    setSelMove(null);
+    // 図形パレット・選手タップ待ちを編集モードへ引き継がないよう明示的に閉じる
+    setShapesOpen(false);
     setTempDraw(null);
+    setActiveStepState(0);
+    setViewStep(0);
     setMode("edit");
-  }, [stopPlay]);
+  }, [stopPlay, setTempDraw, setViewStep, setShapesOpen]);
 
   // ---- sheet ----
   const openSheet = useCallback((s: SheetState) => setSheet(s), []);
@@ -1038,6 +1987,22 @@ export function BoardProvider({
       slots: s.slots.map((x) => ({ ...x })),
       ball: { ...s.ball },
       moves: s.moves.map((m) => ({ ...m, path: m.path.map((p) => ({ ...p })) })),
+      holder: s.holder ?? null,
+      opponents: (s.opponents ?? []).map((o) => ({ ...o })),
+      drawings: (s.drawings ?? []).map((d) => ({
+        ...d,
+        path: d.path.map((p) => ({ ...p })),
+      })),
+      shapes: (s.shapes ?? []).map((sh) =>
+        sh.kind === "arrow"
+          ? { ...sh, p0: { ...sh.p0 }, p1: { ...sh.p1 }, c: { ...sh.c } }
+          : sh.kind === "link" || sh.kind === "hull"
+            ? { ...sh, actors: [...sh.actors] }
+            : { ...sh }
+      ),
+      stepCount: stepCountOf(s.moves, s.stepCount),
+      guides: { ...(s.guides ?? {}) },
+      pitchView: s.pitchView ?? "full",
     };
   }, []);
 
@@ -1088,6 +2053,19 @@ export function BoardProvider({
         slots: play.slots.map((s) => ({ ...s })),
         ball: { ...play.ball },
         moves: play.moves.map((m) => ({ ...m, path: m.path.map((p) => ({ ...p })) })),
+        holder: play.holder ?? null,
+        opponents: (play.opponents ?? []).map((o) => ({ ...o })),
+        drawings: (play.drawings ?? []).map((d) => ({ ...d, path: d.path.map((p) => ({ ...p })) })),
+        shapes: (play.shapes ?? []).map((sh) =>
+          sh.kind === "arrow"
+            ? { ...sh, p0: { ...sh.p0 }, p1: { ...sh.p1 }, c: { ...sh.c } }
+            : sh.kind === "link" || sh.kind === "hull"
+              ? { ...sh, actors: [...sh.actors] }
+              : { ...sh }
+        ),
+        stepCount: play.stepCount ?? 1,
+        guides: { ...(play.guides ?? {}) },
+        pitchView: play.pitchView ?? "full",
       });
       setCurrentPlayId(id);
       persistSettings({ currentPlayId: id });
@@ -1136,6 +2114,19 @@ export function BoardProvider({
         slots: play.slots.map((s) => ({ ...s })),
         ball: { ...play.ball },
         moves: play.moves.map((m) => ({ ...m, path: m.path.map((p) => ({ ...p })) })),
+        holder: play.holder ?? null,
+        opponents: (play.opponents ?? []).map((o) => ({ ...o })),
+        drawings: (play.drawings ?? []).map((d) => ({ ...d, path: d.path.map((p) => ({ ...p })) })),
+        shapes: (play.shapes ?? []).map((sh) =>
+          sh.kind === "arrow"
+            ? { ...sh, p0: { ...sh.p0 }, p1: { ...sh.p1 }, c: { ...sh.c } }
+            : sh.kind === "link" || sh.kind === "hull"
+              ? { ...sh, actors: [...sh.actors] }
+              : { ...sh }
+        ),
+        stepCount: play.stepCount ?? 1,
+        guides: { ...(play.guides ?? {}) },
+        pitchView: play.pitchView ?? "full",
       });
       setCurrentPlayId(null);
       setSheet({ type: null });
@@ -1289,6 +2280,9 @@ export function BoardProvider({
     stopPlay();
     setMode("edit");
     setSelActor(null);
+    setSelMove(null);
+    setActiveStepState(0);
+    setPenMode(false);
     dispatch({ type: "NEW_TACTIC", formation: stateRef.current.formation });
     setCurrentPlayId(null);
     persistSettings({ currentPlayId: null });
@@ -1362,6 +2356,13 @@ export function BoardProvider({
       slots: b.slots,
       ball: b.ball,
       moves: b.moves,
+      holder: b.holder,
+      opponents: b.opponents,
+      drawings: b.drawings,
+      shapes: b.shapes,
+      stepCount: b.stepCount,
+      guides: b.guides,
+      pitchView: b.pitchView,
     });
     setCurrentPlayId(null);
     persistSettings({ currentPlayId: null });
@@ -1383,6 +2384,7 @@ export function BoardProvider({
       moveSlot: (slot, x, y, role) =>
         dispatch({ type: "MOVE_SLOT", slot, x, y, role }),
       setBall: (x, y) => dispatch({ type: "SET_BALL", x, y }),
+      setHolder: (holder) => dispatch({ type: "SET_HOLDER", holder }),
       setCaptain: (pid) => dispatch({ type: "SET_CAPTAIN", pid }),
       addPlayer: (p) =>
         dispatch({ type: "ADD_PLAYER", player: { ...p, id: newPid() } }),
@@ -1395,16 +2397,197 @@ export function BoardProvider({
       deletePlayer: (id) => dispatch({ type: "DELETE_PLAYER", id }),
       setTeamName: (name) => dispatch({ type: "SET_TEAM_NAME", name }),
       resetPositions: () => dispatch({ type: "RESET_POSITIONS" }),
-      addMove: (actor, path) => dispatch({ type: "ADD_MOVE", actor, path }),
-      mergeMoves: (ms) => dispatch({ type: "MERGE_MOVES", moves: ms }),
+      addMove: (actor, path) =>
+        dispatch({ type: "ADD_MOVE", actor, path, step: activeStepRef.current }),
+      mergeMoves: (ms) =>
+        dispatch({ type: "MERGE_MOVES", moves: ms, step: activeStepRef.current }),
       updateMove: (index, patch) =>
         dispatch({ type: "UPDATE_MOVE", index, patch }),
       deleteMove: (index) => dispatch({ type: "DELETE_MOVE", index }),
-      clearMoves: () => dispatch({ type: "CLEAR_MOVES" }),
+      clearMoves: () => {
+        setActiveStepState(0);
+        setSelMove(null);
+        dispatch({ type: "CLEAR_MOVES" });
+      },
       undoMove: () => dispatch({ type: "UNDO_MOVE" }),
+      activeStep,
+      setActiveStep,
+      stepCount: stepCountOf(state.moves, state.stepCount),
+      addStep,
+      removeStep,
+      playStep,
+      addOpponent: () => {
+        const n = (stateRef.current.opponents ?? []).length;
+        // 中央付近に少しずつずらして置く
+        dispatch({
+          type: "ADD_OPPONENT",
+          x: 50 + ((n % 5) - 2) * 8,
+          y: 58 + Math.floor(n / 5) * 8,
+        });
+      },
+      moveOpponent: (index, x, y) =>
+        dispatch({ type: "MOVE_OPPONENT", index, x, y }),
+      updateOpponentLabel: (index, label) =>
+        dispatch({ type: "UPDATE_OPPONENT", index, label }),
+      deleteOpponent: (index) => {
+        dispatch({ type: "DELETE_OPPONENT", index });
+        // 相手削除で図形が存在しない選手を指す可能性があるため選択中の図形も解除する
+        setSelShape(null);
+        // 削除対象・後続の opp インデックスを指していた選択状態を解除／詰め替える
+        setSelActor((cur) => {
+          if (cur == null || !isOppActor(cur)) return cur;
+          const oi = oppIndex(cur);
+          if (oi === index) return null;
+          return oi > index ? (`opp${oi - 1}` as Actor) : cur;
+        });
+        setSelMove((cur) => {
+          if (cur == null || !isOppActor(cur.actor)) return cur;
+          const oi = oppIndex(cur.actor);
+          if (oi === index) return null;
+          return oi > index ? { ...cur, actor: `opp${oi - 1}` as Actor } : cur;
+        });
+      },
+      penMode,
+      setPenMode,
+      penColor,
+      setPenColor,
+      penWidth,
+      setPenWidth,
+      penDash,
+      setPenDash,
+      penScope,
+      setPenScope,
+      viewStep,
+      addStroke: (path) =>
+        dispatch({
+          type: "ADD_STROKE",
+          stroke: {
+            id: newStrokeId(),
+            path,
+            color: penRef.current.color,
+            width: penRef.current.width,
+            dash: penRef.current.dash || undefined,
+            // 「この場面のみ」設定時（アニメ中）は現在の場面に紐づける
+            step:
+              mode === "anim" && penScope === "step"
+                ? activeStepRef.current
+                : undefined,
+          },
+        }),
+      updateStroke: (id, patch) => dispatch({ type: "UPDATE_STROKE", id, patch }),
+      deleteStroke: (id) => {
+        dispatch({ type: "DELETE_STROKE", id });
+        setSelStrokeState((cur) => (cur === id ? null : cur));
+      },
+      undoStroke: () => {
+        // 表示中のストロークのうち最後の1本を取り消す
+        const ds = stateRef.current.drawings ?? [];
+        const visible = (d: PenStroke) =>
+          mode === "edit"
+            ? d.step == null
+            : d.step == null || d.step === activeStepRef.current;
+        for (let i = ds.length - 1; i >= 0; i--) {
+          if (visible(ds[i]) && ds[i].id) {
+            dispatch({ type: "DELETE_STROKE", id: ds[i].id as string });
+            return;
+          }
+        }
+      },
+      clearStrokes: () =>
+        dispatch({
+          type: "CLEAR_STROKES",
+          step: mode === "anim" ? activeStepRef.current : null,
+        }),
+      selStroke,
+      setSelStroke,
+      shapesOpen,
+      setShapesOpen,
+      selShape,
+      setSelShape,
+      shapeColor,
+      setShapeColor,
+      addShape: (kind) => {
+        const id = newShapeId();
+        let shape: Shape;
+        if (kind === "zoneEllipse" || kind === "zoneRect") {
+          shape = { id, kind, x: 50, y: 50, w: 24, h: 16, color: shapeColor };
+        } else if (kind === "arrow") {
+          shape = {
+            id,
+            kind,
+            p0: { x: 40, y: 45 },
+            p1: { x: 60, y: 60 },
+            c: { x: 50, y: 56 },
+            color: shapeColor,
+          };
+        } else {
+          // 引数型を縮小したため、ここに到達するのは kind === "text" のみ
+          shape = { id, kind: "text", x: 50, y: 50, text: "テキスト", color: shapeColor };
+        }
+        dispatch({ type: "ADD_SHAPE", shape });
+        setSelShape(id);
+      },
+      updateShape: (id, patch) => dispatch({ type: "UPDATE_SHAPE", id, patch }),
+      deleteShape: (id) => {
+        dispatch({ type: "DELETE_SHAPE", id });
+        setSelShapeState((cur) => (cur === id ? null : cur));
+      },
+      pendingShape,
+      pendingShapeRef,
+      startPendingShape: (kind) => {
+        setSelShape(null);
+        setPendingShape({ kind, actors: [] });
+        showToast("選手をタップして選択してください");
+      },
+      pendingShapeTap: (actor) => {
+        const p = pendingShapeRef.current;
+        if (!p) return;
+        if (p.actors.includes(actor)) return; // 重複タップは無視
+        setPendingShape({ ...p, actors: [...p.actors, actor] });
+      },
+      confirmPendingShape: () => {
+        const p = pendingShapeRef.current;
+        if (!p) return;
+        const minCount = p.kind === "link" ? 2 : 3;
+        if (p.actors.length < minCount) {
+          showToast(`選手をあと${minCount - p.actors.length}人タップしてください`);
+          return;
+        }
+        const id = newShapeId();
+        const shape: Shape =
+          p.kind === "link"
+            ? { id, kind: "link", actors: p.actors, color: shapeColor }
+            : { id, kind: "hull", actors: p.actors, color: shapeColor };
+        dispatch({ type: "ADD_SHAPE", shape });
+        setSelShape(id);
+        setPendingShape(null);
+      },
+      cancelPendingShape: () => setPendingShape(null),
+      registerShapeEl,
+      getShapeEl,
+      syncAttachedShapes,
+      setGuides: (patch) => dispatch({ type: "SET_GUIDES", patch }),
+      setPitchView: (view) => dispatch({ type: "SET_PITCH_VIEW", view }),
+      showGhost,
+      setShowGhost,
+      showDrawings,
+      setShowDrawings,
+      animTool,
+      setAnimTool,
+      translateActor: (actor, dx, dy) => {
+        dispatch({ type: "TRANSLATE_ACTOR", actor, dx, dy });
+        // ルートが平行移動した後の表示位置を現在の再生ヘッドに合わせ直す
+        setTimeout(() => applyPlayhead(play.current.t), 50);
+      },
       mode,
       selActor,
       setSelActor,
+      selMove,
+      setSelMove,
+      holderAtStep,
+      holderAtStepEnd,
+      passTo,
+      shoot,
       tempDrawRef,
       setTempDraw,
       subscribeTempDraw,
@@ -1488,9 +2671,37 @@ export function BoardProvider({
       state,
       mode,
       selActor,
+      selMove,
+      holderAtStep,
+      holderAtStepEnd,
+      passTo,
+      shoot,
+      activeStep,
+      setActiveStep,
+      addStep,
+      removeStep,
+      playStep,
+      penMode,
+      penColor,
+      penWidth,
+      penDash,
+      penScope,
+      viewStep,
+      shapesOpen,
+      setShapesOpen,
+      selShape,
+      selStroke,
+      shapeColor,
+      pendingShape,
+      registerShapeEl,
+      getShapeEl,
+      syncAttachedShapes,
+      animTool,
       isPlaying,
       speed,
       showPaths,
+      showGhost,
+      showDrawings,
       fullplay,
       sheet,
       toastMsg,

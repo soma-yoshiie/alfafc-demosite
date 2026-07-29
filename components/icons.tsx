@@ -254,3 +254,150 @@ export function IconPause(p: SVGProps<SVGSVGElement>) {
     </Svg>
   );
 }
+
+/** 通し再生（二重再生） */
+export function IconPlayAll(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <polygon points="3 5 12 12 3 19 3 5" fill="currentColor" stroke="none" />
+      <polygon points="12 5 21 12 12 19 12 5" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** ペン（鉛筆） */
+export function IconPen(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </Svg>
+  );
+}
+
+/** 全画面（拡大） */
+export function IconExpand(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M15 3h6v6" />
+      <path d="M9 21H3v-6" />
+      <path d="M21 3l-7 7" />
+      <path d="M3 21l7-7" />
+    </Svg>
+  );
+}
+
+/** 移動（十字矢印） */
+export function IconMove(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M12 2v20M2 12h20" />
+      <path d="m9 5 3-3 3 3M9 19l3 3 3-3M5 9 2 12l3 3M19 9l3 3-3 3" />
+    </Svg>
+  );
+}
+
+/** 図形パレット（四角＋丸） */
+export function IconShapes(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <rect x="3" y="10" width="9" height="9" rx="1.5" />
+      <circle cx="16.5" cy="7.5" r="4.5" />
+    </Svg>
+  );
+}
+
+/** 楕円ゾーン */
+export function IconEllipse(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <ellipse cx="12" cy="12" rx="9" ry="6" />
+    </Svg>
+  );
+}
+
+/** 矩形ゾーン */
+export function IconRectZone(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+    </Svg>
+  );
+}
+
+/** テキストラベル */
+export function IconTextLabel(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M4 6h16" />
+      <path d="M12 6v14" />
+      <path d="M9 20h6" />
+    </Svg>
+  );
+}
+
+/** 曲線矢印 */
+export function IconCurvedArrow(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M4 18C4 10 10 5 20 6" />
+      <path d="M15 3.5 20 6l-3 4.5" />
+    </Svg>
+  );
+}
+
+/** 連結ライン（2点を線で結ぶ） */
+export function IconLinkNodes(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <line x1="6.5" y1="17.5" x2="17.5" y2="6.5" />
+      <circle cx="5" cy="19" r="2.6" fill="currentColor" stroke="none" />
+      <circle cx="19" cy="5" r="2.6" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** 囲み枠（五角形） */
+export function IconHullShape(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <polygon points="12 2 21 9 17.5 20 6.5 20 3 9" />
+    </Svg>
+  );
+}
+
+/** 残像（点線の丸＝ゴースト表示） */
+export function IconGhost(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="7.5" strokeDasharray="2.6 3" />
+      <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** アニメ（映写機。ヘッダーの「戦術アニメ」アイコンと同じパス） */
+export function IconFilm(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg strokeWidth={1.9} {...p}>
+      <path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z" />
+      <path d="m6.2 5.3 3.1 3.9" />
+      <path d="m12.4 3.4 3.1 4" />
+      <path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+    </Svg>
+  );
+}
+
+/** ハーフコート（長方形の下半分が点線＝敵陣ハーフの拡大表示） */
+export function IconHalfPitch(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M4 12V4.5A1.5 1.5 0 0 1 5.5 3h13A1.5 1.5 0 0 1 20 4.5V12" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <path
+        d="M4 12v5.5A1.5 1.5 0 0 0 5.5 19h13a1.5 1.5 0 0 0 1.5-1.5V12"
+        strokeDasharray="2.2 2.4"
+      />
+    </Svg>
+  );
+}

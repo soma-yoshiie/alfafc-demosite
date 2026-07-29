@@ -2,6 +2,7 @@
 
 import { useCallback } from "react";
 import { groupOf } from "@/lib/formations";
+import { yToTop } from "@/lib/pitchView";
 import { useBoard } from "./BoardProvider";
 import { usePointerDrag } from "./usePointerDrag";
 import { E } from "./Emoji";
@@ -15,10 +16,16 @@ export default function PlayerToken({ index }: { index: number }) {
     : null;
   const g = groupOf(s.role);
   const sel = board.mode === "anim" && board.selActor === index;
+  // アニメ中は場面ごとの保持者、編集中は盤面の保持者を表示する
+  const hasBall =
+    board.mode === "anim"
+      ? board.holderAtStep(board.activeStep) === index
+      : board.state.holder === index;
 
+  const { registerToken } = board;
   const setRef = useCallback(
-    (el: HTMLDivElement | null) => board.registerToken(index, el),
-    [board, index]
+    (el: HTMLDivElement | null) => registerToken(index, el),
+    [registerToken, index]
   );
 
   return (
@@ -26,11 +33,11 @@ export default function PlayerToken({ index }: { index: number }) {
       ref={setRef}
       className={`tok${sel ? " sel" : ""}`}
       data-slot={index}
-      style={{ left: `${s.x}%`, top: `${100 - s.y}%` }}
+      style={{ left: `${s.x}%`, top: `${yToTop(s.y, board.state.pitchView)}%` }}
       {...drag}
     >
       {player ? (
-        <div className={`disc ${g}`}>
+        <div className={`disc ${g}${hasBall ? " hasball" : ""}`}>
           {board.state.captain === s.pid && <span className="capt">C</span>}
           {player.roleNote && <span className="memodot" title="役割メモあり"><E n="note" /></span>}
           {player.number ?? "–"}

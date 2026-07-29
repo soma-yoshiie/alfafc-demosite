@@ -10,7 +10,8 @@ export type EmojiName =
   | "note" | "star" | "repeat" | "target" | "bulb" | "megaphone" | "vs"
   | "attack" | "shield" | "check" | "hand" | "lock" | "ball" | "clipboard"
   | "run" | "image" | "video" | "users" | "bandage" | "folder" | "folderopen"
-  | "mail" | "trophy" | "pin" | "refresh" | "comment" | "calendar" | "trash";
+  | "mail" | "trophy" | "pin" | "refresh" | "comment" | "calendar" | "trash"
+  | "pencil" | "swap" | "benchout" | "captain" | "copy";
 
 function S(props: SVGProps<SVGSVGElement>) {
   return (
@@ -63,6 +64,11 @@ const ICONS: Record<EmojiName, React.ReactNode> = {
   comment: <S><path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7a8.5 8.5 0 0 1-.9-3.8A8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5Z" /></S>,
   calendar: <S><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></S>,
   trash: <S><path d="M3 6h18" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /><path d="M10 11v6M14 11v6" /></S>,
+  pencil: <S><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></S>,
+  swap: <S><path d="m17 3 4 4-4 4" /><path d="M21 7H7" /><path d="m7 13-4 4 4 4" /><path d="M3 17h14" /></S>,
+  benchout: <S><path d="M12 3v12" /><path d="m7 10 5 5 5-5" /><path d="M4 21h16" /></S>,
+  captain: <S><circle cx="12" cy="12" r="9" /><path d="M15.5 9.5A4 4 0 1 0 15.5 14.5" /></S>,
+  copy: <S><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></S>,
 };
 
 export function E({ n, className }: { n: EmojiName; className?: string }) {

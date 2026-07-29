@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import type { Player } from "@/lib/types";
 
 export interface SendTarget {
@@ -24,6 +25,8 @@ export function SendTargetField({
   value: SendTarget;
   onChange: (t: SendTarget) => void;
 }) {
+  // フィールドごとに一意な radio グループ名（複数箇所で再利用されても衝突しない）
+  const groupName = "sendtgt-" + useId();
   return (
     <div className="formfield">
       <label>送信先（任意・選手アプリに届きます）</label>
@@ -31,6 +34,7 @@ export function SendTargetField({
         <label className={value.mode === "none" ? "on" : ""}>
           <input
             type="radio"
+            name={groupName}
             checked={value.mode === "none"}
             onChange={() => onChange({ mode: "none" })}
           />
@@ -39,6 +43,7 @@ export function SendTargetField({
         <label className={value.mode === "team" ? "on" : ""}>
           <input
             type="radio"
+            name={groupName}
             checked={value.mode === "team"}
             onChange={() => onChange({ mode: "team" })}
           />
@@ -47,6 +52,7 @@ export function SendTargetField({
         <label className={value.mode === "player" ? "on" : ""}>
           <input
             type="radio"
+            name={groupName}
             checked={value.mode === "player"}
             onChange={() =>
               onChange({ mode: "player", playerId: value.playerId ?? players[0]?.id })
