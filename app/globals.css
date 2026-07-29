@@ -1306,13 +1306,19 @@ header {
   max-height: 86dvh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.5);
   visibility: hidden;
+  /* 閉時は影とタップも直接無効化する。visibilityの遅延遷移は高負荷時(GIF書き出し等)に
+     ブラウザに落とされて「閉じたのにvisibleのまま」スタックすることがあるため、
+     影漏れ・誤タップ防止を遷移に依存させない */
+  box-shadow: none;
+  pointer-events: none;
   transition: transform 0.28s cubic-bezier(0.3, 0.9, 0.3, 1), visibility 0s linear 0.28s;
 }
 .sheet.on {
   transform: translateY(0);
   visibility: visible;
+  box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
   transition: transform 0.28s cubic-bezier(0.3, 0.9, 0.3, 1), visibility 0s;
 }
 .sheetBody {
