@@ -453,6 +453,22 @@ header {
   place-items: center;
   line-height: 1;
 }
+/* 保持者マーク：ボールを持たせた選手/相手のディスク右下に小さなボール風の円を出す。
+   左上の .capt バッジと被らないよう右下に配置する */
+.disc.hasball::after {
+  content: "";
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, #222 0 2.2px, transparent 2.4px),
+    radial-gradient(circle at 35% 30%, #fff, #cfd6cf 70%, #9aa39a);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  border: 1.5px solid #ffffff;
+}
 .role {
   margin-top: 11px;
   font-family: var(--font-display);
@@ -479,6 +495,10 @@ header {
 }
 .app.anim .tok {
   z-index: 5;
+}
+/* アニメ中は選手より前面にしてボールを掴めるようにする（暫定修正） */
+.app.anim .ball {
+  z-index: 6;
 }
 
 /* ---------- Ball ---------- */
@@ -540,6 +560,26 @@ header {
   pointer-events: none;
   width: 80%;
   line-height: 1.6;
+}
+
+/* 保持者選択中の常設ガイド（ピッチ上部中央のダークピル） */
+.holdguide {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  z-index: 8;
+  pointer-events: none;
+  max-width: 94%;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: rgba(234, 255, 240, 0.85);
+  background: rgba(10, 14, 12, 0.6);
+  padding: 5px 11px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
 }
 
 /* ---------- Stat bar ---------- */
@@ -620,6 +660,9 @@ header {
   gap: 5px;
   cursor: pointer;
   transition: 0.12s;
+  /* テキスト選択がドラッグを横取りしないよう抑止 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .bcard:active {
   transform: scale(0.95);
@@ -671,8 +714,7 @@ header {
 /* ---------- Animation studio ---------- */
 .app.anim .statbar,
 .app.anim .bench,
-.app.anim .scrollcue,
-.app.anim .fbar {
+.app.anim .scrollcue {
   display: none;
 }
 .app.anim .pitch {
@@ -710,6 +752,7 @@ header {
   display: flex;
   gap: 7px;
   align-items: center;
+  flex-wrap: wrap;
 }
 .tbtn {
   flex: 0 0 auto;
@@ -725,6 +768,7 @@ header {
   display: grid;
   place-items: center;
   cursor: pointer;
+  white-space: nowrap;
 }
 .tbtn:active {
   transform: scale(0.94);
@@ -734,6 +778,7 @@ header {
   color: #ffffff;
   border-color: var(--lime);
   flex: 1;
+  min-width: 110px;
 }
 .tbtn.warn {
   color: var(--red);
@@ -1061,6 +1106,11 @@ header {
 }
 .tlchip.danger {
   color: var(--red);
+}
+.tlchip.on {
+  background: rgba(19, 138, 77, 0.14);
+  border-color: var(--lime);
+  color: var(--lime);
 }
 
 /* clips / timeline */
@@ -1698,8 +1748,9 @@ header {
   display: grid;
   place-items: center;
   background: rgba(10, 14, 12, 0.72);
-  color: var(--ink);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  /* 暗い背景に載るため文字色は明色固定（--inkはライトテーマの濃紺） */
+  color: #eafff0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
   backdrop-filter: blur(14px);
 }
 .fpbtn.fpsmall svg {
@@ -1707,13 +1758,15 @@ header {
   height: 20px;
 }
 .fpbtn.fpsmall.act {
-  background: rgba(19, 138, 77, 0.16);
-  border-color: rgba(19, 138, 77, 0.5);
-  color: var(--lime);
+  background: rgba(74, 222, 128, 0.28);
+  border-color: rgba(74, 222, 128, 0.8);
+  color: #7dffab;
 }
 
 .app.fullplay header,
 .app.fullplay .fbar,
+.app.fullplay .fbarpen,
+.app.fullplay .fbarshapes,
 .app.fullplay .studio,
 .app.fullplay .statbar {
   display: none !important;
@@ -2700,7 +2753,6 @@ header {
   max-width: 880px;
 }
 
-
 /* ============================================================
    Splash（タイトル演出） & Login
    ============================================================ */
@@ -3170,6 +3222,11 @@ header {
 }
 .fmini:active { transform: scale(0.96); }
 .fmini svg { width: 16px; height: 16px; color: var(--lime); }
+/* アニメバーの表示トグル（ルート表示・描き込み・残像）など、専用色を持たない fmini の共通ON表現 */
+.fmini.on {
+  background: rgba(202, 255, 58, 0.16);
+  border-color: var(--lime);
+}
 
 /* ---------- 選手プロフィール詳細 ---------- */
 .profrow {
@@ -3604,11 +3661,12 @@ header {
 .sendtgt {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .sendtgt label {
   flex: 1;
-  min-width: 92px;
+  min-width: 0;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3618,7 +3676,7 @@ header {
   border-radius: 12px;
   background: var(--panel2);
   color: var(--ink);
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
 }
@@ -3627,7 +3685,16 @@ header {
   color: var(--lime);
   background: rgba(19, 138, 77, 0.08);
 }
+.sendtgt label:has(input:focus-visible) {
+  outline: 2px solid var(--lime);
+  outline-offset: 2px;
+}
 .sendtgt input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
   accent-color: var(--lime);
 }
 
@@ -6777,6 +6844,712 @@ header {
 .calev.start { border-radius: 6px 0 0 6px; }
 .calev.mid { border-radius: 0; }
 .calev.end { border-radius: 0 6px 6px 0; }
+
+/* ============================================================
+   ステップ式アニメ・相手トークン・ペン（UI改修）
+   ============================================================ */
+
+/* ---- 場面（ステップ）チップ ---- */
+.steps {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+}
+.steps::-webkit-scrollbar {
+  display: none;
+}
+.stepchip {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--mut);
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  transition: 0.12s;
+  white-space: nowrap;
+}
+.stepchip:active {
+  transform: scale(0.96);
+}
+.stepchip.on {
+  background: rgba(19, 138, 77, 0.16);
+  border-color: var(--lime);
+  color: var(--ink);
+}
+.stepchip .stepdur {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+.stepchip.on .stepdur {
+  color: var(--lime);
+}
+.stepchip .stepdel {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.14);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+.stepchip.add {
+  border-style: dashed;
+  background: transparent;
+  color: var(--lime);
+}
+
+/* ---- transport ---- */
+.tbtn.playall {
+  background: rgba(19, 138, 77, 0.12);
+  color: var(--lime);
+  border-color: rgba(19, 138, 77, 0.4);
+  white-space: nowrap;
+}
+
+/* ---- 選択ルートの編集行（線種・はやさ・削除） ---- */
+.selrow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.tlchip.kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.tlchip.kind.on {
+  background: rgba(19, 138, 77, 0.14);
+  border-color: var(--lime);
+  color: var(--lime);
+}
+.tlchip .lk {
+  display: inline-block;
+  width: 18px;
+  border-top: 2.5px solid currentColor;
+  font-style: normal;
+}
+.tlchip .lk.pass {
+  border-top-style: dashed;
+}
+.tlchip .lk.dribble {
+  border-top: 0;
+  width: auto;
+}
+.tlchip .lk.dribble::before {
+  content: "〰";
+  font-size: 13px;
+  line-height: 1;
+}
+.tlchip .lk.shot {
+  height: 4px;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+.chipsep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 0 3px;
+}
+
+/* ---- ペン ---- */
+.pathsvg.pen {
+  z-index: 4;
+}
+.pathsvg.pen.active {
+  pointer-events: auto;
+  z-index: 40;
+  cursor: crosshair;
+  touch-action: none;
+}
+.penbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.pengroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pengroup.right {
+  margin-left: auto;
+}
+.penswatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  padding: 0;
+}
+.penswatch:active {
+  transform: scale(0.92);
+}
+.penswatch.on {
+  box-shadow: 0 0 0 3px var(--lime);
+  border-color: #ffffff;
+}
+.penwidth,
+.pendash {
+  width: 38px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  padding: 0 7px;
+}
+.penwidth i {
+  display: block;
+  width: 100%;
+  border-radius: 99px;
+  background: var(--ink);
+}
+.pendash i {
+  display: block;
+  width: 100%;
+}
+.pendash i.solid {
+  border-top: 2.5px solid var(--ink);
+}
+.pendash i.dashed {
+  border-top: 2.5px dashed var(--ink);
+}
+.penwidth.on,
+.pendash.on {
+  border-color: var(--lime);
+  background: rgba(19, 138, 77, 0.12);
+}
+.penact {
+  height: 28px;
+  min-width: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.penact svg {
+  width: 14px;
+  height: 14px;
+}
+.penact.danger {
+  color: var(--red);
+}
+.fbarpen {
+  margin: 0 14px 8px;
+  flex-shrink: 0;
+}
+.fmini.pen.on {
+  background: rgba(255, 226, 122, 0.22);
+  border-color: rgba(214, 158, 32, 0.6);
+}
+.fmini.half.on {
+  background: rgba(79, 195, 247, 0.18);
+  border-color: rgba(79, 195, 247, 0.55);
+  color: var(--ink);
+}
+.fmini.opp .oppdot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #c73246;
+  border: 2px solid #ff8b96;
+}
+
+/* ---- 相手トークン ---- */
+.tok.opp {
+  width: 44px;
+}
+.disc.oppdisc {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(160deg, #a03040, #6c1f2a);
+  border-color: #ff5d6c;
+  color: #ffe3e7;
+  font-size: 15px;
+}
+.tok.opp.sel .disc {
+  box-shadow: 0 0 0 3px #ff5d6c, 0 5px 14px rgba(0, 0, 0, 0.5);
+}
+
+/* ---- 詳細タイミング（折りたたみ） ---- */
+.tltoggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+  cursor: pointer;
+  padding: 4px 2px;
+  user-select: none;
+}
+.tltoggle.open {
+  color: var(--ink);
+}
+.tltogglehint {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+/* ---- タイムラインの場面表示 ---- */
+.tlrowwrap {
+  display: flex;
+  flex-direction: column;
+}
+.tlstephead {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--mut);
+  letter-spacing: 0.5px;
+  padding: 5px 0 2px;
+}
+.tlstepmark {
+  position: absolute;
+  top: -21px;
+  bottom: 0;
+  width: 0;
+  border-left: 2px dashed rgba(127, 127, 127, 0.4);
+  margin-left: 86px;
+  transform: translateX(-1px);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ---- アニメ編集のツール切替（移動/ルート） ---- */
+.toolseg {
+  display: flex;
+  margin-left: auto;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+.tseg {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 13px;
+  background: transparent;
+  color: var(--mut);
+  font-weight: 800;
+  font-size: 12.5px;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  transition: 0.12s;
+}
+.tseg svg {
+  width: 14px;
+  height: 14px;
+}
+.tseg.on {
+  background: var(--lime);
+  color: #ffffff;
+}
+.tseg:active {
+  transform: scale(0.96);
+}
+
+/* transport ボタンのアイコン＋ラベル */
+.tbtn .tlabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.tbtn svg {
+  width: 16px;
+  height: 16px;
+}
+.toolchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.toolchip svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ---- 全画面再生：下部（ペン＋コントロール） ---- */
+.fpbottom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.fpover.on .fppen {
+  pointer-events: auto;
+}
+.fppen .penbar {
+  background: rgba(10, 14, 12, 0.78);
+  border-color: rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(14px);
+}
+.fppen .penact,
+.fppen .penwidth,
+.fppen .pendash {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #eafff0;
+}
+.fppen .penwidth i {
+  background: #eafff0;
+}
+.fppen .pendash i.solid {
+  border-top-color: #eafff0;
+}
+.fppen .pendash i.dashed {
+  border-top-color: #eafff0;
+}
+
+/* ペンの表示範囲（全場面/この場面） */
+.penscope {
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--mut);
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  white-space: nowrap;
+}
+.penscope.on {
+  border-color: var(--lime);
+  background: rgba(19, 138, 77, 0.12);
+  color: var(--lime);
+}
+.fppen .penscope {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #eafff0;
+}
+.fppen .penscope.on {
+  border-color: rgba(74, 222, 128, 0.8);
+  color: #7dffab;
+}
+
+/* ツール切替は sttools 行に置く（左端） */
+.sttools .toolseg {
+  margin-left: 0;
+}
+
+/* ---- 図形オブジェクト ---- */
+/* SVGルートは常に pointer-events:none（.pathsvg 既定）。
+   個々の図形要素にだけ pointerEvents を付与する（ShapesLayer.tsx 側で制御） */
+/* 図形レイヤーは選手トークンより下に描画する（.pathsvg 既定の z-index:3 を上書き）。
+   ゾーン/囲み枠が選手を覆ってポインタを奪わないようにするための恒久対応 */
+.pathsvg.shapes {
+  z-index: 1;
+}
+/* interactive（パレット開 or 選択中）で図形要素がポインタを受ける状態のとき、
+   タッチ端末で図形ドラッグ中にスクロールが誘発されないようにする */
+.pathsvg.shapes.active {
+  touch-action: none;
+}
+.shapehandle {
+  fill: #ffffff;
+  stroke: var(--lime);
+  stroke-width: 0.5;
+  cursor: pointer;
+  pointer-events: auto;
+  touch-action: none;
+}
+.shapehandle.ctrl {
+  fill: rgba(255, 255, 255, 0.75);
+}
+.shapeguide {
+  stroke: rgba(255, 255, 255, 0.45);
+  stroke-width: 0.3;
+  stroke-dasharray: 1.2 1;
+  pointer-events: none;
+}
+.shapetext {
+  position: absolute;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: rgba(10, 14, 12, 0.55);
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  color: #ffffff;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.shapetext.sel {
+  box-shadow: 0 0 0 2px var(--lime);
+}
+
+/* ---- 図形パレット（ShapesBar） ---- */
+.shapeadd {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--mut);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.shapeadd svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ink);
+}
+.shapeadd:active {
+  transform: scale(0.95);
+}
+.fbarshapes {
+  margin: 0 14px 8px;
+  flex-shrink: 0;
+}
+.fmini.shapes.on {
+  background: rgba(79, 195, 247, 0.18);
+  border-color: rgba(79, 195, 247, 0.55);
+}
+
+/* ---- 選手追従図形（連結ライン・囲み枠） Phase 1b ---- */
+/* 囲み枠の人数バッジ */
+.hullcount {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #ffe27a;
+  color: #0a0e0c;
+  font-size: 11px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  z-index: 1;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- ピッチガイド（5レーン・エリア名・凡例） ---- */
+.guidelabel {
+  position: absolute;
+  transform: translateY(-50%);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  white-space: nowrap;
+}
+.guidelabel.vital {
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: rgba(255, 255, 255, 0.55);
+}
+.legendbox {
+  position: absolute;
+  left: 3%;
+  bottom: 3%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(10, 14, 12, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  z-index: 4;
+  pointer-events: none;
+}
+.legendrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #eafff0;
+}
+.legendline {
+  width: 24px;
+  height: 6px;
+  flex-shrink: 0;
+}
+
+/* ---- 図形パレット：選手タップ待ち中の表示 ---- */
+.pendinghint {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--lime);
+  white-space: nowrap;
+}
+.shapeadd:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+/* テキスト図形の選択中に表示する編集用インライン入力 */
+.shapetextinput {
+  height: 28px;
+  min-width: 140px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-ui);
+}
+.shapetextinput:focus {
+  outline: none;
+  border-color: var(--lime);
+}
+
+/* ---- 選択物のミニツールバー（FormatBar：Keynote風の書式バー） ---- */
+.formatbar {
+  position: absolute;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: min(94%, 320px);
+  padding: 5px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  touch-action: none;
+}
+.formatbar .pengroup {
+  gap: 4px;
+}
+.formatbar .penswatch {
+  width: 20px;
+  height: 20px;
+}
+.formatbar .penwidth,
+.formatbar .pendash,
+.formatbar .penscope,
+.formatbar .penact {
+  height: 24px;
+}
+.formatbar .shapetextinput {
+  height: 24px;
+  min-width: 100px;
+  font-size: 11.5px;
+}
+
+/* ---- Phase2: ゴースト残像 ---- */
+.ghosttok {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(234, 255, 240, 0.55);
+  border: 2px solid rgba(234, 255, 240, 0.75);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 13px;
+  color: rgba(10, 14, 12, 0.8);
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 1;
+}
+.ghosttok.opp {
+  background: rgba(255, 93, 108, 0.55);
+  border-color: rgba(255, 93, 108, 0.85);
+  color: #2a0a0d;
+}
+.ghosttok.ball {
+  width: 16px;
+  height: 16px;
+  background: #ffffff;
+  border: none;
+}
+
+/* ---- Phase2: ハーフコート表示 ---- */
+.mk.half-center-line,
+.mk.half-center-circle {
+  display: none;
+}
+.pitch.halfview .mk.center-line,
+.pitch.halfview .mk.center-circle,
+.pitch.halfview .mk.spot,
+.pitch.halfview .mk.box-bot,
+.pitch.halfview .mk.box-bot-s {
+  display: none;
+}
+.pitch.halfview .mk.half-center-line {
+  display: block;
+  left: 5%;
+  right: 5%;
+  bottom: 0;
+  height: 0;
+  border-width: 0 0 2px 0;
+}
+.pitch.halfview .mk.half-center-circle {
+  display: block;
+  left: 50%;
+  bottom: -9%;
+  width: 34%;
+  padding-bottom: 34%;
+  height: 0;
+  border-radius: 50%;
+  transform: translate(-50%, 0);
+}
 
 /* ============================================================
    PC (min-width: 1024px) レイアウト群
