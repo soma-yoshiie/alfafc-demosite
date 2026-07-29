@@ -27,13 +27,10 @@ import {
 import { renderDrillPng } from "@/lib/exportDrill";
 import { useBoard } from "./BoardProvider";
 
-export type DrillTool =
-  | "move"
-  | "delete"
-  | DrillLineKind
-  | DrillItemKind;
+/** 配置・描画ツール。null = 選択（直接操作）モード */
+export type DrillTool = DrillLineKind | DrillItemKind;
 
-export const LINE_TOOLS: DrillTool[] = ["run", "pass", "dribble", "line"];
+export const LINE_TOOLS: DrillLineKind[] = ["run", "pass", "dribble", "line"];
 export const ITEM_TOOLS: DrillItemKind[] = [
   "cone",
   "player",
@@ -41,7 +38,17 @@ export const ITEM_TOOLS: DrillItemKind[] = [
   "ball",
   "goal",
   "marker",
+  "text",
 ];
+
+export type DrillSelection =
+  | { type: "item"; id: string }
+  | { type: "line"; id: string }
+  | null;
+
+export type DrillSheet = "library" | "saveAs" | "memo" | "send" | null;
+
+const HISTORY_MAX = 60;
 
 function sampleDrill(): DrillDoc {
   return {
@@ -91,25 +98,72 @@ function nid(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}_${seq}`;
 }
 
+function cloneDoc(d: DrillDoc): DrillDoc {
+  return {
+    title: d.title,
+    memo: d.memo,
+    pitchType: d.pitchType,
+    discSize: d.discSize,
+    items: d.items.map((it) => ({ ...it })),
+    lines: d.lines.map((l) => ({ ...l, path: l.path.map((p) => ({ ...p })) })),
+  };
+}
+
+/** 保存状態の比較用（キー順に依存しない正規化シリアライズ） */
+function docJson(d: DrillDoc): string {
+  return JSON.stringify({
+    t: d.title,
+    m: d.memo,
+    p: d.pitchType,
+    s: d.discSize ?? "L",
+    i: d.items.map((it) => [it.id, it.kind, it.x, it.y, it.label ?? "", it.rot ?? 0]),
+    l: d.lines.map((ln) => [ln.id, ln.kind, ln.path.map((q) => [q.x, q.y])]),
+  });
+}
+
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
 interface DrillContextValue {
   doc: DrillDoc;
-  tool: DrillTool;
-  setTool: (t: DrillTool) => void;
+  // ツール（null = 選択モード）
+  tool: DrillTool | null;
+  setTool: (t: DrillTool | null) => void;
+  stampLock: boolean;
+  setStampLock: (b: boolean) => void;
+  // 選択
+  selection: DrillSelection;
+  select: (s: DrillSelection) => void;
+  // ドキュメント編集（履歴に積まれる）
   setPitchType: (p: PitchType) => void;
-  setTitle: (t: string) => void;
-  setMemo: (m: string) => void;
-  addItem: (kind: DrillItemKind, x: number, y: number) => void;
+  setDiscSize: (s: DiscSize) => void;
+  addItem: (kind: DrillItemKind, x: number, y: number) => string;
   moveItem: (id: string, x: number, y: number) => void;
   removeItem: (id: string) => void;
   rotateItem: (id: string) => void;
-  setDiscSize: (s: DiscSize) => void;
-  addLine: (kind: DrillLineKind, path: Point[]) => void;
+  duplicateItem: (id: string) => string | null;
+  setItemLabel: (id: string, label: string) => void;
+  addLine: (kind: DrillLineKind, path: Point[]) => string;
   removeLine: (id: string) => void;
+  /** 動線の端点を動かす（beginGesture 後に呼ぶ・履歴は積まない） */
+  setLinePointLive: (id: string, index: number, p: Point) => void;
+  /** 動線全体を平行移動（beginGesture 後に呼ぶ・履歴は積まない） */
+  translateLineLive: (id: string, dx: number, dy: number, orig: Point[]) => void;
+  /** ドラッグ操作の開始時に1回呼ぶと、その時点が履歴に積まれる */
+  beginGesture: () => void;
   clearAll: () => void;
+  // タイトル・メモ（履歴に積まない）
+  setTitle: (t: string) => void;
+  setMemo: (m: string) => void;
+  // 履歴
   undo: () => void;
-  // library
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  // ライブラリ
   drills: SavedDrill[];
   currentId: string | null;
+  /** 現在の内容がライブラリ保存版から変更されているか（未保存ドキュメントは常に true） */
+  dirty: boolean;
   saveDrill: () => void;
   saveAsNew: (title: string) => void;
   loadDrill: (id: string) => void;
@@ -122,8 +176,8 @@ interface DrillContextValue {
   tempLine: Point[] | null;
   setTempLine: (pts: Point[] | null) => void;
   // sheet
-  sheet: "library" | "saveAs" | "memo" | null;
-  openSheet: (s: "library" | "saveAs" | "memo" | null) => void;
+  sheet: DrillSheet;
+  openSheet: (s: DrillSheet) => void;
 }
 
 const Ctx = createContext<DrillContextValue | null>(null);
@@ -135,15 +189,25 @@ export function useDrill(): DrillContextValue {
 
 export function DrillProvider({ children }: { children: React.ReactNode }) {
   const board = useBoard();
-  const [doc, setDoc] = useState<DrillDoc>(sampleDrill);
-  const [tool, setTool] = useState<DrillTool>("move");
+  const [doc, setDocState] = useState<DrillDoc>(sampleDrill);
+  const [tool, setToolState] = useState<DrillTool | null>(null);
+  const [stampLock, setStampLock] = useState(false);
+  const [selection, setSelection] = useState<DrillSelection>(null);
   const [drills, setDrills] = useState<SavedDrill[]>([]);
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [tempLine, setTempLine] = useState<Point[] | null>(null);
-  const [sheet, setSheet] = useState<"library" | "saveAs" | "memo" | null>(null);
+  const [sheet, setSheet] = useState<DrillSheet>(null);
   const hydrated = useRef(false);
   const docRef = useRef(doc);
   const drillsRef = useRef(drills);
+  // 履歴（StrictModeの二重実行を避けるため、state更新関数の外で積む）
+  const past = useRef<DrillDoc[]>([]);
+  const future = useRef<DrillDoc[]>([]);
+  const [histVer, setHistVer] = useState(0);
+  // 保存済みスナップショット（dirty判定用）。null = ライブラリ未保存
+  const savedJson = useRef<string | null>(null);
+  const [savedVer, setSavedVer] = useState(0);
+
   useEffect(() => {
     docRef.current = doc;
   }, [doc]);
@@ -151,13 +215,73 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     drillsRef.current = drills;
   }, [drills]);
 
+  const bumpHist = useCallback(() => setHistVer((v) => v + 1), []);
+
+  /** docを差し替え、直前の状態を履歴へ積む */
+  const commit = useCallback(
+    (next: DrillDoc) => {
+      past.current.push(docRef.current);
+      if (past.current.length > HISTORY_MAX) past.current.shift();
+      future.current = [];
+      docRef.current = next;
+      setDocState(next);
+      bumpHist();
+    },
+    [bumpHist]
+  );
+
+  /** 履歴に積まずにdocを差し替え（タイトル編集・ドラッグ中のライブ更新） */
+  const setDocLight = useCallback((next: DrillDoc) => {
+    docRef.current = next;
+    setDocState(next);
+  }, []);
+
+  const beginGesture = useCallback(() => {
+    past.current.push(cloneDoc(docRef.current));
+    if (past.current.length > HISTORY_MAX) past.current.shift();
+    future.current = [];
+    bumpHist();
+  }, [bumpHist]);
+
+  const resetHistory = useCallback(() => {
+    past.current = [];
+    future.current = [];
+    bumpHist();
+  }, [bumpHist]);
+
+  const undo = useCallback(() => {
+    const prev = past.current.pop();
+    if (!prev) return;
+    future.current.push(docRef.current);
+    docRef.current = prev;
+    setDocState(prev);
+    setSelection(null);
+    bumpHist();
+  }, [bumpHist]);
+
+  const redo = useCallback(() => {
+    const next = future.current.pop();
+    if (!next) return;
+    past.current.push(docRef.current);
+    docRef.current = next;
+    setDocState(next);
+    setSelection(null);
+    bumpHist();
+  }, [bumpHist]);
+
   // hydrate
   useEffect(() => {
-    setDrills(loadDrills());
+    const list = loadDrills();
+    setDrills(list);
     const work = loadDrillWork();
     if (work) {
-      setDoc(work.doc);
+      const d = { ...emptyDoc(), ...work.doc };
+      docRef.current = d;
+      setDocState(d);
       setCurrentId(work.currentId ?? null);
+      const saved = work.currentId ? list.find((s) => s.id === work.currentId) : null;
+      savedJson.current = saved ? docJson(cloneDoc(saved)) : null;
+      setSavedVer((v) => v + 1);
     }
     hydrated.current = true;
   }, []);
@@ -180,21 +304,20 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (board.incomingDrill) {
       const d = board.incomingDrill;
-      setDoc({
-        title: d.title,
-        memo: d.memo,
-        pitchType: d.pitchType,
-        discSize: d.discSize,
-        items: d.items.map((it) => ({ ...it })),
-        lines: d.lines.map((l) => ({ ...l, path: l.path.map((p) => ({ ...p })) })),
-      });
+      const next = cloneDoc(d);
+      docRef.current = next;
+      setDocState(next);
       setCurrentId(null);
-      setTool("move");
+      savedJson.current = null;
+      setSavedVer((v) => v + 1);
+      setToolState(null);
+      setSelection(null);
       setSheet(null);
+      resetHistory();
       board.setIncomingDrill(null);
       board.toast(`「${d.title}」を表示しました`);
     }
-  }, [board]);
+  }, [board, resetHistory]);
 
   const pitchRef = useRef<HTMLDivElement | null>(null);
   const getPitchRect = useCallback(
@@ -202,72 +325,192 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const setPitchType = useCallback(
-    (p: PitchType) => setDoc((d) => ({ ...d, pitchType: p })),
-    []
-  );
-  const setTitle = useCallback(
-    (t: string) => setDoc((d) => ({ ...d, title: t })),
-    []
-  );
-  const setMemo = useCallback(
-    (m: string) => setDoc((d) => ({ ...d, memo: m })),
-    []
-  );
-  const addItem = useCallback((kind: DrillItemKind, x: number, y: number) => {
-    setDoc((d) => ({
-      ...d,
-      items: [...d.items, { id: nid("i"), kind, x, y }],
-    }));
-  }, []);
-  const moveItem = useCallback((id: string, x: number, y: number) => {
-    setDoc((d) => ({
-      ...d,
-      items: d.items.map((it) => (it.id === id ? { ...it, x, y } : it)),
-    }));
-  }, []);
-  const removeItem = useCallback((id: string) => {
-    setDoc((d) => ({ ...d, items: d.items.filter((it) => it.id !== id) }));
-  }, []);
-  const rotateItem = useCallback((id: string) => {
-    setDoc((d) => ({
-      ...d,
-      items: d.items.map((it) =>
-        it.id === id ? { ...it, rot: ((it.rot ?? 0) + 90) % 360 } : it
-      ),
-    }));
-  }, []);
-  const setDiscSize = useCallback((s: DiscSize) => {
-    setDoc((d) => ({ ...d, discSize: s }));
-  }, []);
-  const addLine = useCallback((kind: DrillLineKind, path: Point[]) => {
-    setDoc((d) => ({
-      ...d,
-      lines: [...d.lines, { id: nid("l"), kind, path }],
-    }));
-  }, []);
-  const removeLine = useCallback((id: string) => {
-    setDoc((d) => ({ ...d, lines: d.lines.filter((l) => l.id !== id) }));
-  }, []);
-  const clearAll = useCallback(() => {
-    setDoc((d) => ({ ...d, items: [], lines: [] }));
-    board.toast("配置と動線を消去しました");
-  }, [board]);
-  const undo = useCallback(() => {
-    setDoc((d) => {
-      if (d.lines.length) return { ...d, lines: d.lines.slice(0, -1) };
-      if (d.items.length) return { ...d, items: d.items.slice(0, -1) };
-      return d;
-    });
+  const setTool = useCallback((t: DrillTool | null) => {
+    setToolState(t);
+    if (t) setSelection(null);
   }, []);
 
-  const cloneDoc = useCallback((d: DrillDoc): DrillDoc => ({
-    title: d.title,
-    memo: d.memo,
-    pitchType: d.pitchType,
-    items: d.items.map((it) => ({ ...it })),
-    lines: d.lines.map((l) => ({ ...l, path: l.path.map((p) => ({ ...p })) })),
-  }), []);
+  const select = useCallback((s: DrillSelection) => {
+    setSelection(s);
+    if (s) setToolState(null);
+  }, []);
+
+  /* ---- 編集オペレーション ---- */
+
+  const setPitchType = useCallback(
+    (p: PitchType) => commit({ ...docRef.current, pitchType: p }),
+    [commit]
+  );
+  const setDiscSize = useCallback(
+    (s: DiscSize) => commit({ ...docRef.current, discSize: s }),
+    [commit]
+  );
+  const setTitle = useCallback(
+    (t: string) => setDocLight({ ...docRef.current, title: t }),
+    [setDocLight]
+  );
+  const setMemo = useCallback(
+    (m: string) => setDocLight({ ...docRef.current, memo: m }),
+    [setDocLight]
+  );
+
+  /** 選手・相手は空いている番号を自動で振る */
+  const nextLabel = useCallback((kind: DrillItemKind): string | undefined => {
+    if (kind !== "player" && kind !== "oppo") return undefined;
+    const used = new Set(
+      docRef.current.items.filter((i) => i.kind === kind).map((i) => i.label)
+    );
+    let n = 1;
+    while (used.has(String(n))) n += 1;
+    return String(n);
+  }, []);
+
+  const addItem = useCallback(
+    (kind: DrillItemKind, x: number, y: number): string => {
+      const id = nid("i");
+      const d = docRef.current;
+      commit({
+        ...d,
+        items: [...d.items, { id, kind, x, y, label: nextLabel(kind) }],
+      });
+      return id;
+    },
+    [commit, nextLabel]
+  );
+
+  const moveItem = useCallback(
+    (id: string, x: number, y: number) => {
+      const d = docRef.current;
+      commit({
+        ...d,
+        items: d.items.map((it) => (it.id === id ? { ...it, x, y } : it)),
+      });
+    },
+    [commit]
+  );
+
+  const removeItem = useCallback(
+    (id: string) => {
+      const d = docRef.current;
+      commit({ ...d, items: d.items.filter((it) => it.id !== id) });
+      setSelection((s) => (s?.type === "item" && s.id === id ? null : s));
+    },
+    [commit]
+  );
+
+  const rotateItem = useCallback(
+    (id: string) => {
+      const d = docRef.current;
+      commit({
+        ...d,
+        items: d.items.map((it) =>
+          it.id === id ? { ...it, rot: ((it.rot ?? 0) + 90) % 360 } : it
+        ),
+      });
+    },
+    [commit]
+  );
+
+  const duplicateItem = useCallback(
+    (id: string): string | null => {
+      const d = docRef.current;
+      const src = d.items.find((it) => it.id === id);
+      if (!src) return null;
+      const nId = nid("i");
+      const copy = {
+        ...src,
+        id: nId,
+        x: clamp(src.x + 5, 2, 98),
+        y: clamp(src.y - 5, 2, 98),
+        label: nextLabel(src.kind) ?? src.label,
+      };
+      commit({ ...d, items: [...d.items, copy] });
+      setSelection({ type: "item", id: nId });
+      return nId;
+    },
+    [commit, nextLabel]
+  );
+
+  const setItemLabel = useCallback(
+    (id: string, label: string) => {
+      const d = docRef.current;
+      commit({
+        ...d,
+        items: d.items.map((it) => (it.id === id ? { ...it, label } : it)),
+      });
+    },
+    [commit]
+  );
+
+  const addLine = useCallback(
+    (kind: DrillLineKind, path: Point[]): string => {
+      const id = nid("l");
+      const d = docRef.current;
+      commit({ ...d, lines: [...d.lines, { id, kind, path }] });
+      return id;
+    },
+    [commit]
+  );
+
+  const removeLine = useCallback(
+    (id: string) => {
+      const d = docRef.current;
+      commit({ ...d, lines: d.lines.filter((l) => l.id !== id) });
+      setSelection((s) => (s?.type === "line" && s.id === id ? null : s));
+    },
+    [commit]
+  );
+
+  const setLinePointLive = useCallback(
+    (id: string, index: number, p: Point) => {
+      const d = docRef.current;
+      setDocLight({
+        ...d,
+        lines: d.lines.map((l) =>
+          l.id === id
+            ? { ...l, path: l.path.map((q, i) => (i === index ? { ...p } : q)) }
+            : l
+        ),
+      });
+    },
+    [setDocLight]
+  );
+
+  const translateLineLive = useCallback(
+    (id: string, dx: number, dy: number, orig: Point[]) => {
+      const d = docRef.current;
+      setDocLight({
+        ...d,
+        lines: d.lines.map((l) =>
+          l.id === id
+            ? {
+                ...l,
+                path: orig.map((q) => ({
+                  x: clamp(q.x + dx, 2, 98),
+                  y: clamp(q.y + dy, 2, 98),
+                })),
+              }
+            : l
+        ),
+      });
+    },
+    [setDocLight]
+  );
+
+  const clearAll = useCallback(() => {
+    const d = docRef.current;
+    if (d.items.length === 0 && d.lines.length === 0) return;
+    commit({ ...d, items: [], lines: [] });
+    setSelection(null);
+    board.toast("配置と動線を消去しました（元に戻せます）");
+  }, [commit, board]);
+
+  /* ---- ライブラリ ---- */
+
+  const markSaved = useCallback((d: DrillDoc) => {
+    savedJson.current = docJson(d);
+    setSavedVer((v) => v + 1);
+  }, []);
 
   const saveDrill = useCallback(() => {
     const d = docRef.current;
@@ -275,15 +518,15 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       setSheet("saveAs");
       return;
     }
+    const snap = cloneDoc(d);
     setDrills((list) =>
       list.map((s) =>
-        s.id === currentId
-          ? { ...cloneDoc(d), id: currentId, updatedAt: Date.now() }
-          : s
+        s.id === currentId ? { ...snap, id: currentId, updatedAt: Date.now() } : s
       )
     );
+    markSaved(snap);
     board.toast("上書き保存しました");
-  }, [currentId, cloneDoc, board]);
+  }, [currentId, board, markSaved]);
 
   const saveAsNew = useCallback(
     (title: string) => {
@@ -292,42 +535,61 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       const id = nid("drill");
       setDrills((list) => [{ ...d, id, updatedAt: Date.now() }, ...list]);
       setCurrentId(id);
-      setDoc((cur) => ({ ...cur, title: d.title }));
+      setDocLight({ ...docRef.current, title: d.title });
+      markSaved({ ...d });
       setSheet(null);
       board.toast(`「${d.title}」を保存しました`);
     },
-    [cloneDoc, board]
+    [board, markSaved, setDocLight]
   );
 
   const loadDrill = useCallback(
     (id: string) => {
       const s = drillsRef.current.find((x) => x.id === id);
       if (!s) return;
-      setDoc(cloneDoc(s));
+      const next = cloneDoc(s);
+      docRef.current = next;
+      setDocState(next);
       setCurrentId(id);
-      setTool("move");
+      markSaved(next);
+      setToolState(null);
+      setSelection(null);
       setSheet(null);
+      resetHistory();
       board.toast(`「${s.title}」を読み込みました`);
     },
-    [cloneDoc, board]
+    [board, markSaved, resetHistory]
   );
 
   const deleteDrill = useCallback(
     (id: string) => {
       setDrills((list) => list.filter((x) => x.id !== id));
-      setCurrentId((cur) => (cur === id ? null : cur));
+      setCurrentId((cur) => {
+        if (cur === id) {
+          savedJson.current = null;
+          setSavedVer((v) => v + 1);
+          return null;
+        }
+        return cur;
+      });
       board.toast("削除しました");
     },
     [board]
   );
 
   const newDrill = useCallback(() => {
-    setDoc(emptyDoc());
+    const next = emptyDoc();
+    docRef.current = next;
+    setDocState(next);
     setCurrentId(null);
-    setTool("move");
+    savedJson.current = null;
+    setSavedVer((v) => v + 1);
+    setToolState(null);
+    setSelection(null);
     setSheet(null);
+    resetHistory();
     board.toast("新しい練習メニューを作成しました");
-  }, [board]);
+  }, [board, resetHistory]);
 
   const exportPng = useCallback(() => {
     try {
@@ -344,30 +606,48 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     }
   }, [board]);
 
-  const openSheet = useCallback(
-    (s: "library" | "saveAs" | "memo" | null) => setSheet(s),
-    []
-  );
+  const openSheet = useCallback((s: DrillSheet) => setSheet(s), []);
+
+  const canUndo = past.current.length > 0;
+  const canRedo = future.current.length > 0;
+  const dirty = useMemo(() => {
+    void savedVer;
+    if (savedJson.current == null) return true;
+    return docJson(doc) !== savedJson.current;
+  }, [doc, savedVer]);
 
   const value = useMemo<DrillContextValue>(
     () => ({
       doc,
       tool,
       setTool,
+      stampLock,
+      setStampLock,
+      selection,
+      select,
       setPitchType,
-      setTitle,
-      setMemo,
+      setDiscSize,
       addItem,
       moveItem,
       removeItem,
       rotateItem,
-      setDiscSize,
+      duplicateItem,
+      setItemLabel,
       addLine,
       removeLine,
+      setLinePointLive,
+      translateLineLive,
+      beginGesture,
       clearAll,
+      setTitle,
+      setMemo,
       undo,
+      redo,
+      canUndo,
+      canRedo,
       drills,
       currentId,
+      dirty,
       saveDrill,
       saveAsNew,
       loadDrill,
@@ -384,22 +664,35 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     [
       doc,
       tool,
+      stampLock,
+      selection,
       drills,
       currentId,
+      dirty,
       tempLine,
       sheet,
+      canUndo,
+      canRedo,
+      setTool,
+      select,
       setPitchType,
-      setTitle,
-      setMemo,
+      setDiscSize,
       addItem,
       moveItem,
       removeItem,
       rotateItem,
-      setDiscSize,
+      duplicateItem,
+      setItemLabel,
       addLine,
       removeLine,
+      setLinePointLive,
+      translateLineLive,
+      beginGesture,
       clearAll,
+      setTitle,
+      setMemo,
       undo,
+      redo,
       saveDrill,
       saveAsNew,
       loadDrill,

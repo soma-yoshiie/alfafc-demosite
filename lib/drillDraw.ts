@@ -57,4 +57,5 @@ export const ITEM_LABEL: Record<DrillItemKind, string> = {
   ball: "ボール",
   goal: "ゴール",
   marker: "マーカー",
+  text: "テキスト",
 };

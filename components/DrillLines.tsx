@@ -1,5 +1,7 @@
 "use client";
 
+import { useRef } from "react";
+import type React from "react";
 import type { DrillLine, Point } from "@/lib/types";
 import { LINE_COLORS, wavy } from "@/lib/drillDraw";
 import { useDrill } from "./DrillProvider";
@@ -31,7 +33,54 @@ function arrow(a: Point, b: Point, col: string, key: string) {
 
 export default function DrillLines() {
   const drill = useDrill();
-  const deleteMode = drill.tool === "delete";
+  const selectable = drill.tool === null;
+  const drag = useRef({
+    id: null as string | null,
+    sx: 0,
+    sy: 0,
+    orig: [] as Point[],
+    moved: false,
+    began: false,
+    rect: null as DOMRect | null,
+  });
+
+  const onLinePointerDown = (l: DrillLine) => (e: React.PointerEvent<SVGPolylineElement>) => {
+    if (!selectable) return;
+    e.stopPropagation();
+    drill.select({ type: "line", id: l.id });
+    const st = drag.current;
+    st.id = l.id;
+    st.sx = e.clientX;
+    st.sy = e.clientY;
+    st.orig = l.path.map((p) => ({ ...p }));
+    st.moved = false;
+    st.began = false;
+    st.rect = drill.getPitchRect();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onLinePointerMove = (e: React.PointerEvent<SVGPolylineElement>) => {
+    const st = drag.current;
+    if (!st.id || !st.rect) return;
+    if (Math.abs(e.clientX - st.sx) > 4 || Math.abs(e.clientY - st.sy) > 4)
+      st.moved = true;
+    if (!st.moved) return;
+    if (!st.began) {
+      drill.beginGesture();
+      st.began = true;
+    }
+    const dx = ((e.clientX - st.sx) / st.rect.width) * 100;
+    const dy = -((e.clientY - st.sy) / st.rect.height) * 100;
+    drill.translateLineLive(st.id, dx, dy, st.orig);
+  };
+
+  const onLinePointerUp = () => {
+    drag.current.id = null;
+  };
 
   const renderLine = (l: DrillLine) => {
     if (l.path.length < 2) return null;
@@ -39,8 +88,19 @@ export default function DrillLines() {
     const drawPath = l.kind === "dribble" ? wavy(l.path, 1.6, 7) : l.path;
     const a = l.path[l.path.length - 2];
     const b = l.path[l.path.length - 1];
+    const selected = drill.selection?.type === "line" && drill.selection.id === l.id;
     return (
       <g key={l.id}>
+        {selected && (
+          <polyline
+            points={toPts(drawPath)}
+            fill="none"
+            stroke="rgba(255,255,255,0.45)"
+            strokeWidth={2.6}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
         <polyline
           points={toPts(drawPath)}
           fill="none"
@@ -51,14 +111,16 @@ export default function DrillLines() {
           strokeDasharray={l.kind === "pass" ? "3 2.2" : undefined}
         />
         {l.kind !== "line" && arrow(a, b, col, l.id + "a")}
-        {deleteMode && (
+        {selectable && (
           <polyline
             points={toPts(l.path)}
             fill="none"
             stroke="transparent"
-            strokeWidth={5}
-            style={{ pointerEvents: "stroke", cursor: "pointer" }}
-            onClick={() => drill.removeLine(l.id)}
+            strokeWidth={6}
+            style={{ pointerEvents: "stroke", cursor: selected ? "move" : "pointer", touchAction: "none" }}
+            onPointerDown={onLinePointerDown(l)}
+            onPointerMove={onLinePointerMove}
+            onPointerUp={onLinePointerUp}
           />
         )}
       </g>
@@ -70,7 +132,7 @@ export default function DrillLines() {
       className="pathsvg routes"
       viewBox="0 0 100 100"
       preserveAspectRatio="none"
-      style={{ pointerEvents: deleteMode ? "auto" : "none", zIndex: 3 }}
+      style={{ pointerEvents: "none", zIndex: 3 }}
     >
       {drill.doc.lines.map(renderLine)}
       {drill.tempLine && drill.tempLine.length > 1 && (

@@ -20,26 +20,31 @@ export function SendTargetField({
   players,
   value,
   onChange,
+  allowNone = true,
 }: {
   players: Player[];
   value: SendTarget;
   onChange: (t: SendTarget) => void;
+  /** false のとき「送信しない」を出さない（送信専用シート向け） */
+  allowNone?: boolean;
 }) {
   // フィールドごとに一意な radio グループ名（複数箇所で再利用されても衝突しない）
   const groupName = "sendtgt-" + useId();
   return (
     <div className="formfield">
-      <label>送信先（任意・選手アプリに届きます）</label>
+      <label>{allowNone ? "送信先（任意・選手アプリに届きます）" : "送信先（選手アプリに届きます）"}</label>
       <div className="sendtgt">
-        <label className={value.mode === "none" ? "on" : ""}>
-          <input
-            type="radio"
-            name={groupName}
-            checked={value.mode === "none"}
-            onChange={() => onChange({ mode: "none" })}
-          />
-          送信しない
-        </label>
+        {allowNone && (
+          <label className={value.mode === "none" ? "on" : ""}>
+            <input
+              type="radio"
+              name={groupName}
+              checked={value.mode === "none"}
+              onChange={() => onChange({ mode: "none" })}
+            />
+            送信しない
+          </label>
+        )}
         <label className={value.mode === "team" ? "on" : ""}>
           <input
             type="radio"

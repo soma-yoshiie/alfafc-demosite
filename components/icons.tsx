@@ -131,6 +131,36 @@ export function IconUndo(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** やり直し（元に戻すの逆） */
+export function IconRedo(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="m15 14 5-5-5-5" />
+      <path d="M20 9H9a6 6 0 0 0 0 12h4" />
+    </Svg>
+  );
+}
+
+/** 送信（紙飛行機） */
+export function IconSend(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="m22 2-7 20-4-9-9-4Z" />
+      <path d="M22 2 11 13" />
+    </Svg>
+  );
+}
+
+/** 複製（コピー） */
+export function IconCopy(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </Svg>
+  );
+}
+
 /** 削除（ゴミ箱） */
 export function IconTrash(p: SVGProps<SVGSVGElement>) {
   return (

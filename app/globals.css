@@ -6529,6 +6529,584 @@ header {
     opacity var(--dur-s) var(--ease-standard);
 }
 
+/* =========================================================
+   Drill editor v2（練習メニュー・モードレス刷新）
+   ========================================================= */
+
+/* 全体：スクロールなしで100dvhに収める。PC/タブレットは2ペイン */
+.app.drillapp.dx {
+  max-width: 1220px;
+}
+.dx .dxbody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+  padding: 8px 14px calc(env(safe-area-inset-bottom) + 12px);
+}
+.dx .dxstage {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.dx .dxpitchwrap {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  container-type: size;
+}
+
+/* ピッチはコート種類ごとのアスペクト比で使える領域にフィット（cqで確実に収める） */
+.dx .pitchbox {
+  position: relative;
+  width: min(100cqw, calc(100cqh * 5 / 6));
+  height: min(100cqh, calc(100cqw * 6 / 5));
+}
+.dx .pitchbox.pb-full {
+  width: min(100cqw, calc(100cqh * 7 / 10));
+  height: min(100cqh, calc(100cqw * 10 / 7));
+}
+.dx .pitchbox.pb-fullh {
+  width: min(100cqw, calc(100cqh * 16 / 10));
+  height: min(100cqh, calc(100cqw * 10 / 16));
+}
+.dx .pitch,
+.dx .pitch.fullh {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+}
+.dx .pitch.arming {
+  cursor: crosshair;
+}
+
+/* 元に戻す / やり直す（ピッチ左下のフローティング） */
+.dxundo {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  display: flex;
+  gap: 8px;
+  z-index: 24;
+}
+.dxundo button {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+  transition: 0.15s;
+}
+.dxundo button svg {
+  width: 19px;
+  height: 19px;
+}
+.dxundo button:active {
+  transform: scale(0.92);
+}
+.dxundo button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* ---- サイドパネル ---- */
+.dxside {
+  width: 252px;
+  flex: 0 0 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+}
+.dxsec h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--mut);
+  text-transform: uppercase;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.dxsec h3 .dxhint {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.2px;
+  font-weight: 600;
+  color: var(--mut);
+  opacity: 0.8;
+  text-transform: none;
+}
+
+/* セグメント切替（ピッチ種類・丸サイズ） */
+.dxseg {
+  display: flex;
+  gap: 2px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+}
+.dxseg button {
+  flex: 1;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 7px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  color: var(--mut);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dxseg button.on {
+  background: var(--lime);
+  color: #ffffff;
+}
+.dxrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.dxrow .dxlbl {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.dxrow .dxseg {
+  flex: 1;
+}
+
+/* パレット */
+.dxpal {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.dxpal.lines {
+  grid-template-columns: repeat(2, 1fr);
+}
+.dxpal button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 4px 7px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+  transition: 0.12s;
+}
+.dxpal button:active {
+  transform: scale(0.95);
+}
+.dxpal button.on {
+  border-color: var(--lime);
+  background: rgba(19, 138, 77, 0.1);
+  color: var(--lime);
+  box-shadow: 0 0 0 1.5px rgba(19, 138, 77, 0.35);
+}
+.dx .pv {
+  width: 100%;
+  height: 26px;
+  border-radius: 7px;
+  background: #1f8c4f;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.dx .pv .d-cone,
+.dx .pv .d-disc,
+.dx .pv .d-ball,
+.dx .pv .d-goal,
+.dx .pv .d-marker {
+  box-shadow: none;
+  filter: none;
+}
+.dx .pv-text {
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 13px;
+  background: rgba(10, 14, 12, 0.5);
+  border-radius: 4px;
+  padding: 0 6px;
+  line-height: 1.4;
+}
+
+/* 連続配置・全消去 */
+.dxlock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 2px 2px;
+}
+.dxlock input {
+  accent-color: var(--lime);
+  width: 16px;
+  height: 16px;
+}
+.dxclear {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 11px;
+  border: 1px solid rgba(214, 50, 75, 0.35);
+  background: transparent;
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 800;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.dxclear svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* ---- ヘッダー ---- */
+.dx header .hact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-weight: 800;
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+.dx header .hact svg {
+  width: 16px;
+  height: 16px;
+}
+.dx header .hact:active {
+  transform: scale(0.94);
+}
+.dx header .hact.primary {
+  background: var(--lime);
+  border-color: var(--lime);
+  color: #ffffff;
+}
+.dx .drilltitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dx .drilltitle .dtname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dx .drilltitle .dtedit {
+  margin-left: 5px;
+  color: var(--mut);
+  font-size: 12px;
+}
+.dtstate {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--panel2);
+  color: var(--mut);
+}
+.dtstate.saved {
+  background: rgba(19, 138, 77, 0.12);
+  color: var(--lime);
+}
+.dtstate.dirty {
+  background: rgba(214, 50, 75, 0.1);
+  color: var(--red);
+}
+
+/* ---- 選択とコンテキストツールバー ---- */
+.ditem.sel::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 2px rgba(19, 138, 77, 0.9), 0 2px 8px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+.dxctx {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 14px));
+  display: flex;
+  gap: 2px;
+  background: var(--ink);
+  border-radius: 11px;
+  padding: 4px;
+  z-index: 40;
+  box-shadow: 0 8px 24px rgba(21, 35, 60, 0.35);
+}
+.dxctx.below {
+  transform: translate(-50%, 18px);
+}
+.dxctx button {
+  width: 36px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.dxctx button svg {
+  width: 16px;
+  height: 16px;
+}
+.dxctx button .tx {
+  font-size: 13px;
+  font-weight: 800;
+}
+.dxctx button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.dxctx button.danger {
+  color: #ff92a3;
+}
+/* ドラッグ中はコンテキストバーを隠す（位置が追従しないため） */
+.pitchbox:has(.ditem.drag) .dxctx {
+  opacity: 0;
+}
+
+/* 動線の端点ハンドル */
+.dxhandle {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 3px solid var(--lime);
+  transform: translate(-50%, -50%);
+  z-index: 35;
+  cursor: grab;
+  touch-action: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+
+/* ラベル・テキスト編集ポップオーバー */
+.dxlabeledit {
+  position: absolute;
+  transform: translate(-50%, 16px);
+  z-index: 41;
+}
+.dxlabeledit input {
+  width: 150px;
+  background: var(--panel);
+  border: 1.5px solid var(--lime);
+  border-radius: 10px;
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  outline: none;
+  box-shadow: var(--shadow);
+}
+
+/* ピッチ上のテキスト注記 */
+.d-text {
+  max-width: 180px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  background: rgba(10, 14, 12, 0.55);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- ライブラリ（サムネイル付きカード） ---- */
+.drillcard {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+}
+.drillcard.cur {
+  border-color: rgba(19, 138, 77, 0.4);
+  background: rgba(19, 138, 77, 0.06);
+}
+.drillcard .dcimg {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 76px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #0f3527;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.drillcard .dcimg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.drillcard .dcph {
+  width: 100%;
+  height: 100%;
+  background: #12402f;
+}
+.drillcard .dcbody {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.drillcard .dcmemo {
+  font-size: 11px;
+  color: var(--mut);
+  margin-top: 3px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+}
+.drillcard .dcdel {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--red);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.drillcard .dcdel svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* 送信先ラジオの折り返し崩れ対策 */
+.dx .sendtgt label {
+  flex: 1 1 auto;
+  white-space: nowrap;
+}
+
+/* ---- 狭い画面（スマホ）：パレットを下部に ---- */
+@media (max-width: 879px) {
+  .dx .dxbody {
+    flex-direction: column;
+    gap: 8px;
+    padding: 6px 10px calc(env(safe-area-inset-bottom) + 8px);
+  }
+  .dxside {
+    width: auto;
+    flex: 0 0 auto;
+    max-height: 42dvh;
+    border-radius: 14px;
+    padding: 10px;
+    gap: 10px;
+  }
+  .dxsec h3 {
+    margin-bottom: 6px;
+  }
+  .dxpal {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .dxpal button {
+    flex: 1 0 auto;
+    flex-direction: row;
+    gap: 6px;
+    padding: 6px 9px;
+  }
+  .dxpal .pv {
+    width: 34px;
+    height: 22px;
+  }
+  .dxclear {
+    margin-top: 0;
+  }
+  .dx header .hact span {
+    display: none;
+  }
+  .dx header .hact {
+    padding: 0 10px;
+  }
+  .dx .drilltitle .dtedit {
+    display: none;
+  }
+  /* 小画面では保存状態バッジを色ドットに（タイトルを優先表示） */
+  .dx .drilltitle .dtstate {
+    font-size: 0;
+    padding: 0;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--mut);
+  }
+  .dx .drilltitle .dtstate.saved {
+    background: var(--lime);
+  }
+  .dx .drilltitle .dtstate.dirty {
+    background: var(--red);
+  }
+  .dxundo {
+    left: 6px;
+    bottom: 6px;
+  }
+  .dxundo button {
+    width: 38px;
+    height: 38px;
+  }
+}
+
+/* マーカー色をPNG書き出しと揃える（金色） */
+.dx .d-marker,
+.dx .pv .d-marker {
+  background: #ffd166;
+}
+
 /* ============================================================
    チーム運営 改修：ホームタブ / 出欠グルーピング / カレンダー強化
    ============================================================ */

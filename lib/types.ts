@@ -377,14 +377,15 @@ export type DrillItemKind =
   | "oppo"
   | "ball"
   | "goal"
-  | "marker";
+  | "marker"
+  | "text";
 
 export interface DrillItem {
   id: string;
   kind: DrillItemKind;
   x: number;
   y: number;
-  /** 選手などの番号・記号（任意） */
+  /** 選手などの番号・記号、text の本文（任意） */
   label?: string;
   /** 向き（度）。ゴールなどの回転に使用 */
   rot?: number;
