@@ -162,6 +162,10 @@ textarea {
   touch-action: pan-y;
 }
 
+/* PC専用コンソールシェル（モバイルでは素通し・レール非表示） */
+.conshell { display: contents; }
+.conrail { display: none; }
+
 /* ---------- Header ---------- */
 header {
   padding: calc(env(safe-area-inset-top) + 10px) 14px 8px;
@@ -6593,20 +6597,9 @@ header {
    ========================================================= */
 @media (min-width: 1024px) {
   .app.noteapp { max-width: none; }
-  /* 左サイドレール構造（アイコン+名前つき） */
-  .noteapp { display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: auto auto 1fr; }
-  .noteapp > header { grid-column: 2; grid-row: 1; }
-  .noteapp > .fbar { grid-column: 2; grid-row: 2; }
-  .noteapp > .scroll { grid-column: 2; grid-row: 3; padding: 8px 32px 40px; }
-  .noteapp .notenav { grid-column: 1; grid-row: 1 / 4; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 3px; padding: 16px 10px; border-top: 0; border-right: 1px solid var(--outline); background: var(--surface-lowest); }
-  .noteapp .notenav-item { flex: none; flex-direction: row; width: 100%; height: auto; padding: 9px 12px; justify-content: flex-start; gap: 10px; border-radius: 8px; font-size: var(--fs-body-s); font-weight: 600; }
-  .noteapp .notenav-item .emj { padding: 0; width: 17px; height: 17px; box-sizing: border-box; border-radius: 0; }
-  .noteapp .notenav-item.on { background: rgba(44, 111, 214, 0.1); color: var(--accent); }
-  .noteapp .notenav-item.on .emj { background: none; }
-  .noteapp .notenav-badge { position: static; margin-left: auto; border: 0; }
-  /* コーチのレール: セクション見出しと管理者フッターを表示 */
-  .coachapp .navsec { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--mut); text-transform: uppercase; padding: 14px 12px 4px; }
-  .coachapp .navuser { display: block; margin-top: auto; padding: 12px; border-top: 1px solid var(--outline); font-size: var(--fs-body-s); color: var(--mut); }
+  .noteapp .scroll { padding: 8px 32px 40px; }
+  /* PCではシェルのレール(.conrail)に一本化。モバイルのボトムナビ(.notenav)は基底ルールのまま非表示にするだけ */
+  .noteapp .notenav { display: none; }
   .noteapp .fab { right: 28px; bottom: 28px; }
   /* PCトップバー（アイコンレール化に伴いクロームを白+薄罫線+ブルーリンクへ） */
   .noteapp header { background: var(--surface-lowest); border-bottom: 1px solid var(--outline); padding: 10px 18px; }
@@ -6651,6 +6644,38 @@ header {
   .coachapp .heattbl .hdot.on { color: var(--primary); }
   .coachapp .heattbl td:first-child { font-weight: 700; white-space: nowrap; }
   .coachapp .heattbl td:last-child { font-weight: 700; text-align: right; }
+
+  /* ===== 共有コンソールシェル（左レール+メイン）: アプリ全体の外枠 ===== */
+  /* 行高を明示しないと内容がはみ出た際にトラックが伸びて .conrail がスクロール不能になる */
+  .conshell { display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: 100dvh; height: 100dvh; }
+  /* 全画面再生(fullplay)中はレールを畳んでビューポート基準のオーバーレイと一致させる
+     (レールをdisplay:noneにするためグリッドは1カラムへ。2カラムのままだとconmainが幅0の1列目に落ちる) */
+  .conshell.fp { grid-template-columns: minmax(0, 1fr); }
+  .conshell.fp .conrail { display: none; }
+  .conrail { display: flex; flex-direction: column; gap: 3px; padding: 16px 10px; border-right: 1px solid var(--outline); background: var(--surface-lowest); overflow-y: auto; min-height: 0; }
+  /* .conmain はモバイル(<1024px)では無スタイルのblockであることが不変条件（基底に何も足さないこと） */
+  .conmain { min-width: 0; height: 100dvh; overflow: hidden; }
+  .conbrand { padding: 4px 12px 14px; display: flex; align-items: center; gap: 8px; }
+  .conbrand .rail-mark { width: 22px; height: 22px; flex: none; }
+  .conbrand .logo { font-size: 15px; }
+  .conbrand-team { font-size: 11px; color: var(--mut); font-weight: 600; margin-top: 1px; }
+  .connavsec { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--mut); text-transform: uppercase; padding: 14px 12px 4px; }
+  .conrail-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; background: none; border-radius: 8px; font-size: var(--fs-body-s); font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; font-family: inherit; }
+  .conrail-item:hover { background: rgba(0, 0, 0, 0.05); }
+  .conrail-item.on { background: rgba(44, 111, 214, 0.1); color: var(--accent); }
+  .conrail-item .emj,
+  .conrail-item svg { width: 17px; height: 17px; flex: none; }
+  .conrail-item.sub { padding-left: 34px; font-weight: 500; }
+  .conrail-sub { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 4px; }
+  .conrail-badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .conuser { margin-top: auto; padding: 12px; border-top: 1px solid var(--outline); font-size: var(--fs-body-s); color: var(--mut); }
+  /* シェル外オーバーレイ(シート/トースト)はメインカラム基準へ寄せる(レール208px÷2=104px補正) */
+  .sheet { left: 208px; }
+  .toast { left: calc(50% + 104px); }
+  /* 全画面再生中はレールが畳まれるので補正を打ち消す(トーストは全画面中も出る) */
+  .conshell.fp ~ .toast { left: 50%; }
+  /* レール分(208px)狭くなった分、戦術ボード右カラムを縮めてピッチ幅を確保 */
+  .boardside { flex-basis: clamp(340px, 32vw, 410px); }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 

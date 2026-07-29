@@ -203,6 +203,9 @@ export function saveNotifSeen(map: Record<string, number>): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(NOTIF_SEEN_KEY, JSON.stringify(map));
+    // 既読はlocalStorage直書きでReact状態を経由しないため、
+    // バッジ表示側(ConsoleShell等)が購読できるようイベントを発火する
+    window.dispatchEvent(new Event("alfa-notifseen"));
   } catch {
     /* 無視 */
   }

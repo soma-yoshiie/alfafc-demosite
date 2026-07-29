@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CoachDeliverable,
   DeliverKind,
@@ -51,6 +51,7 @@ import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
 import { DeliverBlock, DeliverComposer, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, CoachDashboard, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
 import SeasonReport from "./SeasonReport";
+import { useConsoleSubnav } from "./ConsoleShell";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const PLAY_KINDS: PlayKind[] = ["receive", "shot", "miss"];
@@ -213,6 +214,26 @@ export default function NotebookScreen() {
         { t: "notifs", icon: "bell", label: "通知", badge: unread },
         { t: "report", icon: "doc", label: "レポート" },
       ];
+
+  // PC専用コンソールシェルの左レール：サッカーノート項目の直下にタブ一覧を出す
+  // switchTab は毎レンダー再生成されるため、ref経由で常に最新を呼ぶ（memoの鮮度に依存させない）
+  const switchTabRef = useRef(switchTab);
+  switchTabRef.current = switchTab;
+  const consoleSubnav = useMemo(
+    () => ({
+      items: navItems.map((it) => ({
+        key: it.t,
+        label: it.label,
+        icon: <E n={it.icon} />,
+        badge: it.badge,
+        on: tab === it.t && isRoot,
+        onSelect: () => switchTabRef.current(it.t),
+      })),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tab, isRoot, unread, isCoach]
+  );
+  useConsoleSubnav(consoleSubnav);
 
   return (
     <div className={"app noteapp" + (isCoach ? " coachapp" : "")}>
