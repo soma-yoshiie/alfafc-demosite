@@ -1253,14 +1253,17 @@ header {
   border-radius: 22px 22px 0 0;
   border-top: 1px solid var(--line);
   transform: translateY(110%);
-  transition: transform 0.28s cubic-bezier(0.3, 0.9, 0.3, 1);
   max-height: 86dvh;
   display: flex;
   flex-direction: column;
   box-shadow: 0 -16px 40px rgba(0, 0, 0, 0.5);
+  visibility: hidden;
+  transition: transform 0.28s cubic-bezier(0.3, 0.9, 0.3, 1), visibility 0s linear 0.28s;
 }
 .sheet.on {
   transform: translateY(0);
+  visibility: visible;
+  transition: transform 0.28s cubic-bezier(0.3, 0.9, 0.3, 1), visibility 0s;
 }
 .sheetBody {
   display: flex;
