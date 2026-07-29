@@ -60,18 +60,157 @@ export interface Slot {
   pid: string | null;
 }
 
-/** アニメーションの操作対象。選手はスロット番号、ボールは 'ball' */
-export type Actor = number | "ball";
+/**
+ * アニメーションの操作対象。
+ * 選手はスロット番号、ボールは 'ball'、相手トークンは 'opp<index>'。
+ */
+export type Actor = number | "ball" | `opp${number}`;
+
+/** actor が相手トークンかどうか */
+export function isOppActor(a: Actor): a is `opp${number}` {
+  return typeof a === "string" && a !== "ball";
+}
+/** 'opp3' → 3。相手トークン以外は -1 */
+export function oppIndex(a: Actor): number {
+  return isOppActor(a) ? +a.slice(3) : -1;
+}
+
+/** 動きの種類（戦術図の標準記法）: ラン=実線 / パス=破線 / ドリブル=波線 / シュート=R2で描画・生成予定（R1は型のみ） */
+export type MoveKind = "run" | "pass" | "dribble" | "shot";
 
 /** 1本の動きのルート（クリップ） */
 export interface Move {
   actor: Actor;
   path: Point[];
-  /** 開始秒 */
+  /** 場面（ステップ）内の開始オフセット秒 */
   start: number;
   /** 移動にかける秒数 */
   dur: number;
+  /** 所属する場面（0始まり）。旧データは未定義＝場面0 */
+  step?: number;
+  /** 線種。未定義はボール=pass / それ以外=run 扱い */
+  kind?: MoveKind;
+  /** 動きの緩急。std=なめらか / dash=タメてから一気に加速 / linear=等速。未定義＝std */
+  ease?: "std" | "dash" | "linear";
+  /**
+   * ボール move の到達先（R2 のパス/シュート生成で使用）。Actor なら受け手、"goal" ならシュート。
+   * 未定義＝従来どおり（こぼれ球・保持者なし）。R1 では型と再生解決（holderAt）のみ対応
+   */
+  to?: Actor | "goal";
 }
+
+/** move の線種（未定義時のデフォルト補完） */
+export function moveKind(m: Move): MoveKind {
+  return m.kind ?? (m.actor === "ball" ? "pass" : "run");
+}
+
+/** 相手チームの簡易トークン（名簿なし・番号のみ） */
+export interface OppToken {
+  x: number;
+  y: number;
+  /** 表示ラベル（背番号など） */
+  label: string;
+}
+
+/** フリーハンドペンの1ストローク */
+export interface PenStroke {
+  /** 一意なID（選択・削除に使用）。旧データは未定義＝ BoardProvider の normalizeBoard で補完 */
+  id?: string;
+  path: Point[];
+  /** 線色。未定義は #ffe27a（チョーク黄） */
+  color?: string;
+  /** 線幅（ピッチ%単位）。未定義は 0.9 */
+  width?: number;
+  /** 点線かどうか */
+  dash?: boolean;
+  /**
+   * 表示する場面（0始まり）。未定義＝全場面共通（従来どおり常に表示）。
+   * 指定するとその場面の間だけ表示され、再生でも場面に合わせて切り替わる。
+   */
+  step?: number;
+}
+
+/**
+ * 図形オブジェクト（Phase 1a: 静的4種 / Phase 1b: 選手追従3種を追加）
+ */
+export type ShapeKind =
+  | "zoneEllipse"
+  | "zoneRect"
+  | "text"
+  | "arrow"
+  | "link"
+  | "hull";
+
+export interface ShapeBase {
+  id: string;
+  kind: ShapeKind;
+  /** 表示する場面。未定義＝全場面（ペンの PenStroke.step と同じ仕様） */
+  step?: number;
+  /** 色。未定義は #ffe27a */
+  color?: string;
+  /** 線幅（ピッチ%単位）。zoneEllipse/zoneRect/arrow/link で使用。text では未使用。未定義時は種別ごとの既定値 */
+  width?: number;
+}
+/** ゾーン塗り（x,y=中心、w,h=幅・高さ。すべてピッチ%） */
+export interface ZoneShape extends ShapeBase {
+  kind: "zoneEllipse" | "zoneRect";
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+/** テキストラベル（x,y=中心） */
+export interface TextShape extends ShapeBase {
+  kind: "text";
+  x: number;
+  y: number;
+  text: string;
+  size?: "s" | "m" | "l";
+}
+/** 曲線矢印（2次ベジェ。p0=始点, p1=終点, c=制御点） */
+export interface ArrowShape extends ShapeBase {
+  kind: "arrow";
+  p0: Point;
+  p1: Point;
+  c: Point;
+  dash?: boolean;
+}
+/** 連結ライン（選手同士を順に線で結ぶ。守備ラインの可視化） */
+export interface LinkShape extends ShapeBase {
+  kind: "link";
+  actors: Actor[];
+}
+/** 囲み枠（選手群を凸包ポリゴンで囲む。数的優位の提示） */
+export interface HullShape extends ShapeBase {
+  kind: "hull";
+  actors: Actor[];
+  /** 人数バッジ表示（既定true） */
+  showCount?: boolean;
+}
+
+export type Shape =
+  | ZoneShape
+  | TextShape
+  | ArrowShape
+  | LinkShape
+  | HullShape;
+
+/**
+ * 図形の部分更新パッチ。TypeScript の Partial<Shape> はユニオン型の共通キーのみに
+ * 絞られてしまう（kind,step,color等）ため、全種のフィールドを許可する専用の型を用意する。
+ * kind は各メンバーのリテラル型が排他的で交差すると never になり（Omit で除外。
+ * 除外しないと交差型に never プロパティが残りスプレッド構文がエラーになる）、実質変更不可になる。
+ */
+export type ShapePatch = Partial<
+  Omit<ZoneShape, "kind"> &
+    Omit<TextShape, "kind"> &
+    Omit<ArrowShape, "kind"> &
+    Omit<LinkShape, "kind"> &
+    Omit<HullShape, "kind">
+>;
+
+/** ピッチの表示モード。full=通常表示 / half=敵陣ハーフの拡大表示（データ座標は変えず表示だけ変換） */
+export type PitchViewMode = "full" | "half";
 
 /** 永続化するボード全体の状態（作業中のボード） */
 export interface BoardState {
@@ -83,6 +222,20 @@ export interface BoardState {
   ball: Point;
   moves: Move[];
   captain: string | null;
+  /** ボールの保持者（アニメ開始時点＝t=0の保持者）。undefined/null＝従来どおりの独立ボール */
+  holder?: Actor | null;
+  /** 相手チームのトークン。旧データは未定義＝[] */
+  opponents?: OppToken[];
+  /** フリーハンドペンの描き込み。旧データは未定義＝[] */
+  drawings?: PenStroke[];
+  /** 図形オブジェクト（ゾーン・テキスト・矢印・選手追従図形）。旧データは未定義＝[] */
+  shapes?: Shape[];
+  /** 場面（ステップ）数。旧データは未定義＝1 */
+  stepCount?: number;
+  /** ピッチガイド（5レーン/エリア名/凡例）の表示設定。旧データは未定義＝{} */
+  guides?: { lanes?: boolean; zones?: boolean; legend?: boolean };
+  /** ピッチの表示モード。旧データは未定義＝full */
+  pitchView?: PitchViewMode;
 }
 
 /* ===== 保存ライブラリ / フォルダ / プラン ===== */
@@ -103,6 +256,14 @@ export interface SavedPlay {
   ball: Point;
   moves: Move[];
   updatedAt: number;
+  /** ボールの保持者。旧データは未定義＝従来どおりの独立ボール */
+  holder?: Actor | null;
+  opponents?: OppToken[];
+  drawings?: PenStroke[];
+  shapes?: Shape[];
+  stepCount?: number;
+  guides?: { lanes?: boolean; zones?: boolean; legend?: boolean };
+  pitchView?: PitchViewMode;
 }
 
 export interface Library {
@@ -190,6 +351,8 @@ export interface ShareSnapshot {
   formation: string;
   ball: Point;
   moves: Move[];
+  /** ボールの保持者。旧データは未定義＝従来どおりの独立ボール */
+  holder?: Actor | null;
   slots: {
     role: Position;
     x: number;
@@ -197,6 +360,12 @@ export interface ShareSnapshot {
     p: { name: string; number: number | null; position: Position } | null;
     capt?: boolean;
   }[];
+  opponents?: OppToken[];
+  drawings?: PenStroke[];
+  shapes?: Shape[];
+  stepCount?: number;
+  guides?: { lanes?: boolean; zones?: boolean; legend?: boolean };
+  pitchView?: PitchViewMode;
 }
 
 /* ===== 練習メニュー（ドリル図） ===== */
