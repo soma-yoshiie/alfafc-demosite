@@ -221,6 +221,7 @@ export default function NotebookScreen() {
   switchTabRef.current = switchTab;
   const consoleSubnav = useMemo(
     () => ({
+      anchor: "notebook" as const,
       items: navItems.map((it) => ({
         key: it.t,
         label: it.label,

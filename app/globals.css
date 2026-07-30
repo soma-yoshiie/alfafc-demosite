@@ -8232,10 +8232,10 @@ header {
   .app.teamapp {
     max-width: none;
   }
-  /* 白クロームは header→rolebar→fbar を1枚の帯として扱い、ヘアラインはタブ下線(fbar)のみに */
+  /* 白クロームは header→rolebar を1枚の帯として扱う。種別タブ(fbar)はレール側のサブナビに
+     統合したためPCでは非表示にし、帯末尾のヘアラインは rolebar の下辺に引く */
   .teamapp header {
     background: var(--surface-lowest);
-    border-bottom: 0;
     padding: 10px 18px;
   }
   .teamapp .logo {
@@ -8263,43 +8263,17 @@ header {
   }
   .teamapp .rolebar {
     background: var(--surface-lowest);
-    border-bottom: 0;
+    border-bottom: 1px solid var(--outline);
     padding: 8px 18px;
     margin: 0;
   }
   .teamapp .rolehint {
     color: var(--mut);
   }
-  /* 種別タブをコンソールの apanel-tabs 様式へ（下線ナビ化。基底の丸チップ装飾を打消し） */
+  /* 種別タブはPCではレール左サブナビに統合済みのため、画面内のタブ帯(fbar)は非表示
+     （旧タブ下線化の .teamapp .chip 系規則は到達不能になったため削除済み） */
   .teamapp .fbar {
-    display: flex;
-    gap: 18px;
-    padding: 0 18px;
-    background: var(--surface-lowest);
-    border-bottom: 1px solid var(--outline);
-    overflow-x: auto;
-  }
-  .teamapp .chip {
-    flex: 0 0 auto;
-    padding: 7px 1px 9px;
-    border-radius: 0;
-    border: 0;
-    background: none;
-    font-family: var(--font-ui);
-    font-size: var(--fs-body-s);
-    font-weight: 600;
-    letter-spacing: normal;
-    color: var(--mut);
-    box-shadow: none;
-  }
-  .teamapp .chip.on {
-    background: none;
-    color: var(--ink);
-    border-color: transparent;
-    box-shadow: inset 0 -2px 0 var(--accent);
-  }
-  .teamapp .chip:active {
-    transform: none;
+    display: none;
   }
   /* 基底側でインラインpaddingをCSSへ移設済みのため、ここでの上書きが有効になる */
   .teamapp .scroll {

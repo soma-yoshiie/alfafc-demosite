@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type React from "react";
 import type {
   Announcement,
@@ -35,6 +35,7 @@ import {
 import { loadLastEventCategory, saveLastEventCategory } from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
 import { useBoard } from "./BoardProvider";
+import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 
@@ -143,6 +144,15 @@ function Sheet({
 
 type Tab = "home" | "att" | "cal" | "rec" | "ros";
 
+// PC専用コンソールシェルの左レール：タブ帯と同じ項目をサブメニューとしても出すためのアイコン対応
+const ICON: Record<Tab, Parameters<typeof E>[0]["n"]> = {
+  home: "chart",
+  att: "check",
+  cal: "calendar",
+  rec: "trophy",
+  ros: "users",
+};
+
 type SheetState =
   | { type: "event"; event?: TeamEvent; date?: string }
   | { type: "attendance"; eventId: string }
@@ -188,6 +198,28 @@ function Inner() {
   // 名簿は表示中のロールに合わせる（選手プレビュー時は隠して見え方を揃える）
   if (isCoach && board.auth.role === "coach") tabs.push(["ros", "名簿"]);
   const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "home";
+
+  // PC専用コンソールシェルの左レール：チーム運営項目の直下にタブ帯と同じ一覧を出す。
+  // レールはスクリム(left:208px)の外にあるため、シートを開いたままタブ切替できてしまう。
+  // 従来(画面内タブ帯)はスクリム配下で切替不可能だった挙動に合わせ、切替時にシートを閉じる
+  const consoleSubnav = useMemo(
+    () => ({
+      anchor: "team" as const,
+      items: tabs.map(([t, label]) => ({
+        key: t,
+        label,
+        icon: <E n={ICON[t]} />,
+        on: activeTab === t,
+        onSelect: () => {
+          setSheet(null);
+          setTab(t);
+        },
+      })),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [activeTab, isCoach, board.auth.role]
+  );
+  useConsoleSubnav(consoleSubnav);
 
   return (
     <div className="app teamapp">

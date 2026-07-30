@@ -26,24 +26,32 @@ export type ConsoleSubnavItem = {
   onSelect: () => void;
 };
 
-export type ConsoleSubnav = { items: ConsoleSubnavItem[] };
+/** anchor はレール項目の key かつ board.screen の値と一致している必要がある（両方に一致しないと描画されない） */
+type ScreenKey = ReturnType<typeof useBoard>["screen"];
+
+export type ConsoleSubnav = { anchor: ScreenKey; items: ConsoleSubnavItem[] };
 
 type ConsoleShellCtxValue = { setSubnav: (sub: ConsoleSubnav | null) => void };
 
 const ConsoleShellContext = createContext<ConsoleShellCtxValue | null>(null);
 
 /**
- * 現在の画面が「サッカーノート」レール項目の直下にサブメニューを出したいとき呼ぶ。
- * ConsoleShell の Provider が無い場合（テスト等）は no-op。
+ * 現在の画面が、指定した anchor（レール項目の key = board.screen 値）の直下に
+ * サブメニューを出したいとき呼ぶ。ConsoleShell の Provider が無い場合（テスト等）は no-op。
+ * 登録の解除はアンマウント時のみ（更新のたびに null を挟まないので、
+ * 非メモ化オブジェクトを渡しても setSubnav 側の同値比較で吸収され、レンダーループしない）。
+ * 注意: 同値比較は key/label/badge/on/anchor のみ。onSelect は比較されないため、
+ * 安定関数（useState セッター等）か ref 経由で最新を参照する形で渡すこと。
  */
 export function useConsoleSubnav(sub: ConsoleSubnav | null): void {
   const ctx = useContext(ConsoleShellContext);
   useEffect(() => {
-    if (!ctx) return;
-    ctx.setSubnav(sub);
-    return () => ctx.setSubnav(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (ctx) ctx.setSubnav(sub);
   }, [ctx, sub]);
+  useEffect(() => {
+    if (!ctx) return;
+    return () => ctx.setSubnav(null);
+  }, [ctx]);
 }
 
 /* ===================== レール用ローカルアイコン ===================== */
@@ -85,6 +93,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         prev === sub ||
         (!!prev &&
           !!sub &&
+          prev.anchor === sub.anchor &&
           prev.items.length === sub.items.length &&
           prev.items.every(
             (p, i) =>
@@ -178,7 +187,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
                 <span className="conrail-badge">{e.item.badge > 9 ? "9+" : e.item.badge}</span>
               )}
             </button>
-            {e.item.key === "notebook" && board.screen === "notebook" && subnav && (
+            {subnav && subnav.anchor === e.item.key && board.screen === subnav.anchor && (
               <div className="conrail-sub">
                 {subnav.items.map((it) => (
                   <button
