@@ -131,6 +131,10 @@ function Sheet({
         <div className="grabzone" onClick={onClose}>
           <div className="grab" />
         </div>
+        {/* PCダイアログ用の閉じるボタン（モバイルでは基底CSSで非表示） */}
+        <button className="sheetx" type="button" aria-label="閉じる" onClick={onClose}>
+          ×
+        </button>
         <div className="sheetBody">{open ? children : null}</div>
       </div>
     </>
@@ -199,6 +203,11 @@ function Inner() {
             {board.state.teamName ?? "マイチーム"}
           </div>
         </div>
+        {board.auth.role === "coach" && (
+          <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
+            ＋ 予定を追加
+          </button>
+        )}
       </header>
 
       {board.auth.role === "coach" ? (
@@ -241,7 +250,8 @@ function Inner() {
         ))}
       </div>
 
-      <div className="scroll" style={{ padding: "0 14px calc(env(safe-area-inset-bottom) + 24px)" }}>
+      {/* paddingは基底CSS(.teamapp .scroll)へ移設（PCで上書きできるように） */}
+      <div className="scroll">
         {activeTab === "home" && (
           <HomeTab isCoach={isCoach} me={me} setSheet={setSheet} setTab={setTab} />
         )}
@@ -336,25 +346,29 @@ function HomeTab({
   const s = next ? team.summary(next.id) : null;
 
   return (
-    <>
-      {!isCoach && unanswered.length > 0 && (
-        <div className="alertcard" onClick={() => setTab("att")}>
-          <E n="bell" /> 出欠が未回答の予定が {unanswered.length} 件あります
-          <span className="seclink">回答する ›</span>
-        </div>
-      )}
+    // 試合非表示時はサイド列を作らず1カラム（空の360px列を残さない）
+    <div className={`hometab${showMatches ? "" : " solo"}`}>
+      <div className="httop">
+        {!isCoach && unanswered.length > 0 && (
+          <div className="alertcard" onClick={() => setTab("att")}>
+            <E n="bell" /> 出欠が未回答の予定が {unanswered.length} 件あります
+            <span className="seclink">回答する ›</span>
+          </div>
+        )}
 
-      {isCoach && (
-        <div className="quickrow">
-          <button className="bigbtn" onClick={() => setSheet({ type: "event" })}>
-            ＋ 予定を追加
-          </button>
-          <button className="bigbtn ghost" onClick={() => setSheet({ type: "match" })}>
-            ＋ 試合結果を記録
-          </button>
-        </div>
-      )}
+        {isCoach && (
+          <div className="quickrow">
+            <button className="bigbtn" onClick={() => setSheet({ type: "event" })}>
+              ＋ 予定を追加
+            </button>
+            <button className="bigbtn ghost" onClick={() => setSheet({ type: "match" })}>
+              ＋ 試合結果を記録
+            </button>
+          </div>
+        )}
+      </div>
 
+      <div className="htmain">
       <div className="sech">次の予定</div>
       {!next ? (
         <div className="empty-msg" style={{ padding: "14px 0" }}>
@@ -420,8 +434,10 @@ function HomeTab({
       ) : (
         anns.slice(0, 2).map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} />)
       )}
+      </div>
 
       {showMatches && (
+      <div className="htside">
         <>
           <div className="sech">
             試合
@@ -480,8 +496,9 @@ function HomeTab({
             </>
           )}
         </>
+      </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -543,9 +560,11 @@ function AttendanceTab({
       {upcoming.length === 0 ? (
         <div className="empty-msg">今後の予定はありません。</div>
       ) : (
-        upcoming.map((ev) => (
-          <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} />
-        ))
+        <div className="attlist">
+          {upcoming.map((ev) => (
+            <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} />
+          ))}
+        </div>
       )}
       {past.length > 0 && (
         <>
@@ -556,10 +575,13 @@ function AttendanceTab({
           >
             {showPast ? "過去の予定を隠す" : `過去の予定を表示（${past.length}件）`}
           </button>
-          {showPast &&
-            past.map((ev) => (
-              <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} past />
-            ))}
+          {showPast && (
+            <div className="attlist">
+              {past.map((ev) => (
+                <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} past />
+              ))}
+            </div>
+          )}
         </>
       )}
     </>
@@ -1025,27 +1047,29 @@ function MatchesTab({
       {matches.length === 0 ? (
         <div className="empty-msg">まだ試合記録がありません。</div>
       ) : (
-        matches.map((m) => {
-          const win = m.ourScore > m.theirScore;
-          const draw = m.ourScore === m.theirScore;
-          return (
-            <div key={m.id} className="matchcard" onClick={() => setSheet({ type: "matchView", id: m.id })}>
-              <div className={`mres ${win ? "w" : draw ? "d" : "l"}`}>{win ? "勝" : draw ? "分" : "敗"}</div>
-              <div className="mmid">
-                <div className="mopp">vs {m.opponent}</div>
-                <div className="msub">
-                  {fmtDate(m.date)}
-                  {cmpName(m) ? ` ・ ${cmpName(m)}` : ""}
+        <div className="reclist">
+          {matches.map((m) => {
+            const win = m.ourScore > m.theirScore;
+            const draw = m.ourScore === m.theirScore;
+            return (
+              <div key={m.id} className="matchcard" onClick={() => setSheet({ type: "matchView", id: m.id })}>
+                <div className={`mres ${win ? "w" : draw ? "d" : "l"}`}>{win ? "勝" : draw ? "分" : "敗"}</div>
+                <div className="mmid">
+                  <div className="mopp">vs {m.opponent}</div>
+                  <div className="msub">
+                    {fmtDate(m.date)}
+                    {cmpName(m) ? ` ・ ${cmpName(m)}` : ""}
+                  </div>
+                </div>
+                <div className="mscore">
+                  {m.ourScore}
+                  <span>-</span>
+                  {m.theirScore}
                 </div>
               </div>
-              <div className="mscore">
-                {m.ourScore}
-                <span>-</span>
-                {m.theirScore}
-              </div>
-            </div>
-          );
-        })
+            );
+          })}
+        </div>
       )}
     </>
   );
@@ -1078,7 +1102,8 @@ function RosterTab({
       {list.length === 0 ? (
         <div className="empty-msg">選手がいません。下のボタンから追加してください。</div>
       ) : (
-        list.map((p) => {
+        <div className="roslist">
+        {list.map((p) => {
           const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
           return (
             <div
@@ -1101,7 +1126,8 @@ function RosterTab({
               <div className="num">{p.number ?? "–"}</div>
             </div>
           );
-        })
+        })}
+        </div>
       )}
       <button
         className="bigbtn"
