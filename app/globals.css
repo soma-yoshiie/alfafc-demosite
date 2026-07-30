@@ -8773,6 +8773,69 @@ header {
     margin-top: 3px;
     line-height: 1.4;
   }
+  /* =========================================================
+     お役立ち記事・設定シート コンソール整合（PCのみ・最小対応）
+     ※ シート構造は据え置き。色・角丸・チップのみトークン整合
+     ========================================================= */
+  /* シート見出しの件数バッジは情報ラベル=青ティントへ（全シート共通・PCのみ） */
+  .sheet h2 span {
+    color: var(--accent);
+    background: rgba(44, 111, 214, 0.08);
+  }
+  /* 記事: カテゴリチップをノートのチップ文法へ（非選択=白面、選択=青ティント） */
+  .sheet .catchip {
+    background: var(--surface-lowest);
+    border-color: var(--outline);
+  }
+  .sheet .catchip.on {
+    background: rgba(44, 111, 214, 0.1);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  /* 記事: カテゴリバッジは緑→青（情報ラベル=青の原則）。行の角丸をトークンへ */
+  .sheet .artcat {
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  .sheet .artrow {
+    border-radius: var(--r-md);
+  }
+  /* 設定: プランカード（選択枠=青・価格数字=ink。CTAのbigbtnは緑のまま） */
+  .sheet .plancard {
+    border-radius: var(--r-lg);
+  }
+  .sheet .plancard.on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+  .sheet .pcprice {
+    color: var(--ink);
+  }
+  .sheet .pcnow {
+    color: var(--accent);
+  }
+  .sheet .pcbadge {
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  /* 設定: 支払いトグルの選択面は青（選択=青の原則） */
+  .sheet .billtoggle button.on {
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  .sheet .billtoggle {
+    border-radius: var(--r-md);
+  }
+  .sheet .billtoggle button {
+    border-radius: var(--r-sm);
+  }
+  /* 設定: トライアルバナーは情報面=青ティントへ */
+  .sheet .trialbanner {
+    border-radius: var(--r-md);
+    background: rgba(44, 111, 214, 0.08);
+    border-color: rgba(44, 111, 214, 0.18);
+    color: var(--accent);
+  }
 }
 @media (min-width: 1024px) {
   /* ===== PCホーム：規則は1つ目の@mediaブロック「ホーム コンソール化」へ一本化 ===== */
