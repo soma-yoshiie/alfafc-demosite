@@ -4057,6 +4057,14 @@ header {
 /* =========================================================
    ホーム画面（スプリングボード風）
    ========================================================= */
+/* HomeMenu の .scroll: 旧インラインstyleから移設（値は完全同一・PC上書き用） */
+.homeapp .scroll {
+  padding: 8px 16px calc(env(safe-area-inset-bottom) + 28px);
+}
+/* PC専用ダッシュボード（モバイルでは非表示） */
+.hdash {
+  display: none;
+}
 .homehero {
   padding: calc(env(safe-area-inset-top) + 16px) 18px 12px;
   background: radial-gradient(120% 120% at 0% 0%, rgba(19, 138, 77, 0.1) 0%, transparent 55%);
@@ -8610,14 +8618,111 @@ header {
   .sheet .chatsend {
     color: var(--on-primary);
   }
-}
-@media (min-width: 1024px) {
-  /* ===== PCホーム：説明つき横長カードを幅いっぱいに ===== */
+
+  /* =========================================================
+     ホーム コンソール化（ダッシュボードB案・PCのみ）
+     ========================================================= */
+  .app.homeapp {
+    max-width: none;
+  }
+  /* ヒーローを白トップバー帯に */
+  .homeapp .homehero {
+    background: var(--surface-lowest);
+    border-bottom: 1px solid var(--outline);
+  }
+  /* .scroll の左右padding 32px と左端を揃えるため 1040-64=976px */
+  .homeapp .homeherotop,
+  .homeapp .homegreet {
+    max-width: 976px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* 白トップバー上のチーム名は緑→muted へ */
+  .homeapp .hometeam {
+    color: var(--mut);
+  }
+  /* ロール表示タグは青ティントへ（緑=CTAのみ） */
+  .homeapp .homerole {
+    background: rgba(44, 111, 214, 0.08);
+    color: var(--accent);
+  }
+  /* 中央寄せ */
   .homeapp .scroll {
     max-width: 1040px;
     margin: 0 auto;
     width: 100%;
+    padding: 16px 32px 40px;
   }
+  /* サマリカード行（B案・既存データの表示のみ） */
+  .hdash {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin: 4px 0 14px;
+  }
+  .hstat {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 14px 16px;
+    text-align: left;
+    cursor: pointer;
+  }
+  .hstat-n {
+    font-family: var(--font-display);
+    font-size: var(--fs-stat);
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    line-height: 1.1;
+    color: var(--ink);
+  }
+  .hstat-n.ev {
+    font-family: var(--font-ui);
+    font-size: 17px;
+    font-weight: 800;
+  }
+  .hstat-l {
+    font-size: var(--fs-label);
+    font-weight: 600;
+    color: var(--mut);
+  }
+  /* 今日やることカードをコンソール白カードへ（緑面はCTAのみの原則で青/グレーへ） */
+  .homeapp .todaycard {
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    box-shadow: none;
+  }
+  /* 白カード上の予定行: 基底の緑ティント面→沈んだグレー面へ（白on白回避） */
+  .homeapp .todayevent {
+    background: var(--surface-low);
+    border: 1px solid var(--outline);
+  }
+  .homeapp .todayevent-ic {
+    background: rgba(44, 111, 214, 0.08);
+    color: var(--accent);
+  }
+  /* .todaystat は基底が var(--panel2)=var(--surface-low) のため白カード上でもそのまま見える */
+  .homeapp .todaystat {
+    border-color: var(--outline);
+  }
+  .homeapp .todaystat-n {
+    font-family: var(--font-display);
+    color: var(--ink);
+  }
+  /* 情報アイコン（連絡する）は青。押下スケールはPCでは無効（.teamapp .chip と同じ扱い） */
+  .homeapp .todaystat-n svg {
+    color: var(--accent);
+  }
+  .homeapp .todaystat:active,
+  .homeapp .todayevent:active {
+    transform: none;
+  }
+  /* アプリタイル: 説明つき横長カード（旧: 2つ目の@mediaブロックから本区画へ一本化）＋コンソール白カード化 */
   .homeapp .appgrid {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 14px;
@@ -8628,23 +8733,24 @@ header {
     align-items: center;
     gap: 16px;
     padding: 18px 20px;
-    border: 1px solid var(--line);
-    border-radius: 18px;
-    background: var(--panel);
-    transition: border-color 0.15s, transform 0.1s;
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    background: var(--surface-lowest);
   }
-  .homeapp .apptile:hover {
-    border-color: var(--lime);
-    transform: translateY(-1px);
-  }
+  /* カードにhoverは付けない（.convrow/.evcard と統一）。押下スケールも無効 */
   .homeapp .apptile:active {
     transform: none;
   }
+  /* アイコンは寸法維持で緑ブロック→青ティントへ（インラインの--toneは背景直値で無効化） */
   .homeapp .appicon {
     width: 56px;
     height: 56px;
     border-radius: 16px;
     flex: none;
+    background: rgba(44, 111, 214, 0.08);
+    border-color: rgba(44, 111, 214, 0.18);
+    color: var(--accent);
+    box-shadow: none;
   }
   .homeapp .appicon svg {
     width: 28px;
@@ -8667,6 +8773,9 @@ header {
     margin-top: 3px;
     line-height: 1.4;
   }
+}
+@media (min-width: 1024px) {
+  /* ===== PCホーム：規則は1つ目の@mediaブロック「ホーム コンソール化」へ一本化 ===== */
 
   /* ===== PCチャット：規則は1つ目の@mediaブロック「チャット コンソール化」へ一本化 ===== */
 }

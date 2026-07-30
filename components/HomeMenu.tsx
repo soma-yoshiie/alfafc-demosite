@@ -126,7 +126,49 @@ export default function HomeMenu() {
         </div>
       </div>
 
-      <div className="scroll" style={{ padding: "8px 16px calc(env(safe-area-inset-bottom) + 28px)" }}>
+      <div className="scroll">
+        {coach ? (
+          <div className="hdash">
+            <button className="hstat" onClick={() => board.setScreen("notebook")}>
+              <span className="hstat-n">{todayInfo.notesWeek}</span>
+              <span className="hstat-l">今週のノート</span>
+            </button>
+            <button className="hstat" onClick={() => board.setScreen("notebook")}>
+              <span className="hstat-n">{noteUnread}</span>
+              <span className="hstat-l">ノート未読</span>
+            </button>
+            <button className="hstat" onClick={() => board.openSheet({ type: "library" })}>
+              <span className="hstat-n">{board.library.plays.length}</span>
+              <span className="hstat-l">保存した戦術</span>
+            </button>
+            <button className="hstat" onClick={() => board.setScreen("team")}>
+              <span className="hstat-n">{board.state.players.length}</span>
+              <span className="hstat-l">選手数</span>
+            </button>
+          </div>
+        ) : (
+          <div className="hdash">
+            <button className="hstat" onClick={() => board.setScreen("team")}>
+              <span className="hstat-n ev">
+                {todayInfo.focusEvent
+                  ? (todayInfo.isToday ? "今日" : fmtEventDate(todayInfo.focusEvent.date)) +
+                    "・" +
+                    (todayInfo.focusEvent.kind === "match" ? "試合" : "練習")
+                  : "予定なし"}
+              </span>
+              <span className="hstat-l">
+                {todayInfo.focusEvent
+                  ? todayInfo.focusEvent.title +
+                    (todayInfo.focusEvent.time ? " " + todayInfo.focusEvent.time + "〜" : "")
+                  : "次の予定"}
+              </span>
+            </button>
+            <button className="hstat" onClick={() => board.setScreen("notebook")}>
+              <span className="hstat-n">{noteUnread}</span>
+              <span className="hstat-l">ノート未読</span>
+            </button>
+          </div>
+        )}
         {coach && (
           <div className="todaycard">
             <div className="todaycard-h">今日やること</div>
