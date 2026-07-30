@@ -7135,7 +7135,7 @@ header {
 }
 /* 次の予定カードの日時（大きく） */
 .homewhen {
-  font-family: "Bebas Neue";
+  font-family: var(--font-display);
   font-size: 26px;
   letter-spacing: 1px;
   margin-top: 8px;
