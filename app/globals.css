@@ -3718,6 +3718,14 @@ header {
 }
 
 /* スタッフ: 会話一覧 */
+/* ChatScreen の .scroll: 旧インラインstyleから移設（値は完全同一・PC上書き用） */
+.chatapp .scroll {
+  padding: 0 14px calc(env(safe-area-inset-bottom) + 24px);
+}
+.chatapp .scroll.pchat {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 8px);
+  display: flex;
+}
 .convlist {
   display: flex;
   flex-direction: column;
@@ -8514,6 +8522,94 @@ header {
   .boardapp .bcard {
     border-radius: var(--r-lg);
   }
+
+  /* =========================================================
+     チャット コンソール化（PCのみ・チーム運営/戦術ボードのコンソール化に準拠）
+     ========================================================= */
+  .app.chatapp {
+    max-width: none;
+  }
+  /* チャットにはタブ帯(fbar)が無いため、ヘッダー下辺に直接ヘアラインを引く */
+  .chatapp header {
+    background: var(--surface-lowest);
+    border-bottom: 1px solid var(--outline);
+    padding: 10px 18px;
+  }
+  .chatapp .logo {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    line-height: 1.05;
+  }
+  .chatapp .tag.team {
+    color: var(--accent);
+    background: rgba(44, 111, 214, 0.08);
+  }
+  /* 中央寄せ・全幅活用（旧: 2つ目の@mediaブロックから本区画へ一本化） */
+  .chatapp .scroll {
+    max-width: 1040px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 16px 32px 40px;
+  }
+  /* 会話一覧（スタッフ）: 2カラム＋コンソールのカード様式（角丸r-lg） */
+  .chatapp .convlist {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+    align-items: start;
+  }
+  .chatapp .convrow {
+    border-radius: var(--r-lg);
+    padding: 13px 14px;
+  }
+  /* アバターは本人系表示のため色運用に倣い青ティントへ（緑=CTAのみ、の原則） */
+  .chatapp .convavatar {
+    background: rgba(44, 111, 214, 0.08);
+    border-color: rgba(44, 111, 214, 0.18);
+    color: var(--accent);
+  }
+  /* スレッド面（選手）: 白カードに収める（読みやすい行長860px）。インラインstyle(flex:1)とは非衝突 */
+  .chatapp .chattab {
+    max-width: 860px;
+    width: 100%;
+    margin: 0 auto;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 4px 20px 16px;
+  }
+  /* 白カード上で沈む面と緑残留の色整合（緑はCTA=.chatsendのみ残す）。
+     コーチのスレッドはSheetManager(.sheet)側にマウントされるため両スコープに適用 */
+  .chatapp .chatpicker,
+  .sheet .chatpicker {
+    background: var(--surface-low);
+  }
+  .chatapp .chatname,
+  .sheet .chatname {
+    color: var(--accent);
+  }
+  .chatapp .chatbadge,
+  .sheet .chatbadge {
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  .chatapp .chatattcard,
+  .sheet .chatattcard {
+    border-color: var(--accent);
+    background: rgba(44, 111, 214, 0.08);
+    color: var(--accent);
+  }
+  .chatapp .chatplus.on,
+  .sheet .chatplus.on {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .chatapp .chatsend,
+  .sheet .chatsend {
+    color: var(--on-primary);
+  }
 }
 @media (min-width: 1024px) {
   /* ===== PCホーム：説明つき横長カードを幅いっぱいに ===== */
@@ -8572,25 +8668,7 @@ header {
     line-height: 1.4;
   }
 
-  /* ===== PCチャット：中央寄せ・全幅活用 ===== */
-  .chatapp .scroll {
-    max-width: 1040px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  /* 会話一覧・検索結果を2カラムに */
-  .chatapp .convlist {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px 12px;
-    align-items: start;
-  }
-  /* 選手チャットは横幅を活かしつつ読みやすい行長に */
-  .chatapp .chattab {
-    max-width: 860px;
-    margin: 0 auto;
-    width: 100%;
-  }
+  /* ===== PCチャット：規則は1つ目の@mediaブロック「チャット コンソール化」へ一本化 ===== */
 }
 
 /* =========================================================

@@ -25,12 +25,13 @@ export default function ChatScreen() {
         </div>
       </header>
 
+      {/* paddingは基底CSS(.chatapp .scroll / .pchat)へ移設（PCで上書きできるように） */}
       {isCoach ? (
-        <div className="scroll" style={{ padding: "0 14px calc(env(safe-area-inset-bottom) + 24px)" }}>
+        <div className="scroll">
           <CoachConversations />
         </div>
       ) : (
-        <div className="scroll" style={{ padding: "0 14px calc(env(safe-area-inset-bottom) + 8px)", display: "flex" }}>
+        <div className="scroll pchat">
           <PlayerChat />
         </div>
       )}
