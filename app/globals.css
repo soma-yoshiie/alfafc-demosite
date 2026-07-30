@@ -20,6 +20,9 @@
 
   /* ---- アクセント（ブルー）: クローム・選択・リンクの色 ---- */
   --accent: #2c6fd6;
+  /* アクセントのティント2段: tint=選択・情報面・リング用 / strong=枠線用 */
+  --accent-tint: rgba(44, 111, 214, 0.1);
+  --accent-tint-strong: rgba(44, 111, 214, 0.18);
 
   /* ---- プライマリ（緑）: CTA・達成・ポジティブ指標のみ ---- */
   --primary: #15803d;
@@ -4499,7 +4502,7 @@ header {
   white-space: nowrap;
 }
 .noteapp .chip.on {
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
   color: var(--accent);
   border-color: var(--accent);
 }
@@ -4522,7 +4525,7 @@ header {
 .noteapp .search:focus {
   border-color: var(--accent);
   background: var(--surface-lowest);
-  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .noteapp .search::placeholder {
   color: var(--mut);
@@ -4565,7 +4568,7 @@ header {
 .noteapp .formfield textarea:focus {
   border-color: var(--accent);
   background: var(--surface-lowest);
-  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .noteapp .formfield textarea {
   resize: vertical;
@@ -4652,7 +4655,7 @@ header {
 .noteapp .dynrow input:focus {
   border-color: var(--accent);
   background: var(--surface-lowest);
-  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .noteapp .dynrow select {
   flex: 1;
@@ -4716,7 +4719,7 @@ header {
 .noteapp .sendtgt label.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
 }
 .noteapp .sendtgt input {
   accent-color: var(--primary);
@@ -4749,7 +4752,7 @@ header {
 .noteapp .cmpchip.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
 }
 
 /* =========================================================
@@ -4928,7 +4931,7 @@ header {
 .noteapp .condbtn.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
 }
 
 /* =========================================================
@@ -4977,7 +4980,7 @@ header {
 .noteapp .notesec textarea:focus {
   border-color: var(--accent);
   background: var(--surface-lowest);
-  box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+  box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .noteapp .notesec.staffcmt .notesec-b {
   background: var(--primary-container);
@@ -5009,7 +5012,7 @@ header {
 .noteapp .reactbtn.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
 }
 /* 選手側：コーチのリアクション表示 */
 .noteapp .reactpill {
@@ -5069,7 +5072,7 @@ header {
 .noteapp .scopechip.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
 }
 .noteapp .phasebar {
   display: flex;
@@ -5090,11 +5093,11 @@ header {
 .noteapp .phasechip.on {
   border-color: var(--accent);
   color: var(--accent);
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
 }
 .noteapp .canvasbar { display: flex; gap: 6px; margin: 0 0 8px; flex-wrap: wrap; }
 .noteapp .canvaschip { padding: 6px 12px; border-radius: var(--r-sm); border: 1px solid transparent; background: var(--surface-low); color: var(--mut); font-size: var(--fs-label); font-weight: 700; cursor: pointer; font-family: var(--font-ui); }
-.noteapp .canvaschip.on { border-color: var(--accent); color: var(--accent); background: rgba(44, 111, 214, 0.08); }
+.noteapp .canvaschip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
 .noteapp .canvaschip.add { border: 1px dashed var(--outline-strong); background: transparent; }
 .noteapp .streakcard {
   margin: 10px 0 6px;
@@ -5387,7 +5390,7 @@ header {
 }
 .noteapp .menupick.on {
   border-color: var(--accent);
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
   color: var(--accent);
 }
 .noteapp .menupick .mpk-check {
@@ -6210,7 +6213,7 @@ header {
   color: var(--accent);
 }
 .noteapp .notenav-item.on .emj {
-  background: rgba(44, 111, 214, 0.1);
+  background: var(--accent-tint);
 }
 .noteapp .notenav-item:active .emj {
   background: var(--surface-low);
@@ -8247,7 +8250,7 @@ header {
   }
   .teamapp .tag.team {
     color: var(--accent);
-    background: rgba(44, 111, 214, 0.08);
+    background: var(--accent-tint);
   }
   .teamapp .teamcta {
     display: inline-block;
@@ -8456,7 +8459,7 @@ header {
   }
   .boardapp .tag.team {
     color: var(--accent);
-    background: rgba(44, 111, 214, 0.08);
+    background: var(--accent-tint);
   }
   /* ヘッダーのアイコンボタン群: 角丸をコンソール基準(r-md)へ+hover面 */
   .boardapp .icon {
@@ -8526,7 +8529,7 @@ header {
   }
   .chatapp .tag.team {
     color: var(--accent);
-    background: rgba(44, 111, 214, 0.08);
+    background: var(--accent-tint);
   }
   /* 中央寄せ・全幅活用（旧: 2つ目の@mediaブロックから本区画へ一本化） */
   .chatapp .scroll {
@@ -8548,8 +8551,8 @@ header {
   }
   /* アバターは本人系表示のため色運用に倣い青ティントへ（緑=CTAのみ、の原則） */
   .chatapp .convavatar {
-    background: rgba(44, 111, 214, 0.08);
-    border-color: rgba(44, 111, 214, 0.18);
+    background: var(--accent-tint);
+    border-color: var(--accent-tint-strong);
     color: var(--accent);
   }
   /* スレッド面（選手）: 白カードに収める（読みやすい行長860px）。インラインstyle(flex:1)とは非衝突 */
@@ -8580,7 +8583,7 @@ header {
   .chatapp .chatattcard,
   .sheet .chatattcard {
     border-color: var(--accent);
-    background: rgba(44, 111, 214, 0.08);
+    background: var(--accent-tint);
     color: var(--accent);
   }
   .chatapp .chatplus.on,
@@ -8617,7 +8620,7 @@ header {
   }
   /* ロール表示タグは青ティントへ（緑=CTAのみ） */
   .homeapp .homerole {
-    background: rgba(44, 111, 214, 0.08);
+    background: var(--accent-tint);
     color: var(--accent);
   }
   /* 中央寄せ */
@@ -8677,7 +8680,7 @@ header {
     border: 1px solid var(--outline);
   }
   .homeapp .todayevent-ic {
-    background: rgba(44, 111, 214, 0.08);
+    background: var(--accent-tint);
     color: var(--accent);
   }
   /* .todaystat は基底が var(--panel2)=var(--surface-low) のため白カード上でもそのまま見える */
@@ -8721,8 +8724,8 @@ header {
     height: 56px;
     border-radius: 16px;
     flex: none;
-    background: rgba(44, 111, 214, 0.08);
-    border-color: rgba(44, 111, 214, 0.18);
+    background: var(--accent-tint);
+    border-color: var(--accent-tint-strong);
     color: var(--accent);
     box-shadow: none;
   }
@@ -8754,7 +8757,7 @@ header {
   /* シート見出しの件数バッジは情報ラベル=青ティントへ（全シート共通・PCのみ） */
   .sheet h2 span {
     color: var(--accent);
-    background: rgba(44, 111, 214, 0.08);
+    background: var(--accent-tint);
   }
   /* 記事: カテゴリチップをノートのチップ文法へ（非選択=白面、選択=青ティント） */
   .sheet .catchip {
@@ -8762,7 +8765,7 @@ header {
     border-color: var(--outline);
   }
   .sheet .catchip.on {
-    background: rgba(44, 111, 214, 0.1);
+    background: var(--accent-tint);
     color: var(--accent);
     border-color: var(--accent);
   }
@@ -8806,8 +8809,8 @@ header {
   /* 設定: トライアルバナーは情報面=青ティントへ */
   .sheet .trialbanner {
     border-radius: var(--r-md);
-    background: rgba(44, 111, 214, 0.08);
-    border-color: rgba(44, 111, 214, 0.18);
+    background: var(--accent-tint);
+    border-color: var(--accent-tint-strong);
     color: var(--accent);
   }
   /* =========================================================
@@ -8834,7 +8837,7 @@ header {
   .login-card .formfield input:focus {
     border-color: var(--accent);
     background: var(--surface-lowest);
-    box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+    box-shadow: 0 0 0 3px var(--accent-tint);
   }
   /* ロールタブ: 選択=青の原則（CTAのbigbtnは緑のまま） */
   .logintabs {
@@ -8875,7 +8878,7 @@ header {
   /* アイテム・動線パレットの選択状態 */
   .dxpal button.on {
     border-color: var(--accent);
-    background: rgba(44, 111, 214, 0.1);
+    background: var(--accent-tint);
     color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent) inset;
   }
@@ -8886,7 +8889,7 @@ header {
   /* ライブラリの現在ドリル表示（選択=青。チップ選択と同式） */
   .drillcard.cur {
     border-color: var(--accent);
-    background: rgba(44, 111, 214, 0.1);
+    background: var(--accent-tint);
   }
   /* ラベル編集ポップオーバーの入力枠（クローム側の入力=青） */
   .dxlabeledit input {
@@ -8977,7 +8980,7 @@ header {
   .connavsec { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--mut); text-transform: uppercase; padding: 14px 12px 4px; }
   .conrail-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; background: none; border-radius: 8px; font-size: var(--fs-body-s); font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; font-family: inherit; }
   .conrail-item:hover { background: rgba(0, 0, 0, 0.05); }
-  .conrail-item.on { background: rgba(44, 111, 214, 0.1); color: var(--accent); }
+  .conrail-item.on { background: var(--accent-tint); color: var(--accent); }
   .conrail-item .emj,
   .conrail-item svg { width: 17px; height: 17px; flex: none; }
   .conrail-item.sub { padding-left: 34px; font-weight: 500; }
