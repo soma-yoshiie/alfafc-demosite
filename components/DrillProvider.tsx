@@ -189,12 +189,23 @@ export function useDrill(): DrillContextValue {
 
 export function DrillProvider({ children }: { children: React.ReactNode }) {
   const board = useBoard();
-  const [doc, setDocState] = useState<DrillDoc>(sampleDrill);
+  // 作業中ドキュメントもlazy初期化（保存が無ければサンプル）。
+  // effectでの復元だと、初期値サンプルのまま保存effectが先に走って
+  // 保存済みの作業内容をサンプルで上書きする競合がある（drillsと同じ問題）
+  const [doc, setDocState] = useState<DrillDoc>(() => {
+    const work = loadDrillWork();
+    return work ? { ...emptyDoc(), ...work.doc } : sampleDrill();
+  });
   const [tool, setToolState] = useState<DrillTool | null>(null);
   const [stampLock, setStampLock] = useState(false);
   const [selection, setSelection] = useState<DrillSelection>(null);
-  const [drills, setDrills] = useState<SavedDrill[]>([]);
-  const [currentId, setCurrentId] = useState<string | null>(null);
+  // lazy初期化で保存データを直接読む（TeamProviderと同じ方式）。
+  // hydrate用effectでsetDrillsすると、初期値[]のまま保存effectが先に走って
+  // ライブラリを空配列で上書きし、StrictModeの二重マウントで消失が確定する
+  const [drills, setDrills] = useState<SavedDrill[]>(() => loadDrills());
+  const [currentId, setCurrentId] = useState<string | null>(
+    () => loadDrillWork()?.currentId ?? null
+  );
   const [tempLine, setTempLine] = useState<Point[] | null>(null);
   const [sheet, setSheet] = useState<DrillSheet>(null);
   const hydrated = useRef(false);
@@ -269,21 +280,13 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     bumpHist();
   }, [bumpHist]);
 
-  // hydrate
+  // hydrate（doc/currentId/drillsはlazy初期化済み。dirty判定用スナップショットだけ整える）
   useEffect(() => {
-    const list = loadDrills();
-    setDrills(list);
-    const work = loadDrillWork();
-    if (work) {
-      const d = { ...emptyDoc(), ...work.doc };
-      docRef.current = d;
-      setDocState(d);
-      setCurrentId(work.currentId ?? null);
-      const saved = work.currentId ? list.find((s) => s.id === work.currentId) : null;
-      savedJson.current = saved ? docJson(cloneDoc(saved)) : null;
-      setSavedVer((v) => v + 1);
-    }
+    const saved = currentId ? drills.find((s) => s.id === currentId) : null;
+    savedJson.current = saved ? docJson(cloneDoc(saved)) : null;
+    setSavedVer((v) => v + 1);
     hydrated.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (hydrated.current) saveDrillWork(doc, currentId);
