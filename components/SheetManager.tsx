@@ -60,6 +60,10 @@ function Sheet({
     <>
       <div className={`scrim${open ? " on" : ""}`} onClick={onClose} />
       <div className={`sheet${open ? " on" : ""}${full ? " full" : ""}`}>
+        {/* PCダイアログ用の閉じるボタン（モバイルでは基底CSSで非表示） */}
+        <button className="sheetx" type="button" aria-label="閉じる" onClick={onClose}>
+          ×
+        </button>
         {full ? (
           <div className="sheettop">
             <button className="sheetback" onClick={onBack ?? onClose}>

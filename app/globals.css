@@ -1324,6 +1324,10 @@ header {
   pointer-events: auto;
   transition: transform 0.28s cubic-bezier(0.3, 0.9, 0.3, 1), visibility 0s;
 }
+/* PCダイアログ用の閉じるボタン（モバイルでは非表示。PC用スタイルは1つ目のPC @media側で定義） */
+.sheetx {
+  display: none;
+}
 .sheetBody {
   display: flex;
   flex-direction: column;
@@ -8378,9 +8382,12 @@ header {
     max-width: 720px;
     margin: 0 auto;
   }
-  /* シートをPC中央ダイアログ化（3つ目@mediaのシェル区画 .sheet{left:208px} を .teamapp .sheet(0,2,0)で確実に上書き。
-     幅・影・モーションは正(wsheetダイアログ)準拠 */
-  .teamapp .sheet {
+  /* シートをPC中央ダイアログ化（グローバルシート共通。3つ目@mediaのシェル区画 .sheet{left:208px} を
+     .teamapp .sheet / .conshell ~ .sheet(いずれも0,2,0)で確実に上書き。
+     幅・影・モーションは正(wsheetダイアログ)準拠。TeamHub自前シート(.teamapp内の子孫)と
+     SheetManagerのグローバルシート(.conshellの後の兄弟)の両方に同一の見た目を適用する */
+  .teamapp .sheet,
+  .conshell ~ .sheet {
     top: 50%;
     left: calc(50% + 104px);
     right: auto;
@@ -8394,23 +8401,27 @@ header {
     transition: transform var(--dur-m) var(--ease-decel), opacity var(--dur-m), visibility 0s var(--dur-m);
     opacity: 0;
   }
-  .teamapp .sheet.on {
+  .teamapp .sheet.on,
+  .conshell ~ .sheet.on {
     transform: translate(-50%, -50%) scale(1);
     opacity: 1;
     box-shadow: var(--elev-3);
     transition: transform var(--dur-m) var(--ease-decel), opacity var(--dur-m), visibility 0s;
   }
   /* スクリムはメインカラム基準・正(wsheetback)のトーンへ（レールは暗転させない） */
-  .teamapp .scrim {
+  .teamapp .scrim,
+  .conshell ~ .scrim {
     left: 208px;
     background: rgba(21, 35, 60, 0.4);
     backdrop-filter: none;
   }
-  .teamapp .grabzone {
+  .teamapp .grabzone,
+  .conshell ~ .sheet .grabzone {
     display: none;
   }
   /* グラブハンドルの代替：ダイアログ右上の閉じるボタン（基底はdisplay:none） */
-  .teamapp .sheetx {
+  .teamapp .sheetx,
+  .conshell ~ .sheet .sheetx {
     display: flex;
     position: absolute;
     top: 10px;
@@ -8427,7 +8438,8 @@ header {
     cursor: pointer;
     z-index: 2;
   }
-  .teamapp .sheetx:hover {
+  .teamapp .sheetx:hover,
+  .conshell ~ .sheet .sheetx:hover {
     background: var(--outline);
     color: var(--ink);
   }
@@ -8901,6 +8913,50 @@ header {
   }
   .dtstate.dirty {
     background: rgba(217, 45, 32, 0.08);
+  }
+
+  /* =========================================================
+     グローバルシート ダイアログ化（PCのみ）
+     ※ 中央ダイアログの基本形（幅・影・モーション・scrim・sheetx）は
+        上の「シートをPC中央ダイアログ化」区画へ共通化済み（.conshell ~ .sheet 側）。
+        ここでは SheetManager 固有の差分（全画面(.full)バリアントの広幅化、
+        戻る帯とsheetxの干渉回避、fullplay時のレール消失対応）のみ追加する。
+     ========================================================= */
+  /* 全画面(.full)シートはロング一覧・チャットスレッド等を収めるため中幅ダイアログに。
+     基底 .sheet.full(top:0/height:100dvh/radius:0/border-top:0)は(0,2,0)、
+     ここは(0,3,0)で必ず勝つ。transform/opacity/transitionは上の共通ルールを継承する */
+  .conshell ~ .sheet.full {
+    top: 50%;
+    bottom: auto;
+    height: 82dvh;
+    max-height: 82dvh;
+    width: min(640px, calc(100vw - 280px));
+    max-width: 640px;
+    border-radius: var(--r-xl);
+    border: 1px solid var(--outline);
+    border-top: 1px solid var(--outline);
+  }
+  /* 戻る帯（ネスト遷移用）とダイアログ右上のsheetxが重ならないよう右側に余白を確保 */
+  .conshell ~ .sheet.full .sheettop {
+    padding-right: 48px;
+  }
+  /* fullplay(全画面再生)時はレール(208px)が消えるため中央寄せへ補正 */
+  .conshell.fp ~ .sheet {
+    left: 50%;
+  }
+  .conshell.fp ~ .scrim {
+    left: 0;
+  }
+  /* シート見出し右端の件数バッジ(h2 span, margin-left:auto)が右上のsheetxに隠れないよう余白を確保
+     (TeamHub側の同型見出しは本コミットでは不変のため対象外) */
+  .conshell ~ .sheet h2 {
+    padding-right: 40px;
+  }
+  /* グローバルシート表示中はレールを不活性化(暗転はさせない)。
+     scrim(left:208px)の外にあるレールから背後の画面だけが切り替わり、
+     ダイアログが取り残されるのを防ぐ(モーダル性の維持) */
+  .conshell:has(~ .sheet.on) .conrail {
+    pointer-events: none;
   }
 }
 @media (min-width: 1024px) {
