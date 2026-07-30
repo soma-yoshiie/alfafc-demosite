@@ -8170,12 +8170,12 @@ header {
     padding: 0;
   }
   .boardapp:not(.fullplay) .pitch {
-    height: calc(100dvh - 150px);
+    height: calc(100dvh - 158px);
     max-height: 880px;
   }
   /* アニメ編集中もピッチを縮めない（大画面で見やすく） */
   .app.anim:not(.fullplay) .pitch {
-    height: calc(100dvh - 150px) !important;
+    height: calc(100dvh - 158px) !important;
     max-height: 880px !important;
   }
 
@@ -8183,7 +8183,7 @@ header {
     flex: 0 0 410px;
     min-width: 340px;
     max-width: 430px;
-    height: calc(100dvh - 150px);
+    height: calc(100dvh - 158px);
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: 24px;
@@ -8437,6 +8437,82 @@ header {
   .teamapp .sheetx:hover {
     background: var(--outline);
     color: var(--ink);
+  }
+
+  /* =========================================================
+     戦術ボード コンソール化（PCのみ・チーム運営コンソール化に準拠）
+     ========================================================= */
+  /* 白クロームは header→fbar(→ペン/図形バー) を1枚の帯として扱い、
+     ヘアラインは帯の最終行の下辺のみに(ペン/図形バー展開時はそちらへ移動) */
+  .app.boardapp {
+    max-width: none;
+  }
+  /* コンテンツ(ピッチ+サイド)は従来の1220px中央のまま(クロームだけ全幅白) */
+  .boardapp:not(.fullplay) .scroll {
+    max-width: 1220px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .boardapp header {
+    background: var(--surface-lowest);
+    padding: 10px 18px;
+  }
+  .boardapp .logo {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    line-height: 1.05;
+  }
+  .boardapp .tag.team {
+    color: var(--accent);
+    background: rgba(44, 111, 214, 0.08);
+  }
+  /* ヘッダーのアイコンボタン群: 角丸をコンソール基準(r-md)へ+hover面 */
+  .boardapp .icon {
+    border-radius: var(--r-md);
+  }
+  .boardapp .icon:hover {
+    background: var(--surface-low);
+  }
+  /* 「共有・出力」のみ主要CTAとして緑を1つ立てる（保存等はセカンダリのまま） */
+  .boardapp .icon[title="共有・出力"] {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--on-primary);
+  }
+  .boardapp .icon[title="共有・出力"]:hover {
+    background: var(--primary-dim);
+    border-color: var(--primary-dim);
+  }
+  .boardapp .fbar {
+    background: var(--surface-lowest);
+    border-bottom: 1px solid var(--outline);
+    padding: 8px 18px 10px;
+  }
+  /* ペン/図形バー展開時はヘアラインを帯の最終行へ移す(中間線を作らない) */
+  .boardapp .fbar:has(+ .fbarpen),
+  .boardapp .fbar:has(+ .fbarshapes) {
+    border-bottom: 0;
+  }
+  .boardapp .fbarpen,
+  .boardapp .fbarshapes {
+    background: var(--surface-lowest);
+    border-bottom: 1px solid var(--outline);
+  }
+
+  /* boardside: 角丸をカード基準へ統一(白地/枠は基底トークンで既に同値)。
+     数値は色運用(数値=ink)に合わせる。ANIM STUDIOは既存PCルール
+     (.app.anim:not(.fullplay) .studio = transparent)のまま=グレー地に
+     白サブカードが並ぶノート流のため、パネルの白カード化はしない */
+  .boardapp .statbar .stat {
+    border-radius: var(--r-md);
+  }
+  .boardapp .stat .v {
+    color: var(--ink);
+  }
+  .boardapp .bcard {
+    border-radius: var(--r-lg);
   }
 }
 @media (min-width: 1024px) {
