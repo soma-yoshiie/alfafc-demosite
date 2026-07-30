@@ -8886,6 +8886,45 @@ header {
   .login-note b {
     color: var(--accent);
   }
+  /* =========================================================
+     練習メニュー(ドリルエディタv2) 整合パス（PCのみ・最小対応）
+     ※ レイアウト・機能UI(ピッチ上の描画物)は不変。
+        選択状態の緑→青、旧赤生値のトークン整合、ティント値の文法標準化
+        (0.08/0.1系へ)のみ。
+        送信CTA(.hact.primary)と保存済みバッジ(.dtstate.saved)の緑は据え置き
+     ========================================================= */
+  /* ピッチ種別・丸の大きさのセグメント: 選択=青の原則 */
+  .dxseg button.on {
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  /* アイテム・動線パレットの選択状態 */
+  .dxpal button.on {
+    border-color: var(--accent);
+    background: rgba(44, 111, 214, 0.1);
+    color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+  /* 「連続して配置する」チェックボックス（選択コントロール=青） */
+  .dxlock input {
+    accent-color: var(--accent);
+  }
+  /* ライブラリの現在ドリル表示（選択=青。チップ選択と同式） */
+  .drillcard.cur {
+    border-color: var(--accent);
+    background: rgba(44, 111, 214, 0.1);
+  }
+  /* ラベル編集ポップオーバーの入力枠（クローム側の入力=青） */
+  .dxlabeledit input {
+    border-color: var(--accent);
+  }
+  /* 旧赤生値(214,50,75)→dangerトークン系へ */
+  .dxclear {
+    border-color: rgba(217, 45, 32, 0.35);
+  }
+  .dtstate.dirty {
+    background: rgba(217, 45, 32, 0.08);
+  }
 }
 @media (min-width: 1024px) {
   /* ===== PCホーム：規則は1つ目の@mediaブロック「ホーム コンソール化」へ一本化 ===== */
