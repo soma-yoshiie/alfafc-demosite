@@ -8836,6 +8836,56 @@ header {
     border-color: rgba(44, 111, 214, 0.18);
     color: var(--accent);
   }
+  /* =========================================================
+     ログイン・スプラッシュ トークン整合（PCのみ・最小対応）
+     ※ レイアウト変更なし。背景・ボタン・角丸のトークン整合のみ。
+        ブランドロゴの緑(.login-logo b / .splash-title b)は据え置き
+     ========================================================= */
+  /* 背景: 暖色系の生値グラデ→コンソールの地（白→--surface）へ。焦点は元の値を維持 */
+  .splash {
+    background: radial-gradient(120% 90% at 50% 35%, var(--surface-lowest) 0%, var(--surface) 60%);
+  }
+  .login {
+    background: radial-gradient(120% 90% at 50% 20%, var(--surface-lowest) 0%, var(--surface) 60%);
+  }
+  /* カードはダイアログ文法（r-xl・elev-3）へ */
+  .login-card {
+    border-radius: var(--r-xl);
+    box-shadow: var(--elev-3);
+  }
+  .login-card .formfield input {
+    border-radius: var(--r-md);
+  }
+  /* フォーカスリング（ノートの入力欄 .noteapp .formfield input:focus と同型） */
+  .login-card .formfield input:focus {
+    border-color: var(--accent);
+    background: var(--surface-lowest);
+    box-shadow: 0 0 0 3px rgba(44, 111, 214, 0.12);
+  }
+  /* ロールタブ: 選択=青の原則（CTAのbigbtnは緑のまま） */
+  .logintabs {
+    border-radius: var(--r-md);
+  }
+  .logintabs button {
+    border-radius: var(--r-sm);
+  }
+  .logintabs button.on {
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  /* エラー面: 旧サーモン系の生値→dangerトークン系ティントへ（文字色var(--red)=dangerと同系に） */
+  .login-err {
+    border-radius: var(--r-md);
+    background: rgba(217, 45, 32, 0.08);
+    border-color: var(--danger);
+  }
+  /* テキストリンク・注記の強調は緑→青（リンク=青の原則） */
+  .login-switch {
+    color: var(--accent);
+  }
+  .login-note b {
+    color: var(--accent);
+  }
 }
 @media (min-width: 1024px) {
   /* ===== PCホーム：規則は1つ目の@mediaブロック「ホーム コンソール化」へ一本化 ===== */
