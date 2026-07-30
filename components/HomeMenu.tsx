@@ -22,7 +22,6 @@ function Tile({
   icon,
   label,
   desc,
-  tone,
   locked,
   badge,
   onClick,
@@ -30,14 +29,13 @@ function Tile({
   icon: React.ReactNode;
   label: string;
   desc?: string;
-  tone: string;
   locked?: boolean;
   badge?: number;
   onClick: () => void;
 }) {
   return (
     <button className="apptile" onClick={onClick}>
-      <span className="appicon" style={{ ["--tone" as string]: tone }}>
+      <span className="appicon">
         {icon}
         {locked && <span className="applock"><E n="lock" /></span>}
         {!!badge && badge > 0 && <span className="appbadge">{badge > 9 ? "9+" : badge}</span>}
@@ -222,28 +220,24 @@ export default function HomeMenu() {
                 icon={<IconClipboard />}
                 label="戦術ボード"
                 desc="スタメン作成・戦術アニメーション"
-                tone="#caff3a"
                 onClick={() => board.setScreen("board")}
               />
               <Tile
                 icon={<IconFolder />}
                 label="保存した戦術"
                 desc="保存した戦術を一覧・読み込み"
-                tone="#caff3a"
                 onClick={() => board.openSheet({ type: "library" })}
               />
               <Tile
                 icon={<IconCone />}
                 label="練習メニュー"
                 desc="コーン配置・動線で練習図を作成"
-                tone="#caff3a"
                 onClick={() => board.setScreen("drill")}
               />
               <Tile
                 icon={<IconFolder />}
                 label="保存した練習"
                 desc="保存した練習メニューを一覧"
-                tone="#caff3a"
                 onClick={() => {
                   board.setDrillIntent("library");
                   board.setScreen("drill");
@@ -253,21 +247,18 @@ export default function HomeMenu() {
                 icon={<IconCalendarCheck />}
                 label="チーム運営"
                 desc="名簿・出欠・カレンダー・試合記録"
-                tone="#caff3a"
                 onClick={() => board.setScreen("team")}
               />
               <Tile
                 icon={<IconChat />}
                 label="チャット"
                 desc="戦術・画像・動画を送受信"
-                tone="#caff3a"
                 onClick={() => board.setScreen("chat")}
               />
               <Tile
                 icon={<IconNote />}
                 label="サッカーノート"
                 desc="試合・練習・自主練の振り返り"
-                tone="#caff3a"
                 badge={noteUnread}
                 onClick={() => board.setScreen("notebook")}
               />
@@ -275,14 +266,12 @@ export default function HomeMenu() {
                 icon={<IconBook />}
                 label="お役立ち記事"
                 desc="練習法・コンディション・戦術"
-                tone="#caff3a"
                 onClick={() => board.openSheet({ type: "articles" })}
               />
               <Tile
                 icon={<IconCog />}
                 label="設定"
                 desc="チーム名・プラン・公開設定"
-                tone="#caff3a"
                 onClick={() => board.openSheet({ type: "settings" })}
               />
             </>
@@ -292,21 +281,18 @@ export default function HomeMenu() {
                 icon={<IconCalendarCheck />}
                 label="チーム"
                 desc="出欠・カレンダー・試合記録"
-                tone="#caff3a"
                 onClick={() => board.setScreen("team")}
               />
               <Tile
                 icon={<IconChat />}
                 label="チャット"
                 desc="スタッフ・チームとやりとり"
-                tone="#caff3a"
                 onClick={() => board.setScreen("chat")}
               />
               <Tile
                 icon={<IconNote />}
                 label="サッカーノート"
                 desc="試合・練習・自主練の振り返り"
-                tone="#caff3a"
                 badge={noteUnread}
                 onClick={() => board.setScreen("notebook")}
               />
