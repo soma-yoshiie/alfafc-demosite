@@ -1388,7 +1388,12 @@ export function BoardProvider({
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- library / plan / share ----
-  const [library, setLibrary] = useState<Library>({ plays: [], folders: [] });
+  // lazy初期化で保存データを直接読む（mount後の load→save 競合を防ぐ。messages/notebook と同方針）。
+  // 空配列で初期化して effect で hydrate すると、保存effectが先に走って
+  // 保存済みライブラリを空で上書きし、StrictModeの二重マウントで消失が確定する
+  const [library, setLibrary] = useState<Library>(
+    () => loadLibrary() ?? { plays: [], folders: [] }
+  );
   const [plan, setPlanState] = useState<PlanTier>("starter");
   const [currentPlayId, setCurrentPlayId] = useState<string | null>(null);
   const [playerPassword, setPlayerPasswordState] = useState("");
@@ -1418,7 +1423,6 @@ export function BoardProvider({
     saveDeliverables(deliverables);
   }, [deliverables]);
   const [pendingImport, setPendingImport] = useState<ShareSnapshot | null>(null);
-  const libHydrated = useRef(false);
   // 最新のライブラリ／プラン／現在の戦術をコールバックから参照するためのミラー
   const stateLibRef = useRef<Library>(library);
   useEffect(() => {
@@ -1468,8 +1472,7 @@ export function BoardProvider({
   );
 
   useEffect(() => {
-    const lib = loadLibrary();
-    if (lib) setLibrary(lib);
+    // library は lazy 初期化済み（ここで再読込すると二重setになる）
     const st = loadSettings();
     if (st) {
       setPlanState(migratePlan(st.plan as string));
@@ -1481,10 +1484,9 @@ export function BoardProvider({
       const snap = decodeSnapshot(window.location.hash.slice(3));
       if (snap) setPendingImport(snap);
     }
-    libHydrated.current = true;
   }, []);
   useEffect(() => {
-    if (libHydrated.current) saveLibrary(library);
+    saveLibrary(library);
   }, [library]);
   // 共有リンクで来たら確認シートを開く
   useEffect(() => {
