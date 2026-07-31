@@ -167,6 +167,8 @@ interface DrillContextValue {
   saveDrill: () => void;
   saveAsNew: (title: string) => void;
   loadDrill: (id: string) => void;
+  /** 未保存の作業があれば確認してから読み込む（エディタ内ライブラリ／ライブラリシート共通） */
+  loadDrillConfirmed: (id: string) => void;
   deleteDrill: (id: string) => void;
   newDrill: () => void;
   exportPng: () => void;
@@ -211,6 +213,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   const hydrated = useRef(false);
   const docRef = useRef(doc);
   const drillsRef = useRef(drills);
+  const currentIdRef = useRef(currentId);
   // 履歴（StrictModeの二重実行を避けるため、state更新関数の外で積む）
   const past = useRef<DrillDoc[]>([]);
   const future = useRef<DrillDoc[]>([]);
@@ -225,6 +228,9 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     drillsRef.current = drills;
   }, [drills]);
+  useEffect(() => {
+    currentIdRef.current = currentId;
+  }, [currentId]);
 
   const bumpHist = useCallback(() => setHistVer((v) => v + 1), []);
 
@@ -294,14 +300,6 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (hydrated.current) saveDrills(drills);
   }, [drills]);
-
-  // ホームから「保存した練習メニュー」で入ったらライブラリを開く
-  useEffect(() => {
-    if (board.drillIntent === "library") {
-      setSheet("library");
-      board.setDrillIntent(null);
-    }
-  }, [board]);
 
   // チャットで受け取ったトレーニング(ドリル)を読み込んで表示
   useEffect(() => {
@@ -564,6 +562,47 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     [board, markSaved, resetHistory]
   );
 
+  /**
+   * 未保存の作業がある状態での読み込みは確認を挟む（編集中の内容は resetHistory で
+   * undo からも復元できないため）。エディタ内ライブラリ・ライブラリシートの双方が
+   * これを通ることで、入口による挙動差を作らない。
+   */
+  const loadDrillConfirmed = useCallback(
+    (id: string) => {
+      const cur = docRef.current;
+      const hasContent = cur.items.length > 0 || cur.lines.length > 0;
+      // dirty判定は下の dirty useMemo と同じ基準（保存済みスナップショットとの差分）
+      const isDirty = savedJson.current == null || docJson(cur) !== savedJson.current;
+      if (isDirty && hasContent && currentIdRef.current !== id) {
+        const target = drillsRef.current.find((s) => s.id === id);
+        if (!window.confirm(`現在の内容を置き換えて「${target?.title ?? ""}」を読み込みますか？`))
+          return;
+      }
+      loadDrill(id);
+    },
+    [loadDrill]
+  );
+
+  // ホームから「保存した練習メニュー」で入ったらライブラリを開く
+  // ／ライブラリシートの練習タブから特定のドリルを指定して入った場合はそれを読み込む
+  useEffect(() => {
+    const intent = board.drillIntent;
+    if (intent === "library") {
+      setSheet("library");
+      board.setDrillIntent(null);
+    } else if (intent && typeof intent === "object") {
+      // シートは localStorage のスナップショットを表示しているため、
+      // 別タブでの削除等で実体が無いことがある（黙って失敗させない）
+      if (!drillsRef.current.some((s) => s.id === intent.open)) {
+        board.toast("この練習メニューは見つかりませんでした");
+        setSheet("library");
+      } else {
+        loadDrillConfirmed(intent.open);
+      }
+      board.setDrillIntent(null);
+    }
+  }, [board, loadDrillConfirmed]);
+
   const deleteDrill = useCallback(
     (id: string) => {
       setDrills((list) => list.filter((x) => x.id !== id));
@@ -654,6 +693,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       saveDrill,
       saveAsNew,
       loadDrill,
+      loadDrillConfirmed,
       deleteDrill,
       newDrill,
       exportPng,
@@ -699,6 +739,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       saveDrill,
       saveAsNew,
       loadDrill,
+      loadDrillConfirmed,
       deleteDrill,
       newDrill,
       exportPng,

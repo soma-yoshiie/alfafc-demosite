@@ -404,15 +404,8 @@ function Inner() {
       drill.clearAll();
   };
 
-  const loadWithConfirm = (id: string) => {
-    const hasContent = doc.items.length > 0 || doc.lines.length > 0;
-    if (drill.dirty && hasContent && drill.currentId !== id) {
-      const target = drill.drills.find((s) => s.id === id);
-      if (!window.confirm(`現在の内容を置き換えて「${target?.title ?? ""}」を読み込みますか？`))
-        return;
-    }
-    drill.loadDrill(id);
-  };
+  // 確認つき読み込みはProvider側に集約（ライブラリシートの練習タブ経由でも同じ挙動になる）
+  const loadWithConfirm = (id: string) => drill.loadDrillConfirmed(id);
 
   return (
     <div className="app drillapp dx">

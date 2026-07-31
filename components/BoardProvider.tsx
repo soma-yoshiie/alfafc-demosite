@@ -891,8 +891,8 @@ interface BoardContextValue {
   setPlayerPassword: (pw: string) => void;
   matchesPublic: boolean;
   setMatchesPublic: (v: boolean) => void;
-  drillIntent: "library" | null;
-  setDrillIntent: (v: "library" | null) => void;
+  drillIntent: "library" | { open: string } | null;
+  setDrillIntent: (v: "library" | { open: string } | null) => void;
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
   sendMessage: (msg: Omit<ChatMessage, "id" | "ts">) => void;
@@ -1398,7 +1398,7 @@ export function BoardProvider({
   const [currentPlayId, setCurrentPlayId] = useState<string | null>(null);
   const [playerPassword, setPlayerPasswordState] = useState("");
   const [matchesPublic, setMatchesPublicState] = useState(true);
-  const [drillIntent, setDrillIntent] = useState<"library" | null>(null);
+  const [drillIntent, setDrillIntent] = useState<"library" | { open: string } | null>(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
   // lazy初期化で保存データを直接読む（mount後のload→saveの競合・上書きを防ぐ。TeamProviderと同方針）
   const [messages, setMessages] = useState<ChatMessage[]>(

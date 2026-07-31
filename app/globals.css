@@ -1890,6 +1890,10 @@ header {
   font-size: 11px;
   max-width: 84px;
 }
+/* ライブラリ統合タブ（戦術/練習）はPC専用。モバイルは常に非表示＝plays固定の現行表示のまま */
+.libtabs {
+  display: none;
+}
 .folderhdr {
   display: flex;
   align-items: center;
@@ -8982,6 +8986,42 @@ header {
      罫線は基底の border: 1px solid var(--line)(=--outline) を継承 */
   header .fpback {
     background: var(--surface-low);
+  }
+  /* =========================================================
+     ライブラリ統合タブ（PCのみ）
+     戦術/練習を1つのシートにまとめるためのタブバー。
+     .libtabs 自体の基底(display:none)はモバイル向けの既定で、
+     ここで表示を上書きするのはPCのみ。ノートの .chip 文法に準拠。
+     ========================================================= */
+  .libtabs {
+    display: flex;
+    gap: 7px;
+    padding: 0 16px 10px;
+  }
+  .libtab {
+    padding: 8px 15px;
+    border-radius: var(--r-full);
+    border: 1px solid var(--outline);
+    background: var(--surface-lowest);
+    color: var(--mut);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .libtab.on {
+    background: var(--accent-tint);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  /* 練習タブの案内文。.fieldhint(フォーム項目直下用・左余白2px)ではシート左端に
+     張り付くため、見出し(16px)・一覧と揃うガターを持つ専用クラスにする */
+  .libhint {
+    margin: 6px 16px 12px;
+    font-size: var(--fs-body-s);
+    line-height: 1.5;
+    color: var(--mut);
   }
 }
 

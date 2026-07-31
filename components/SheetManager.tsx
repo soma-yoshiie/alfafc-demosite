@@ -7,8 +7,10 @@ import type {
   FitnessRecord,
   InjuryRecord,
   InjuryStatus,
+  PitchType,
   Player,
   Position,
+  SavedDrill,
   SavedPlay,
 } from "@/lib/types";
 import { INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER } from "@/lib/types";
@@ -16,7 +18,7 @@ import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
 import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
-import { loadTeam } from "@/lib/storage";
+import { loadDrills, loadTeam } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
 import { ARTICLES } from "@/lib/articles";
 import { useBoard } from "./BoardProvider";
@@ -36,6 +38,13 @@ const FOOT_LABEL: Record<DominantFoot, string> = {
   right: "右足",
   left: "左足",
   both: "両足",
+};
+
+const PITCH_LABEL: Record<PitchType, string> = {
+  half: "ハーフ",
+  full: "フル縦",
+  fullh: "フル横",
+  blank: "ブランク",
 };
 
 function newId(p: string): string {
@@ -952,71 +961,151 @@ function PlayRow({ play }: { play: SavedPlay }) {
   );
 }
 
+function DrillRow({ drill }: { drill: SavedDrill }) {
+  const board = useBoard();
+  const date = new Date(drill.updatedAt).toLocaleString("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <div className="playrow">
+      <div
+        className="playmain"
+        onClick={() => {
+          board.setDrillIntent({ open: drill.id });
+          board.setScreen("drill");
+          board.closeSheet();
+        }}
+      >
+        <div className="playtitle">{drill.title}</div>
+        <div className="playsub">
+          {PITCH_LABEL[drill.pitchType] ?? "ピッチ"} ・ 配置{drill.items?.length ?? 0}個 ・ 動線
+          {drill.lines?.length ?? 0}本 ・ {date}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function LibrarySheet() {
   const board = useBoard();
   const coach = true; // フォルダ機能は全プラン共通
+  const [tab, setTab] = useState<"plays" | "drills">("plays");
   const plays = [...board.library.plays].sort((a, b) => b.updatedAt - a.updatedAt);
   const unfiled = plays.filter((p) => !p.folderId || !coach);
+  // DrillProvider は DrillEditor 内部にマウントされておりグローバルシートからは
+  // useDrill() が使えないため localStorage から直接読む。
+  // 練習タブを開いたときだけ読む（PC専用タブなのでモバイルでは一度も走らない）
+  const sortedDrills = useMemo(
+    () =>
+      tab === "drills"
+        ? [...loadDrills()].sort((a, b) => b.updatedAt - a.updatedAt)
+        : [],
+    [tab]
+  );
 
   return (
     <>
-      <h2>
-        保存した戦術 <span>{board.library.plays.length}件</span>
-      </h2>
-      <div className="controls" style={{ display: "flex", gap: 8 }}>
-        <button
-          className="bigbtn"
-          style={{ margin: 0, flex: 1, width: "auto" }}
-          onClick={board.newPlay}
-        >
-          ＋ 新規作成
+      <div className="libtabs">
+        <button className={`libtab${tab === "plays" ? " on" : ""}`} onClick={() => setTab("plays")}>
+          戦術
         </button>
-        <button
-          className="bigbtn ghost"
-          style={{ margin: 0, flex: 1, width: "auto" }}
-          onClick={() => {
-            const n = window.prompt("フォルダ名");
-            if (n) board.createFolder(n);
-          }}
-        >
-          ＋ フォルダ
+        <button className={`libtab${tab === "drills" ? " on" : ""}`} onClick={() => setTab("drills")}>
+          練習
         </button>
       </div>
-      <div className="list">
-        {plays.length === 0 ? (
-          <div className="empty-msg">
-            まだ保存された戦術はありません。
-            <br />
-            盤面を作って上部の保存ボタンで保存しましょう。
+      {tab === "plays" ? (
+        <>
+          <h2>
+            保存した戦術 <span>{board.library.plays.length}件</span>
+          </h2>
+          <div className="controls" style={{ display: "flex", gap: 8 }}>
+            <button
+              className="bigbtn"
+              style={{ margin: 0, flex: 1, width: "auto" }}
+              onClick={board.newPlay}
+            >
+              ＋ 新規作成
+            </button>
+            <button
+              className="bigbtn ghost"
+              style={{ margin: 0, flex: 1, width: "auto" }}
+              onClick={() => {
+                const n = window.prompt("フォルダ名");
+                if (n) board.createFolder(n);
+              }}
+            >
+              ＋ フォルダ
+            </button>
           </div>
-        ) : (
-          <>
-            {coach &&
-              board.library.folders.map((f) => {
-                const fp = plays.filter((p) => p.folderId === f.id);
-                return (
-                  <div key={f.id}>
-                    <div className="folderhdr">
-                      <E n="folder" /> {f.name}
-                      <button onClick={() => board.deleteFolder(f.id)}>削除</button>
-                    </div>
-                    {fp.length === 0 ? (
-                      <div className="folderempty">（空）</div>
-                    ) : (
-                      fp.map((p) => <PlayRow key={p.id} play={p} />)
-                    )}
-                  </div>
-                );
-              })}
-            {coach && board.library.folders.length > 0 && (
-              <div className="folderhdr"><E n="folderopen" /> 未分類</div>
+          <div className="list">
+            {plays.length === 0 ? (
+              <div className="empty-msg">
+                まだ保存された戦術はありません。
+                <br />
+                盤面を作って上部の保存ボタンで保存しましょう。
+              </div>
+            ) : (
+              <>
+                {coach &&
+                  board.library.folders.map((f) => {
+                    const fp = plays.filter((p) => p.folderId === f.id);
+                    return (
+                      <div key={f.id}>
+                        <div className="folderhdr">
+                          <E n="folder" /> {f.name}
+                          <button onClick={() => board.deleteFolder(f.id)}>削除</button>
+                        </div>
+                        {fp.length === 0 ? (
+                          <div className="folderempty">（空）</div>
+                        ) : (
+                          fp.map((p) => <PlayRow key={p.id} play={p} />)
+                        )}
+                      </div>
+                    );
+                  })}
+                {coach && board.library.folders.length > 0 && (
+                  <div className="folderhdr"><E n="folderopen" /> 未分類</div>
+                )}
+                {unfiled.map((p) => (
+                  <PlayRow key={p.id} play={p} />
+                ))}
+              </>
             )}
-            {unfiled.map((p) => (
-              <PlayRow key={p.id} play={p} />
-            ))}
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <h2>
+            保存した練習 <span>{sortedDrills.length}件</span>
+          </h2>
+          <div className="list">
+            {sortedDrills.length === 0 ? (
+              <div className="empty-msg">まだ保存された練習メニューはありません。</div>
+            ) : (
+              sortedDrills.map((d) => <DrillRow key={d.id} drill={d} />)
+            )}
+          </div>
+          <div className="libhint">
+            サムネイル表示・削除・名前の変更は練習メニュー画面のライブラリで行えます。
+          </div>
+          <div className="controls" style={{ display: "flex" }}>
+            <button
+              className="bigbtn ghost"
+              style={{ margin: 0, flex: 1, width: "auto" }}
+              onClick={() => {
+                board.setDrillIntent("library");
+                board.setScreen("drill");
+                board.closeSheet();
+              }}
+            >
+              練習メニュー画面のライブラリを開く
+            </button>
+          </div>
+        </>
+      )}
     </>
   );
 }
