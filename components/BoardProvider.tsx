@@ -695,7 +695,11 @@ export type SheetType =
   | "importShared"
   | "chat"
   | "oppMenu"
+  | "kpi"
   | null;
+
+/** コーチ・ダッシュボードのサマリーカードから選手別内訳を開く際の対象指標 */
+export type KpiMetric = "attendance" | "notesWeek" | "uncommented" | "solo";
 
 export interface SheetState {
   type: SheetType;
@@ -716,6 +720,8 @@ export interface SheetState {
   articleId?: string;
   /** chat: 開く会話キー（"team" または "p:<playerId>"） */
   chatTo?: string;
+  /** kpi: 表示対象の指標 */
+  kpiMetric?: KpiMetric;
 }
 
 /** アプリの画面。レール項目の key と一致させる（ConsoleShell のサブナビ anchor もこの型） */

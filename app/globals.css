@@ -1464,6 +1464,22 @@ header {
   color: var(--lime);
   letter-spacing: 0.5px;
 }
+/* KPI内訳(選手別)の数値。.num と同じ数値文法だがジャージ番号色(lime)は使わない */
+/* KPI内訳の説明文。.fieldhint(フォーム直下用・左余白2px)では
+   見出し(16px)や一覧(12px)とガターが揃わないため専用クラスにする */
+.kpihint {
+  margin: 6px 16px 12px;
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+  color: var(--mut);
+}
+.kpinum {
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--ink);
+  letter-spacing: 0.5px;
+}
 .prow.inxi {
   opacity: 0.4;
 }
@@ -5891,6 +5907,10 @@ header {
   font-family: var(--font-ui);
   color: var(--ink);
   cursor: pointer;
+  /* button化しても既定のUIスタイル(font-size 13.33px/フォームコントロール描画)を持ち込まない */
+  font-size: inherit;
+  -webkit-appearance: none;
+  appearance: none;
 }
 .noteapp button.dashbox:active {
   transform: scale(0.98);
@@ -9109,6 +9129,14 @@ header {
      (.screenbody .libtabs と同詳細度で並ばないよう1段深いセレクタにする) */
   .libapp .screenbody .libtabs {
     display: none;
+  }
+  /* 押せるサマリーカード(button)はPCのみホバーで示す。
+     プレイヤー側ホームのクリック不可カードは div のままなので自動的に除外される */
+  .noteapp button.dashbox {
+    transition: border-color var(--dur-s) var(--ease-standard);
+  }
+  .noteapp button.dashbox:hover {
+    border-color: var(--outline-strong);
   }
 }
 

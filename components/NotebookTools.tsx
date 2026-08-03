@@ -279,17 +279,23 @@ export function CoachDashboard({
       <div className="dashcols">
       <div className="dashcol side">
       <div className="dashsum">
-        <div className="dashbox"><div className="dbv">{summary.avgAttendance != null ? summary.avgAttendance + "%" : "—"}</div><div className="dbl">平均出席率</div></div>
-        <div className="dashbox">
+        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "attendance" })}>
+          <div className="dbv">{summary.avgAttendance != null ? summary.avgAttendance + "%" : "—"}</div><div className="dbl">平均出席率</div>
+        </button>
+        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "notesWeek" })}>
           <div className="dbv">{summary.notesThisWeek}</div>
           <div className="dbl">今週のノート</div>
           <div className={"dbd " + (weekNoteDiff > 0 ? "up" : weekNoteDiff < 0 ? "down" : "flat")}>
             {weekNoteDiff > 0 ? `↗ 先週 +${weekNoteDiff}` : weekNoteDiff < 0 ? `↘ 先週 ${weekNoteDiff}` : "— 先週と同じ"}
           </div>
           <Sparkline values={teamWeeklyChart.map((w) => w.value)} />
-        </div>
-        <div className="dashbox"><div className="dbv">{summary.uncommentedTotal}</div><div className="dbl">未コメント</div></div>
-        <div className="dashbox"><div className="dbv">{summary.soloActive}</div><div className="dbl">自主練継続</div></div>
+        </button>
+        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "uncommented" })}>
+          <div className="dbv">{summary.uncommentedTotal}</div><div className="dbl">未コメント</div>
+        </button>
+        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "solo" })}>
+          <div className="dbv">{summary.soloActive}</div><div className="dbl">自主練継続</div>
+        </button>
       </div>
       </div>
 

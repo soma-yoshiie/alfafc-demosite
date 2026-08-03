@@ -22,7 +22,9 @@ import { buildLineUrl, buildShareUrl } from "@/lib/share";
 import { loadDrills, loadTeam } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
 import { ARTICLES } from "@/lib/articles";
-import { useBoard } from "./BoardProvider";
+import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
+import { localDateStr, weekStart } from "@/lib/dates";
+import { useBoard, type KpiMetric } from "./BoardProvider";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
@@ -364,6 +366,122 @@ function RosterSheet() {
       >
         ＋ 新規選手を追加
       </button>
+    </>
+  );
+}
+
+/* ---------------- コーチ・ダッシュボードのサマリーカード → 選手別内訳 ---------------- */
+const KPI_HINT: Record<KpiMetric, string> = {
+  // カードの数値は「各選手の出席率の平均」であって、出欠数の総和比ではない
+  attendance: "各選手の出席率（予定に対する出席）の平均です。",
+  notesWeek: "今週（月曜起点）に提出されたノートの件数です。",
+  uncommented: "コーチのコメントがまだ付いていないノートの件数です。",
+  // カード/バッジの値は週数ではなく「継続中の人数」
+  solo: "自主練が続いている選手の人数です（週は月曜起点）。",
+};
+
+function KpiSheet({ metric }: { metric: KpiMetric }) {
+  const board = useBoard();
+  const kpis = useMemo(() => {
+    const team = loadTeam();
+    return board.state.players.map((p) =>
+      computePlayerKpi(p, board.notebook, board.deliverables, team)
+    );
+  }, [board.state.players, board.notebook, board.deliverables]);
+
+  const monday = weekStart(localDateStr());
+  const notesThisWeekOf = (pid: string) =>
+    board.notebook.filter((n) => n.playerId === pid && n.date >= monday).length;
+
+  // ダッシュボードのカードと同じ関数で集計する（式をコピーすると集計側の修正に追随できない）
+  const summary = useMemo(() => computeTeamSummary(kpis, board.notebook), [kpis, board.notebook]);
+  // 名簿から削除された選手のノートは残るため、選手別合計と全体件数がズレうる。
+  // その差分を「名簿外」として1行で出し、カード＝見出し＝行の合計を必ず閉じさせる
+  const orphanNotes = useMemo(() => {
+    const known = new Set(board.state.players.map((p) => p.id));
+    return board.notebook.filter((n) => n.date >= monday && !known.has(n.playerId)).length;
+  }, [board.notebook, board.state.players, monday]);
+
+  let rows = [...kpis];
+  if (metric === "attendance") {
+    // 出席率なし(予定が無い)は「0%の要注意」ではないので末尾へ回す
+    const rated = rows.filter((k) => k.attendancePct != null);
+    const unrated = rows.filter((k) => k.attendancePct == null);
+    rated.sort((a, b) => (a.attendancePct ?? 0) - (b.attendancePct ?? 0));
+    rows = [...rated, ...unrated];
+  } else if (metric === "notesWeek") {
+    rows.sort((a, b) => notesThisWeekOf(b.playerId) - notesThisWeekOf(a.playerId));
+  } else if (metric === "uncommented") {
+    rows = rows.filter((k) => k.uncommented > 0).sort((a, b) => b.uncommented - a.uncommented);
+  } else {
+    // バッジは「継続中の人数」なので、行も継続中の選手だけにする
+    rows = rows.filter((k) => k.soloStreak > 0).sort((a, b) => b.soloStreak - a.soloStreak);
+  }
+
+  const ratedCount = kpis.filter((k) => k.attendancePct != null).length;
+  const heading: Record<KpiMetric, { title: string; badge: string }> = {
+    attendance: {
+      title: "出席率",
+      badge:
+        summary.avgAttendance != null
+          ? `チーム平均 ${summary.avgAttendance}%（${ratedCount}人）`
+          : "チーム平均 —",
+    },
+    notesWeek: { title: "今週のノート", badge: `${summary.notesThisWeek}件` },
+    uncommented: { title: "未コメント", badge: `${summary.uncommentedTotal}件` },
+    solo: { title: "自主練継続", badge: `${summary.soloActive}人` },
+  };
+  const h = heading[metric];
+
+  return (
+    <>
+      <h2>
+        {h.title} <span>{h.badge}</span>
+      </h2>
+      <div className="list">
+        {rows.length === 0 ? (
+          <div className="empty-msg">
+            {metric === "uncommented"
+              ? "未コメントはありません。"
+              : metric === "solo"
+              ? "自主練が継続中の選手はいません。"
+              : "対象の選手がいません。"}
+          </div>
+        ) : (
+          rows.map((k) => (
+            <div
+              key={k.playerId}
+              className="prow"
+              onClick={() =>
+                // 戻ったときに同じ内訳へ帰れるよう、開いた指標を持ち回す
+                board.openSheet({ type: "playerDetail", playerId: k.playerId, kpiMetric: metric })
+              }
+            >
+              <div className="meta">
+                <div className="nm">{k.name}</div>
+                {metric === "attendance" && <div className="sub">出席 {k.attendance.yes}/{k.attendance.total}</div>}
+                {metric === "solo" && <div className="sub">自主練 {k.soloCount}回</div>}
+              </div>
+              <div className="kpinum">
+                {metric === "attendance" && (k.attendancePct != null ? `${k.attendancePct}%` : "—")}
+                {metric === "notesWeek" && notesThisWeekOf(k.playerId)}
+                {metric === "uncommented" && k.uncommented}
+                {metric === "solo" && `${k.soloStreak}週`}
+              </div>
+            </div>
+          ))
+        )}
+        {metric === "notesWeek" && orphanNotes > 0 && (
+          <div className="prow" style={{ cursor: "default" }}>
+            <div className="meta">
+              <div className="nm">名簿外の選手</div>
+              <div className="sub">削除された選手が提出したノート</div>
+            </div>
+            <div className="kpinum">{orphanNotes}</div>
+          </div>
+        )}
+      </div>
+      <div className="kpihint">{KPI_HINT[metric]}</div>
     </>
   );
 }
@@ -1598,6 +1716,9 @@ export default function SheetManager() {
     case "chat":
       content = <ChatSheet to={sheet.chatTo ?? "team"} />;
       break;
+    case "kpi":
+      content = <KpiSheet metric={sheet.kpiMetric ?? "attendance"} />;
+      break;
   }
 
   // 名簿・記事・選手プロフィール・設定などは全画面表示＋戻るボタン
@@ -1617,7 +1738,9 @@ export default function SheetManager() {
   const onBack = (): void => {
     switch (sheet.type) {
       case "playerDetail":
-        board.openSheet({ type: "roster" });
+        // KPI内訳から開いた場合は内訳へ戻す（名簿に飛ばすと並び順と文脈を失う）
+        if (sheet.kpiMetric) board.openSheet({ type: "kpi", kpiMetric: sheet.kpiMetric });
+        else board.openSheet({ type: "roster" });
         break;
       case "playerForm":
         if (sheet.player) board.openSheet({ type: "playerDetail", playerId: sheet.player.id });
