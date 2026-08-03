@@ -64,12 +64,14 @@ import {
   loadNotebook,
   loadSettings,
   loadState,
+  loadTeamLogo,
   saveDeliverables,
   saveLibrary,
   saveMessages,
   saveNotebook,
   saveSettings,
   saveState,
+  saveTeamLogo,
 } from "@/lib/storage";
 import {
   buildSnapshot,
@@ -899,6 +901,9 @@ interface BoardContextValue {
   library: Library;
   plan: PlanTier;
   setPlan: (t: PlanTier) => void;
+  /** クラブエンブレム（dataURL）。未設定は null */
+  teamLogo: string | null;
+  setTeamLogo: (url: string | null) => boolean;
   playerPassword: string;
   setPlayerPassword: (pw: string) => void;
   matchesPublic: boolean;
@@ -1406,7 +1411,15 @@ export function BoardProvider({
   const [library, setLibrary] = useState<Library>(
     () => loadLibrary() ?? { plays: [], folders: [] }
   );
-  const [plan, setPlanState] = useState<PlanTier>("starter");
+  // lazy初期化。effectでのhydrateだと初回ペイントが常に"starter"になり
+  // レールのプラン表示がちらつくため、保存済み設定を直接読む
+  const [plan, setPlanState] = useState<PlanTier>(() => {
+    const st = loadSettings();
+    return st ? migratePlan(st.plan as string) : "starter";
+  });
+  // lazy初期化で保存データを直接読む（mount後のload→save競合を防ぐ。messages/notebook等と同方針。
+  // effectでhydrateすると保存済みデータを空(null)で上書きしてしまう事故になる）
+  const [teamLogo, setTeamLogoState] = useState<string | null>(() => loadTeamLogo());
   const [currentPlayId, setCurrentPlayId] = useState<string | null>(null);
   const [playerPassword, setPlayerPasswordState] = useState("");
   const [matchesPublic, setMatchesPublicState] = useState(true);
@@ -2335,6 +2348,14 @@ export function BoardProvider({
     [persistSettings]
   );
 
+  // 保存はeffectではなく明示保存（persistSettingsと同じ思想。effect保存はStrictModeの
+  // 初期値競合で保存済みデータを上書きしうるため避ける）
+  /** 保存できたら true。容量超過で保存できないことがあるため呼び出し側で通知する */
+  const setTeamLogo = useCallback((url: string | null) => {
+    setTeamLogoState(url);
+    return saveTeamLogo(url);
+  }, []);
+
   const setPlayerPassword = useCallback(
     (pw: string) => {
       setPlayerPasswordState(pw);
@@ -2638,6 +2659,8 @@ export function BoardProvider({
       library,
       plan,
       setPlan,
+      teamLogo,
+      setTeamLogo,
       playerPassword,
       setPlayerPassword,
       matchesPublic,
@@ -2740,6 +2763,8 @@ export function BoardProvider({
       library,
       plan,
       setPlan,
+      teamLogo,
+      setTeamLogo,
       playerPassword,
       setPlayerPassword,
       matchesPublic,

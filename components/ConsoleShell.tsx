@@ -3,6 +3,7 @@
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { loadNotifSeen } from "@/lib/storage";
 import { buildEventNotifications } from "@/lib/notifications";
+import { PLAN_INFO } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import LogoMark from "./Logo";
@@ -165,12 +166,20 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
     <div className={`conshell${board.fullplay ? " fp" : ""}`}>
       <nav className="conrail" aria-label="メインナビゲーション">
         <div className="conbrand">
-          <LogoMark uid="rail" className="rail-mark" />
-          <div>
-            <div className="logo">
-              ALFA<b> FOOTBALL</b>
+          {board.teamLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="conemblem" src={board.teamLogo} alt="" />
+          ) : (
+            // 未設定時は製品マークではなくクラブ名の頭文字（下部のALFA FOOTBALLと重複させない）
+            <div className="conemblem empty" aria-hidden="true">
+              {(board.state.teamName ?? "マイチーム").trim().charAt(0)}
             </div>
-            <div className="conbrand-team">{board.state.teamName ?? "マイチーム"}</div>
+          )}
+          <div className="conbrandtx">
+            <div className="conclub" title={board.state.teamName ?? "マイチーム"}>
+              {board.state.teamName ?? "マイチーム"}
+            </div>
+            {coach && <div className="conbrand-team">{PLAN_INFO[board.plan].name}プラン</div>}
           </div>
         </div>
 
@@ -210,6 +219,13 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
             )}
           </Fragment>
         ))}
+
+        <div className="conproduct">
+          <span aria-hidden="true">
+            <LogoMark uid="railprod" className="rail-mark" />
+          </span>
+          <div className="logo">ALFA<b> FOOTBALL</b></div>
+        </div>
 
         <div className="conuser">
           {board.auth.name} ・ {coach ? "管理者" : "選手"}

@@ -1608,6 +1608,39 @@ header {
   margin-left: 0;
   margin-right: 0;
 }
+.emblemrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+/* 同じフィールド内の input(12px)と角丸を揃える */
+.emblemprev {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 12px;
+  border: 1px solid var(--outline);
+  object-fit: contain;
+  background: var(--surface-low);
+}
+/* 未設定時はクラブ名の頭文字（製品マークは使わない＝レール下部と役割を分ける） */
+.emblemprev.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--mut);
+}
+/* エンブレム欄のボタンはタップ領域を確保する */
+.emblemrow .formbtn {
+  min-height: 44px;
+}
+.formbtn.danger .fb-label {
+  color: var(--red);
+}
 .formgrid {
   margin: 0 16px 12px;
   display: flex;
@@ -8644,9 +8677,11 @@ header {
     margin-left: auto;
     margin-right: auto;
   }
-  /* 白トップバー上のチーム名は緑→muted へ */
-  .homeapp .hometeam {
-    color: var(--mut);
+  /* レール上部がクラブ identity、最下部が製品ブランドを担うようになったため、
+     ホームのヒーロー内のロゴ+クラブ名はPCでは重複。ログアウトだけ残して隠す */
+  .homeapp .homemark,
+  .homeapp .homebrand {
+    display: none;
   }
   /* ロール表示タグは青ティントへ（緑=CTAのみ） */
   .homeapp .homerole {
@@ -9145,6 +9180,15 @@ header {
   .conbrand .rail-mark { width: 22px; height: 22px; flex: none; }
   .conbrand .logo { font-size: 15px; }
   .conbrand-team { font-size: 11px; color: var(--mut); font-weight: 600; margin-top: 1px; }
+  /* 設定プレビューと同じ下地を持たせ、白抜き・淡色ロゴがレール(白)で消えないようにする */
+  .conemblem { width: 26px; height: 26px; flex: none; object-fit: contain; border-radius: var(--r-sm); background: var(--surface-low); border: 1px solid var(--outline); }
+  .conemblem.empty { display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--mut); }
+  /* 長いクラブ名でレールから溢れないよう2行で省略する */
+  .conbrandtx { min-width: 0; }
+  .conclub { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .conproduct { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-top: auto; opacity: 0.75; }
+  .conproduct .rail-mark { width: 16px; height: 16px; flex: none; }
+  .conproduct .logo { font-size: 11.5px; }
   .connavsec { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--mut); text-transform: uppercase; padding: 14px 12px 4px; }
   .conrail-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; background: none; border-radius: 8px; font-size: var(--fs-body-s); font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; font-family: inherit; }
   .conrail-item:hover { background: rgba(0, 0, 0, 0.05); }
@@ -9154,7 +9198,7 @@ header {
   .conrail-item.sub { padding-left: 34px; font-weight: 500; }
   .conrail-sub { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 4px; }
   .conrail-badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
-  .conuser { margin-top: auto; padding: 12px; border-top: 1px solid var(--outline); font-size: var(--fs-body-s); color: var(--mut); }
+  .conuser { padding: 12px; border-top: 1px solid var(--outline); font-size: var(--fs-body-s); color: var(--mut); }
   /* シェル外オーバーレイ(シート/トースト)はメインカラム基準へ寄せる(レール208px÷2=104px補正) */
   .sheet { left: 208px; }
   .toast { left: calc(50% + 104px); }

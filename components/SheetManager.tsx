@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ALL_POSITIONS, FORMATION_KEYS, groupOf } from "@/lib/formations";
 import type {
   DominantFoot,
@@ -16,6 +16,7 @@ import type {
 import { INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER } from "@/lib/types";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
+import { fileToEmblemDataUrl } from "@/lib/imageResize";
 import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
 import { loadDrills, loadTeam } from "@/lib/storage";
@@ -24,6 +25,7 @@ import { ARTICLES } from "@/lib/articles";
 import { useBoard } from "./BoardProvider";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
+import LogoMark from "./Logo";
 import { SendTargetField, targetThreadKey, type SendTarget } from "./SendTarget";
 import {
   IconBook,
@@ -1256,6 +1258,25 @@ export function SettingsBody({ hideTitle }: { hideTitle?: boolean } = {}) {
     setName(board.state.teamName ?? "");
   }, [board.state.teamName]);
 
+  const emblemInput = useRef<HTMLInputElement | null>(null);
+  async function onEmblemFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      const dataUrl = await fileToEmblemDataUrl(file);
+      // 保存に失敗しても表示だけ変わる（リロードで消える）ので、成否で文言を変える
+      const saved = board.setTeamLogo(dataUrl);
+      board.toast(
+        saved
+          ? "エンブレムを更新しました"
+          : "保存容量が足りません。小さい画像をお試しください"
+      );
+    } catch (err) {
+      board.toast(err instanceof Error ? err.message : "画像の読み込みに失敗しました");
+    }
+  }
+
   return (
     <>
       {!hideTitle && <h2>設定</h2>}
@@ -1266,6 +1287,50 @@ export function SettingsBody({ hideTitle }: { hideTitle?: boolean } = {}) {
           onChange={(e) => setName(e.target.value)}
           onBlur={() => board.setTeamName(name.trim())}
           placeholder="例）アルファラスFC U-12"
+        />
+      </div>
+      <div className="formfield">
+        <label id="emblem-label">クラブエンブレム</label>
+        <div className="emblemrow" role="group" aria-labelledby="emblem-label">
+          {board.teamLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="emblemprev" src={board.teamLogo} alt="" />
+          ) : (
+            <div className="emblemprev empty" aria-hidden="true">
+              {(board.state.teamName ?? "マイチーム").trim().charAt(0)}
+            </div>
+          )}
+          <button
+            type="button"
+            className="formbtn"
+            onClick={() => emblemInput.current?.click()}
+          >
+            <span className="fb-label">画像を選ぶ</span>
+          </button>
+          {board.teamLogo && (
+            <button
+              type="button"
+              className="formbtn danger"
+              onClick={() => {
+                // 元に戻すには再アップロードが必要なため確認する（このアプリの破壊的操作の作法）
+                if (!window.confirm("エンブレムを削除しますか？")) return;
+                board.setTeamLogo(null);
+                board.toast("エンブレムを削除しました");
+              }}
+            >
+              <span className="fb-label">削除</span>
+            </button>
+          )}
+        </div>
+        <div className="fieldhint">
+          レール上部と設定に表示されます。正方形の画像（PNG/JPG）を推奨します。
+        </div>
+        <input
+          ref={emblemInput}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          onChange={onEmblemFile}
         />
       </div>
       <div className="formfield">

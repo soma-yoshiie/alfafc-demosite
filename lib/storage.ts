@@ -23,6 +23,7 @@ const NOTEBOOK_KEY = "soccer_tactics_notebook_v1";
 const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
 const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
+const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 
 /** localStorage から状態を復元（SSR/未保存時は null） */
 export function loadState(): BoardState | null {
@@ -357,5 +358,30 @@ export function saveViewer(v: TeamViewer): void {
     window.localStorage.setItem(VIEWER_KEY, JSON.stringify(v));
   } catch {
     /* 無視 */
+  }
+}
+
+/* ---- クラブエンブレム（レール上部・設定に表示するロゴ画像） ---- */
+export function loadTeamLogo(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(TEAM_LOGO_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/** 保存できたら true。dataURLは大きいので容量超過が実際に起こりうる＝呼び出し側で通知する */
+export function saveTeamLogo(url: string | null): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (url) {
+      window.localStorage.setItem(TEAM_LOGO_KEY, url);
+    } else {
+      window.localStorage.removeItem(TEAM_LOGO_KEY);
+    }
+    return true;
+  } catch {
+    return false;
   }
 }
