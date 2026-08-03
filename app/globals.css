@@ -8263,9 +8263,16 @@ header {
     min-width: 0;
     padding: 0;
   }
+  /* 器(.scroll)を広げると flex で横に伸び、縦ピッチ(68:105)が最大1.19まで
+     間延びしていた。高さ基準は保ったまま比率を固定し、余った幅は左右に配る */
   .boardapp:not(.fullplay) .pitch {
     height: calc(100dvh - 158px);
     max-height: 880px;
+    width: auto;
+    aspect-ratio: 68 / 105;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
   }
   /* アニメ編集中もピッチを縮めない（大画面で見やすく） */
   .app.anim:not(.fullplay) .pitch {
@@ -8296,9 +8303,9 @@ header {
     max-height: none;
   }
 
-  /* 全画面アニメの操作UIもPC幅に広げる */
+  /* 全画面アニメの操作UIもPC幅に広げる（ボード本体と同じ上限に揃える） */
   .fpover {
-    max-width: 1220px;
+    max-width: min(1520px, 100%);
   }
   .fphint {
     font-size: 13px;
@@ -8383,7 +8390,7 @@ header {
     grid-template-areas: "top top" "side main";
     gap: 0 24px;
     align-items: start;
-    max-width: 1200px;
+    max-width: min(1520px, 100%);
     margin: 0 auto;
   }
   .teamapp .hometab.solo {
@@ -8421,7 +8428,7 @@ header {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 10px 14px;
     align-items: start;
-    max-width: 1200px;
+    max-width: min(1520px, 100%);
     margin: 0 auto;
   }
   .teamapp .attlist .evcard,
@@ -8430,7 +8437,7 @@ header {
   }
   /* 名簿一覧・検索のキャップ（正のsearchbar=720px準拠） */
   .teamapp .roslist {
-    max-width: 1200px;
+    max-width: min(1520px, 100%);
     margin: 0 auto;
   }
   .teamapp .scroll > .controls {
@@ -8444,7 +8451,7 @@ header {
   .teamapp .scroll > .bigbtn,
   .teamapp .scroll > .empty-msg,
   .teamapp .scroll > .dynadd {
-    max-width: 1200px;
+    max-width: min(1520px, 100%);
     margin-left: auto !important;
     margin-right: auto !important;
   }
@@ -8525,7 +8532,7 @@ header {
   }
   /* コンテンツ(ピッチ+サイド)は従来の1220px中央のまま(クロームだけ全幅白) */
   .boardapp:not(.fullplay) .scroll {
-    max-width: 1220px;
+    max-width: min(1520px, 100%);
     margin: 0 auto;
     width: 100%;
   }
@@ -8616,15 +8623,15 @@ header {
   }
   /* 中央寄せ・全幅活用（旧: 2つ目の@mediaブロックから本区画へ一本化） */
   .chatapp .scroll {
-    max-width: 1040px;
+    max-width: min(1520px, 100%);
     margin: 0 auto;
     width: 100%;
     padding: 16px 32px 40px;
   }
-  /* 会話一覧（スタッフ）: 2カラム＋コンソールのカード様式（角丸r-lg） */
+  /* 会話一覧（スタッフ）: 幅に応じて列数が増減するカードグリッド＋コンソールのカード様式（角丸r-lg） */
   .chatapp .convlist {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 8px 12px;
     align-items: start;
   }
@@ -8690,12 +8697,19 @@ header {
     background: var(--surface-lowest);
     border-bottom: 1px solid var(--outline);
   }
-  /* .scroll の左右padding 32px と左端を揃えるため 1040-64=976px */
+  /* ヒーローの帯(背景・下罫線)は全幅のまま、中身だけ .scroll と同一ボックスにして
+     左右端を厳密に揃える(旧: 幅計算で合わせていたため一定幅未満で14pxズレていた) */
+  .homeapp .homehero {
+    padding-left: 0;
+    padding-right: 0;
+  }
   .homeapp .homeherotop,
   .homeapp .homegreet {
-    max-width: 976px;
+    max-width: min(1520px, 100%);
     margin-left: auto;
     margin-right: auto;
+    padding-left: 32px;
+    padding-right: 32px;
   }
   /* レール上部がクラブ identity、最下部が製品ブランドを担うようになったため、
      ホームのヒーロー内のロゴ+クラブ名はPCでは重複。ログアウトだけ残して隠す */
@@ -8710,7 +8724,7 @@ header {
   }
   /* 中央寄せ */
   .homeapp .scroll {
-    max-width: 1040px;
+    max-width: min(1520px, 100%);
     margin: 0 auto;
     width: 100%;
     padding: 16px 32px 40px;
@@ -8718,7 +8732,8 @@ header {
   /* サマリカード行（B案・既存データの表示のみ） */
   .hdash {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    /* auto-fill だとカード4枚に対し5トラック目が空いて右端が死ぬ。auto-fit で潰す */
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 12px;
     margin: 4px 0 14px;
   }
@@ -8775,6 +8790,10 @@ header {
   .homeapp .todaystat-n {
     font-family: var(--font-display);
     color: var(--ink);
+  }
+  /* 3枚の統計は広い画面で間延びするので1枚あたりの上限を設ける */
+  .homeapp .todaystats {
+    grid-template-columns: repeat(3, minmax(0, 320px));
   }
   /* 情報アイコン（連絡する）は青。押下スケールはPCでは無効（.teamapp .chip と同じ扱い） */
   .homeapp .todaystat-n svg {
@@ -9119,8 +9138,14 @@ header {
     color: var(--accent);
     background: var(--accent-tint);
   }
+  /* 一覧は広く使ってよいが、記事本文だけは可読幅に収める(ノート詳細と同じ流儀) */
+  .artapp .artbody {
+    max-width: 760px;
+    margin-left: auto;
+    margin-right: auto;
+  }
   .libapp .scroll, .artapp .scroll, .setapp .scroll {
-    max-width: 1040px;
+    max-width: min(1520px, 100%);
     margin: 0 auto;
     width: 100%;
     padding: 16px 0 calc(env(safe-area-inset-bottom) + 40px);
@@ -9163,7 +9188,7 @@ header {
   .noteapp .wsheet { width: 100%; max-width: 480px; border-radius: var(--r-xl); animation: wdialogin var(--dur-m) var(--ease-decel); }
   .noteapp .wsheet::before { display: none; }
   /* コンテンツのマルチカラム（案D準拠：左280pxサイド + 右可変メイン） */
-  .noteapp .notehome { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 0 24px; align-items: start; max-width: 1200px; margin: 0 auto; }
+  .noteapp .notehome { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 0 24px; align-items: start; max-width: min(1520px, 100%); margin: 0 auto; }
   .noteapp .notehome > .homedate,
   .noteapp .notehome > .homecta { grid-column: 1 / -1; }
   .noteapp .notehome > .homecol { display: block; min-width: 0; }
@@ -9177,7 +9202,7 @@ header {
   .noteapp .notehome .notecards { grid-template-columns: 1fr; }  /* ホーム右カラム内は1列 */
   .noteapp .noteform,
   .noteapp .notedetail { max-width: 720px; margin-left: auto; margin-right: auto; }
-  .noteapp .notetools { max-width: 1200px; margin: 0 auto; }
+  .noteapp .notetools { max-width: min(1520px, 100%); margin: 0 auto; }
   .noteapp .searchbar { max-width: 720px; }
   .noteapp .dashsum .dbv { font-size: 30px; }
 
@@ -9269,5 +9294,20 @@ header {
   }
   .noprint {
     display: none !important;
+  }
+}
+
+/* =========================================================
+   さらに広い画面(1600px以上)向けの追随調整。
+   ※ 同詳細度のPC規則に勝つ必要があるため、必ずシェル区画より後ろ(ファイル末尾)に置くこと
+   一覧・ダッシュボード系のサイド列のみを対象にし、
+   可読幅系(記事本文/チャットスレッド/ノート詳細/カレンダー)には触れない。
+   ========================================================= */
+@media (min-width: 1600px) {
+  .teamapp .hometab {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+  .noteapp .notehome {
+    grid-template-columns: 340px minmax(0, 1fr);
   }
 }
