@@ -1349,7 +1349,7 @@ header {
   border-radius: 3px;
   background: var(--line);
 }
-.sheet h2 {
+.sheet h2, .screenbody h2 {
   font-family: var(--font-display);
   font-size: 24px;
   letter-spacing: 1.5px;
@@ -1358,7 +1358,7 @@ header {
   align-items: center;
   gap: 8px;
 }
-.sheet h2 span {
+.sheet h2 span, .screenbody h2 span {
   font-size: 11px;
   font-family: var(--font-ui);
   font-weight: 700;
@@ -1367,6 +1367,18 @@ header {
   padding: 3px 9px;
   border-radius: 999px;
   margin-left: auto;
+}
+
+/* レール直結画面(ライブラリ/記事/設定)の本文ラッパ。左右ガターは中身(h2の margin 0 16px・
+   .list の padding 等)が持つためここでは付けない。下端のみsafe-area分の余白を確保 */
+.screenbody {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+}
+/* 画面内のタブバーは表示する（.libtabsの基底はモバイル向けdisplay:noneのため） */
+.screenbody .libtabs {
+  display: flex;
+  gap: 7px;
+  padding: 0 16px 10px;
 }
 
 .controls {
@@ -1890,7 +1902,9 @@ header {
   font-size: 11px;
   max-width: 84px;
 }
-/* ライブラリ統合タブ（戦術/練習）はPC専用。モバイルは常に非表示＝plays固定の現行表示のまま */
+/* ライブラリ統合タブ（戦術/練習）の既定は非表示。
+   シート版はPCでのみ表示(.sheet .libtabs)、画面版(.screenbody)は幅を問わず表示し、
+   PCではレールのサブナビが役割を担うため隠す */
 .libtabs {
   display: none;
 }
@@ -8770,60 +8784,61 @@ header {
      お役立ち記事・設定シート コンソール整合（PCのみ・最小対応）
      ※ シート構造は据え置き。色・角丸・チップのみトークン整合
      ========================================================= */
-  /* シート見出しの件数バッジは情報ラベル=青ティントへ（全シート共通・PCのみ） */
-  .sheet h2 span {
+  /* シート見出しの件数バッジは情報ラベル=青ティントへ（全シート共通・PCのみ）。
+     .screenbody 版はレール直結画面(ライブラリ/記事/設定)側の同じ見出し用 */
+  .sheet h2 span, .screenbody h2 span {
     color: var(--accent);
     background: var(--accent-tint);
   }
   /* 記事: カテゴリチップをノートのチップ文法へ（非選択=白面、選択=青ティント） */
-  .sheet .catchip {
+  .sheet .catchip, .screenbody .catchip {
     background: var(--surface-lowest);
     border-color: var(--outline);
   }
-  .sheet .catchip.on {
+  .sheet .catchip.on, .screenbody .catchip.on {
     background: var(--accent-tint);
     color: var(--accent);
     border-color: var(--accent);
   }
   /* 記事: カテゴリバッジは緑→青（情報ラベル=青の原則）。行の角丸をトークンへ */
-  .sheet .artcat {
+  .sheet .artcat, .screenbody .artcat {
     background: var(--accent);
     color: var(--on-primary);
   }
-  .sheet .artrow {
+  .sheet .artrow, .screenbody .artrow {
     border-radius: var(--r-md);
   }
   /* 設定: プランカード（選択枠=青・価格数字=ink。CTAのbigbtnは緑のまま） */
-  .sheet .plancard {
+  .sheet .plancard, .screenbody .plancard {
     border-radius: var(--r-lg);
   }
-  .sheet .plancard.on {
+  .sheet .plancard.on, .screenbody .plancard.on {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent) inset;
   }
-  .sheet .pcprice {
+  .sheet .pcprice, .screenbody .pcprice {
     color: var(--ink);
   }
-  .sheet .pcnow {
+  .sheet .pcnow, .screenbody .pcnow {
     color: var(--accent);
   }
-  .sheet .pcbadge {
+  .sheet .pcbadge, .screenbody .pcbadge {
     background: var(--accent);
     color: var(--on-primary);
   }
   /* 設定: 支払いトグルの選択面は青（選択=青の原則） */
-  .sheet .billtoggle button.on {
+  .sheet .billtoggle button.on, .screenbody .billtoggle button.on {
     background: var(--accent);
     color: var(--on-primary);
   }
-  .sheet .billtoggle {
+  .sheet .billtoggle, .screenbody .billtoggle {
     border-radius: var(--r-md);
   }
-  .sheet .billtoggle button {
+  .sheet .billtoggle button, .screenbody .billtoggle button {
     border-radius: var(--r-sm);
   }
   /* 設定: トライアルバナーは情報面=青ティントへ */
-  .sheet .trialbanner {
+  .sheet .trialbanner, .screenbody .trialbanner {
     border-radius: var(--r-md);
     background: var(--accent-tint);
     border-color: var(--accent-tint-strong);
@@ -8992,8 +9007,9 @@ header {
      戦術/練習を1つのシートにまとめるためのタブバー。
      .libtabs 自体の基底(display:none)はモバイル向けの既定で、
      ここで表示を上書きするのはPCのみ。ノートの .chip 文法に準拠。
-     ========================================================= */
-  .libtabs {
+     （画面(.libapp)側ではレールのサブナビがタブの役割を担うため、
+      このタブ表示はダイアログ(.sheet)側のみに限定する） */
+  .sheet .libtabs {
     display: flex;
     gap: 7px;
     padding: 0 16px 10px;
@@ -9022,6 +9038,42 @@ header {
     font-size: var(--fs-body-s);
     line-height: 1.5;
     color: var(--mut);
+  }
+  /* =========================================================
+     レール直結画面(ライブラリ/記事/設定) コンソール化（PCのみ）
+     チャット コンソール化／チーム運営 コンソール化に準拠。
+     旧: レール項目からシート(モーダル)を開いていたが、他画面と同様に
+     画面切り替えへ変更。ヘッダー・地の色はチャット画面と同じ様式。
+     ========================================================= */
+  .app.libapp, .app.artapp, .app.setapp {
+    max-width: none;
+  }
+  .libapp header, .artapp header, .setapp header {
+    background: var(--surface-lowest);
+    border-bottom: 1px solid var(--outline);
+    padding: 10px 18px;
+  }
+  .libapp .logo, .artapp .logo, .setapp .logo {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    line-height: 1.05;
+  }
+  .libapp .tag.team, .artapp .tag.team, .setapp .tag.team {
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .libapp .scroll, .artapp .scroll, .setapp .scroll {
+    max-width: 1040px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 16px 0 calc(env(safe-area-inset-bottom) + 40px);
+  }
+  /* ライブラリ画面のタブ帯はPCではレールのサブナビ(戦術/練習)が役割を担うため非表示
+     (.screenbody .libtabs と同詳細度で並ばないよう1段深いセレクタにする) */
+  .libapp .screenbody .libtabs {
+    display: none;
   }
 }
 

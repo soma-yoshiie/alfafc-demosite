@@ -145,12 +145,12 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         { item: { key: "home", label: "ホーム", icon: <IconHome />, onSelect: () => board.setScreen("home") } },
         { sec: "コーチング", item: { key: "board", label: "戦術ボード", icon: <IconClipboard />, onSelect: () => board.setScreen("board") } },
         { item: { key: "drill", label: "練習メニュー", icon: <IconCone />, onSelect: () => board.setScreen("drill") } },
-        { item: { key: "library", label: "ライブラリ", icon: <IconFolder />, onSelect: () => board.openSheet({ type: "library" }) } },
+        { item: { key: "library", label: "ライブラリ", icon: <IconFolder />, onSelect: () => board.setScreen("library") } },
         { sec: "チーム", item: { key: "notebook", label: "サッカーノート", icon: <IconNote />, badge: noteUnread, onSelect: () => board.setScreen("notebook") } },
         { item: { key: "team", label: "チーム運営", icon: <IconCalendarCheck />, onSelect: () => board.setScreen("team") } },
         { item: { key: "chat", label: "チャット", icon: <IconChat />, onSelect: () => board.setScreen("chat") } },
-        { sec: "その他", item: { key: "articles", label: "お役立ち記事", icon: <IconBook />, onSelect: () => board.openSheet({ type: "articles" }) } },
-        { item: { key: "settings", label: "設定", icon: <IconCog />, onSelect: () => board.openSheet({ type: "settings" }) } },
+        { sec: "その他", item: { key: "articles", label: "お役立ち記事", icon: <IconBook />, onSelect: () => board.setScreen("articles") } },
+        { item: { key: "settings", label: "設定", icon: <IconCog />, onSelect: () => board.setScreen("settings") } },
       ]
     : [
         { item: { key: "home", label: "ホーム", icon: <IconHome />, onSelect: () => board.setScreen("home") } },

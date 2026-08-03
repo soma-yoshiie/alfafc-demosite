@@ -10,6 +10,7 @@ import NotebookScreen from "./NotebookScreen";
 import SheetManager from "./SheetManager";
 import Toast from "./Toast";
 import ConsoleShell from "./ConsoleShell";
+import { LibraryScreen, ArticlesScreen, SettingsScreen } from "./ConsoleScreens";
 
 export default function AppRoot() {
   const board = useBoard();
@@ -26,6 +27,12 @@ export default function AppRoot() {
           <NotebookScreen />
         ) : board.screen === "board" ? (
           <TacticsBoard />
+        ) : board.screen === "library" ? (
+          <LibraryScreen />
+        ) : board.screen === "articles" ? (
+          <ArticlesScreen />
+        ) : board.screen === "settings" ? (
+          <SettingsScreen />
         ) : (
           <HomeMenu />
         )}

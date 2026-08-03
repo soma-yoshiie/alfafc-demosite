@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ALL_POSITIONS, FORMATION_KEYS, groupOf } from "@/lib/formations";
 import type {
   DominantFoot,
@@ -989,10 +989,16 @@ function DrillRow({ drill }: { drill: SavedDrill }) {
   );
 }
 
-function LibrarySheet() {
+export function LibraryBody({
+  tab,
+  onTabChange,
+}: {
+  tab: "plays" | "drills";
+  onTabChange: (t: "plays" | "drills") => void;
+}) {
   const board = useBoard();
   const coach = true; // フォルダ機能は全プラン共通
-  const [tab, setTab] = useState<"plays" | "drills">("plays");
+  const setTab = onTabChange;
   const plays = [...board.library.plays].sort((a, b) => b.updatedAt - a.updatedAt);
   const unfiled = plays.filter((p) => !p.folderId || !coach);
   // DrillProvider は DrillEditor 内部にマウントされておりグローバルシートからは
@@ -1108,6 +1114,11 @@ function LibrarySheet() {
       )}
     </>
   );
+}
+
+function LibrarySheet() {
+  const [tab, setTab] = useState<"plays" | "drills">("plays");
+  return <LibraryBody tab={tab} onTabChange={setTab} />;
 }
 
 /* ---------------- Share / export ---------------- */
@@ -1233,16 +1244,21 @@ function ShareSheet() {
 }
 
 /* ---------------- Settings（チーム設定＋プラン） ---------------- */
-function SettingsSheet() {
+export function SettingsBody({ hideTitle }: { hideTitle?: boolean } = {}) {
   const board = useBoard();
   const cur = board.plan;
   const [annual, setAnnual] = useState(false);
   const [name, setName] = useState(board.state.teamName ?? "");
   const unit = annual ? "/年" : "/月";
+  // 画面版は長時間表示されるため、外部でチーム名が変わったら入力欄も追随させる
+  // （追随しないと onBlur で古い値に巻き戻してしまう）
+  useEffect(() => {
+    setName(board.state.teamName ?? "");
+  }, [board.state.teamName]);
 
   return (
     <>
-      <h2>設定</h2>
+      {!hideTitle && <h2>設定</h2>}
       <div className="formfield">
         <label>チーム名</label>
         <input
@@ -1337,17 +1353,35 @@ function SettingsSheet() {
   );
 }
 
+function SettingsSheet() {
+  return <SettingsBody />;
+}
+
 /* ---------------- Articles ---------------- */
-function ArticlesSheet() {
-  const board = useBoard();
-  const [cat, setCat] = useState<string>("all");
+export function ArticlesBody({
+  onOpen,
+  cat: catProp,
+  onCatChange,
+  hideTitle,
+}: {
+  onOpen: (articleId: string) => void;
+  /** 絞り込みを親で保持したいとき（画面版は詳細から戻っても維持する）。未指定なら内部state */
+  cat?: string;
+  onCatChange?: (c: string) => void;
+  hideTitle?: boolean;
+}) {
+  const [catLocal, setCatLocal] = useState<string>("all");
+  const cat = catProp ?? catLocal;
+  const setCat = onCatChange ?? setCatLocal;
   const cats = Array.from(new Set(ARTICLES.map((a) => a.category)));
   const list = cat === "all" ? ARTICLES : ARTICLES.filter((a) => a.category === cat);
   return (
     <>
-      <h2>
-        お役立ち記事 <span>{list.length}本</span>
-      </h2>
+      {!hideTitle && (
+        <h2>
+          お役立ち記事 <span>{list.length}本</span>
+        </h2>
+      )}
       <div className="catbar">
         <button className={`catchip${cat === "all" ? " on" : ""}`} onClick={() => setCat("all")}>
           すべて
@@ -1367,7 +1401,7 @@ function ArticlesSheet() {
           <div
             key={a.id}
             className="artrow"
-            onClick={() => board.openSheet({ type: "article", articleId: a.id })}
+            onClick={() => onOpen(a.id)}
           >
             <span className="artcat">{a.category}</span>
             <div className="artmeta">
@@ -1381,7 +1415,12 @@ function ArticlesSheet() {
   );
 }
 
-function ArticleSheet({ articleId }: { articleId?: string }) {
+function ArticlesSheet() {
+  const board = useBoard();
+  return <ArticlesBody onOpen={(id) => board.openSheet({ type: "article", articleId: id })} />;
+}
+
+export function ArticleBody({ articleId }: { articleId?: string }) {
   const a = ARTICLES.find((x) => x.id === articleId);
   if (!a) return null;
   return (
@@ -1397,6 +1436,10 @@ function ArticleSheet({ articleId }: { articleId?: string }) {
       </div>
     </>
   );
+}
+
+function ArticleSheet({ articleId }: { articleId?: string }) {
+  return <ArticleBody articleId={articleId} />;
 }
 
 /* ---------------- Import shared ---------------- */

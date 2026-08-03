@@ -716,6 +716,18 @@ export interface SheetState {
   chatTo?: string;
 }
 
+/** アプリの画面。レール項目の key と一致させる（ConsoleShell のサブナビ anchor もこの型） */
+export type ScreenName =
+  | "home"
+  | "board"
+  | "drill"
+  | "team"
+  | "chat"
+  | "notebook"
+  | "library"
+  | "articles"
+  | "settings";
+
 interface BoardContextValue {
   state: BoardState;
   // actions
@@ -937,8 +949,8 @@ interface BoardContextValue {
   pendingImport: ShareSnapshot | null;
   applyImport: () => void;
   // 画面（戦術ボード / 練習メニュー）
-  screen: "home" | "board" | "drill" | "team" | "chat" | "notebook";
-  setScreen: (s: "home" | "board" | "drill" | "team" | "chat" | "notebook") => void;
+  screen: ScreenName;
+  setScreen: (s: ScreenName) => void;
   /** ログイン中のアカウント */
   auth: Session;
 }
@@ -1279,7 +1291,7 @@ export function BoardProvider({
 
   // ---- UI state ----
   const [mode, setMode] = useState<"edit" | "anim">("edit");
-  const [screen, setScreen] = useState<"home" | "board" | "drill" | "team" | "chat" | "notebook">("home");
+  const [screen, setScreen] = useState<ScreenName>("home");
   const [selActor, setSelActor] = useState<Actor | null>(null);
   // イベントハンドラ（usePointerDrag等）から最新値を読むためのミラー
   const selActorRef = useRef<Actor | null>(null);
@@ -2289,6 +2301,9 @@ export function BoardProvider({
     setCurrentPlayId(null);
     persistSettings({ currentPlayId: null });
     setSheet({ type: null });
+    // 盤面を新規化したら必ず盤面へ移動する。ライブラリ画面/シートから呼ぶと
+    // 「押しても何も起きないのに編集内容だけ消える」行き止まりになるため
+    setScreen("board");
     showToast("新しい戦術を作成しました");
   }, [stopPlay, showToast, persistSettings]);
 
