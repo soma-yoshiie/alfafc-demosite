@@ -1381,6 +1381,21 @@ header {
   padding: 0 16px 10px;
 }
 
+/* ライブラリのマスター・ディテール(.libpane/.libmain)はPC専用のレール導線でのみ到達するため
+   基底ではグリッド化しない（display:noneにもしない）。万一モバイル幅で描画された場合に
+   .app(flex column・overflow:hidden)の中でクリップされないよう、各ペインだけで
+   独立スクロールできる最低限を用意しておく */
+.libpane, .libmain {
+  min-height: 0;
+  overflow-y: auto;
+}
+/* レール(=PCのサブナビ)が無い幅ではペイン内タブで戦術/練習を切り替える */
+.libpane .libtabs {
+  display: flex;
+  gap: 7px;
+  padding: 0 0 10px;
+}
+
 .controls {
   padding: 0 16px 8px;
 }
@@ -9269,11 +9284,175 @@ header {
     width: 100%;
     padding: 16px 0 calc(env(safe-area-inset-bottom) + 40px);
   }
-  /* ライブラリ画面のタブ帯はPCではレールのサブナビ(戦術/練習)が役割を担うため非表示
-     (.screenbody .libtabs と同詳細度で並ばないよう1段深いセレクタにする) */
-  .libapp .screenbody .libtabs {
+
+  /* ---------------------------------------------------------
+     ライブラリのマスター・ディテール化（左: 一覧 / 右: プレビュー）
+     チャット(.chatapp:has(.chatmain))と同じ流儀。.libmain の存在でのみ発火するため
+     他画面(記事/設定)には影響しない。新規クラスは .libapp スコープで閉じる */
+  .libapp:has(.libmain) {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .libapp:has(.libmain) header {
+    grid-column: 1 / -1;
+  }
+  /* PCではタブはレールのサブナビが担うためペイン内タブを隠す */
+  .libapp:has(.libmain) .libtabs {
     display: none;
   }
+  .libapp .libpane {
+    grid-column: 1;
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+    overflow-y: auto;
+    padding: 10px;
+  }
+  .libapp .libctrls {
+    display: flex;
+    gap: 8px;
+    padding: 0 0 10px;
+  }
+  .libapp .liblist {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  /* 行の密度・角丸・hover・選択色は .chatapp:has(.chatmain) .convrow と同じ文法に揃える */
+  .libapp .librow {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border: 0;
+    background: none;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    color: var(--ink);
+    font-family: var(--font-ui);
+  }
+  .libapp .librow:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .libapp .librow.sel {
+    background: var(--accent-tint);
+  }
+  .libapp .librow.sel .librowtitle {
+    color: var(--accent);
+  }
+  .libapp .librowtitle {
+    font-size: var(--fs-body);
+    font-weight: 700;
+  }
+  .libapp .librowsub {
+    margin-top: 2px;
+    font-size: var(--fs-body-s);
+    color: var(--mut);
+  }
+  .libapp .libmain {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 24px calc(env(safe-area-inset-bottom) + 24px);
+  }
+  /* 詳細列: 見出し・プレビュー・メタ・アクションを同じ720px列に載せる */
+  .libapp .libdetail {
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+  }
+  /* 見出し(チャットの .chatpanehead と同じ文法) */
+  .libapp .libpanehead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    padding: 2px 0 10px;
+    border-bottom: 1px solid var(--outline);
+    margin-bottom: 12px;
+  }
+  .libapp .libpanename {
+    font-size: var(--fs-title-s);
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .libapp .libpanetype {
+    font-size: var(--fs-label);
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+    padding: 3px 9px;
+  }
+  /* プレビュー: 白カード。高さを抑えてメタ・アクションが初期表示で見えるようにする */
+  .libapp .libprev {
+    padding: 16px;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    display: grid;
+    place-items: center;
+    min-height: 280px;
+  }
+  .libapp .libprev img {
+    max-width: 100%;
+    max-height: min(48vh, 460px);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+  }
+  .libapp .libprevph {
+    padding: 60px 0;
+    color: var(--mut);
+    font-size: var(--fs-body-s);
+  }
+  .libapp .libmeta {
+    margin: 16px 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .libapp .libmeta > div {
+    display: flex;
+    gap: 8px;
+  }
+  .libapp .libmeta dt {
+    flex: 0 0 96px;
+    font-size: var(--fs-body-s);
+    color: var(--mut);
+  }
+  .libapp .libmeta dd {
+    margin: 0;
+    font-size: var(--fs-body-s);
+    color: var(--ink);
+  }
+  .libapp .libnote {
+    color: var(--mut);
+  }
+  .libapp .libacts {
+    margin: 16px 0 0;
+    display: flex;
+    gap: 8px;
+  }
+  .libapp .libacts .bigbtn {
+    flex: 1;
+    margin: 0;
+    width: auto;
+  }
+  .libapp .libmain .libhint {
+    margin: 12px 0 0;
+  }
+  /* 未選択・0件の空状態(チャットの .chatempty と同じ見え方) */
+  .libapp .libempty {
+    margin: auto;
+    color: var(--mut);
+    font-size: var(--fs-body);
+  }
+
   /* 押せるサマリーカード(button)はPCのみホバーで示す。
      プレイヤー側ホームのクリック不可カードは div のままなので自動的に除外される */
   .noteapp button.dashbox {
@@ -9430,6 +9609,9 @@ header {
     grid-template-columns: 340px minmax(0, 1fr);
   }
   .noteapp .notehome {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+  .libapp:has(.libmain) {
     grid-template-columns: 340px minmax(0, 1fr);
   }
 }
