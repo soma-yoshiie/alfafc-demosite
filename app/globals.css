@@ -3800,6 +3800,10 @@ header {
   padding-bottom: calc(env(safe-area-inset-bottom) + 8px);
   display: flex;
 }
+/* PC専用の第2ペイン(スレッド本文)。モバイルでは非表示（既存DOMへの影響ゼロ） */
+.chatmain {
+  display: none;
+}
 .convlist {
   display: flex;
   flex-direction: column;
@@ -8686,6 +8690,121 @@ header {
     color: var(--on-primary);
   }
 
+  /* ---------------------------------------------------------
+     コーチのマスター・ディテール化（左: 会話一覧 / 右: スレッド本文）
+     .chatmain の存在(=コーチ画面)でのみ発火させ、選手側の経路(.scroll単体)は
+     既存のまま残す。:has()はこのファイルで使用実績あり(.sendtgt/.pitchbox/.boardapp/.conshell) */
+  .chatapp:has(.chatmain) {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .chatapp:has(.chatmain) header {
+    grid-column: 1 / -1;
+  }
+  /* 会話一覧を第2ペイン化(レールに接続して見える白面+右罫線) */
+  .chatapp:has(.chatmain) .scroll {
+    grid-column: 1;
+    max-width: none;
+    width: auto;
+    margin: 0;
+    padding: 10px 10px 16px;
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+    overflow-y: auto;
+  }
+  .chatapp:has(.chatmain) .convlist {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0;
+  }
+  /* ペイン内の行はコンパクトに(アバター32px・行高約48px)。
+     文字はレールのスケールに揃える。シェブロンは進む先が無くなったので消す */
+  .chatapp:has(.chatmain) .convrow {
+    padding: 8px 10px;
+    border: 0;
+    background: none;
+    border-radius: var(--r-md);
+    gap: 10px;
+  }
+  .chatapp:has(.chatmain) .convavatar {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  .chatapp:has(.chatmain) .convname {
+    font-size: var(--fs-body);
+  }
+  .chatapp:has(.chatmain) .convprev {
+    font-size: var(--fs-body-s);
+  }
+  .chatapp:has(.chatmain) .convdate {
+    font-variant-numeric: tabular-nums;
+  }
+  .chatapp:has(.chatmain) .convchev {
+    display: none;
+  }
+  .chatapp:has(.chatmain) .convrow:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .chatapp:has(.chatmain) .convrow.sel {
+    background: var(--accent-tint);
+  }
+  .chatapp:has(.chatmain) .convrow.sel .convname {
+    color: var(--accent);
+  }
+  /* 選択行のアバターはティント背景に溶けるため白面+accent枠に切り替える */
+  .chatapp:has(.chatmain) .convrow.sel .convavatar {
+    background: var(--surface-lowest);
+    border-color: var(--accent);
+  }
+  /* 第2ペイン(スレッド本文)をPCで表示。スクロールは内側の.chatscrollに任せる */
+  .chatapp .chatmain {
+    display: flex;
+    min-height: 0;
+    padding: 16px 24px calc(env(safe-area-inset-bottom) + 24px);
+    overflow: hidden;
+  }
+  /* 広い画面では860pxの読み物幅より広めに使う(会話は密度が低いため) */
+  .chatapp:has(.chatmain) .chattab {
+    max-width: 1040px;
+  }
+  /* スレッド上部の会話ヘッダー(誰宛かを常時明示) */
+  .chatapp .chatpanehead {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: none;
+    padding: 2px 0 10px;
+    border-bottom: 1px solid var(--outline);
+    margin-bottom: 8px;
+  }
+  .chatapp .chatpanehead .convavatar {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+  .chatapp .chatpanename {
+    font-size: var(--fs-title-s);
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .chatapp .chatpaneall {
+    font-size: var(--fs-label);
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+    padding: 3px 9px;
+  }
+  .chatapp .chatempty {
+    margin: auto;
+    color: var(--mut);
+    font-size: var(--fs-body);
+  }
+
   /* =========================================================
      ホーム コンソール化（ダッシュボードB案・PCのみ）
      ========================================================= */
@@ -9304,6 +9423,9 @@ header {
    可読幅系(記事本文/チャットスレッド/ノート詳細/カレンダー)には触れない。
    ========================================================= */
 @media (min-width: 1600px) {
+  .chatapp:has(.chatmain) {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
   .teamapp .hometab {
     grid-template-columns: 340px minmax(0, 1fr);
   }

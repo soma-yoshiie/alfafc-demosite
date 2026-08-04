@@ -1,13 +1,70 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { dmThreadKey } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
 
+const PC_MQ = "(min-width: 1024px)";
+
+/**
+ * 直近に開いていたスレッド（画面を離れて戻ったときの復元用）。
+ * 添付の戦術/練習を開くと別画面へ遷移するため、モジュールスコープで持たないと
+ * 戻るたびに会話を選び直すことになる。
+ */
+let lastCoachThread: string | null = null;
+
 export default function ChatScreen() {
   const board = useBoard();
   const isCoach = board.auth.role === "coach";
+  // PCでは前回のスレッド（無ければチーム全員）を初期選択。モバイルは常に null。
+  // ChatScreen はクライアント側の画面遷移でのみマウントされる（プリレンダーはホームのみ）
+  const [selected, setSelectedState] = useState<string | null>(() => {
+    if (typeof window === "undefined" || !window.matchMedia(PC_MQ).matches) return null;
+    return lastCoachThread ?? "team";
+  });
+  const setSelected = (to: string | null) => {
+    if (to) lastCoachThread = to;
+    setSelectedState(to);
+  };
+
+  // ブレークポイントを跨いだときの整合:
+  // - PC→モバイル: 選択を捨てる(隠れた ChatThread の二重マウントとスクロール停滞を防ぐ)
+  // - モバイル→PC: シートで開いていた会話をインラインへ引き継いでシートを閉じる
+  //   (放置するとシートとマスター・ディテールが二重表示になる)
+  useEffect(() => {
+    if (!isCoach) return;
+    const mql = window.matchMedia(PC_MQ);
+    const sync = () => {
+      if (mql.matches) {
+        const sheet = board.sheet;
+        if (sheet.type === "chat") {
+          setSelectedState(sheet.chatTo ?? lastCoachThread ?? "team");
+          if (sheet.chatTo) lastCoachThread = sheet.chatTo;
+          board.closeSheet();
+        } else {
+          setSelectedState((cur) => cur ?? lastCoachThread ?? "team");
+        }
+      } else {
+        setSelectedState(null);
+      }
+    };
+    mql.addEventListener("change", sync);
+    return () => mql.removeEventListener("change", sync);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCoach, board.sheet]);
+
+  // イベント非依存の保険: チャットシートが開いた（=モバイル経路が使われた）ときは
+  // インライン選択を解除する。MQLのchangeが取りこぼされた環境でも、
+  // 隠れたChatThreadとシートの二重マウントだけは確実に防ぐ
+  useEffect(() => {
+    if (isCoach && board.sheet.type === "chat") setSelectedState(null);
+  }, [isCoach, board.sheet]);
+
+  const players = board.state.players;
+  const threadTitle = (to: string): string =>
+    to === "team" ? "チーム全員" : players.find((p) => dmThreadKey(p.id) === to)?.name ?? "会話";
 
   return (
     <div className="app chatapp">
@@ -27,9 +84,29 @@ export default function ChatScreen() {
 
       {/* paddingは基底CSS(.chatapp .scroll / .pchat)へ移設（PCで上書きできるように） */}
       {isCoach ? (
-        <div className="scroll">
-          <CoachConversations />
-        </div>
+        <>
+          <div className="scroll">
+            <CoachConversations selected={selected} onSelect={setSelected} />
+          </div>
+          {/* PC専用の第2ペイン(スレッド本文)。モバイルでは selected が常に null のためマウントされない */}
+          <div className="chatmain">
+            {selected ? (
+              <div className="chattab" style={{ flex: 1 }}>
+                {/* どの会話を開いているかを常に明示する(個人DMへの取り違え送信を防ぐ) */}
+                <div className="chatpanehead">
+                  <div className="convavatar">
+                    {selected === "team" ? <E n="users" /> : threadTitle(selected).slice(0, 1)}
+                  </div>
+                  <span className="chatpanename">{threadTitle(selected)}</span>
+                  {selected === "team" && <span className="chatpaneall">全員</span>}
+                </div>
+                <ChatThread to={selected} />
+              </div>
+            ) : (
+              <div className="chatempty">会話を選んでください</div>
+            )}
+          </div>
+        </>
       ) : (
         <div className="scroll pchat">
           <PlayerChat />
@@ -39,7 +116,13 @@ export default function ChatScreen() {
   );
 }
 
-function CoachConversations() {
+function CoachConversations({
+  selected,
+  onSelect,
+}: {
+  selected: string | null;
+  onSelect: (to: string) => void;
+}) {
   const board = useBoard();
   const players = board.state.players;
 
@@ -64,8 +147,19 @@ function CoachConversations() {
 
   const Row = ({ title, team, to }: { title: string; team?: boolean; to: string }) => {
     const pv = preview(to);
+    const onClick = () => {
+      if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+        onSelect(to);
+      } else {
+        board.openSheet({ type: "chat", chatTo: to });
+      }
+    };
     return (
-      <button className="convrow" onClick={() => board.openSheet({ type: "chat", chatTo: to })}>
+      <button
+        className={`convrow${selected === to ? " sel" : ""}`}
+        aria-current={selected === to ? "true" : undefined}
+        onClick={onClick}
+      >
         <div className="convavatar">{team ? <E n="users" /> : title.slice(0, 1)}</div>
         <div className="convmain">
           <div className="convtop">
