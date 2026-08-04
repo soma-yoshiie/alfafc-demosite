@@ -577,6 +577,8 @@ export interface MatchRecord {
   goals: MatchGoal[];
   subs: MatchSub[];
   note?: string;
+  /** 1ハーフの分数(例: 20 = 20分ハーフ) */
+  halfMinutes?: number;
 }
 
 /* ===== サッカーノート（選手が提出する振り返り） ===== */

@@ -696,10 +696,14 @@ export type SheetType =
   | "chat"
   | "oppMenu"
   | "kpi"
+  | "stat"
   | null;
 
 /** コーチ・ダッシュボードのサマリーカードから選手別内訳を開く際の対象指標 */
 export type KpiMetric = "attendance" | "notesWeek" | "uncommented" | "solo";
+
+/** PCホームのチームスタッツカードから内訳を開く際の対象指標 */
+export type StatMetric = "record" | "shot" | "pass" | "dribble";
 
 export interface SheetState {
   type: SheetType;
@@ -722,6 +726,8 @@ export interface SheetState {
   chatTo?: string;
   /** kpi: 表示対象の指標 */
   kpiMetric?: KpiMetric;
+  /** stat: 表示対象の指標 */
+  statMetric?: StatMetric;
 }
 
 /** アプリの画面。レール項目の key と一致させる（ConsoleShell のサブナビ anchor もこの型） */

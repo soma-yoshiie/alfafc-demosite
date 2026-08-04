@@ -1495,6 +1495,31 @@ header {
   color: var(--ink);
   letter-spacing: 0.5px;
 }
+/* 試合成績シート(StatSheet)の1行: スコア数値+勝敗バッジを横並びにする */
+.sheet .statscorewrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 勝/分/敗の小バッジ（.sheetスコープ・トークンのみ使用） */
+.sheet .statwdl {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  padding: 2px 7px;
+  border-radius: var(--r-full);
+  color: #fff;
+}
+.sheet .statwdl.win {
+  background: var(--primary);
+}
+.sheet .statwdl.lose {
+  background: var(--danger);
+}
+.sheet .statwdl.draw {
+  background: var(--mut);
+}
 .prow.inxi {
   opacity: 0.4;
 }
@@ -3755,12 +3780,6 @@ header {
   outline: none;
 }
 .attreason::placeholder { color: var(--mut); }
-.attreasonshow {
-  display: block;
-  color: var(--gold) !important;
-  font-weight: 600;
-  margin-top: 2px;
-}
 
 /* =========================================================
    チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
@@ -4156,6 +4175,10 @@ header {
 }
 /* PC専用ダッシュボード（モバイルでは非表示） */
 .hdash {
+  display: none;
+}
+/* PC専用「チームスタッツ」/「マイスタッツ」セクション（モバイルでは非表示。.hdash と同じパターン） */
+.hstats {
   display: none;
 }
 .homehero {
@@ -7264,24 +7287,6 @@ header {
   letter-spacing: 1px;
   margin-top: 8px;
 }
-/* 未回答アラート（選手・保護者） */
-.alertcard {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fbe6ea;
-  border: 1px solid rgba(214, 50, 75, 0.45);
-  color: var(--red);
-  border-radius: 13px;
-  padding: 12px 13px;
-  font-size: 13px;
-  font-weight: 800;
-  margin: 12px 0 2px;
-  cursor: pointer;
-}
-.alertcard .seclink {
-  color: var(--red);
-}
 /* スタッフ用クイック操作（ホーム上部） */
 .quickrow {
   display: flex;
@@ -7294,23 +7299,6 @@ header {
   margin: 0;
   padding: 13px;
   font-size: 18px;
-}
-/* 未回答バッジ（選手ビューの予定カード） */
-.needans {
-  flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 800;
-  color: var(--red);
-  border: 1px solid rgba(214, 50, 75, 0.45);
-  background: #fbe6ea;
-  padding: 3px 8px;
-  border-radius: 999px;
-}
-/* 理由入力のヒント（ステータス未選択時） */
-.atthint {
-  font-size: 11px;
-  color: var(--red);
-  margin-top: 5px;
 }
 /* 出欠回答シート：サマリー・グループ見出し */
 .attsummary {
@@ -8396,9 +8384,6 @@ header {
   .teamapp .evcard,
   .teamapp .matchcard,
   .teamapp .msgcard,
-  .teamapp .alertcard {
-    border-radius: var(--r-lg);
-  }
   /* ホーム：dashcols準拠(狭い列=左280px)。ヘッダCTAと重複する「予定を追加」はPCでは隠す */
   .teamapp .quickrow .bigbtn:not(.ghost) {
     display: none;
@@ -8937,56 +8922,32 @@ header {
   .homeapp .todayevent:active {
     transform: none;
   }
-  /* アプリタイル: 説明つき横長カード（旧: 2つ目の@mediaブロックから本区画へ一本化）＋コンソール白カード化 */
+  /* アプリタイル: PCでは左レールと機能が重複するため非表示（モバイル/タブレットのみのナビ導線）。
+     代わりに .hstats（チームスタッツ/マイスタッツ）を appgrid の前に表示する */
   .homeapp .appgrid {
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 14px;
-    padding: 18px 4px;
+    display: none;
   }
-  .homeapp .apptile {
-    flex-direction: row;
-    align-items: center;
-    gap: 16px;
-    padding: 18px 20px;
-    border: 1px solid var(--outline);
-    border-radius: var(--r-lg);
-    background: var(--surface-lowest);
-  }
-  /* カードにhoverは付けない（.convrow/.evcard と統一）。押下スケールも無効 */
-  .homeapp .apptile:active {
-    transform: none;
-  }
-  /* アイコンは寸法維持で緑ブロック→青ティントへ（インラインの--toneは背景直値で無効化） */
-  .homeapp .appicon {
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    flex: none;
-    background: var(--accent-tint);
-    border-color: var(--accent-tint-strong);
-    color: var(--accent);
-    box-shadow: none;
-  }
-  .homeapp .appicon svg {
-    width: 28px;
-    height: 28px;
-  }
-  .homeapp .appmeta {
-    align-items: flex-start;
-    flex: 1;
-  }
-  .homeapp .applabel {
-    font-size: 16px;
-    font-weight: 800;
-    text-align: left;
-  }
-  .homeapp .appdesc {
+  /* PC専用「チームスタッツ」/「マイスタッツ」。カード列は既存 .hdash/.hstat をそのまま流用する */
+  .hstats {
     display: block;
-    font-size: 12.5px;
+  }
+  /* コーチは5枚のため、モバイル既定の3列固定ではなく幅に応じて自動折返しにする */
+  .hstats .hdash {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .hstats-h {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    margin: 4px 2px 8px;
+  }
+  .hstats-h .hstats-note {
+    font-size: var(--fs-label);
+    font-weight: 600;
     color: var(--mut);
-    text-align: left;
-    margin-top: 3px;
-    line-height: 1.4;
   }
   /* =========================================================
      お役立ち記事・設定シート コンソール整合（PCのみ・最小対応）

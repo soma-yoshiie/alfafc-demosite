@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { loadNotifSeen } from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
 import { buildEventNotifications } from "@/lib/notifications";
+import { aggregateTech, matchSummary } from "@/lib/teamStatsAgg";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
@@ -97,6 +98,18 @@ export default function HomeMenu() {
     const wd = ["日", "月", "火", "水", "木", "金", "土"][new Date(y, m - 1, day).getDay()];
     return `${m}/${day}(${wd})`;
   };
+
+  // PCホーム「チームスタッツ」/「マイスタッツ」— 試合ノート・試合記録からの集計（PCのみ表示。モバイルはタイルのまま不変）
+  const recordSummary = useMemo(
+    () => matchSummary(teamCtx.team?.matches ?? []),
+    [teamCtx.team]
+  );
+  const teamTech = useMemo(() => aggregateTech(board.notebook), [board.notebook]);
+  const myTech = useMemo(
+    () => aggregateTech(board.notebook, board.auth.playerId ?? undefined),
+    [board.notebook, board.auth.playerId]
+  );
+  const pctOrDash = (v: number | null) => (v != null ? `${v}%` : "—");
 
   return (
     <div className="app homeapp">
@@ -198,7 +211,7 @@ export default function HomeMenu() {
             <div className="todaystats">
               <button className="todaystat" onClick={() => board.setScreen("team")}>
                 <span className="todaystat-n">{todayInfo.pendingAtt}</span>
-                <span className="todaystat-l">出欠未回答</span>
+                <span className="todaystat-l">出欠未記録</span>
               </button>
               <button className="todaystat" onClick={() => board.setScreen("notebook")}>
                 <span className="todaystat-n">{todayInfo.uncommented}</span>
@@ -213,6 +226,63 @@ export default function HomeMenu() {
             </div>
           </div>
         )}
+        {/* PC専用「チームスタッツ」/「マイスタッツ」（モバイルでは基底CSSで非表示・appgridタイルはそのまま） */}
+        <div className="hstats">
+          <div className="hstats-h">
+            <span>{coach ? "チームスタッツ" : "マイスタッツ"}</span>
+            <span className="hstats-note">{coach ? "試合記録・試合ノートから集計" : "試合ノートから集計"}</span>
+          </div>
+          <div className="hdash">
+            {coach ? (
+              <>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "record" })}>
+                  <span className="hstat-n">{pctOrDash(recordSummary.winPct)}</span>
+                  <span className="hstat-l">
+                    勝率 ・ {recordSummary.wins}勝{recordSummary.draws}分{recordSummary.losses}敗
+                  </span>
+                </button>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "record" })}>
+                  <span className="hstat-n">
+                    {recordSummary.played > 0 ? `${recordSummary.gf}-${recordSummary.ga}` : "—"}
+                  </span>
+                  <span className="hstat-l">得点/失点</span>
+                </button>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "shot" })}>
+                  <span className="hstat-n">{teamTech.shots}</span>
+                  <span className="hstat-l">シュート ・ 決定率{pctOrDash(teamTech.shotPct)}</span>
+                </button>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "pass" })}>
+                  <span className="hstat-n">{teamTech.pass}</span>
+                  <span className="hstat-l">パス ・ 成功率{pctOrDash(teamTech.passPct)}</span>
+                </button>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "dribble" })}>
+                  <span className="hstat-n">{teamTech.dribble}</span>
+                  <span className="hstat-l">ドリブル ・ 成功率{pctOrDash(teamTech.dribblePct)}</span>
+                </button>
+              </>
+            ) : myTech.shots + myTech.pass + myTech.dribble === 0 ? (
+              <button className="hstat" onClick={() => board.setScreen("notebook")}>
+                <span className="hstat-n">—</span>
+                <span className="hstat-l">試合ノートを書くとスタッツが表示されます</span>
+              </button>
+            ) : (
+              <>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "shot" })}>
+                  <span className="hstat-n">{myTech.shots}</span>
+                  <span className="hstat-l">シュート ・ 決定率{pctOrDash(myTech.shotPct)}</span>
+                </button>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "pass" })}>
+                  <span className="hstat-n">{myTech.pass}</span>
+                  <span className="hstat-l">パス ・ 成功率{pctOrDash(myTech.passPct)}</span>
+                </button>
+                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "dribble" })}>
+                  <span className="hstat-n">{myTech.dribble}</span>
+                  <span className="hstat-l">ドリブル ・ 成功率{pctOrDash(myTech.dribblePct)}</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
         <div className="appgrid">
           {coach ? (
             <>
@@ -280,7 +350,7 @@ export default function HomeMenu() {
               <Tile
                 icon={<IconCalendarCheck />}
                 label="チーム"
-                desc="出欠・カレンダー・試合記録"
+                desc="カレンダー・試合記録"
                 onClick={() => board.setScreen("team")}
               />
               <Tile

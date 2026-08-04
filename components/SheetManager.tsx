@@ -7,6 +7,7 @@ import type {
   FitnessRecord,
   InjuryRecord,
   InjuryStatus,
+  MatchRecord,
   PitchType,
   Player,
   Position,
@@ -21,10 +22,19 @@ import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
 import { loadDrills, loadTeam } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
+import {
+  aggregateTech,
+  matchSummary,
+  perMatchTech,
+  perPlayerTech,
+  type MatchTechRow,
+  type TechStats,
+} from "@/lib/teamStatsAgg";
 import { ARTICLES } from "@/lib/articles";
 import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
 import { localDateStr, weekStart } from "@/lib/dates";
-import { useBoard, type KpiMetric } from "./BoardProvider";
+import { useBoard, type KpiMetric, type StatMetric } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
@@ -373,7 +383,7 @@ function RosterSheet() {
 /* ---------------- コーチ・ダッシュボードのサマリーカード → 選手別内訳 ---------------- */
 const KPI_HINT: Record<KpiMetric, string> = {
   // カードの数値は「各選手の出席率の平均」であって、出欠数の総和比ではない
-  attendance: "各選手の出席率（予定に対する出席）の平均です。",
+  attendance: "スタッフが記録した出欠（今日までの予定）に対する出席の割合の平均です。",
   notesWeek: "今週（月曜起点）に提出されたノートの件数です。",
   uncommented: "コーチのコメントがまだ付いていないノートの件数です。",
   // カード/バッジの値は週数ではなく「継続中の人数」
@@ -482,6 +492,203 @@ function KpiSheet({ metric }: { metric: KpiMetric }) {
         )}
       </div>
       <div className="kpihint">{KPI_HINT[metric]}</div>
+    </>
+  );
+}
+
+/* ---------------- PCホーム「チームスタッツ」/選手側「マイスタッツ」カード → 内訳 ---------------- */
+const STAT_TITLE: Record<StatMetric, string> = {
+  record: "試合成績",
+  shot: "シュート",
+  pass: "パス",
+  dribble: "ドリブル",
+};
+const STAT_RATE_LABEL: Record<Exclude<StatMetric, "record">, string> = {
+  shot: "決定率",
+  pass: "成功率",
+  dribble: "成功率",
+};
+const STAT_HINT: Record<StatMetric, string> = {
+  record: "チーム運営に登録した試合記録から集計しています。勝率＝勝ち÷試合数（引き分けを含む）です。",
+  shot: "試合ノートのプレー記録（シュート）から集計しています。決定率＝ゴール数÷シュート数です。",
+  pass: "試合ノートのプレー記録（パス）から集計しています。成功率＝成功数÷本数です。",
+  dribble: "試合ノートのプレー記録（ドリブル）から集計しています。成功率＝成功数÷本数です。",
+};
+const WD = ["日", "月", "火", "水", "木", "金", "土"];
+function fmtStatDate(s: string): string {
+  const [y, m, d] = s.split("-").map(Number);
+  if (!y) return s;
+  const dt = new Date(y, m - 1, d);
+  return `${m}/${d}(${WD[dt.getDay()]})`;
+}
+function statPct(a: number, b: number): number | null {
+  return b > 0 ? Math.round((a / b) * 100) : null;
+}
+/** シュート/パス/ドリブルの「試行数・成功(ゴール)数・率」を指標ごとに取り出す共通アクセサ。
+ * TechStats（選手別合計）・MatchTechRow（試合別内訳）のどちらでも使えるよう最小の形で受け取る */
+function techPick(
+  s: { shots: number; goals: number; pass: number; passOk: number; dribble: number; dribbleOk: number },
+  metric: Exclude<StatMetric, "record">
+): { count: number; ok: number; okLabel: string; p: number | null } {
+  if (metric === "shot") return { count: s.shots, ok: s.goals, okLabel: "ゴール", p: statPct(s.goals, s.shots) };
+  if (metric === "pass") return { count: s.pass, ok: s.passOk, okLabel: "成功", p: statPct(s.passOk, s.pass) };
+  return { count: s.dribble, ok: s.dribbleOk, okLabel: "成功", p: statPct(s.dribbleOk, s.dribble) };
+}
+
+function StatSheet({ metric }: { metric: StatMetric }) {
+  const board = useBoard();
+  const teamCtx = useTeam();
+  const coach = board.auth.role === "coach";
+  const myId = board.auth.playerId;
+
+  // ホームのカードと同じライブなソース(useTeam)から読む。
+  // loadTeam()のスナップショットだとカードとシートで数値ソースが二重化する
+  const team = teamCtx.team;
+  const matches = useMemo(
+    () => [...(team?.matches ?? [])].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)),
+    [team]
+  );
+  const summary = useMemo(() => matchSummary(matches), [matches]);
+  const compName = (m: MatchRecord): string | undefined =>
+    m.competitionId
+      ? team?.competitions.find((c: { id: string; name: string }) => c.id === m.competitionId)?.name
+      : m.competition;
+
+  // コーチ表示: チーム全選手の合計 / 選手表示: 自分の合計（見出しバッジ用）
+  const teamTech: TechStats = useMemo(() => aggregateTech(board.notebook), [board.notebook]);
+  // playerId が無いセッションでは0件扱い(undefinedを渡すと全選手合算=他人の数字が混ざる)
+  const myTech: TechStats = useMemo(
+    () => (myId ? aggregateTech(board.notebook, myId) : aggregateTech([], undefined)),
+    [board.notebook, myId]
+  );
+  const playerRows = useMemo(
+    () => perPlayerTech(board.notebook, board.state.players),
+    [board.notebook, board.state.players]
+  );
+  const myMatchRows: MatchTechRow[] = useMemo(
+    () => (myId ? perMatchTech(board.notebook, myId) : []),
+    [board.notebook, myId]
+  );
+
+  let badge: string;
+  if (metric === "record") {
+    badge = `${summary.wins}勝${summary.draws}分${summary.losses}敗`;
+  } else {
+    const pick = techPick(coach ? teamTech : myTech, metric);
+    badge = pick.p != null ? `${STAT_RATE_LABEL[metric]} ${pick.p}%` : `${STAT_RATE_LABEL[metric]} —`;
+  }
+
+  return (
+    <>
+      <h2>
+        {STAT_TITLE[metric]} <span>{badge}</span>
+      </h2>
+      <div className="list">
+        {metric === "record" ? (
+          matches.length === 0 ? (
+            <div className="empty-msg">試合記録がまだありません。</div>
+          ) : (
+            matches.map((m) => {
+              const win = m.ourScore > m.theirScore;
+              const draw = m.ourScore === m.theirScore;
+              const cname = compName(m);
+              return (
+                <div key={m.id} className="prow" style={{ cursor: "default" }}>
+                  <div className="meta">
+                    <div className="nm">{m.opponent}</div>
+                    <div className="sub">
+                      {fmtStatDate(m.date)}
+                      {cname ? ` ・ ${cname}` : ""}
+                    </div>
+                  </div>
+                  <div className="kpinum statscorewrap">
+                    <span>
+                      {m.ourScore}-{m.theirScore}
+                    </span>
+                    <span className={`statwdl ${win ? "win" : draw ? "draw" : "lose"}`}>
+                      {win ? "勝" : draw ? "分" : "敗"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })
+          )
+        ) : coach ? (
+          (() => {
+            const rows = playerRows
+              .map((r) => ({ r, pick: techPick(r, metric) }))
+              .filter(({ pick }) => pick.count > 0)
+              .sort((a, b) => b.pick.count - a.pick.count);
+            // 名簿から削除された選手のノートは残るため、その差分を1行で出して
+            // カード・見出しバッジ・行合計を必ず一致させる(KpiSheetと同じ手当て)
+            const known = new Set(board.state.players.map((p) => p.id));
+            const orphanNotes = board.notebook.filter((n) => !known.has(n.playerId));
+            const orphanPick = techPick(aggregateTech(orphanNotes), metric);
+            return rows.length === 0 && orphanPick.count === 0 ? (
+              <div className="empty-msg">試合ノートのデータがまだありません。</div>
+            ) : (
+              rows.map(({ r, pick }) => (
+                <div
+                  key={r.playerId}
+                  className="prow"
+                  onClick={() =>
+                    // 戻ったときに同じ内訳へ帰れるよう、開いた指標を持ち回す（KpiSheetと同じ方式）
+                    board.openSheet({ type: "playerDetail", playerId: r.playerId, statMetric: metric })
+                  }
+                >
+                  <div className="meta">
+                    <div className="nm">{r.name}</div>
+                    <div className="sub">
+                      {pick.okLabel} {pick.ok}
+                    </div>
+                  </div>
+                  <div className="kpinum">
+                    {pick.count}本{pick.p != null ? `（${pick.p}%）` : ""}
+                  </div>
+                </div>
+              )).concat(
+                orphanPick.count > 0
+                  ? [
+                      <div key="__orphan" className="prow" style={{ cursor: "default" }}>
+                        <div className="meta">
+                          <div className="nm">名簿外の選手</div>
+                          <div className="sub">削除された選手のノート</div>
+                        </div>
+                        <div className="kpinum">
+                          {orphanPick.count}本{orphanPick.p != null ? `（${orphanPick.p}%）` : ""}
+                        </div>
+                      </div>,
+                    ]
+                  : []
+              )
+            );
+          })()
+        ) : (
+          (() => {
+            const rows = myMatchRows
+              .map((m) => ({ m, pick: techPick(m, metric) }))
+              .filter(({ pick }) => pick.count > 0);
+            return rows.length === 0 ? (
+              <div className="empty-msg">試合ノートのデータがまだありません。</div>
+            ) : (
+              rows.map(({ m, pick }, i) => (
+                <div key={`${m.date}_${i}`} className="prow" style={{ cursor: "default" }}>
+                  <div className="meta">
+                    <div className="nm">{m.title}</div>
+                    <div className="sub">
+                      {fmtStatDate(m.date)} ・ {pick.okLabel} {pick.ok}
+                    </div>
+                  </div>
+                  <div className="kpinum">
+                    {pick.count}本{pick.p != null ? `（${pick.p}%）` : ""}
+                  </div>
+                </div>
+              ))
+            );
+          })()
+        )}
+      </div>
+      <div className="kpihint">{STAT_HINT[metric]}</div>
     </>
   );
 }
@@ -1719,6 +1926,9 @@ export default function SheetManager() {
     case "kpi":
       content = <KpiSheet metric={sheet.kpiMetric ?? "attendance"} />;
       break;
+    case "stat":
+      content = <StatSheet metric={sheet.statMetric ?? "record"} />;
+      break;
   }
 
   // 名簿・記事・選手プロフィール・設定などは全画面表示＋戻るボタン
@@ -1738,8 +1948,9 @@ export default function SheetManager() {
   const onBack = (): void => {
     switch (sheet.type) {
       case "playerDetail":
-        // KPI内訳から開いた場合は内訳へ戻す（名簿に飛ばすと並び順と文脈を失う）
+        // KPI/スタッツ内訳から開いた場合は内訳へ戻す（名簿に飛ばすと並び順と文脈を失う）
         if (sheet.kpiMetric) board.openSheet({ type: "kpi", kpiMetric: sheet.kpiMetric });
+        else if (sheet.statMetric) board.openSheet({ type: "stat", statMetric: sheet.statMetric });
         else board.openSheet({ type: "roster" });
         break;
       case "playerForm":

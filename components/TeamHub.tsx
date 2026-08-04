@@ -105,7 +105,6 @@ function ruleDesc(rule: RecurrenceRule): string {
   return `${freqLabel}${wd} 〜${fmtMD(rule.until)}`;
 }
 
-const STATUS_LABEL: Record<AttendanceStatus, string> = { yes: "出席", maybe: "未定", no: "欠席" };
 const STATUS_MARK: Record<AttendanceStatus, string> = { yes: "○", maybe: "△", no: "×" };
 
 /** 利き足の表示ラベル（未設定は「—」） */
@@ -189,12 +188,10 @@ function Inner() {
     ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null
     : null;
 
-  const tabs: [Tab, string][] = [
-    ["home", "ホーム"],
-    ["att", "出欠"],
-    ["cal", "カレンダー"],
-    ["rec", "試合記録"],
-  ];
+  const tabs: [Tab, string][] = [["home", "ホーム"]];
+  // 出欠はスタッフ専任（選手・選手プレビューには出さない）
+  if (isCoach) tabs.push(["att", "出欠"]);
+  tabs.push(["cal", "カレンダー"], ["rec", "試合記録"]);
   // 名簿は表示中のロールに合わせる（選手プレビュー時は隠して見え方を揃える）
   if (isCoach && board.auth.role === "coach") tabs.push(["ros", "名簿"]);
   const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "home";
@@ -229,7 +226,13 @@ function Inner() {
         </div>
         <div className="brand" style={{ marginLeft: 4 }}>
           <div className="logo">
-            チーム<b>運営</b>
+            {board.auth.role === "coach" ? (
+              <>
+                チーム<b>運営</b>
+              </>
+            ) : (
+              "チーム"
+            )}
           </div>
           <div className="tag team" style={{ marginTop: 4 }}>
             {board.state.teamName ?? "マイチーム"}
@@ -263,13 +266,13 @@ function Inner() {
             </optgroup>
           </select>
           <span className="rolehint">
-            {isCoach ? "全員を管理" : `${me?.name ?? "選手"} として閲覧・回答`}
+            {isCoach ? "全員を管理" : `${me?.name ?? "選手"} として閲覧`}
           </span>
         </div>
       ) : (
         <div className="rolebar">
           <span className="rolehint" style={{ textAlign: "left", flex: 1 }}>
-            {me?.name ?? "選手"} さんとして閲覧・出欠回答ができます
+            {me?.name ?? "選手"} さんとして閲覧できます
           </span>
         </div>
       )}
@@ -285,9 +288,9 @@ function Inner() {
       {/* paddingは基底CSS(.teamapp .scroll)へ移設（PCで上書きできるように） */}
       <div className="scroll">
         {activeTab === "home" && (
-          <HomeTab isCoach={isCoach} me={me} setSheet={setSheet} setTab={setTab} />
+          <HomeTab isCoach={isCoach} setSheet={setSheet} setTab={setTab} />
         )}
-        {activeTab === "att" && <AttendanceTab isCoach={isCoach} me={me} setSheet={setSheet} />}
+        {activeTab === "att" && <AttendanceTab isCoach={isCoach} setSheet={setSheet} />}
         {activeTab === "cal" && (
           <CalendarTab
             isCoach={isCoach}
@@ -312,7 +315,6 @@ function Inner() {
         setSheet={setSheet}
         players={players}
         isCoach={isCoach}
-        me={me}
       />
     </div>
   );
@@ -339,12 +341,10 @@ function sheetKey(s: SheetState): string {
 /* ---------------- ホーム ---------------- */
 function HomeTab({
   isCoach,
-  me,
   setSheet,
   setTab,
 }: {
   isCoach: boolean;
-  me: Player | null;
   setSheet: (s: SheetState) => void;
   setTab: (t: Tab) => void;
 }) {
@@ -356,9 +356,6 @@ function HomeTab({
     .sort(byDateAsc);
   const next = upcoming[0];
   const nextCat = next ? categoryOf(next, team.categories) : null;
-  const unanswered = me
-    ? upcoming.filter((e) => !team.team.attendance[e.id]?.[me.id])
-    : [];
   const anns = team.team.announcements;
   const matches = [...team.team.matches].sort((a, b) => (a.date < b.date ? 1 : -1));
   const latest = matches[0];
@@ -381,13 +378,6 @@ function HomeTab({
     // 試合非表示時はサイド列を作らず1カラム（空の360px列を残さない）
     <div className={`hometab${showMatches ? "" : " solo"}`}>
       <div className="httop">
-        {!isCoach && unanswered.length > 0 && (
-          <div className="alertcard" onClick={() => setTab("att")}>
-            <E n="bell" /> 出欠が未回答の予定が {unanswered.length} 件あります
-            <span className="seclink">回答する ›</span>
-          </div>
-        )}
-
         {isCoach && (
           <div className="quickrow">
             <button className="bigbtn" onClick={() => setSheet({ type: "event" })}>
@@ -413,9 +403,13 @@ function HomeTab({
               {nextCat?.label}
             </span>
             <span className="evtitle">{next.title}</span>
-            <span className="evopen" onClick={() => setSheet({ type: "eventView", id: next.id })}>
-              詳細 ›
-            </span>
+            {/* 選手には、シートがカード以上の情報(場所・住所・メモ・繰り返し=地図等)を
+                持つ場合のみ詳細導線を出す。コーチは出欠記録があるため常に表示 */}
+            {(isCoach || next.place || next.address || next.note || next.seriesId) && (
+              <span className="evopen" onClick={() => setSheet({ type: "eventView", id: next.id })}>
+                詳細 ›
+              </span>
+            )}
           </div>
           <div className="homewhen">
             {evWhenText(next)}
@@ -427,21 +421,23 @@ function HomeTab({
             </div>
           )}
           {next.note && <div className="evnote">{next.note}</div>}
-          {isCoach && s ? (
+          {isCoach && s && (
             <div className="evsummary" onClick={() => setSheet({ type: "attendance", eventId: next.id })}>
               <span className="att yes">出席 {s.yes}</span>
               <span className="att maybe">未定 {s.maybe}</span>
               <span className="att no">欠席 {s.no}</span>
-              <span className="att none">未回答 {s.none}</span>
-              <span className="evopen">回答を見る ›</span>
+              <span className="att none">未記録 {s.none}</span>
+              <span className="evopen">記録を見る ›</span>
             </div>
-          ) : (
-            me && <MemberAttRow eventId={next.id} playerId={me.id} />
           )}
         </div>
       )}
       {upcoming.length > 1 && (
-        <div className="seclink" style={{ textAlign: "right" }} onClick={() => setTab("att")}>
+        <div
+          className="seclink"
+          style={{ textAlign: "right" }}
+          onClick={() => setTab(isCoach ? "att" : "cal")}
+        >
           ほか {upcoming.length - 1} 件の予定を見る ›
         </div>
       )}
@@ -566,11 +562,9 @@ function AnnCard({ a, isCoach }: { a: Announcement; isCoach: boolean }) {
 /* ---------------- 出欠 ---------------- */
 function AttendanceTab({
   isCoach,
-  me,
   setSheet,
 }: {
   isCoach: boolean;
-  me: Player | null;
   setSheet: (s: SheetState) => void;
 }) {
   const team = useTeam();
@@ -594,7 +588,7 @@ function AttendanceTab({
       ) : (
         <div className="attlist">
           {upcoming.map((ev) => (
-            <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} />
+            <EventCard key={ev.id} ev={ev} isCoach={isCoach} setSheet={setSheet} />
           ))}
         </div>
       )}
@@ -610,7 +604,7 @@ function AttendanceTab({
           {showPast && (
             <div className="attlist">
               {past.map((ev) => (
-                <EventCard key={ev.id} ev={ev} isCoach={isCoach} me={me} setSheet={setSheet} past />
+                <EventCard key={ev.id} ev={ev} isCoach={isCoach} setSheet={setSheet} past />
               ))}
             </div>
           )}
@@ -624,19 +618,16 @@ function AttendanceTab({
 function EventCard({
   ev,
   isCoach,
-  me,
   setSheet,
   past = false,
 }: {
   ev: TeamEvent;
   isCoach: boolean;
-  me: Player | null;
   setSheet: (s: SheetState) => void;
   past?: boolean;
 }) {
   const team = useTeam();
   const s = team.summary(ev.id);
-  const mine = me ? team.team.attendance[ev.id]?.[me.id] : undefined;
   const cat = categoryOf(ev, team.categories);
   const ongoing = isOngoing(ev, todayStr());
   return (
@@ -646,7 +637,6 @@ function EventCard({
           {cat.label}
         </span>
         <span className="evtitle">{ev.title}</span>
-        {!isCoach && !past && !mine && <span className="needans">未回答</span>}
         {isCoach && (
           <span className="evacts">
             <button onClick={() => setSheet({ type: "event", event: ev })}>✎</button>
@@ -670,59 +660,16 @@ function EventCard({
         {ev.place ? ` ・ ${ev.place}` : ""}
       </div>
       {ev.note && <div className="evnote">{ev.note}</div>}
-      {isCoach ? (
+      {isCoach && (
         <div className="evsummary" onClick={() => setSheet({ type: "attendance", eventId: ev.id })}>
           <span className="att yes">出席 {s.yes}</span>
           <span className="att maybe">未定 {s.maybe}</span>
           <span className="att no">欠席 {s.no}</span>
-          <span className="att none">未回答 {s.none}</span>
-          <span className="evopen">回答を見る ›</span>
+          <span className="att none">未記録 {s.none}</span>
+          <span className="evopen">記録を見る ›</span>
         </div>
-      ) : past ? (
-        me && (
-          <div className="evmeta" style={{ marginTop: 8 }}>
-            あなたの回答: {mine ? `${STATUS_MARK[mine.status]} ${STATUS_LABEL[mine.status]}` : "未回答"}
-            {mine?.comment ? `（${mine.comment}）` : ""}
-          </div>
-        )
-      ) : (
-        me && <MemberAttRow eventId={ev.id} playerId={me.id} />
       )}
     </div>
-  );
-}
-
-/* 選手の出欠回答（○△× ＋ 理由）。集計結果は表示しない */
-function MemberAttRow({ eventId, playerId }: { eventId: string; playerId: string }) {
-  const team = useTeam();
-  const cur = team.team.attendance[eventId]?.[playerId];
-  const [reason, setReason] = useState(cur?.comment ?? "");
-  return (
-    <>
-      <div className="attpick">
-        {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
-          <button
-            key={st}
-            className={`attbtn ${st}${cur?.status === st ? " on" : ""}`}
-            onClick={() => team.setAttendance(eventId, playerId, st, reason || undefined)}
-          >
-            {STATUS_MARK[st]} {STATUS_LABEL[st]}
-          </button>
-        ))}
-      </div>
-      <input
-        className="attreason"
-        placeholder="理由・コメント（任意・例: 通院のため遅刻）"
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        onBlur={() => {
-          if (cur?.status) team.setAttendance(eventId, playerId, cur.status, reason || undefined);
-        }}
-      />
-      {!cur?.status && reason.trim() !== "" && (
-        <div className="atthint">○△×のどれかを選ぶと、理由と一緒に保存されます</div>
-      )}
-    </>
   );
 }
 
@@ -1091,6 +1038,7 @@ function MatchesTab({
                   <div className="msub">
                     {fmtDate(m.date)}
                     {cmpName(m) ? ` ・ ${cmpName(m)}` : ""}
+                    {m.halfMinutes ? ` ・ ${m.halfMinutes}分ハーフ` : ""}
                   </div>
                 </div>
                 <div className="mscore">
@@ -1178,13 +1126,11 @@ function SheetHost({
   setSheet,
   players,
   isCoach,
-  me,
 }: {
   sheet: SheetState;
   setSheet: (s: SheetState) => void;
   players: Player[];
   isCoach: boolean;
-  me: Player | null;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -1244,9 +1190,14 @@ function SheetHost({
   const [newCompName, setNewCompName] = useState("");
   const [ourScore, setOurScore] = useState(mr ? String(mr.ourScore) : "0");
   const [theirScore, setTheirScore] = useState(mr ? String(mr.theirScore) : "0");
+  const [halfMinutes, setHalfMinutes] = useState(mr?.halfMinutes != null ? String(mr.halfMinutes) : "");
   const [goals, setGoals] = useState<MatchGoal[]>(mr?.goals ?? []);
   const [subs, setSubs] = useState<MatchSub[]>(mr?.subs ?? []);
   const [mnote, setMnote] = useState(mr?.note ?? "");
+  // スコアの数値解釈はここ1箇所に統一する(追加ボタンのdisabled・ヒント・保存で共用)。
+  // type=number でも "1e2"/"2.5"/"-3" が入力できるため、非負整数へ正規化する
+  const ourScoreNum = Math.max(0, Math.floor(Number(ourScore) || 0));
+  const theirScoreNum = Math.max(0, Math.floor(Number(theirScore) || 0));
 
   // 大会管理
   const [mgrComp, setMgrComp] = useState("");
@@ -1619,7 +1570,7 @@ function SheetHost({
         </button>
       </Sheet>
 
-      {/* 出欠一覧（スタッフ）: 未回答→欠席→未定→出席の順にグルーピング */}
+      {/* 出欠一覧（スタッフが記録）: 未記録→欠席→未定→出席の順にグルーピング */}
       <Sheet open={sheet?.type === "attendance"} onClose={close}>
         {sheet?.type === "attendance" &&
           (() => {
@@ -1627,7 +1578,7 @@ function SheetHost({
             const att = team.team.attendance[sheet.eventId] ?? {};
             const s = team.summary(sheet.eventId);
             const order: { key: AttendanceStatus | "none"; label: string }[] = [
-              { key: "none", label: "未回答" },
+              { key: "none", label: "未記録" },
               { key: "no", label: "欠席" },
               { key: "maybe", label: "未定" },
               { key: "yes", label: "出席" },
@@ -1638,35 +1589,9 @@ function SheetHost({
                 list: players.filter((p) => (att[p.id]?.status ?? "none") === g.key),
               }))
               .filter((g) => g.list.length > 0);
-            const noAns = players.filter((p) => !att[p.id]);
-            const copyNoAns = async () => {
-              const txt = `【出欠回答のお願い】${ev ? `${ev.title}（${fmtDate(ev.date)}）` : ""}\n未回答: ${noAns
-                .map((p) => p.name)
-                .join("、")}`;
-              let ok = false;
-              try {
-                await navigator.clipboard.writeText(txt);
-                ok = true;
-              } catch {
-                // clipboard API が使えない環境向けフォールバック
-                const ta = document.createElement("textarea");
-                ta.value = txt;
-                ta.style.position = "fixed";
-                ta.style.opacity = "0";
-                document.body.appendChild(ta);
-                ta.select();
-                try {
-                  ok = document.execCommand("copy");
-                } catch {
-                  ok = false;
-                }
-                ta.remove();
-              }
-              board.toast(ok ? "未回答者リストをコピーしました" : "コピーできませんでした");
-            };
             return (
               <>
-                <h2>出欠の回答</h2>
+                <h2>出欠の記録</h2>
                 {ev && (
                   <div className="mvmeta" style={{ textAlign: "left", margin: "0 16px 10px" }}>
                     {ev.title} ・ {fmtDate(ev.date)}
@@ -1676,13 +1601,8 @@ function SheetHost({
                   <span className="att yes">出席 {s.yes}</span>
                   <span className="att maybe">未定 {s.maybe}</span>
                   <span className="att no">欠席 {s.no}</span>
-                  <span className="att none">未回答 {s.none}</span>
+                  <span className="att none">未記録 {s.none}</span>
                 </div>
-                {noAns.length > 0 && (
-                  <button className="bigbtn ghost" style={{ margin: "0 16px 4px" }} onClick={copyNoAns}>
-                    未回答 {noAns.length}人の名前をコピー（催促用）
-                  </button>
-                )}
                 <div className="list">
                   {players.length === 0 ? (
                     <div className="empty-msg">選手がいません。</div>
@@ -1699,7 +1619,23 @@ function SheetHost({
                               <div className="attname">
                                 {p.name}
                                 <small>背番号 {p.number ?? "—"}</small>
-                                {cur?.comment && <small className="attreasonshow">「{cur.comment}」</small>}
+                                {/* 理由・メモ: 選手の回答UI廃止に伴い、スタッフがここで記録する */}
+                                {cur?.status && (
+                                  <input
+                                    key={`${sheet.eventId}_${p.id}`}
+                                    className="attreason"
+                                    placeholder="メモ（遅刻・欠席理由など）"
+                                    defaultValue={cur.comment ?? ""}
+                                    onBlur={(e) =>
+                                      team.setAttendance(
+                                        sheet.eventId,
+                                        p.id,
+                                        cur.status,
+                                        e.target.value.trim() || undefined
+                                      )
+                                    }
+                                  />
+                                )}
                               </div>
                               <div className="attpick">
                                 {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
@@ -1891,23 +1827,17 @@ function SheetHost({
                       </div>
                     )}
                   </div>
-                  {!isCoach && me && (
-                    <div className="dsec">
-                      <div className="dsec-h">あなたの出欠</div>
-                      <MemberAttRow eventId={e.id} playerId={me.id} />
-                    </div>
-                  )}
                   {isCoach && (
                     <div className="dsec">
                       <div className="dsec-h">出欠状況</div>
                       <div className="dline">
-                        出席 {s.yes} ・ 未定 {s.maybe} ・ 欠席 {s.no} ・ 未回答 {s.none}
+                        出席 {s.yes} ・ 未定 {s.maybe} ・ 欠席 {s.no} ・ 未記録 {s.none}
                       </div>
                       <button
                         className="bigbtn ghost"
                         onClick={() => setSheet({ type: "attendance", eventId: e.id })}
                       >
-                        回答を見る・編集
+                        記録を見る・編集
                       </button>
                     </div>
                   )}
@@ -2038,6 +1968,17 @@ function SheetHost({
           )}
         </div>
         <div className="formfield">
+          <label>ハーフ時間</label>
+          <select value={halfMinutes} onChange={(e) => setHalfMinutes(e.target.value)}>
+            <option value="">未設定</option>
+            {[10, 15, 20, 25, 30, 35, 40, 45].map((n) => (
+              <option key={n} value={n}>
+                {n}分ハーフ
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="formfield">
           <label>スコア（自チーム - 相手）</label>
           <div className="scoreinput">
             <input type="number" min={0} value={ourScore} onChange={(e) => setOurScore(e.target.value)} />
@@ -2078,10 +2019,19 @@ function SheetHost({
           ))}
           <button
             className="dynadd"
+            disabled={goals.length >= ourScoreNum}
+            style={goals.length >= ourScoreNum ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
             onClick={() => firstPid && setGoals([...goals, { playerId: firstPid }])}
           >
             ＋ 得点者を追加
           </button>
+          <div className="fieldhint">
+            {ourScoreNum === 0
+              ? "得点を入力すると得点者を追加できます"
+              : goals.length >= ourScoreNum
+              ? `得点数（${ourScoreNum}）に達しました。増やすにはスコアを変更してください`
+              : `得点数（${ourScoreNum}）まで追加できます`}
+          </div>
         </div>
 
         <div className="formfield">
@@ -2132,6 +2082,12 @@ function SheetHost({
               board.toast("対戦相手を入力してください");
               return;
             }
+            if (goals.length > ourScoreNum) {
+              board.toast(
+                `得点者（${goals.length}人）が得点数（${ourScoreNum}）を超えています。得点者を × で減らすか、得点数を増やしてください`
+              );
+              return;
+            }
             // 大会: 新規入力があれば登録してそのIDを使う
             let cid: string | undefined =
               competitionId && competitionId !== "__new" ? competitionId : undefined;
@@ -2142,8 +2098,9 @@ function SheetHost({
               date: mdate,
               opponent: opponent.trim(),
               competitionId: cid,
-              ourScore: +ourScore || 0,
-              theirScore: +theirScore || 0,
+              ourScore: ourScoreNum,
+              theirScore: theirScoreNum,
+              halfMinutes: halfMinutes ? +halfMinutes : undefined,
               goals,
               subs,
               note: mnote.trim() || undefined,
@@ -2236,6 +2193,7 @@ function SheetHost({
                       : m.competition;
                     return cn ? <> ・ <E n="trophy" /> {cn}</> : "";
                   })()}
+                  {m.halfMinutes ? <> ・ {m.halfMinutes}分ハーフ</> : ""}
                 </div>
                 <div className="detail">
                   <div className="dsec">
@@ -2358,7 +2316,7 @@ function SheetHost({
                       className="bigbtn ghost"
                       style={{ color: "var(--red)" }}
                       onClick={() => {
-                        if (window.confirm(`${p.name}を名簿から削除しますか？出欠の回答も削除されます`)) {
+                        if (window.confirm(`${p.name}を名簿から削除しますか？出欠の記録も削除されます`)) {
                           board.deletePlayer(p.id);
                           team.removePlayerAnswers(p.id);
                           if (team.viewer.memberPlayerId === p.id) team.setViewer("coach", null);
