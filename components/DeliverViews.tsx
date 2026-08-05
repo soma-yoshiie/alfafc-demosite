@@ -23,12 +23,15 @@ export function DeliverBlock({
   heading = "コーチから",
   onOpen,
   onCreate,
+  selectedId,
 }: {
   kinds: DeliverKind[];
   /** ブロック見出し。null で非表示 */
   heading?: string | null;
   onOpen: (id: string) => void;
   onCreate: (kind: DeliverKind) => void;
+  /** PCマスター・ディテールで選択中の配信ID。未指定なら選択表示なし（選手ホーム等の既存呼び出しに影響しない） */
+  selectedId?: string | null;
 }) {
   const board = useBoard();
   const isCoach = board.auth.role === "coach";
@@ -64,7 +67,14 @@ export function DeliverBlock({
         </div>
       ) : (
         items.map((d) => (
-          <DeliverCard key={d.id} d={d} isCoach={isCoach} me={me} onClick={() => onOpen(d.id)} />
+          <DeliverCard
+            key={d.id}
+            d={d}
+            isCoach={isCoach}
+            me={me}
+            selected={selectedId != null && d.id === selectedId}
+            onClick={() => onOpen(d.id)}
+          />
         ))
       )}
     </div>
@@ -75,11 +85,13 @@ function DeliverCard({
   d,
   isCoach,
   me,
+  selected,
   onClick,
 }: {
   d: CoachDeliverable;
   isCoach: boolean;
   me: string;
+  selected?: boolean;
   onClick: () => void;
 }) {
   const board = useBoard();
@@ -87,7 +99,7 @@ function DeliverCard({
   const targets = board.state.players.filter((p) => deliverTargets(d, p.id)).length;
   const mineDone = !!d.responses[me];
   return (
-    <button className="dlvcard" onClick={onClick}>
+    <button className={`dlvcard${selected ? " sel" : ""}`} onClick={onClick}>
       <span className={`dlvtag ${d.kind}`}>{DELIVER_KIND_LABEL[d.kind]}</span>
       <div className="dlvmain">
         <div className="dlvtitle">{d.title}</div>
@@ -108,10 +120,13 @@ export function DeliverComposer({
   kind,
   edit,
   onDone,
+  onSaved,
 }: {
   kind: DeliverKind;
   edit?: CoachDeliverable;
   onDone: () => void;
+  /** 保存できたIDが判明する場合（＝編集時）にのみ呼ばれる。新規作成はaddDeliverable内でID採番されるため呼ばれない */
+  onSaved?: (id: string) => void;
 }) {
   const board = useBoard();
   const [title, setTitle] = useState(edit?.title ?? "");
@@ -153,8 +168,12 @@ export function DeliverComposer({
         defense: defense.map((s) => s.trim()).filter(Boolean),
       } as Omit<MeetingDeliver, "id" | "ts">;
     }
-    if (edit) board.updateDeliverable({ ...data, id: edit.id, ts: edit.ts } as CoachDeliverable);
-    else board.addDeliverable(data);
+    if (edit) {
+      board.updateDeliverable({ ...data, id: edit.id, ts: edit.ts } as CoachDeliverable);
+      onSaved?.(edit.id);
+    } else {
+      board.addDeliverable(data);
+    }
     onDone();
   };
 

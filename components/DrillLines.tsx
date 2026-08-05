@@ -134,7 +134,7 @@ export default function DrillLines() {
       preserveAspectRatio="none"
       style={{ pointerEvents: "none", zIndex: 3 }}
     >
-      {drill.doc.lines.map(renderLine)}
+      {drill.doc.lines.filter((l) => (l.step ?? 0) === drill.scene).map(renderLine)}
       {drill.tempLine && drill.tempLine.length > 1 && (
         <polyline
           points={toPts(drill.tempLine)}

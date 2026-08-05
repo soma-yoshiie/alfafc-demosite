@@ -1,8 +1,18 @@
 import type { DrillDoc, DrillItem, DrillLine, Point } from "./types";
+import { drillSceneCount } from "./types";
 import { LINE_COLORS, wavy } from "./drillDraw";
 
-/** 練習メニュー（ドリル図）をPNG dataURLとして描画 */
+/**
+ * 練習メニュー（ドリル図）をPNG dataURLとして描画。
+ * 複数場面（sceneCount>1）は renderDrillPngMulti に委譲する。単一場面（未定義/1）は
+ * 従来どおりこの関数がそのまま描画する（見た目を変えないための後方互換）
+ */
 export function renderDrillPng(doc: DrillDoc): string {
+  // 単一場面でも意図テキストが書かれていれば multi 側で描く(黙って捨てない)。
+  // 旧データは sceneIntents を持たないため、従来経路の出力は変わらない
+  if (drillSceneCount(doc) > 1 || (doc.sceneIntents?.[0] ?? "").trim()) {
+    return renderDrillPngMulti(doc);
+  }
   // 横コートはランドスケープのキャンバスにして潰れを防ぐ
   const landscape = doc.pitchType === "fullh";
   const W = landscape ? 980 : 750;
@@ -63,7 +73,132 @@ export function renderDrillPng(doc: DrillDoc): string {
   return canvas.toDataURL("image/png");
 }
 
-/** ライブラリ一覧用のサムネイル（ピッチ部分のみの小さなPNG） */
+/**
+ * 複数場面（sceneCount>1）の練習メニューを縦積みでPNG化。
+ * 場面ごとに「場面 n」見出し＋ピッチ＋その場面の意図テキストを描画し、全体メモは最後に1回だけ描く。
+ * renderDrillPng とはコード上完全に独立させ、単一場面側の出力（既存の見た目）に影響しないようにしている
+ */
+function renderDrillPngMulti(doc: DrillDoc): string {
+  const landscape = doc.pitchType === "fullh";
+  const W = landscape ? 980 : 750;
+  const px = 24;
+  const pw = W - 48;
+  const sceneCount = drillSceneCount(doc);
+  // 単一場面(意図つき)のときは「場面 n」見出しを出さない
+  const showHead = sceneCount > 1;
+  const discR = doc.discSize === "S" ? 10 : doc.discSize === "M" ? 12 : 15;
+  // ピッチはエディタと同じ実アスペクトを保つ(潰すと図形が歪み動線の角度が変わる)。
+  // 縦系コートは高さが出るため、幅を縮めて中央寄せし総高さを抑える
+  const pwS = landscape ? pw : Math.round(pw * 0.66);
+  const pxS = landscape ? px : Math.round((W - pwS) / 2);
+  const phScene = landscape
+    ? Math.round((pwS * 10) / 16)
+    : doc.pitchType === "full"
+    ? Math.round((pwS * 10) / 7)
+    : Math.round((pwS * 6) / 5);
+
+  // キャンバスの高さは描画前に確定させる必要があるため、計測専用の仮コンテキストで
+  // 各場面の意図テキスト・全体メモの折返し行を先に計算する
+  const measure = document.createElement("canvas").getContext("2d")!;
+  measure.font = "400 13px sans-serif";
+  const intentLines = Array.from({ length: sceneCount }, (_, i) => {
+    const t = (doc.sceneIntents?.[i] ?? "").trim();
+    return t ? measureWrap(measure, t, pw) : [];
+  });
+  measure.font = "400 15px sans-serif";
+  const memoLines = doc.memo ? measureWrap(measure, doc.memo, W - 52) : [];
+
+  const headTop = 80;
+  const sceneHeadH = showHead ? 28 : 8;
+  const gapAfterPitch = 12;
+  const intentLH = 19;
+  const sceneGap = 26;
+  const memoLH = 22;
+
+  const sceneTops: number[] = [];
+  let y = headTop;
+  for (let i = 0; i < sceneCount; i++) {
+    sceneTops.push(y);
+    y += sceneHeadH + phScene + gapAfterPitch;
+    if (intentLines[i].length) y += intentLines[i].length * intentLH + 4;
+    y += sceneGap;
+  }
+  const memoTop = y;
+  if (doc.memo) y += 24 + Math.max(1, memoLines.length) * memoLH + 12;
+  const H = y + 44; // フッター分
+
+  // iOS Safariのキャンバス面積上限(約1678万px)を超えると toDataURL が空になるため、
+  // 面積に応じてscaleを段階的に落とす
+  let scale = 2;
+  while (scale > 1 && W * H * scale * scale > 15_000_000) scale -= 0.5;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = "#0a0e0c";
+  ctx.fillRect(0, 0, W, H);
+
+  // header
+  ctx.fillStyle = "#caff3a";
+  ctx.font = "800 13px sans-serif";
+  ctx.fillText("PRACTICE / 練習メニュー", 26, 36);
+  ctx.fillStyle = "#eafff0";
+  ctx.font = "800 24px sans-serif";
+  ctx.fillText(clip(ctx, doc.title || "練習メニュー", W - 52), 26, 64);
+
+  for (let i = 0; i < sceneCount; i++) {
+    const top = sceneTops[i];
+    if (showHead) {
+      ctx.fillStyle = "#caff3a";
+      ctx.font = "800 13px sans-serif";
+      ctx.fillText(`場面 ${i + 1}`, 26, top + 20);
+    }
+
+    const py = top + sceneHeadH;
+    drawPitch(ctx, doc, pxS, py, pwS, phScene);
+    const mapX = (x: number) => pxS + (x / 100) * pwS;
+    const mapY = (yy: number) => py + ((100 - yy) / 100) * phScene;
+
+    doc.lines.filter((l) => (l.step ?? 0) === i).forEach((l) => drawLine(ctx, l, mapX, mapY));
+    doc.items
+      .filter((it) => (it.step ?? 0) === i)
+      .forEach((it) => drawItem(ctx, it, mapX, mapY, discR));
+
+    if (intentLines[i].length) {
+      const ty = py + phScene + gapAfterPitch;
+      ctx.fillStyle = "#eafff0";
+      ctx.font = "400 13px sans-serif";
+      intentLines[i].forEach((line, li) => ctx.fillText(line, 26, ty + li * intentLH));
+    }
+  }
+
+  // memo（全体で1回だけ）
+  if (doc.memo) {
+    ctx.fillStyle = "#7d9389";
+    ctx.font = "700 12px sans-serif";
+    ctx.fillText("MEMO", 26, memoTop + 6);
+    ctx.fillStyle = "#eafff0";
+    ctx.font = "400 15px sans-serif";
+    memoLines.forEach((line, li) => ctx.fillText(line, 26, memoTop + 28 + li * memoLH));
+  }
+
+  // brand
+  ctx.fillStyle = "#7d9389";
+  ctx.font = "600 13px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("Made with ALFA FOOTBALL — サッカー練習メニュー", W / 2, H - 18);
+  ctx.textAlign = "left";
+
+  return canvas.toDataURL("image/png");
+}
+
+/**
+ * ライブラリ一覧用のサムネイル（ピッチ部分のみの小さなPNG）。
+ * 複数場面のドリルでも場面0（旧データはstep未定義＝0扱い）だけを描く
+ */
 export function renderDrillThumbPng(doc: DrillDoc): string {
   const landscape = doc.pitchType === "fullh";
   const W = landscape ? 168 : 120;
@@ -79,9 +214,13 @@ export function renderDrillThumbPng(doc: DrillDoc): string {
   const mapY = (y: number) => ((100 - y) / 100) * H;
 
   drawPitch(ctx, doc, 0, 0, W, H, 0.42);
-  doc.lines.forEach((l) => drawLine(ctx, l, mapX, mapY, 0.42));
+  doc.lines
+    .filter((l) => (l.step ?? 0) === 0)
+    .forEach((l) => drawLine(ctx, l, mapX, mapY, 0.42));
   const discR = doc.discSize === "S" ? 10 : doc.discSize === "M" ? 12 : 15;
-  doc.items.forEach((it) => drawItem(ctx, it, mapX, mapY, discR, 0.42));
+  doc.items
+    .filter((it) => (it.step ?? 0) === 0)
+    .forEach((it) => drawItem(ctx, it, mapX, mapY, discR, 0.42));
 
   return canvas.toDataURL("image/png");
 }
@@ -385,4 +524,30 @@ function wrapText(
     }
   }
   if (line) ctx.fillText(line, x, yy);
+}
+
+/**
+ * wrapText と同じ折返しロジックだが、描画せず行配列で返す。
+ * renderDrillPngMulti は実キャンバスを確定させる前に各テキストブロックの高さを
+ * 積算する必要があるため、描画とは別に行数だけを先に計算できるようにしている
+ */
+function measureWrap(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const ch of text.split("")) {
+    if (ch === "\n") {
+      lines.push(line);
+      line = "";
+      continue;
+    }
+    const test = line + ch;
+    if (ctx.measureText(test).width > maxW) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }

@@ -18,6 +18,7 @@ import type {
   Point,
   SavedDrill,
 } from "@/lib/types";
+import { drillSceneCount } from "@/lib/types";
 import {
   loadDrills,
   loadDrillWork,
@@ -106,6 +107,8 @@ function cloneDoc(d: DrillDoc): DrillDoc {
     discSize: d.discSize,
     items: d.items.map((it) => ({ ...it })),
     lines: d.lines.map((l) => ({ ...l, path: l.path.map((p) => ({ ...p })) })),
+    sceneCount: d.sceneCount,
+    sceneIntents: d.sceneIntents ? [...d.sceneIntents] : undefined,
   };
 }
 
@@ -116,12 +119,28 @@ function docJson(d: DrillDoc): string {
     m: d.memo,
     p: d.pitchType,
     s: d.discSize ?? "L",
-    i: d.items.map((it) => [it.id, it.kind, it.x, it.y, it.label ?? "", it.rot ?? 0]),
-    l: d.lines.map((ln) => [ln.id, ln.kind, ln.path.map((q) => [q.x, q.y])]),
+    i: d.items.map((it) => [it.id, it.kind, it.x, it.y, it.label ?? "", it.rot ?? 0, it.step ?? 0]),
+    l: d.lines.map((ln) => [ln.id, ln.kind, ln.path.map((q) => [q.x, q.y]), ln.step ?? 0]),
+    sc: d.sceneCount ?? 1,
+    // 末尾の空文字は落として比較(「1文字打って消した」だけで永久にdirtyになるのを防ぐ)
+    si: (() => {
+      const a = (d.sceneIntents ?? []).slice(0, drillSceneCount(d));
+      while (a.length && !a[a.length - 1].trim()) a.pop();
+      return a;
+    })(),
   });
 }
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+/** sceneIntentsを場面数ぶんの長さに正規化した新規配列で返す（欠けている場面は空文字で補完） */
+function sceneIntentsOf(d: DrillDoc): string[] {
+  const n = drillSceneCount(d);
+  const src = d.sceneIntents ?? [];
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) out.push(src[i] ?? "");
+  return out;
+}
 
 interface DrillContextValue {
   doc: DrillDoc;
@@ -133,6 +152,16 @@ interface DrillContextValue {
   // 選択
   selection: DrillSelection;
   select: (s: DrillSelection) => void;
+  // 場面（シーン）: 1枚図では表現できない「この場面ではこの動き、次の場面ではこの動き」を段階で作る
+  /** 現在表示・編集中の場面（0始まり）。永続化しない */
+  scene: number;
+  setScene: (n: number) => void;
+  /** 現在の場面の配置を複製して新しい場面を追加（commit経由・undo可能）。上限6場面 */
+  addScene: () => void;
+  /** 場面nを削除（sceneCountが2以上のときのみ有効・commit経由） */
+  removeScene: (n: number) => void;
+  /** 場面nの意図テキストを更新（setMemoと同じくタイトル編集扱い・履歴には積まない） */
+  setSceneIntent: (n: number, text: string) => void;
   // ドキュメント編集（履歴に積まれる）
   setPitchType: (p: PitchType) => void;
   setDiscSize: (s: DiscSize) => void;
@@ -201,6 +230,10 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   const [tool, setToolState] = useState<DrillTool | null>(null);
   const [stampLock, setStampLock] = useState(false);
   const [selection, setSelection] = useState<DrillSelection>(null);
+  // 現在表示・編集中の場面（永続化しない）。addItem/addLine/nextLabel はコールバック内で
+  // 常に最新値を読む必要があるため、docRef と同じ流儀で ref も並行して持つ
+  const [scene, setSceneState] = useState<number>(0);
+  const sceneRef = useRef(0);
   // lazy初期化で保存データを直接読む（TeamProviderと同じ方式）。
   // hydrate用effectでsetDrillsすると、初期値[]のまま保存effectが先に走って
   // ライブラリを空配列で上書きし、StrictModeの二重マウントで消失が確定する
@@ -231,6 +264,15 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     currentIdRef.current = currentId;
   }, [currentId]);
+  useEffect(() => {
+    sceneRef.current = scene;
+  }, [scene]);
+  // docが差し替わって場面数が減った（他ドキュメントの読込・場面削除等）場合に
+  // 表示中のsceneが範囲外にならないようクランプする
+  useEffect(() => {
+    const n = drillSceneCount(doc);
+    setSceneState((s) => clamp(s, 0, n - 1));
+  }, [doc]);
 
   const bumpHist = useCallback(() => setHistVer((v) => v + 1), []);
 
@@ -313,6 +355,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       setSavedVer((v) => v + 1);
       setToolState(null);
       setSelection(null);
+      setSceneState(0);
       setSheet(null);
       resetHistory();
       board.setIncomingDrill(null);
@@ -336,6 +379,76 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     if (s) setToolState(null);
   }, []);
 
+  /* ---- 場面（シーン） ---- */
+
+  const setScene = useCallback((n: number) => {
+    const cnt = drillSceneCount(docRef.current);
+    setSceneState(clamp(Math.round(n), 0, cnt - 1));
+    setSelection(null);
+  }, []);
+
+  const addScene = useCallback(() => {
+    const d = docRef.current;
+    const cnt = drillSceneCount(d);
+    if (cnt >= 6) return;
+    const cur = sceneRef.current;
+    const newScene = cnt;
+    // コーチは同じ配置から次の動きを描くことが多いため、現在の場面のitems/linesを複製して積み増す
+    const items = d.items
+      .filter((it) => (it.step ?? 0) === cur)
+      .map((it) => ({ ...it, id: nid("i"), step: newScene }));
+    const lines = d.lines
+      .filter((l) => (l.step ?? 0) === cur)
+      .map((l) => ({ ...l, id: nid("l"), step: newScene, path: l.path.map((p) => ({ ...p })) }));
+    commit({
+      ...d,
+      items: [...d.items, ...items],
+      lines: [...d.lines, ...lines],
+      sceneCount: newScene + 1,
+      sceneIntents: [...sceneIntentsOf(d), ""],
+    });
+    setSceneState(newScene);
+    setSelection(null);
+  }, [commit]);
+
+  const removeScene = useCallback(
+    (n: number) => {
+      const d = docRef.current;
+      const cnt = drillSceneCount(d);
+      if (cnt <= 1 || n < 0 || n >= cnt) return;
+      const items = d.items
+        .filter((it) => (it.step ?? 0) !== n)
+        .map((it) => ((it.step ?? 0) > n ? { ...it, step: (it.step ?? 0) - 1 } : { ...it }));
+      const lines = d.lines
+        .filter((l) => (l.step ?? 0) !== n)
+        .map((l) =>
+          (l.step ?? 0) > n
+            ? { ...l, step: (l.step ?? 0) - 1, path: l.path.map((p) => ({ ...p })) }
+            : { ...l, path: l.path.map((p) => ({ ...p })) }
+        );
+      const intents = sceneIntentsOf(d);
+      intents.splice(n, 1);
+      commit({ ...d, items, lines, sceneCount: cnt - 1, sceneIntents: intents });
+      // 削除場面より後ろを表示中なら詰めて追従(BoardProviderのremoveStepと同じ規約)。
+      // clampだけだと「見ていた場面の次」が表示されてしまう
+      setSceneState((s) => (s > n ? s - 1 : clamp(s, 0, cnt - 2)));
+      setSelection(null);
+      board.toast(`場面${n + 1}を削除しました`);
+    },
+    [commit, board]
+  );
+
+  const setSceneIntent = useCallback(
+    (n: number, text: string) => {
+      const d = docRef.current;
+      const intents = sceneIntentsOf(d);
+      if (n < 0 || n >= intents.length) return;
+      intents[n] = text;
+      setDocLight({ ...d, sceneIntents: intents });
+    },
+    [setDocLight]
+  );
+
   /* ---- 編集オペレーション ---- */
 
   const setPitchType = useCallback(
@@ -355,11 +468,14 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     [setDocLight]
   );
 
-  /** 選手・相手は空いている番号を自動で振る */
+  /** 選手・相手は空いている番号を自動で振る（同じ場面内のitemsだけを見る＝場面をまたいで同じ番号を使い回せる） */
   const nextLabel = useCallback((kind: DrillItemKind): string | undefined => {
     if (kind !== "player" && kind !== "oppo") return undefined;
+    const cur = sceneRef.current;
     const used = new Set(
-      docRef.current.items.filter((i) => i.kind === kind).map((i) => i.label)
+      docRef.current.items
+        .filter((i) => i.kind === kind && (i.step ?? 0) === cur)
+        .map((i) => i.label)
     );
     let n = 1;
     while (used.has(String(n))) n += 1;
@@ -372,7 +488,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       const d = docRef.current;
       commit({
         ...d,
-        items: [...d.items, { id, kind, x, y, label: nextLabel(kind) }],
+        items: [...d.items, { id, kind, x, y, label: nextLabel(kind), step: sceneRef.current }],
       });
       return id;
     },
@@ -447,7 +563,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     (kind: DrillLineKind, path: Point[]): string => {
       const id = nid("l");
       const d = docRef.current;
-      commit({ ...d, lines: [...d.lines, { id, kind, path }] });
+      commit({ ...d, lines: [...d.lines, { id, kind, path, step: sceneRef.current }] });
       return id;
     },
     [commit]
@@ -501,7 +617,9 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   const clearAll = useCallback(() => {
     const d = docRef.current;
     if (d.items.length === 0 && d.lines.length === 0) return;
-    commit({ ...d, items: [], lines: [] });
+    // 場面（シーン）も単一場面へリセットする（配置が全部消えるのに場面だけ複数残るのは不自然なため）
+    commit({ ...d, items: [], lines: [], sceneCount: 1, sceneIntents: [] });
+    setSceneState(0);
     setSelection(null);
     board.toast("配置と動線を消去しました（元に戻せます）");
   }, [commit, board]);
@@ -555,6 +673,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       markSaved(next);
       setToolState(null);
       setSelection(null);
+      setSceneState(0);
       setSheet(null);
       resetHistory();
       board.toast(`「${s.title}」を読み込みました`);
@@ -570,7 +689,10 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
   const loadDrillConfirmed = useCallback(
     (id: string) => {
       const cur = docRef.current;
-      const hasContent = cur.items.length > 0 || cur.lines.length > 0;
+      const hasContent =
+        cur.items.length > 0 ||
+        cur.lines.length > 0 ||
+        (cur.sceneIntents ?? []).some((t) => t.trim() !== "");
       // dirty判定は下の dirty useMemo と同じ基準（保存済みスナップショットとの差分）
       const isDirty = savedJson.current == null || docJson(cur) !== savedJson.current;
       if (isDirty && hasContent && currentIdRef.current !== id) {
@@ -628,6 +750,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
     setSavedVer((v) => v + 1);
     setToolState(null);
     setSelection(null);
+    setSceneState(0);
     setSheet(null);
     resetHistory();
     board.toast("新しい練習メニューを作成しました");
@@ -667,6 +790,11 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       setStampLock,
       selection,
       select,
+      scene,
+      setScene,
+      addScene,
+      removeScene,
+      setSceneIntent,
       setPitchType,
       setDiscSize,
       addItem,
@@ -709,6 +837,7 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       tool,
       stampLock,
       selection,
+      scene,
       drills,
       currentId,
       dirty,
@@ -718,6 +847,10 @@ export function DrillProvider({ children }: { children: React.ReactNode }) {
       canRedo,
       setTool,
       select,
+      setScene,
+      addScene,
+      removeScene,
+      setSceneIntent,
       setPitchType,
       setDiscSize,
       addItem,

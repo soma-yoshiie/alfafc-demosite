@@ -35,15 +35,21 @@ export function unreadEventCount(input: NotifInput, seenAt: number): number {
   return buildEventNotifications(input).filter((n) => n.ts > seenAt).length;
 }
 
+/** 通知ターゲットの安定キー（PCマスター・ディテールの選択中ハイライト判定用） */
 /* ===================== 通知 ===================== */
 export function NotificationsView({
   seenAt,
   onNavigate,
+  selectedKey,
 }: {
   seenAt: number;
-  onNavigate: (t: NotifTarget) => void;
+  onNavigate: (t: NotifTarget, notifId?: string) => void;
+  /** PC右ペインで選択中の通知ID（Notification.id）。未指定/nullなら選択表示なし */
+  selectedKey?: string | null;
 }) {
   const board = useBoard();
+  // 選択判定は通知ID単位。target単位だと同じ配信を指す複数行が同時に光ってしまう
+  const isSel = (id: string) => selectedKey != null && id === selectedKey;
   const input: NotifInput = useMemo(
     () => ({
       role: board.auth.role,
@@ -68,9 +74,9 @@ export function NotificationsView({
           {digest.map((n) => (
             <button
               key={n.id}
-              className={`kpialert ${n.level}`}
+              className={`kpialert ${n.level}${isSel(n.id) ? " sel" : ""}`}
               style={{ width: "100%", textAlign: "left", cursor: n.target ? "pointer" : "default" }}
-              onClick={() => n.target && onNavigate(n.target)}
+              onClick={() => n.target && onNavigate(n.target, n.id)}
             >
               {n.text}
             </button>
@@ -85,8 +91,8 @@ export function NotificationsView({
         events.map((n) => (
           <button
             key={n.id}
-            className={`notifrow${n.ts > seenAt ? " unread" : ""}`}
-            onClick={() => n.target && onNavigate(n.target)}
+            className={`notifrow${n.ts > seenAt ? " unread" : ""}${isSel(n.id) ? " sel" : ""}`}
+            onClick={() => n.target && onNavigate(n.target, n.id)}
           >
             <span className={`notifdot ${n.level}`} />
             <span className="notiftext">{n.text}</span>

@@ -10,6 +10,7 @@ import type {
   TeamData,
   TeamViewer,
 } from "./types";
+import type { UserArticle } from "./articles";
 
 const KEY = "soccer_tactics_state_v1";
 const LIB_KEY = "soccer_tactics_library_v1";
@@ -24,6 +25,7 @@ const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
 const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
+const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
 
 /** localStorage から状態を復元（SSR/未保存時は null） */
 export function loadState(): BoardState | null {
@@ -111,6 +113,28 @@ export function saveDrills(drills: SavedDrill[]): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(DRILLS_KEY, JSON.stringify(drills));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/* ---- 投稿された記事（お役立ち記事のユーザー投稿） ---- */
+export function loadUserArticles(): UserArticle[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(USER_ARTICLES_KEY);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? (data as UserArticle[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveUserArticles(list: UserArticle[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(USER_ARTICLES_KEY, JSON.stringify(list));
   } catch {
     /* 無視 */
   }

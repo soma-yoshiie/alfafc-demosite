@@ -42,6 +42,7 @@ import type {
   Slot,
 } from "@/lib/types";
 import { isOppActor, migratePlan, oppIndex } from "@/lib/types";
+import type { UserArticle } from "@/lib/articles";
 import { daysAgoStr } from "@/lib/dates";
 import { buildSlots } from "@/lib/formations";
 import {
@@ -65,6 +66,7 @@ import {
   loadSettings,
   loadState,
   loadTeamLogo,
+  loadUserArticles,
   saveDeliverables,
   saveLibrary,
   saveMessages,
@@ -72,6 +74,7 @@ import {
   saveSettings,
   saveState,
   saveTeamLogo,
+  saveUserArticles,
 } from "@/lib/storage";
 import {
   buildSnapshot,
@@ -965,6 +968,12 @@ interface BoardContextValue {
   buildShareSnapshot: () => ShareSnapshot;
   pendingImport: ShareSnapshot | null;
   applyImport: () => void;
+  // お役立ち記事（ユーザー投稿）
+  userArticles: UserArticle[];
+  /** 新規投稿を追加し、生成した記事IDを返す */
+  addUserArticle: (a: Omit<UserArticle, "id" | "ts" | "updatedAt">) => string;
+  updateUserArticle: (a: UserArticle) => void;
+  removeUserArticle: (id: string) => void;
   // 画面（戦術ボード / 練習メニュー）
   screen: ScreenName;
   setScreen: (s: ScreenName) => void;
@@ -1230,6 +1239,13 @@ function newDeliverId(): string {
   return `dlv_${Date.now().toString(36)}_${deliverSeq}`;
 }
 
+// "u-" プレフィクスでseed記事("a-")と区別する（lib/articles.ts のコメント参照）
+let articleSeq = 0;
+function newArticleId(): string {
+  articleSeq += 1;
+  return `u-${Date.now().toString(36)}_${articleSeq}`;
+}
+
 function sampleDeliverables(): CoachDeliverable[] {
   const ids = SAMPLE_PLAYERS.map((p) => p.id);
   const now = Date.now();
@@ -1459,6 +1475,13 @@ export function BoardProvider({
   useEffect(() => {
     saveDeliverables(deliverables);
   }, [deliverables]);
+  // お役立ち記事（ユーザー投稿）。lazy初期化で保存データを直接読む
+  // （mount後のload→save競合を防ぐ。messages/notebook等と同方針。
+  //   空配列初期化+後追いloadだとStrictModeの二重マウントで保存済み投稿が消える）
+  const [userArticles, setUserArticles] = useState<UserArticle[]>(() => loadUserArticles());
+  useEffect(() => {
+    saveUserArticles(userArticles);
+  }, [userArticles]);
   const [pendingImport, setPendingImport] = useState<ShareSnapshot | null>(null);
   // 最新のライブラリ／プラン／現在の戦術をコールバックから参照するためのミラー
   const stateLibRef = useRef<Library>(library);
@@ -2261,6 +2284,26 @@ export function BoardProvider({
     [showToast]
   );
 
+  // ---- お役立ち記事（ユーザー投稿） ----
+  const addUserArticle = useCallback(
+    (a: Omit<UserArticle, "id" | "ts" | "updatedAt">): string => {
+      const id = newArticleId();
+      const now = Date.now();
+      const full: UserArticle = { ...a, id, ts: now, updatedAt: now };
+      setUserArticles((list) => [full, ...list]);
+      return id;
+    },
+    []
+  );
+  const updateUserArticle = useCallback((a: UserArticle) => {
+    setUserArticles((list) =>
+      list.map((x) => (x.id === a.id ? { ...a, updatedAt: Date.now() } : x))
+    );
+  }, []);
+  const removeUserArticle = useCallback((id: string) => {
+    setUserArticles((list) => list.filter((x) => x.id !== id));
+  }, []);
+
   const deletePlay = useCallback(
     (id: string) => {
       setLibrary((lib) => ({
@@ -2715,6 +2758,10 @@ export function BoardProvider({
       buildShareSnapshot,
       pendingImport,
       applyImport,
+      userArticles,
+      addUserArticle,
+      updateUserArticle,
+      removeUserArticle,
       screen,
       setScreen,
       auth: session,
@@ -2815,6 +2862,10 @@ export function BoardProvider({
       buildShareSnapshot,
       pendingImport,
       applyImport,
+      userArticles,
+      addUserArticle,
+      updateUserArticle,
+      removeUserArticle,
       screen,
       session,
     ]

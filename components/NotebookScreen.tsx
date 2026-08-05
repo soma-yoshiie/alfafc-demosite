@@ -131,6 +131,9 @@ function fmt(d: string): string {
 /** ボトムナビのタブ。deliver=配信(コーチ) / report=シーズンレポート(選手) */
 type Tab = "home" | "notes" | "deliver" | "notifs" | "report";
 
+/** PCのマスター・ディテール分岐に使うブレークポイント（ChatScreen.tsxのRowクリック分岐と同じ基準） */
+const PC_MQ = "(min-width: 1024px)";
+
 type View =
   | { mode: "root" }
   | { mode: "form"; kind: NoteKind; edit?: NotebookEntry; menuId?: string }
@@ -148,6 +151,14 @@ export default function NotebookScreen() {
   const [noteKind, setNoteKind] = useState<NoteKind | "all">(isCoach ? "all" : "practice");
   const [view, setView] = useState<View>({ mode: "root" });
   const [sheetOpen, setSheetOpen] = useState(false);
+  // PCマスター・ディテール（コーチ×notes/deliver/notifsタブ）の右ペイン選択状態。
+  // タブごとに1つ。View(mode)は変えず「選んでいるだけ」にすることで、左の一覧(.scroll)は
+  // 従来どおり isRoot 判定のまま表示され続ける（=同時にマスター一覧としても機能する）
+  const [selNote, setSelNote] = useState<string | null>(null);
+  const [selDeliver, setSelDeliver] = useState<string | { create: DeliverKind } | null>(null);
+  const [selNotif, setSelNotif] = useState<{ target: NotifTarget; notifId?: string } | null>(null);
+  // PC×コーチのときだけ選択state経路を使う。それ以外(モバイル/選手)は従来のview遷移のまま
+  const isPcCoach = () => isCoach && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches;
 
   const identity = notifIdentity(board.auth.role, board.auth.playerId);
   const [seenAt, setSeenAt] = useState<number>(() => loadNotifSeen()[identity] ?? 0);
@@ -177,9 +188,17 @@ export default function NotebookScreen() {
     setTab(t);
     setView({ mode: "root" });
     setSheetOpen(false);
+    setSelNote(null);
+    setSelDeliver(null);
+    setSelNotif(null);
   };
 
-  const navTarget = (t: NotifTarget) => {
+  const navTarget = (t: NotifTarget, notifId?: string) => {
+    if (isPcCoach()) {
+      // notifIdは左一覧のハイライト用。同じtargetを指す通知が複数あっても選んだ行だけを光らせる
+      setSelNotif({ target: t, notifId });
+      return;
+    }
     if (t.kind === "note") setView({ mode: "detail", id: t.id });
     else if (t.kind === "deliver") setView({ mode: "deliverDetail", id: t.id });
     else setView({ mode: "search", playerId: t.id });
@@ -274,7 +293,14 @@ export default function NotebookScreen() {
       {isRoot && tab === "notes" && (
         <div className="fbar">
           {([...(isCoach ? (["all"] as const) : []), "match", "practice", "solo"] as (NoteKind | "all")[]).map((k) => (
-            <div key={k} className={`chip${noteKind === k ? " on" : ""}`} onClick={() => setNoteKind(k)}>
+            <div
+              key={k}
+              className={`chip${noteKind === k ? " on" : ""}`}
+              onClick={() => {
+                setNoteKind(k);
+                setSelNote(null); // 絞り込みで一覧から消えたノートを右ペインに残さない
+              }}
+            >
               {k === "all" ? "すべて" : NOTE_KIND_LABEL[k]}
             </div>
           ))}
@@ -302,8 +328,9 @@ export default function NotebookScreen() {
             kind={noteKind}
             isCoach={isCoach}
             onWrite={(k) => startWrite(k)}
-            onOpen={(id) => setView({ mode: "detail", id })}
+            onOpen={(id) => (isPcCoach() ? setSelNote(id) : setView({ mode: "detail", id }))}
             onSearch={() => setView({ mode: "search" })}
+            selectedId={selNote}
           />
         )}
         {isRoot && tab === "deliver" && isCoach && (
@@ -312,12 +339,33 @@ export default function NotebookScreen() {
             <DeliverBlock
               kinds={["menu", "assignment", "meeting"]}
               heading={null}
-              onOpen={(id) => setView({ mode: "deliverDetail", id })}
-              onCreate={(k) => setView({ mode: "deliverForm", kind: k })}
+              onOpen={(id) => {
+                if (!isPcCoach()) {
+                  setView({ mode: "deliverDetail", id });
+                  return;
+                }
+                // 作成フォームは下書き保存が無い。1クリックで無警告に消さない
+                if (
+                  selDeliver != null &&
+                  typeof selDeliver !== "string" &&
+                  !window.confirm("作成中の配信を破棄して、この配信を開きますか？")
+                ) {
+                  return;
+                }
+                setSelDeliver(id);
+              }}
+              onCreate={(k) => (isPcCoach() ? setSelDeliver({ create: k }) : setView({ mode: "deliverForm", kind: k }))}
+              selectedId={typeof selDeliver === "string" ? selDeliver : null}
             />
           </div>
         )}
-        {isRoot && tab === "notifs" && <NotificationsView seenAt={viewSeenAt} onNavigate={navTarget} />}
+        {isRoot && tab === "notifs" && (
+          <NotificationsView
+            seenAt={viewSeenAt}
+            onNavigate={navTarget}
+            selectedKey={selNotif?.notifId ?? null}
+          />
+        )}
         {isRoot && tab === "report" && !isCoach && board.auth.playerId && (
           <SeasonReport playerId={board.auth.playerId} />
         )}
@@ -355,6 +403,64 @@ export default function NotebookScreen() {
           <PlayerStats focus={view.focus} onOpenNote={(id) => setView({ mode: "detail", id })} />
         )}
       </div>
+
+      {/* PC専用の第2ペイン(詳細)。コーチ×notes/deliver/notifsタブでのみマウントする。
+          view は root のまま進めるため、上の.scroll側の一覧(NoteList/DeliverBlock/NotificationsView)は
+          そのままマスター一覧として表示され続ける(モバイル・選手側は selNote 等が常にnullで従来どおり) */}
+      {isCoach && isRoot && (tab === "notes" || tab === "deliver" || tab === "notifs") && (
+        <div className="nbmain">
+          {tab === "notes" &&
+            (selNote ? (
+              <NoteDetail
+                id={selNote}
+                key={selNote}
+                isCoach={isCoach}
+                onEdit={(e) => setView({ mode: "form", kind: e.kind, edit: e })}
+                onDeleted={() => setSelNote(null)}
+              />
+            ) : (
+              <div className="nbempty">提出を選んでください</div>
+            ))}
+          {tab === "deliver" &&
+            (selDeliver == null ? (
+              <div className="nbempty">配信を選ぶか、左の＋から作成してください</div>
+            ) : typeof selDeliver === "string" ? (
+              <DeliverDetail id={selDeliver} key={selDeliver} onBack={() => setSelDeliver(null)} />
+            ) : (
+              // keyで種別切替時に必ず作り直す(無いと前の種別で入力したタイトル等が残る)
+              <DeliverComposer
+                key={`new:${selDeliver.create}`}
+                kind={selDeliver.create}
+                onDone={() => setSelDeliver(null)}
+              />
+            ))}
+          {tab === "notifs" &&
+            (selNotif == null ? (
+              <div className="nbempty">通知を選んでください</div>
+            ) : selNotif.target.kind === "note" ? (
+              <NoteDetail
+                id={selNotif.target.id}
+                key={`note:${selNotif.target.id}`}
+                isCoach={isCoach}
+                onEdit={(e) => setView({ mode: "form", kind: e.kind, edit: e })}
+                onDeleted={() => setSelNotif(null)}
+              />
+            ) : selNotif.target.kind === "deliver" ? (
+              <DeliverDetail
+                id={selNotif.target.id}
+                key={`deliver:${selNotif.target.id}`}
+                onBack={() => setSelNotif(null)}
+              />
+            ) : (
+              <NoteSearch
+                key={`player:${selNotif.target.id}`}
+                isCoach={isCoach}
+                initialPlayerId={selNotif.target.id}
+                onOpen={(id) => setSelNotif({ target: { kind: "note", id } })}
+              />
+            ))}
+        </div>
+      )}
 
       {!isCoach && isRoot && (tab === "home" || tab === "notes") && (
         <button className="fab" title="ノートを作成" onClick={() => setSheetOpen(true)}>
@@ -824,12 +930,15 @@ function NoteList({
   onWrite,
   onOpen,
   onSearch,
+  selectedId,
 }: {
   kind: NoteKind | "all";
   isCoach: boolean;
   onWrite: (kind: NoteKind) => void;
   onOpen: (id: string) => void;
   onSearch: () => void;
+  /** PCマスター・ディテールで選択中のノートID。未指定なら選択表示なし（選手側の呼び出しに影響しない） */
+  selectedId?: string | null;
 }) {
   const board = useBoard();
   const me = board.auth.playerId;
@@ -936,6 +1045,7 @@ function NoteList({
               entry={n}
               who={isCoach || (kind === "practice" && scope === "team") ? nameOf(n.playerId) : undefined}
               showKind={kind === "all"}
+              selected={selectedId != null && n.id === selectedId}
               onClick={() => onOpen(n.id)}
             />
           ))}
@@ -966,15 +1076,17 @@ function NoteCard({
   entry,
   who,
   showKind,
+  selected,
   onClick,
 }: {
   entry: NotebookEntry;
   who?: string;
   showKind?: boolean;
+  selected?: boolean;
   onClick: () => void;
 }) {
   return (
-    <button className="notecard" onClick={onClick}>
+    <button className={`notecard${selected ? " sel" : ""}`} onClick={onClick}>
       <div className="notecond">{entry.condition ? <ConditionIcon c={entry.condition} /> : NOTE_KIND_LABEL[entry.kind].slice(0, 1)}</div>
       <div className="notemain">
         <div className="notetop">

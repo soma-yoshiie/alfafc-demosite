@@ -1,3 +1,5 @@
+import type { SavedDrill, SavedPlay } from "./types";
+
 export interface Article {
   id: string;
   category: string;
@@ -6,6 +8,37 @@ export interface Article {
   /** 本文（段落配列） */
   body: string[];
 }
+
+/** 記事に添付する戦術/練習（チャット添付と同じく埋め込みでライブラリ非依存） */
+export interface ArticleAttachment {
+  kind: "play" | "drill";
+  title: string;
+  play?: SavedPlay;
+  drill?: SavedDrill;
+}
+
+/**
+ * スタッフが投稿した記事。id は "u-" プレフィクスで seed（"a-"）と区別する。
+ * draft=true は下書き（投稿画面の一覧にのみ表示。閲覧一覧・モバイルシートには出ない）
+ */
+export interface UserArticle extends Article {
+  /** 掲載する名前 */
+  author: string;
+  ts: number;
+  updatedAt: number;
+  draft?: boolean;
+  attachments?: ArticleAttachment[];
+}
+
+/** 閲覧一覧用: seed記事 + 公開済み投稿記事（新しい順で先頭に） */
+export function mergedArticles(userArticles: UserArticle[]): Article[] {
+  const published = userArticles
+    .filter((a) => !a.draft)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return [...published, ...ARTICLES];
+}
+
+export const ARTICLE_CATEGORIES = ["練習法", "コンディション", "戦術", "チーム運営"] as const;
 
 /** メニューの「お役立ち記事」一覧（デモ用の読み物コンテンツ） */
 export const ARTICLES: Article[] = [

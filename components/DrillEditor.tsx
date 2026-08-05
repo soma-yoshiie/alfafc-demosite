@@ -11,6 +11,7 @@ import type {
   Point,
   SavedDrill,
 } from "@/lib/types";
+import { drillSceneCount } from "@/lib/types";
 import { simplify } from "@/lib/animation";
 import { ITEM_LABEL, LINE_COLORS, LINE_LABEL } from "@/lib/drillDraw";
 import { renderDrillThumbPng } from "@/lib/exportDrill";
@@ -220,7 +221,11 @@ function LineHandle({ line, index }: { line: DrillLine; index: number }) {
 function Inner() {
   const board = useBoard();
   const drill = useDrill();
-  const { doc, tool, selection, stampLock } = drill;
+  const { doc, tool, selection, stampLock, scene } = drill;
+  // 盤面に描くのは現在の場面（シーン）のitems/linesだけ。旧データはstep未定義＝場面0扱い
+  const sceneItems = doc.items.filter((it) => (it.step ?? 0) === scene);
+  const sceneLines = doc.lines.filter((l) => (l.step ?? 0) === scene);
+  const sceneCount = drillSceneCount(doc);
   const draw = useRef({
     active: false,
     placing: false,
@@ -253,6 +258,8 @@ function Inner() {
       discSize: doc.discSize,
       items: doc.items.map((it) => ({ ...it })),
       lines: doc.lines.map((l) => ({ ...l, path: l.path.map((p) => ({ ...p })) })),
+      sceneCount: doc.sceneCount,
+      sceneIntents: doc.sceneIntents ? [...doc.sceneIntents] : undefined,
       updatedAt: Date.now(),
     };
     board.sendMessage({
@@ -457,6 +464,46 @@ function Inner() {
 
       <div className="dxbody">
         <div className="dxstage">
+          {/* 場面（シーン）チップ列。1つ目の練習でも「＋ 場面」を見つけられるよう場面が1つでも表示する */}
+          <div className="dxsteps">
+            {Array.from({ length: sceneCount }).map((_, i) => (
+              <div
+                key={i}
+                className={`dxstep${scene === i ? " on" : ""}`}
+                onClick={() => drill.setScene(i)}
+              >
+                <span>場面{i + 1}</span>
+                {sceneCount > 1 && (
+                  <button
+                    type="button"
+                    className="dxstepx"
+                    title="この場面を削除"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (
+                        window.confirm(
+                          `場面${i + 1}を削除しますか？この場面の配置と意図も消えます。`
+                        )
+                      )
+                        drill.removeScene(i);
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              className="dxstepadd"
+              title="新しい場面を追加（現在の配置を複製して次の動きを描く）"
+              disabled={sceneCount >= 6}
+              onClick={drill.addScene}
+            >
+              ＋ 場面
+            </button>
+          </div>
+
           <div className="dxpitchwrap">
             <div className={`pitchbox pb-${doc.pitchType}`}>
               <div
@@ -471,10 +518,10 @@ function Inner() {
               >
                 <Markings type={doc.pitchType} />
                 <DrillLines />
-                {doc.items.map((it) => (
+                {sceneItems.map((it) => (
                   <DrillItemView key={it.id} item={it} />
                 ))}
-                {doc.items.length === 0 && doc.lines.length === 0 && !tool && (
+                {sceneItems.length === 0 && sceneLines.length === 0 && !tool && (
                   <div className="hint">
                     パレットからアイテムや動線を選んで
                     <br />
@@ -569,17 +616,32 @@ function Inner() {
                   />
                 </div>
               )}
+
+            </div>
+
+            {/* 元に戻す / やり直す。.dxpitchwrap(place-items:center)基準の絶対配置にすることで
+                ピッチ左"外"の余白に浮く=ピッチ内左下の配置物をボタンが塞がない。
+                pitchbox内に置くと必ずピッチ上に乗り、意図欄の追加でdxstage基準も使えない */}
+            <div className="dxundo">
+              <button disabled={!drill.canUndo} onClick={drill.undo} title="元に戻す（Ctrl+Z）">
+                <IconUndo />
+              </button>
+              <button disabled={!drill.canRedo} onClick={drill.redo} title="やり直す（Ctrl+Shift+Z）">
+                <IconRedo />
+              </button>
             </div>
           </div>
 
-          {/* 元に戻す / やり直す */}
-          <div className="dxundo">
-            <button disabled={!drill.canUndo} onClick={drill.undo} title="元に戻す（Ctrl+Z）">
-              <IconUndo />
-            </button>
-            <button disabled={!drill.canRedo} onClick={drill.redo} title="やり直す（Ctrl+Shift+Z）">
-              <IconRedo />
-            </button>
+          {/* この場面の意図テキスト */}
+          <div className="dxintent">
+            <label htmlFor="dxintent-ta">この場面の意図</label>
+            <textarea
+              id="dxintent-ta"
+              rows={2}
+              placeholder="この場面でしてほしい動き・ねらい（例: 2人目が受けたら3人目が裏へ走る）"
+              value={doc.sceneIntents?.[scene] ?? ""}
+              onChange={(e) => drill.setSceneIntent(scene, e.target.value)}
+            />
           </div>
         </div>
 
@@ -688,7 +750,9 @@ function Inner() {
                   <div className="dcbody" onClick={() => loadWithConfirm(s.id)}>
                     <div className="playtitle">{s.title}</div>
                     <div className="playsub">
-                      {PITCH_LABEL[s.pitchType]} ・ {fmtDate(s.updatedAt)}
+                      {PITCH_LABEL[s.pitchType]}
+                      {drillSceneCount(s) > 1 ? ` ・ 場面${drillSceneCount(s)}` : ""} ・{" "}
+                      {fmtDate(s.updatedAt)}
                     </div>
                     {s.memo ? <div className="dcmemo">{s.memo}</div> : null}
                   </div>

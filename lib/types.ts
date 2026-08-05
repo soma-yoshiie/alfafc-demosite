@@ -38,6 +38,8 @@ export interface Player {
   /** 体重kg */
   weight?: number | null;
   dominantFoot?: DominantFoot;
+  /** 学年（1〜6年。出欠の学年別集計・名簿表示に使用。未設定可） */
+  grade?: number | null;
   /** 体力測定の記録 */
   fitness?: FitnessRecord[];
   /** 怪我履歴（スタッフ管理） */
@@ -389,6 +391,8 @@ export interface DrillItem {
   label?: string;
   /** 向き（度）。ゴールなどの回転に使用 */
   rot?: number;
+  /** 所属する場面（0始まり）。旧データは未定義＝場面0（戦術ボードの Move.step と同じ互換規約） */
+  step?: number;
 }
 
 /** 動線の種類: ラン=実線矢印 / パス=破線矢印 / ドリブル=波線矢印 / line=直線(矢印なし) */
@@ -401,12 +405,20 @@ export interface DrillLine {
   id: string;
   kind: DrillLineKind;
   path: Point[];
+  /** 所属する場面（0始まり）。旧データは未定義＝場面0 */
+  step?: number;
 }
 
 /** ピッチの表示タイプ。full=縦フル / fullh=横フル / half=ハーフ / blank=ブランク */
 export type PitchType = "full" | "fullh" | "half" | "blank";
 
-/** ドリル図のドキュメント */
+/**
+ * ドリル図のドキュメント。
+ * 場面（手順）を複数持てる: items/lines の step が所属場面を表し、
+ * sceneIntents[n] が場面nの意図テキスト。1枚図では表現できない
+ * 「この場面ではこの動き、次の場面ではこの動き」を段階で伝える。
+ * 旧データは step/sceneCount/sceneIntents 未定義＝単一場面として扱う。
+ */
 export interface DrillDoc {
   title: string;
   memo: string;
@@ -415,6 +427,15 @@ export interface DrillDoc {
   lines: DrillLine[];
   /** 選手・相手の丸の大きさ（既定 L） */
   discSize?: DiscSize;
+  /** 場面数。旧データは未定義＝1（BoardState.stepCount と同じ互換規約） */
+  sceneCount?: number;
+  /** 場面ごとの意図テキスト（index=場面番号。空文字=未記入） */
+  sceneIntents?: string[];
+}
+
+/** 場面数（未定義時のデフォルト補完） */
+export function drillSceneCount(doc: DrillDoc): number {
+  return Math.max(1, doc.sceneCount ?? 1);
 }
 
 export interface SavedDrill extends DrillDoc {

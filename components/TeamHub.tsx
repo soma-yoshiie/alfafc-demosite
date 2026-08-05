@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import type {
   Announcement,
@@ -34,10 +34,37 @@ import {
 } from "@/lib/calendarUtils";
 import { loadLastEventCategory, saveLastEventCategory } from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
+import { attendanceRate } from "@/lib/teamStats";
+import { aggregateTech, matchSummary, perMatchTech, perPlayerTech } from "@/lib/teamStatsAgg";
+import type { AttPeriod } from "@/lib/attendanceStats";
+import { gradeAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
+import { LineChart } from "./Charts";
 import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
+
+/** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
+const PC_MQ = "(min-width: 1024px)";
+
+/**
+ * PC幅かどうかを追跡するフック（ConsoleScreens.tsx ArticlesScreen 436-446 と同じ手法）。
+ * 左ペインに新規追加する「サマリー行」など、モバイルでは描画してはいけないPC専用DOMの
+ * 出し分けに使う（クリック分岐自体は各所で window.matchMedia を直接判定する）。
+ */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
 
 const WD = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -115,6 +142,48 @@ function footLabel(f?: DominantFoot): string {
   return "—";
 }
 
+/**
+ * 得点・アシストのランキング集計（試合記録の goals を走査）。
+ * MatchesTab(左ペインの統計カード)とRecSummaryPane(右ペインのサマリー)で共有するため
+ * ロジックを一本化する（旧: MatchesTab内に閉じていた集計）。上位n件への絞り込みは呼び出し側で行う
+ */
+function scorerAssisterRanks(matches: MatchRecord[]): {
+  scorers: { pid: string; n: number }[];
+  assisters: { pid: string; n: number }[];
+} {
+  const gc: Record<string, number> = {};
+  const ac: Record<string, number> = {};
+  matches.forEach((m) => {
+    m.goals.forEach((g) => {
+      gc[g.playerId] = (gc[g.playerId] ?? 0) + 1;
+      if (g.assistPlayerId) ac[g.assistPlayerId] = (ac[g.assistPlayerId] ?? 0) + 1;
+    });
+  });
+  const rank = (obj: Record<string, number>) =>
+    Object.entries(obj)
+      .map(([pid, n]) => ({ pid, n }))
+      .sort((a, b) => b.n - a.n);
+  return { scorers: rank(gc), assisters: rank(ac) };
+}
+
+/** 直近nヶ月(既定6)・月別の勝率(%)と得点。RecSummaryPaneの月別推移(MultiLine)専用の集計 */
+function matchMonthlyTrend(matches: MatchRecord[], months = 6): { label: string; winPct: number; goals: number }[] {
+  const today = todayStr();
+  const [ty, tm] = today.split("-").map(Number);
+  const rows: { label: string; winPct: number; goals: number }[] = [];
+  for (let i = months - 1; i >= 0; i--) {
+    const dt = new Date(ty, tm - 1 - i, 1);
+    const y = dt.getFullYear();
+    const m = dt.getMonth() + 1;
+    const ym = `${y}-${String(m).padStart(2, "0")}`;
+    const ms = matches.filter((mm) => mm.date.startsWith(ym));
+    const wins = ms.filter((mm) => mm.ourScore > mm.theirScore).length;
+    const goals = ms.reduce((s, mm) => s + mm.ourScore, 0);
+    rows.push({ label: `${m}月`, winPct: ms.length ? Math.round((wins / ms.length) * 100) : 0, goals });
+  }
+  return rows;
+}
+
 function Sheet({
   open,
   onClose,
@@ -172,6 +241,11 @@ type SheetState =
   | { type: "playerForm"; player?: Player }
   | null;
 
+/** 試合記録タブ・PC右ペインの選択状態（既定 summary） */
+type RecSel = { kind: "summary" } | { kind: "match"; id: string } | { kind: "player"; id: string };
+/** 出欠タブ・PC右ペインの選択状態（既定 overview） */
+type AttSel = { kind: "overview" } | { kind: "event"; id: string } | { kind: "player"; id: string };
+
 function Inner() {
   const board = useBoard();
   const team = useTeam();
@@ -182,6 +256,20 @@ function Inner() {
   const now = new Date();
   const [calYm, setCalYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [calView, setCalView] = useState<"month" | "list">("month");
+
+  // PC右ペイン(マスター・ディテール)の選択状態。タブを跨いで保持するためInnerで持つ
+  const [recSel, setRecSel] = useState<RecSel>({ kind: "summary" });
+  const [cmp, setCmp] = useState<string>("all"); // 試合記録の大会フィルタ（左右ペイン共有のためInnerへ）
+  // Inner保持化でタブを跨いで残るようになったため、選択中の大会が削除されたら「すべて」へ戻す
+  // （どのチップもonにならないまま一覧だけ絞られる状態を防ぐ）
+  useEffect(() => {
+    if (cmp !== "all" && cmp !== "none" && !team.team.competitions.some((c) => c.id === cmp)) {
+      setCmp("all");
+    }
+  }, [cmp, team.team.competitions]);
+  const [rosSel, setRosSel] = useState<string | null>(null);
+  const [attSel, setAttSel] = useState<AttSel>({ kind: "overview" });
+  const [attPeriod, setAttPeriod] = useState<AttPeriod>("all");
 
   const isCoach = team.viewer.role === "coach";
   const me = team.viewer.memberPlayerId
@@ -217,6 +305,30 @@ function Inner() {
     [activeTab, isCoach, board.auth.role]
   );
   useConsoleSubnav(consoleSubnav);
+
+  // 保険effect: モバイル経路でシートが開いた状態のままPC幅になった場合、
+  // 対応する右ペインの選択stateへ変換してシートを閉じる（ChatScreen.tsx 36-56 の教訓に倣う）。
+  // 対応タブを表示中でない場合は変換しない（例: homeタブ経由でmatchViewを開いた場合など）
+  useEffect(() => {
+    if (!isCoach || typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const sync = () => {
+      if (!mql.matches) return;
+      if (sheet?.type === "matchView" && activeTab === "rec") {
+        setRecSel({ kind: "match", id: sheet.id });
+        setSheet(null);
+      } else if (sheet?.type === "playerDetail" && activeTab === "ros") {
+        setRosSel(sheet.playerId);
+        setSheet(null);
+      } else if (sheet?.type === "attendance" && activeTab === "att") {
+        setAttSel({ kind: "event", id: sheet.eventId });
+        setSheet(null);
+      }
+    };
+    sync();
+    mql.addEventListener("change", sync);
+    return () => mql.removeEventListener("change", sync);
+  }, [isCoach, sheet, activeTab]);
 
   return (
     <div className="app teamapp">
@@ -290,7 +402,14 @@ function Inner() {
         {activeTab === "home" && (
           <HomeTab isCoach={isCoach} setSheet={setSheet} setTab={setTab} />
         )}
-        {activeTab === "att" && <AttendanceTab isCoach={isCoach} setSheet={setSheet} />}
+        {activeTab === "att" && (
+          <AttendanceTab
+            isCoach={isCoach}
+            setSheet={setSheet}
+            attSel={attSel}
+            setAttSel={setAttSel}
+          />
+        )}
         {activeTab === "cal" && (
           <CalendarTab
             isCoach={isCoach}
@@ -302,12 +421,61 @@ function Inner() {
           />
         )}
         {activeTab === "rec" && (
-          <MatchesTab isCoach={isCoach} players={players} setSheet={setSheet} />
+          <MatchesTab
+            isCoach={isCoach}
+            players={players}
+            setSheet={setSheet}
+            recSel={recSel}
+            setRecSel={setRecSel}
+            cmp={cmp}
+            setCmp={setCmp}
+          />
         )}
         {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
-          <RosterTab players={players} setSheet={setSheet} />
+          <RosterTab players={players} setSheet={setSheet} rosSel={rosSel} setRosSel={setRosSel} />
         )}
       </div>
+
+      {/* PC専用の第2ペイン（コーチのみ・rec/ros/attタブのみ）。選手ビューでは絶対に描画しない。
+          モバイルでは base の .teammain{display:none}（チャットの.chatmainと同じ流儀）で不可視 */}
+      {isCoach && (activeTab === "rec" || activeTab === "ros" || activeTab === "att") && (
+        <div className="teammain">
+          {activeTab === "rec" &&
+            (recSel.kind === "summary" ? (
+              <RecSummaryPane cmp={cmp} players={players} setRecSel={setRecSel} />
+            ) : recSel.kind === "match" ? (
+              <RecMatchPane id={recSel.id} players={players} setRecSel={setRecSel} setSheet={setSheet} isCoach={isCoach} />
+            ) : (
+              <RecPlayerPane id={recSel.id} players={players} setRecSel={setRecSel} />
+            ))}
+          {activeTab === "ros" &&
+            (rosSel ? (
+              <RosPlayerPane playerId={rosSel} players={players} isCoach={isCoach} setSheet={setSheet} setRosSel={setRosSel} />
+            ) : (
+              <div className="empty-msg" style={{ margin: "auto" }}>
+                選手を選んでください
+              </div>
+            ))}
+          {activeTab === "att" &&
+            (attSel.kind === "overview" ? (
+              <AttOverviewPane
+                players={players}
+                attPeriod={attPeriod}
+                setAttPeriod={setAttPeriod}
+                setAttSel={setAttSel}
+              />
+            ) : attSel.kind === "event" ? (
+              <AttEventPane id={attSel.id} players={players} setAttSel={setAttSel} />
+            ) : (
+              <AttPlayerPane
+                id={attSel.id}
+                players={players}
+                attPeriod={attPeriod}
+                setAttSel={setAttSel}
+              />
+            ))}
+        </div>
+      )}
 
       <SheetHost
         key={sheetKey(sheet)}
@@ -563,12 +731,17 @@ function AnnCard({ a, isCoach }: { a: Announcement; isCoach: boolean }) {
 function AttendanceTab({
   isCoach,
   setSheet,
+  attSel,
+  setAttSel,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
+  attSel: AttSel;
+  setAttSel: (s: AttSel) => void;
 }) {
   const team = useTeam();
   const today = todayStr();
+  const pc = usePc();
   const [showPast, setShowPast] = useState(false);
   const upcoming = team.team.events
     .filter((e) => isUpcomingOrOngoing(e, today))
@@ -578,6 +751,16 @@ function AttendanceTab({
     .sort(byDateDesc);
   return (
     <>
+      {/* PC専用: 右ペインのサマリー選択行。モバイルでは描画しない(第2ペイン系の新規DOMのため) */}
+      {isCoach && pc && (
+        <button
+          type="button"
+          className={`teamsumrow${attSel.kind === "overview" ? " sel" : ""}`}
+          onClick={() => setAttSel({ kind: "overview" })}
+        >
+          出欠サマリー
+        </button>
+      )}
       {isCoach && (
         <button className="bigbtn" style={{ width: "100%", margin: "12px 0 6px" }} onClick={() => setSheet({ type: "event" })}>
           ＋ 予定を追加
@@ -588,7 +771,7 @@ function AttendanceTab({
       ) : (
         <div className="attlist">
           {upcoming.map((ev) => (
-            <EventCard key={ev.id} ev={ev} isCoach={isCoach} setSheet={setSheet} />
+            <EventCard key={ev.id} ev={ev} isCoach={isCoach} setSheet={setSheet} attSel={attSel} setAttSel={setAttSel} />
           ))}
         </div>
       )}
@@ -604,7 +787,7 @@ function AttendanceTab({
           {showPast && (
             <div className="attlist">
               {past.map((ev) => (
-                <EventCard key={ev.id} ev={ev} isCoach={isCoach} setSheet={setSheet} past />
+                <EventCard key={ev.id} ev={ev} isCoach={isCoach} setSheet={setSheet} attSel={attSel} setAttSel={setAttSel} past />
               ))}
             </div>
           )}
@@ -619,19 +802,24 @@ function EventCard({
   ev,
   isCoach,
   setSheet,
+  attSel,
+  setAttSel,
   past = false,
 }: {
   ev: TeamEvent;
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
+  attSel?: AttSel;
+  setAttSel?: (s: AttSel) => void;
   past?: boolean;
 }) {
   const team = useTeam();
   const s = team.summary(ev.id);
   const cat = categoryOf(ev, team.categories);
   const ongoing = isOngoing(ev, todayStr());
+  const selected = attSel?.kind === "event" && attSel.id === ev.id;
   return (
-    <div className="evcard" style={past ? { opacity: 0.72 } : undefined}>
+    <div className={`evcard${selected ? " sel" : ""}`} style={past ? { opacity: 0.72 } : undefined}>
       <div className="evhead">
         <span className="evkind" style={{ background: cat.color }}>
           {cat.label}
@@ -661,7 +849,16 @@ function EventCard({
       </div>
       {ev.note && <div className="evnote">{ev.note}</div>}
       {isCoach && (
-        <div className="evsummary" onClick={() => setSheet({ type: "attendance", eventId: ev.id })}>
+        <div
+          className="evsummary"
+          onClick={() => {
+            if (setAttSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
+              setAttSel({ kind: "event", id: ev.id });
+            } else {
+              setSheet({ type: "attendance", eventId: ev.id });
+            }
+          }}
+        >
           <span className="att yes">出席 {s.yes}</span>
           <span className="att maybe">未定 {s.maybe}</span>
           <span className="att no">欠席 {s.no}</span>
@@ -873,15 +1070,23 @@ function MatchesTab({
   isCoach,
   players,
   setSheet,
+  recSel,
+  setRecSel,
+  cmp,
+  setCmp,
 }: {
   isCoach: boolean;
   players: Player[];
   setSheet: (s: SheetState) => void;
+  recSel?: RecSel;
+  setRecSel?: (s: RecSel) => void;
+  cmp: string;
+  setCmp: (v: string) => void;
 }) {
   const board = useBoard();
   const team = useTeam();
+  const pc = usePc();
   const comps = team.team.competitions;
-  const [cmp, setCmp] = useState<string>("all"); // "all" | 大会ID | "none"
   const cmpName = (m: MatchRecord): string | null =>
     m.competitionId
       ? comps.find((c) => c.id === m.competitionId)?.name ?? "（削除された大会）"
@@ -901,26 +1106,16 @@ function MatchesTab({
     l = 0,
     gf = 0,
     ga = 0;
-  const gc: Record<string, number> = {};
-  const ac: Record<string, number> = {};
   matches.forEach((m) => {
     gf += m.ourScore;
     ga += m.theirScore;
     if (m.ourScore > m.theirScore) w++;
     else if (m.ourScore === m.theirScore) d++;
     else l++;
-    m.goals.forEach((g) => {
-      gc[g.playerId] = (gc[g.playerId] ?? 0) + 1;
-      if (g.assistPlayerId) ac[g.assistPlayerId] = (ac[g.assistPlayerId] ?? 0) + 1;
-    });
   });
-  const rank = (obj: Record<string, number>) =>
-    Object.entries(obj)
-      .map(([pid, n]) => ({ pid, n }))
-      .sort((a, b) => b.n - a.n)
-      .slice(0, 5);
-  const scorers = rank(gc);
-  const assisters = rank(ac);
+  const ranks = scorerAssisterRanks(matches);
+  const scorers = ranks.scorers.slice(0, 5);
+  const assisters = ranks.assisters.slice(0, 5);
 
   // 選手ビューで非公開なら閲覧不可
   if (!isCoach && !board.matchesPublic) {
@@ -933,6 +1128,16 @@ function MatchesTab({
 
   return (
     <>
+      {/* PC専用: 右ペインのサマリー選択行。モバイルでは描画しない(第2ペイン系の新規DOMのため) */}
+      {isCoach && pc && recSel && setRecSel && (
+        <button
+          type="button"
+          className={`teamsumrow${recSel.kind === "summary" ? " sel" : ""}`}
+          onClick={() => setRecSel({ kind: "summary" })}
+        >
+          チーム全体のサマリー
+        </button>
+      )}
       {isCoach && (
         <div className="evnote" style={{ margin: "12px 2px 4px" }}>
           {board.matchesPublic
@@ -1030,8 +1235,19 @@ function MatchesTab({
           {matches.map((m) => {
             const win = m.ourScore > m.theirScore;
             const draw = m.ourScore === m.theirScore;
+            const selected = recSel?.kind === "match" && recSel.id === m.id;
             return (
-              <div key={m.id} className="matchcard" onClick={() => setSheet({ type: "matchView", id: m.id })}>
+              <div
+                key={m.id}
+                className={`matchcard${selected ? " sel" : ""}`}
+                onClick={() => {
+                  if (isCoach && setRecSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
+                    setRecSel({ kind: "match", id: m.id });
+                  } else {
+                    setSheet({ type: "matchView", id: m.id });
+                  }
+                }}
+              >
                 <div className={`mres ${win ? "w" : draw ? "d" : "l"}`}>{win ? "勝" : draw ? "分" : "敗"}</div>
                 <div className="mmid">
                   <div className="mopp">vs {m.opponent}</div>
@@ -1059,9 +1275,13 @@ function MatchesTab({
 function RosterTab({
   players,
   setSheet,
+  rosSel,
+  setRosSel,
 }: {
   players: Player[];
   setSheet: (s: SheetState) => void;
+  rosSel?: string | null;
+  setRosSel?: (id: string | null) => void;
 }) {
   const board = useBoard();
   const [q, setQ] = useState("");
@@ -1088,8 +1308,14 @@ function RosterTab({
           return (
             <div
               key={p.id}
-              className="prow"
-              onClick={() => setSheet({ type: "playerDetail", playerId: p.id })}
+              className={`prow${rosSel === p.id ? " sel" : ""}`}
+              onClick={() => {
+                if (setRosSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
+                  setRosSel(p.id);
+                } else {
+                  setSheet({ type: "playerDetail", playerId: p.id });
+                }
+              }}
             >
               <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
               <div className="meta">
@@ -1099,6 +1325,7 @@ function RosterTab({
                 </div>
                 <div className="sub">
                   背番号 {p.number ?? "—"}
+                  {p.grade ? ` ・ ${p.grade}年` : ""}
                   {inj ? ` ・ ${INJURY_STATUS_LABEL[inj.status]}` : ""}
                 </div>
               </div>
@@ -1120,6 +1347,837 @@ function RosterTab({
   );
 }
 
+/* ----------------------------------------------------------------
+   PC右ペイン共有ボディ（シートとPCペインの両方から使う）
+   ---------------------------------------------------------------- */
+
+/**
+ * 出欠記録UI本体（○△×とメモ入力）。出欠シート(モバイル)とPC右ペイン(att/event)の
+ * 両方から使う共有ボディ。見た目・挙動は元のシート実装のまま
+ */
+function AttendanceRecordBody({ eventId, players }: { eventId: string; players: Player[] }) {
+  const team = useTeam();
+  const ev = team.team.events.find((e) => e.id === eventId);
+  const att = team.team.attendance[eventId] ?? {};
+  const s = team.summary(eventId);
+  const order: { key: AttendanceStatus | "none"; label: string }[] = [
+    { key: "none", label: "未記録" },
+    { key: "no", label: "欠席" },
+    { key: "maybe", label: "未定" },
+    { key: "yes", label: "出席" },
+  ];
+  const groups = order
+    .map((g) => ({
+      ...g,
+      list: players.filter((p) => (att[p.id]?.status ?? "none") === g.key),
+    }))
+    .filter((g) => g.list.length > 0);
+  return (
+    <>
+      <h2>出欠の記録</h2>
+      {ev && (
+        <div className="mvmeta" style={{ textAlign: "left", margin: "0 16px 10px" }}>
+          {ev.title} ・ {fmtDate(ev.date)}
+        </div>
+      )}
+      <div className="attsummary">
+        <span className="att yes">出席 {s.yes}</span>
+        <span className="att maybe">未定 {s.maybe}</span>
+        <span className="att no">欠席 {s.no}</span>
+        <span className="att none">未記録 {s.none}</span>
+      </div>
+      <div className="list">
+        {players.length === 0 ? (
+          <div className="empty-msg">選手がいません。</div>
+        ) : (
+          groups.map((g) => (
+            <div key={g.key}>
+              <div className={`attgh ${g.key}`}>
+                {g.label} {g.list.length}人
+              </div>
+              {g.list.map((p) => {
+                const cur = att[p.id];
+                return (
+                  <div key={p.id} className="attrow">
+                    <div className="attname">
+                      {p.name}
+                      <small>背番号 {p.number ?? "—"}</small>
+                      {/* 理由・メモ: 選手の回答UI廃止に伴い、スタッフがここで記録する */}
+                      {cur?.status && (
+                        <input
+                          key={`${eventId}_${p.id}`}
+                          className="attreason"
+                          placeholder="メモ（遅刻・欠席理由など）"
+                          defaultValue={cur.comment ?? ""}
+                          onBlur={(e) =>
+                            team.setAttendance(
+                              eventId,
+                              p.id,
+                              cur.status,
+                              e.target.value.trim() || undefined
+                            )
+                          }
+                        />
+                      )}
+                    </div>
+                    <div className="attpick">
+                      {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
+                        <button
+                          key={st}
+                          className={`attbtn ${st}${cur?.status === st ? " on" : ""}`}
+                          onClick={() => team.setAttendance(eventId, p.id, st, cur?.comment)}
+                        >
+                          {STATUS_MARK[st]}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
+ * 試合詳細UI本体。試合詳細シート(モバイル)とPC右ペイン(rec/match)の両方から使う共有ボディ。
+ * onEdit/onDelete で「閉じ方」だけ呼び出し側(シート=setSheet(null) / ペイン=summaryへ戻る)に委ねる
+ */
+function MatchDetailBody({
+  m,
+  players,
+  isCoach,
+  onEdit,
+  onDelete,
+}: {
+  m: MatchRecord;
+  players: Player[];
+  isCoach: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const team = useTeam();
+  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
+  const win = m.ourScore > m.theirScore;
+  const draw = m.ourScore === m.theirScore;
+  return (
+    <>
+      <h2>
+        vs {m.opponent}
+        <span>{win ? "WIN" : draw ? "DRAW" : "LOSE"}</span>
+      </h2>
+      <div className="mvscore">
+        {m.ourScore} <small>-</small> {m.theirScore}
+      </div>
+      <div className="mvmeta">
+        {fmtDate(m.date)}
+        {(() => {
+          const cn = m.competitionId
+            ? team.team.competitions.find((c) => c.id === m.competitionId)?.name
+            : m.competition;
+          return cn ? <> ・ <E n="trophy" /> {cn}</> : "";
+        })()}
+        {m.halfMinutes ? <> ・ {m.halfMinutes}分ハーフ</> : ""}
+      </div>
+      <div className="detail">
+        <div className="dsec">
+          <div className="dsec-h"><E n="ball" /> 得点者</div>
+          {m.goals.length === 0 ? (
+            <div className="dsec-e">記録なし</div>
+          ) : (
+            m.goals.map((g, i) => (
+              <div key={i} className="dline">
+                {g.minute != null ? `${g.minute}' ` : ""}
+                {nameOf(g.playerId)}
+                {g.assistPlayerId ? `（A: ${nameOf(g.assistPlayerId)}）` : ""}
+              </div>
+            ))
+          )}
+        </div>
+        <div className="dsec">
+          <div className="dsec-h"><E n="refresh" /> 交代</div>
+          {m.subs.length === 0 ? (
+            <div className="dsec-e">記録なし</div>
+          ) : (
+            m.subs.map((s, i) => (
+              <div key={i} className="dline">
+                {s.minute != null ? `${s.minute}' ` : ""}
+                {nameOf(s.outPlayerId)} → {nameOf(s.inPlayerId)}
+              </div>
+            ))
+          )}
+        </div>
+        {m.note && (
+          <div className="dsec">
+            <div className="dsec-h"><E n="note" /> メモ</div>
+            <div className="dline">{m.note}</div>
+          </div>
+        )}
+      </div>
+      {isCoach && (
+        <>
+          <button className="bigbtn ghost" onClick={onEdit}>
+            編集する
+          </button>
+          <button
+            className="bigbtn ghost"
+            style={{ color: "var(--red)" }}
+            onClick={() => {
+              if (window.confirm("この試合記録を削除しますか？")) {
+                team.removeMatch(m.id);
+                onDelete();
+              }
+            }}
+          >
+            削除する
+          </button>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * 選手プロフィールUI本体。選手詳細シート(モバイル)とPC右ペイン(ros/選手選択)の両方から使う共有ボディ
+ */
+function PlayerDetailBody({
+  p,
+  isCoach,
+  onEdit,
+  onDelete,
+}: {
+  p: Player;
+  isCoach: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const board = useBoard();
+  const team = useTeam();
+  const isCaptain = board.state.captain === p.id;
+  return (
+    <>
+      <h2>
+        {p.name}
+        <span>{p.position}</span>
+      </h2>
+      <div className="detail">
+        <div className="dsec">
+          <div className="dsec-h">基本情報</div>
+          <div className="dline">背番号 {p.number ?? "—"}</div>
+          <div className="dline">ポジション {p.position}</div>
+          <div className="dline">利き足 {footLabel(p.dominantFoot)}</div>
+          {p.height != null && <div className="dline">身長 {p.height}cm</div>}
+          {p.weight != null && <div className="dline">体重 {p.weight}kg</div>}
+          {p.email && <div className="dline">{p.email}</div>}
+          {isCaptain && <div className="dline">キャプテン (C)</div>}
+        </div>
+        {p.injuries && p.injuries.length > 0 && (
+          <div className="dsec">
+            <div className="dsec-h">怪我の記録</div>
+            {p.injuries.map((inj) => (
+              <div key={inj.id} className="dline">
+                {fmtDate(inj.date)} {inj.area} {INJURY_STATUS_LABEL[inj.status]}
+              </div>
+            ))}
+          </div>
+        )}
+        {p.fitness && p.fitness.length > 0 && (
+          <div className="dsec">
+            <div className="dsec-h">体力測定</div>
+            {p.fitness.map((f) => (
+              <div key={f.id} className="dline">
+                {f.name} {f.value}（{fmtDate(f.date)}）
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {isCoach && (
+        <>
+          <button className="bigbtn" onClick={onEdit}>
+            編集する
+          </button>
+          <button
+            className="bigbtn ghost"
+            onClick={() => {
+              board.setCaptain(isCaptain ? null : p.id);
+            }}
+          >
+            {isCaptain ? "キャプテンを解除" : "キャプテンにする"}
+          </button>
+          <button
+            className="bigbtn ghost"
+            style={{ color: "var(--red)" }}
+            onClick={() => {
+              if (window.confirm(`${p.name}を名簿から削除しますか？出欠の記録も削除されます`)) {
+                board.deletePlayer(p.id);
+                team.removePlayerAnswers(p.id);
+                if (team.viewer.memberPlayerId === p.id) team.setViewer("coach", null);
+                onDelete();
+              }
+            }}
+          >
+            削除する
+          </button>
+        </>
+      )}
+    </>
+  );
+}
+
+/* ----------------------------------------------------------------
+   試合記録タブ・PC右ペイン
+   ---------------------------------------------------------------- */
+
+/** summary: 大会フィルタ適用後のチーム成績サマリー・月別推移・チーム技術・得点/アシストランキング・大会別成績 */
+function RecSummaryPane({
+  cmp,
+  players,
+  setRecSel,
+}: {
+  cmp: string;
+  players: Player[];
+  setRecSel: (s: RecSel) => void;
+}) {
+  const board = useBoard();
+  const team = useTeam();
+  const comps = team.team.competitions;
+  const allMatches = team.team.matches;
+  const matches = allMatches.filter((m) =>
+    cmp === "all" ? true : cmp === "none" ? !m.competitionId : m.competitionId === cmp
+  );
+  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
+  const sum = matchSummary(matches);
+  const cleanSheets = matches.filter((m) => m.theirScore === 0).length;
+  const avgGf = sum.played ? (sum.gf / sum.played).toFixed(1) : "0.0";
+  const trend = matchMonthlyTrend(matches);
+  const tech = aggregateTech(board.notebook);
+  const ranks = scorerAssisterRanks(matches);
+  const topScorers = ranks.scorers.slice(0, 5);
+  const topAssisters = ranks.assisters.slice(0, 5);
+  const byComp = [
+    ...comps.map((c) => ({ id: c.id, name: c.name, ms: allMatches.filter((m) => m.competitionId === c.id) })),
+    ...(allMatches.some((m) => !m.competitionId)
+      ? [{ id: "none", name: "その他", ms: allMatches.filter((m) => !m.competitionId) }]
+      : []),
+  ].filter((g) => g.ms.length > 0);
+  const paneTitle =
+    cmp === "all" ? "チーム全体のサマリー" : cmp === "none" ? "その他" : comps.find((c) => c.id === cmp)?.name ?? "サマリー";
+
+  return (
+    <div className="tmdetail screenbody">
+      <h2>{paneTitle}</h2>
+      {matches.length === 0 ? (
+        <div className="empty-msg">まだ試合記録がありません。</div>
+      ) : (
+        <>
+          <div className="hdash">
+            <div className="hstat"><div className="hstat-n">{sum.played}</div><div className="hstat-l">試合数</div></div>
+            <div className="hstat"><div className="hstat-n ev">{sum.wins}-{sum.draws}-{sum.losses}</div><div className="hstat-l">勝-分-敗</div></div>
+            <div className="hstat"><div className="hstat-n">{sum.winPct ?? 0}%</div><div className="hstat-l">勝率</div></div>
+            <div className="hstat"><div className="hstat-n">{sum.gf}</div><div className="hstat-l">得点</div></div>
+            <div className="hstat"><div className="hstat-n">{sum.ga}</div><div className="hstat-l">失点</div></div>
+            <div className="hstat"><div className="hstat-n">{sum.gf - sum.ga}</div><div className="hstat-l">得失点差</div></div>
+            <div className="hstat"><div className="hstat-n">{cleanSheets}</div><div className="hstat-l">クリーンシート</div></div>
+            <div className="hstat"><div className="hstat-n">{avgGf}</div><div className="hstat-l">1試合平均得点</div></div>
+          </div>
+
+          {/* 勝率(0-100%)と得点(数点)は単位もレンジも違うため同一Y軸に載せない(片方が平線に潰れる) */}
+          <div className="sech">月別勝率の推移（直近6ヶ月・%）</div>
+          <LineChart data={trend.map((t) => ({ label: t.label, value: t.winPct }))} max={100} detailed />
+          <div className="sech">月別得点の推移（直近6ヶ月）</div>
+          <LineChart data={trend.map((t) => ({ label: t.label, value: t.goals }))} detailed />
+
+          <div className="sech">チーム技術</div>
+          <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
+          <div className="hdash">
+            <div className="hstat">
+              <div className="hstat-n">{tech.shotPct ?? "—"}{tech.shotPct != null ? "%" : ""}</div>
+              <div className="hstat-l">シュート決定率（{tech.goals}/{tech.shots}）</div>
+            </div>
+            <div className="hstat">
+              <div className="hstat-n">{tech.passPct ?? "—"}{tech.passPct != null ? "%" : ""}</div>
+              <div className="hstat-l">パス成功率（{tech.passOk}/{tech.pass}）</div>
+            </div>
+            <div className="hstat">
+              <div className="hstat-n">{tech.dribblePct ?? "—"}{tech.dribblePct != null ? "%" : ""}</div>
+              <div className="hstat-l">ドリブル成功率（{tech.dribbleOk}/{tech.dribble}）</div>
+            </div>
+          </div>
+
+          {topScorers.length > 0 && (
+            <>
+              <div className="sech">得点ランキング</div>
+              <div className="scorers">
+                {topScorers.map((s, i) => (
+                  <div
+                    key={s.pid}
+                    className="scorerrow"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setRecSel({ kind: "player", id: s.pid })}
+                  >
+                    <span className="rank">{i + 1}</span>
+                    <span className="snm">{nameOf(s.pid)}</span>
+                    <span className="sgoals">{s.n}点</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {topAssisters.length > 0 && (
+            <>
+              <div className="sech">アシストランキング</div>
+              <div className="scorers">
+                {topAssisters.map((s, i) => (
+                  <div
+                    key={s.pid}
+                    className="scorerrow"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setRecSel({ kind: "player", id: s.pid })}
+                  >
+                    <span className="rank">{i + 1}</span>
+                    <span className="snm">{nameOf(s.pid)}</span>
+                    <span className="sgoals" style={{ color: "var(--blue)" }}>{s.n}A</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {byComp.length > 0 && (
+            <>
+              <div className="sech">大会別成績</div>
+              <div className="list">
+                {byComp.map((g) => {
+                  const gs = matchSummary(g.ms);
+                  return (
+                    <div key={g.id} className="cmprow">
+                      <div className="cmpinfo">
+                        <div className="cmpnm">{g.name}</div>
+                        <div className="cmpsub">
+                          {gs.played}試合 ・ {gs.wins}-{gs.draws}-{gs.losses} ・ 得点{gs.gf}-失点{gs.ga}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** match: 試合詳細＋「‹ サマリー」戻りリンク */
+function RecMatchPane({
+  id,
+  players,
+  setRecSel,
+  setSheet,
+  isCoach,
+}: {
+  id: string;
+  players: Player[];
+  setRecSel: (s: RecSel) => void;
+  setSheet: (s: SheetState) => void;
+  isCoach: boolean;
+}) {
+  const team = useTeam();
+  const m = team.team.matches.find((x) => x.id === id);
+  return (
+    <div className="tmdetail screenbody">
+      <div className="tmback" onClick={() => setRecSel({ kind: "summary" })}>
+        ‹ サマリー
+      </div>
+      {m ? (
+        <MatchDetailBody
+          m={m}
+          players={players}
+          isCoach={isCoach}
+          onEdit={() => setSheet({ type: "match", record: m })}
+          onDelete={() => setRecSel({ kind: "summary" })}
+        />
+      ) : (
+        <div className="empty-msg">この試合記録は削除されました。</div>
+      )}
+    </div>
+  );
+}
+
+/** player: 選手名ヘッダ＋「‹ サマリー」/ 得点・アシスト内訳 / 技術 / 試合別推移 / 出席率 */
+function RecPlayerPane({
+  id,
+  players,
+  setRecSel,
+}: {
+  id: string;
+  players: Player[];
+  setRecSel: (s: RecSel) => void;
+}) {
+  const board = useBoard();
+  const team = useTeam();
+  const p = players.find((x) => x.id === id);
+
+  // 得点・アシストの試合別内訳（goals走査。既存898-923と同じ走査方針を選手個人向けに使う）
+  type Row = { matchId: string; date: string; opponent: string; goals: number; assists: number };
+  const rowsMap = new Map<string, Row>();
+  let totalGoals = 0;
+  let totalAssists = 0;
+  team.team.matches.forEach((m) => {
+    m.goals.forEach((g) => {
+      if (g.playerId === id) {
+        totalGoals++;
+        const row = rowsMap.get(m.id) ?? { matchId: m.id, date: m.date, opponent: m.opponent, goals: 0, assists: 0 };
+        row.goals++;
+        rowsMap.set(m.id, row);
+      }
+      if (g.assistPlayerId === id) {
+        totalAssists++;
+        const row = rowsMap.get(m.id) ?? { matchId: m.id, date: m.date, opponent: m.opponent, goals: 0, assists: 0 };
+        row.assists++;
+        rowsMap.set(m.id, row);
+      }
+    });
+  });
+  const rows = Array.from(rowsMap.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  const techRow = perPlayerTech(board.notebook, players).find((r) => r.playerId === id);
+  // perMatchTechは新しい順のため、時系列グラフ用に古い順へ反転する
+  const matchTech = [...perMatchTech(board.notebook, id)].reverse();
+  const rate = attendanceRate(team.team, id);
+
+  return (
+    <div className="tmdetail screenbody">
+      <div className="tmback" onClick={() => setRecSel({ kind: "summary" })}>
+        ‹ サマリー
+      </div>
+      {!p ? (
+        <div className="empty-msg">この選手は見つかりません。</div>
+      ) : (
+        <>
+          <h2>
+            {p.name}
+            <span>{p.position}</span>
+          </h2>
+
+          <div className="hdash">
+            <div className="hstat"><div className="hstat-n">{totalGoals}</div><div className="hstat-l">総得点</div></div>
+            <div className="hstat"><div className="hstat-n">{totalAssists}</div><div className="hstat-l">総アシスト</div></div>
+            <div className="hstat">
+              <div className="hstat-n">{rate.pct}%</div>
+              <div className="hstat-l">出席率（{rate.yes}/{rate.total}）</div>
+            </div>
+          </div>
+
+          <div className="sech">試合別の得点・アシスト</div>
+          {rows.length === 0 ? (
+            <div className="empty-msg">記録がありません。</div>
+          ) : (
+            <div className="list">
+              {rows.map((r) => (
+                <div key={r.matchId} className="cmprow">
+                  <div className="cmpinfo">
+                    <div className="cmpnm">vs {r.opponent}</div>
+                    <div className="cmpsub">{fmtDate(r.date)}</div>
+                  </div>
+                  <div className="sgoals">
+                    {r.goals > 0 ? `${r.goals}点` : ""}
+                    {r.goals > 0 && r.assists > 0 ? " ・ " : ""}
+                    {r.assists > 0 ? `${r.assists}A` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="sech">技術（試合ノート集計）</div>
+          <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
+          <div className="hdash">
+            <div className="hstat">
+              <div className="hstat-n">{techRow?.shotPct ?? "—"}{techRow?.shotPct != null ? "%" : ""}</div>
+              <div className="hstat-l">決定率（{techRow?.goals ?? 0}/{techRow?.shots ?? 0}）</div>
+            </div>
+            <div className="hstat">
+              <div className="hstat-n">{techRow?.passPct ?? "—"}{techRow?.passPct != null ? "%" : ""}</div>
+              <div className="hstat-l">パス成功率（{techRow?.passOk ?? 0}/{techRow?.pass ?? 0}）</div>
+            </div>
+            <div className="hstat">
+              <div className="hstat-n">{techRow?.dribblePct ?? "—"}{techRow?.dribblePct != null ? "%" : ""}</div>
+              <div className="hstat-l">ドリブル成功率（{techRow?.dribbleOk ?? 0}/{techRow?.dribble ?? 0}）</div>
+            </div>
+          </div>
+
+          {matchTech.length >= 2 && (
+            <>
+              <div className="sech">試合ごとの推移（シュート・ゴール）</div>
+              <LineChart
+                data={matchTech.map((t) => ({ label: fmtMD(t.date), value: t.shots }))}
+                secondary={{ label: "ゴール", values: matchTech.map((t) => t.goals) }}
+                primaryLabel="シュート"
+                detailed
+              />
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- 名簿タブ・PC右ペイン ---------------- */
+
+/** rosSel選択時の右ペイン。PlayerDetailBodyをそのまま使う（戻りリンクなし＝右ペイン自体が詳細） */
+function RosPlayerPane({
+  playerId,
+  players,
+  isCoach,
+  setSheet,
+  setRosSel,
+}: {
+  playerId: string;
+  players: Player[];
+  isCoach: boolean;
+  setSheet: (s: SheetState) => void;
+  setRosSel: (id: string | null) => void;
+}) {
+  const p = players.find((x) => x.id === playerId);
+  return (
+    <div className="tmdetail screenbody">
+      {p ? (
+        <PlayerDetailBody
+          p={p}
+          isCoach={isCoach}
+          onEdit={() => setSheet({ type: "playerForm", player: p })}
+          onDelete={() => setRosSel(null)}
+        />
+      ) : (
+        <div className="empty-msg">この選手は見つかりません。</div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------- 出欠タブ・PC右ペイン ---------------- */
+
+/** overview: 期間チップ＋平均出席率・月別推移・学年別・個人別ランキング */
+function AttOverviewPane({
+  players,
+  attPeriod,
+  setAttPeriod,
+  setAttSel,
+}: {
+  players: Player[];
+  attPeriod: AttPeriod;
+  setAttPeriod: (p: AttPeriod) => void;
+  setAttSel: (s: AttSel) => void;
+}) {
+  const team = useTeam();
+  const today = todayStr();
+  const rows = perPlayerAttendance(team.team, players, attPeriod);
+  const totalRecorded = rows.reduce((s, r) => s + r.recorded, 0);
+  const totalYes = rows.reduce((s, r) => s + r.yes, 0);
+  const avgPct = totalRecorded ? Math.round((totalYes / totalRecorded) * 100) : 0;
+  const start = periodStartDate(attPeriod, today);
+  const recordedEvents = team.team.events.filter((e) => {
+    if (e.date > today) return false;
+    if (start && e.date < start) return false;
+    return players.some((p) => team.team.attendance[e.id]?.[p.id]?.status);
+  }).length;
+
+  const monthly = monthlyAttendance(team.team, players, 6);
+  const grades = gradeAttendance(team.team, players, attPeriod);
+  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
+  const ranking = [...rows].sort((a, b) => b.pct - a.pct || b.recorded - a.recorded);
+
+  const periodChips: { key: AttPeriod; label: string }[] = [
+    { key: "all", label: "全期間" },
+    { key: "m1", label: "1ヶ月" },
+    { key: "m3", label: "3ヶ月" },
+    { key: "m6", label: "6ヶ月" },
+  ];
+
+  return (
+    <div className="tmdetail screenbody">
+      <h2>出欠サマリー</h2>
+      <div className="cmpbar">
+        {periodChips.map((c) => (
+          <button
+            key={c.key}
+            className={`cmpchip${attPeriod === c.key ? " on" : ""}`}
+            onClick={() => setAttPeriod(c.key)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="hdash">
+        <div className="hstat"><div className="hstat-n">{avgPct}%</div><div className="hstat-l">平均出席率</div></div>
+        <div className="hstat"><div className="hstat-n">{recordedEvents}</div><div className="hstat-l">記録済み予定数</div></div>
+      </div>
+
+      <div className="sech">月別出席率の推移（直近6ヶ月）</div>
+      <LineChart data={monthly.map((m) => ({ label: m.label, value: m.pct }))} max={100} detailed />
+
+      <div className="sech">学年別出席率</div>
+      {grades.length === 0 ? (
+        <div className="empty-msg">選手がいません。</div>
+      ) : (
+        <div className="list">
+          {grades.map((g) => (
+            <div key={String(g.grade)} className="attbarrow">
+              <span className="attbarlabel">
+                {g.label}（{g.playerCount}人）
+              </span>
+              <span className="attbar">
+                <i style={{ width: `${g.pct}%` }} />
+              </span>
+              <span className="attbarpct">{g.pct}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="sech">個人別出席率ランキング</div>
+      {ranking.length === 0 ? (
+        <div className="empty-msg">選手がいません。</div>
+      ) : (
+        <div className="list">
+          {ranking.map((r) => (
+            <div
+              key={r.playerId}
+              className="attbarrow"
+              style={{ cursor: "pointer" }}
+              onClick={() => setAttSel({ kind: "player", id: r.playerId })}
+            >
+              <span className="attbarlabel">{nameOf(r.playerId)}</span>
+              <span className="attbar">
+                <i style={{ width: `${r.pct}%` }} />
+              </span>
+              <span className="attbarpct">
+                {r.pct}%（{r.recorded}件）
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** event: その予定の出欠記録UI＋「‹ サマリー」 */
+function AttEventPane({
+  id,
+  players,
+  setAttSel,
+}: {
+  id: string;
+  players: Player[];
+  setAttSel: (s: AttSel) => void;
+}) {
+  const team = useTeam();
+  // 削除済みイベントを選択中の場合に記録UIを出さない(幽霊IDへの書き込み防止)
+  const ev = team.team.events.find((e) => e.id === id);
+  return (
+    <div className="tmdetail screenbody">
+      <div className="tmback" onClick={() => setAttSel({ kind: "overview" })}>
+        ‹ サマリー
+      </div>
+      {!ev ? (
+        <div className="empty-msg">この予定は削除されました。</div>
+      ) : (
+        <AttendanceRecordBody eventId={id} players={players} />
+      )}
+    </div>
+  );
+}
+
+/** player: 選手名＋「‹ サマリー」/ 出席率 / 月別個人出席率 / 直近の出欠履歴 */
+function AttPlayerPane({
+  id,
+  players,
+  attPeriod,
+  setAttSel,
+}: {
+  id: string;
+  players: Player[];
+  attPeriod: AttPeriod;
+  setAttSel: (s: AttSel) => void;
+}) {
+  const team = useTeam();
+  const today = todayStr();
+  const p = players.find((x) => x.id === id);
+  // サマリーの期間フィルタを引き継ぐ(ランキングの数字と食い違わないように)
+  const rateRow = p ? perPlayerAttendance(team.team, [p], attPeriod)[0] : null;
+  const periodLabel =
+    attPeriod === "all" ? "全期間" : attPeriod === "m1" ? "直近1ヶ月" : attPeriod === "m3" ? "直近3ヶ月" : "直近6ヶ月";
+  // monthlyAttendanceにplayersを1人だけ渡すことで個人の月別推移として流用する
+  const monthly = p ? monthlyAttendance(team.team, [p], 6) : [];
+  const history = [...team.team.events]
+    .filter((e) => e.date <= today)
+    .sort(byDateDesc)
+    .slice(0, 10);
+
+  return (
+    <div className="tmdetail screenbody">
+      <div className="tmback" onClick={() => setAttSel({ kind: "overview" })}>
+        ‹ サマリー
+      </div>
+      {!p ? (
+        <div className="empty-msg">この選手は見つかりません。</div>
+      ) : (
+        <>
+          <h2>
+            {p.name}
+            <span>{p.position}</span>
+          </h2>
+
+          <div className="hdash">
+            <div className="hstat">
+              <div className="hstat-n">{rateRow?.pct ?? 0}%</div>
+              <div className="hstat-l">
+                出席率（{rateRow?.yes ?? 0}/{rateRow?.recorded ?? 0}・{periodLabel}）
+              </div>
+            </div>
+          </div>
+
+          <div className="sech">月別出席率の推移（直近6ヶ月）</div>
+          <LineChart data={monthly.map((m) => ({ label: m.label, value: m.pct }))} max={100} detailed />
+
+          <div className="sech">直近の出欠履歴</div>
+          {history.length === 0 ? (
+            <div className="empty-msg">記録がありません。</div>
+          ) : (
+            <div className="list">
+              {history.map((e) => {
+                const entry = team.team.attendance[e.id]?.[id];
+                const label = entry?.status ? STATUS_MARK[entry.status] : "未記録";
+                return (
+                  <div key={e.id} className="cmprow">
+                    <div className="cmpinfo">
+                      <div className="cmpnm">{e.title}</div>
+                      <div className="cmpsub">
+                        {fmtDate(e.date)}
+                        {entry?.comment ? ` ・ ${entry.comment}` : ""}
+                      </div>
+                    </div>
+                    <div className="sgoals">{label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ---------------- Sheets ---------------- */
 function SheetHost({
   sheet,
@@ -1135,7 +2193,6 @@ function SheetHost({
   const board = useBoard();
   const team = useTeam();
   const close = () => setSheet(null);
-  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
 
   // event form
   const ev = sheet?.type === "event" ? sheet.event : undefined;
@@ -1211,6 +2268,8 @@ function SheetHost({
   const [pfWeight, setPfWeight] = useState(pf?.weight != null ? String(pf.weight) : "");
   const [pfFoot, setPfFoot] = useState<"" | DominantFoot>(pf?.dominantFoot ?? "");
   const [pfEmail, setPfEmail] = useState(pf?.email ?? "");
+  // 学年（出欠の学年別集計・名簿表示用。""=未設定）
+  const [pfGrade, setPfGrade] = useState(pf?.grade != null ? String(pf.grade) : "");
 
   const firstPid = players[0]?.id ?? "";
 
@@ -1570,94 +2629,12 @@ function SheetHost({
         </button>
       </Sheet>
 
-      {/* 出欠一覧（スタッフが記録）: 未記録→欠席→未定→出席の順にグルーピング */}
+      {/* 出欠一覧（スタッフが記録）: 未記録→欠席→未定→出席の順にグルーピング。
+          UI本体はAttendanceRecordBody（PC右ペイン att/event と共有） */}
       <Sheet open={sheet?.type === "attendance"} onClose={close}>
-        {sheet?.type === "attendance" &&
-          (() => {
-            const ev = team.team.events.find((e) => e.id === sheet.eventId);
-            const att = team.team.attendance[sheet.eventId] ?? {};
-            const s = team.summary(sheet.eventId);
-            const order: { key: AttendanceStatus | "none"; label: string }[] = [
-              { key: "none", label: "未記録" },
-              { key: "no", label: "欠席" },
-              { key: "maybe", label: "未定" },
-              { key: "yes", label: "出席" },
-            ];
-            const groups = order
-              .map((g) => ({
-                ...g,
-                list: players.filter((p) => (att[p.id]?.status ?? "none") === g.key),
-              }))
-              .filter((g) => g.list.length > 0);
-            return (
-              <>
-                <h2>出欠の記録</h2>
-                {ev && (
-                  <div className="mvmeta" style={{ textAlign: "left", margin: "0 16px 10px" }}>
-                    {ev.title} ・ {fmtDate(ev.date)}
-                  </div>
-                )}
-                <div className="attsummary">
-                  <span className="att yes">出席 {s.yes}</span>
-                  <span className="att maybe">未定 {s.maybe}</span>
-                  <span className="att no">欠席 {s.no}</span>
-                  <span className="att none">未記録 {s.none}</span>
-                </div>
-                <div className="list">
-                  {players.length === 0 ? (
-                    <div className="empty-msg">選手がいません。</div>
-                  ) : (
-                    groups.map((g) => (
-                      <div key={g.key}>
-                        <div className={`attgh ${g.key}`}>
-                          {g.label} {g.list.length}人
-                        </div>
-                        {g.list.map((p) => {
-                          const cur = att[p.id];
-                          return (
-                            <div key={p.id} className="attrow">
-                              <div className="attname">
-                                {p.name}
-                                <small>背番号 {p.number ?? "—"}</small>
-                                {/* 理由・メモ: 選手の回答UI廃止に伴い、スタッフがここで記録する */}
-                                {cur?.status && (
-                                  <input
-                                    key={`${sheet.eventId}_${p.id}`}
-                                    className="attreason"
-                                    placeholder="メモ（遅刻・欠席理由など）"
-                                    defaultValue={cur.comment ?? ""}
-                                    onBlur={(e) =>
-                                      team.setAttendance(
-                                        sheet.eventId,
-                                        p.id,
-                                        cur.status,
-                                        e.target.value.trim() || undefined
-                                      )
-                                    }
-                                  />
-                                )}
-                              </div>
-                              <div className="attpick">
-                                {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
-                                  <button
-                                    key={st}
-                                    className={`attbtn ${st}${cur?.status === st ? " on" : ""}`}
-                                    onClick={() => team.setAttendance(sheet.eventId, p.id, st, cur?.comment)}
-                                  >
-                                    {STATUS_MARK[st]}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </>
-            );
-          })()}
+        {sheet?.type === "attendance" && (
+          <AttendanceRecordBody eventId={sheet.eventId} players={players} />
+        )}
       </Sheet>
 
       {/* 連絡フォーム */}
@@ -2168,167 +3145,37 @@ function SheetHost({
         </div>
       </Sheet>
 
-      {/* 試合詳細 */}
+      {/* 試合詳細。UI本体はMatchDetailBody（PC右ペイン rec/match と共有） */}
       <Sheet open={sheet?.type === "matchView"} onClose={close}>
         {sheet?.type === "matchView" &&
           (() => {
             const m = team.team.matches.find((x) => x.id === sheet.id);
             if (!m) return null;
-            const win = m.ourScore > m.theirScore;
-            const draw = m.ourScore === m.theirScore;
             return (
-              <>
-                <h2>
-                  vs {m.opponent}
-                  <span>{win ? "WIN" : draw ? "DRAW" : "LOSE"}</span>
-                </h2>
-                <div className="mvscore">
-                  {m.ourScore} <small>-</small> {m.theirScore}
-                </div>
-                <div className="mvmeta">
-                  {fmtDate(m.date)}
-                  {(() => {
-                    const cn = m.competitionId
-                      ? team.team.competitions.find((c) => c.id === m.competitionId)?.name
-                      : m.competition;
-                    return cn ? <> ・ <E n="trophy" /> {cn}</> : "";
-                  })()}
-                  {m.halfMinutes ? <> ・ {m.halfMinutes}分ハーフ</> : ""}
-                </div>
-                <div className="detail">
-                  <div className="dsec">
-                    <div className="dsec-h"><E n="ball" /> 得点者</div>
-                    {m.goals.length === 0 ? (
-                      <div className="dsec-e">記録なし</div>
-                    ) : (
-                      m.goals.map((g, i) => (
-                        <div key={i} className="dline">
-                          {g.minute != null ? `${g.minute}' ` : ""}
-                          {nameOf(g.playerId)}
-                          {g.assistPlayerId ? `（A: ${nameOf(g.assistPlayerId)}）` : ""}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  <div className="dsec">
-                    <div className="dsec-h"><E n="refresh" /> 交代</div>
-                    {m.subs.length === 0 ? (
-                      <div className="dsec-e">記録なし</div>
-                    ) : (
-                      m.subs.map((s, i) => (
-                        <div key={i} className="dline">
-                          {s.minute != null ? `${s.minute}' ` : ""}
-                          {nameOf(s.outPlayerId)} → {nameOf(s.inPlayerId)}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  {m.note && (
-                    <div className="dsec">
-                      <div className="dsec-h"><E n="note" /> メモ</div>
-                      <div className="dline">{m.note}</div>
-                    </div>
-                  )}
-                </div>
-                {isCoach && (
-                  <>
-                    <button className="bigbtn ghost" onClick={() => setSheet({ type: "match", record: m })}>
-                      編集する
-                    </button>
-                    <button
-                      className="bigbtn ghost"
-                      style={{ color: "var(--red)" }}
-                      onClick={() => {
-                        if (window.confirm("この試合記録を削除しますか？")) {
-                          team.removeMatch(m.id);
-                          close();
-                        }
-                      }}
-                    >
-                      削除する
-                    </button>
-                  </>
-                )}
-              </>
+              <MatchDetailBody
+                m={m}
+                players={players}
+                isCoach={isCoach}
+                onEdit={() => setSheet({ type: "match", record: m })}
+                onDelete={close}
+              />
             );
           })()}
       </Sheet>
 
-      {/* 選手プロフィール */}
+      {/* 選手プロフィール。UI本体はPlayerDetailBody（PC右ペイン ros/選手選択 と共有） */}
       <Sheet open={sheet?.type === "playerDetail"} onClose={close}>
         {sheet?.type === "playerDetail" &&
           (() => {
             const p = players.find((x) => x.id === sheet.playerId);
             if (!p) return null;
-            const isCaptain = board.state.captain === p.id;
             return (
-              <>
-                <h2>
-                  {p.name}
-                  <span>{p.position}</span>
-                </h2>
-                <div className="detail">
-                  <div className="dsec">
-                    <div className="dsec-h">基本情報</div>
-                    <div className="dline">背番号 {p.number ?? "—"}</div>
-                    <div className="dline">ポジション {p.position}</div>
-                    <div className="dline">利き足 {footLabel(p.dominantFoot)}</div>
-                    {p.height != null && <div className="dline">身長 {p.height}cm</div>}
-                    {p.weight != null && <div className="dline">体重 {p.weight}kg</div>}
-                    {p.email && <div className="dline">{p.email}</div>}
-                    {isCaptain && <div className="dline">キャプテン (C)</div>}
-                  </div>
-                  {p.injuries && p.injuries.length > 0 && (
-                    <div className="dsec">
-                      <div className="dsec-h">怪我の記録</div>
-                      {p.injuries.map((inj) => (
-                        <div key={inj.id} className="dline">
-                          {fmtDate(inj.date)} {inj.area} {INJURY_STATUS_LABEL[inj.status]}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {p.fitness && p.fitness.length > 0 && (
-                    <div className="dsec">
-                      <div className="dsec-h">体力測定</div>
-                      {p.fitness.map((f) => (
-                        <div key={f.id} className="dline">
-                          {f.name} {f.value}（{fmtDate(f.date)}）
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                {isCoach && (
-                  <>
-                    <button className="bigbtn" onClick={() => setSheet({ type: "playerForm", player: p })}>
-                      編集する
-                    </button>
-                    <button
-                      className="bigbtn ghost"
-                      onClick={() => {
-                        board.setCaptain(isCaptain ? null : p.id);
-                      }}
-                    >
-                      {isCaptain ? "キャプテンを解除" : "キャプテンにする"}
-                    </button>
-                    <button
-                      className="bigbtn ghost"
-                      style={{ color: "var(--red)" }}
-                      onClick={() => {
-                        if (window.confirm(`${p.name}を名簿から削除しますか？出欠の記録も削除されます`)) {
-                          board.deletePlayer(p.id);
-                          team.removePlayerAnswers(p.id);
-                          if (team.viewer.memberPlayerId === p.id) team.setViewer("coach", null);
-                          close();
-                        }
-                      }}
-                    >
-                      削除する
-                    </button>
-                  </>
-                )}
-              </>
+              <PlayerDetailBody
+                p={p}
+                isCoach={isCoach}
+                onEdit={() => setSheet({ type: "playerForm", player: p })}
+                onDelete={close}
+              />
             );
           })()}
       </Sheet>
@@ -2391,6 +3238,17 @@ function SheetHost({
           </select>
         </div>
         <div className="formfield">
+          <label>学年</label>
+          <select value={pfGrade} onChange={(e) => setPfGrade(e.target.value)}>
+            <option value="">未設定</option>
+            {[1, 2, 3, 4, 5, 6].map((n) => (
+              <option key={n} value={n}>
+                {n}年
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="formfield">
           <label>メール（任意）</label>
           <input value={pfEmail} onChange={(e) => setPfEmail(e.target.value)} placeholder="ログイン用メール" />
         </div>
@@ -2407,6 +3265,7 @@ function SheetHost({
             const weight = pfWeight.trim() === "" ? undefined : parseFloat(pfWeight);
             const dominantFoot = pfFoot === "" ? undefined : pfFoot;
             const email = pfEmail.trim() || undefined;
+            const grade = pfGrade.trim() === "" ? null : parseInt(pfGrade, 10);
             if (pf) {
               board.updatePlayer({
                 ...pf,
@@ -2417,6 +3276,7 @@ function SheetHost({
                 weight,
                 dominantFoot,
                 email,
+                grade,
               });
             } else {
               board.addPlayer({
@@ -2427,6 +3287,7 @@ function SheetHost({
                 weight,
                 dominantFoot,
                 email,
+                grade,
               });
             }
             close();

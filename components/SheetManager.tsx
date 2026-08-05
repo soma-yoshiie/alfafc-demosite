@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ALL_POSITIONS, FORMATION_KEYS, groupOf } from "@/lib/formations";
 import type {
+  BoardState,
   DominantFoot,
   FitnessRecord,
   InjuryRecord,
@@ -16,6 +17,7 @@ import type {
 } from "@/lib/types";
 import { INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER } from "@/lib/types";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
+import { renderDrillPng } from "@/lib/exportDrill";
 import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
 import { fileToEmblemDataUrl } from "@/lib/imageResize";
 import { openPrintView } from "@/lib/printView";
@@ -30,7 +32,13 @@ import {
   type MatchTechRow,
   type TechStats,
 } from "@/lib/teamStatsAgg";
-import { ARTICLES } from "@/lib/articles";
+import {
+  ARTICLE_CATEGORIES,
+  mergedArticles,
+  type Article,
+  type ArticleAttachment,
+  type UserArticle,
+} from "@/lib/articles";
 import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
 import { localDateStr, weekStart } from "@/lib/dates";
 import { useBoard, type KpiMetric, type StatMetric } from "./BoardProvider";
@@ -1748,23 +1756,43 @@ function SettingsSheet() {
 }
 
 /* ---------------- Articles ---------------- */
+/** ユーザー投稿記事かどうか（"author"の有無で判定。seed記事(Article)には無い） */
+function isUserArticle(a: Article): a is UserArticle {
+  return typeof (a as UserArticle).author === "string";
+}
+function fmtArticleDate(ts: number): string {
+  return new Date(ts).toLocaleDateString("ja-JP", { month: "numeric", day: "numeric" });
+}
+
 export function ArticlesBody({
   onOpen,
   cat: catProp,
   onCatChange,
   hideTitle,
+  selectedId,
 }: {
   onOpen: (articleId: string) => void;
   /** 絞り込みを親で保持したいとき（画面版は詳細から戻っても維持する）。未指定なら内部state */
   cat?: string;
   onCatChange?: (c: string) => void;
   hideTitle?: boolean;
+  /** PCのマスター・ディテールで選択行をハイライトする用（未指定＝モバイルシートの見た目は不変） */
+  selectedId?: string | null;
 }) {
+  const board = useBoard();
+  // 閲覧一覧: seed記事 + 公開済みの投稿記事（新しい順で先頭）
+  const list0 = useMemo(() => mergedArticles(board.userArticles), [board.userArticles]);
   const [catLocal, setCatLocal] = useState<string>("all");
   const cat = catProp ?? catLocal;
   const setCat = onCatChange ?? setCatLocal;
-  const cats = Array.from(new Set(ARTICLES.map((a) => a.category)));
-  const list = cat === "all" ? ARTICLES : ARTICLES.filter((a) => a.category === cat);
+  // チップの並びは固定カテゴリ順に揃える(投稿の有無・順序でチップ位置が動かないように)。
+  // 固定カテゴリ外の値が混ざっていた場合は末尾に追加
+  const present = new Set(list0.map((a) => a.category));
+  const cats = [
+    ...ARTICLE_CATEGORIES.filter((c) => present.has(c)),
+    ...Array.from(present).filter((c) => !(ARTICLE_CATEGORIES as readonly string[]).includes(c)),
+  ];
+  const list = cat === "all" ? list0 : list0.filter((a) => a.category === cat);
   return (
     <>
       {!hideTitle && (
@@ -1790,13 +1818,19 @@ export function ArticlesBody({
         {list.map((a) => (
           <div
             key={a.id}
-            className="artrow"
+            className={`artrow${selectedId === a.id ? " sel" : ""}`}
             onClick={() => onOpen(a.id)}
           >
             <span className="artcat">{a.category}</span>
             <div className="artmeta">
               <div className="arttitle">{a.title}</div>
-              <div className="artlead">{a.lead}</div>
+              {/* リード未入力の投稿記事は本文冒頭で代替(保存時に自動生成すると本文更新で古い冒頭が残るため) */}
+              <div className="artlead">{a.lead || (a.body[0] ?? "").slice(0, 60)}</div>
+              {isUserArticle(a) && (
+                <div className="artby">
+                  {a.author} ・ {fmtArticleDate(a.ts)}
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -1811,20 +1845,98 @@ function ArticlesSheet() {
 }
 
 export function ArticleBody({ articleId }: { articleId?: string }) {
-  const a = ARTICLES.find((x) => x.id === articleId);
+  const board = useBoard();
+  const list = useMemo(() => mergedArticles(board.userArticles), [board.userArticles]);
+  const a = list.find((x) => x.id === articleId);
   if (!a) return null;
+  const posted = isUserArticle(a);
   return (
     <>
       <h2 style={{ display: "block" }}>
         <span className="artcat" style={{ marginLeft: 0 }}>{a.category}</span>
         <div style={{ marginTop: 8 }}>{a.title}</div>
       </h2>
+      {posted && (
+        <div className="artby" style={{ margin: "0 0 4px" }}>
+          {a.author} ・ {fmtArticleDate(a.ts)}
+        </div>
+      )}
       <div className="artbody">
         {a.body.map((para, i) => (
           <p key={i}>{para}</p>
         ))}
       </div>
+      {posted && a.attachments && a.attachments.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          {a.attachments.map((att, i) => (
+            <ArticleAttachmentCard key={i} att={att} />
+          ))}
+        </div>
+      )}
     </>
+  );
+}
+
+/** 記事に添付された戦術/練習のプレビューカード（埋め込みデータから都度サムネイルを生成） */
+function ArticleAttachmentCard({ att }: { att: ArticleAttachment }) {
+  const board = useBoard();
+  const pngUrl = useMemo(() => {
+    try {
+      if (att.kind === "play" && att.play) {
+        // チャット添付・ライブラリのプレビューと同じレシピ（ConsoleScreens.tsx PlayPreview）。
+        // 名簿・チーム名・キャプテンは埋め込みに含まれないため現在のボード状態から補う
+        const state: BoardState = {
+          ...board.state,
+          formation: att.play.formation,
+          slots: att.play.slots,
+          ball: att.play.ball,
+          moves: att.play.moves,
+          holder: att.play.holder ?? null,
+          opponents: att.play.opponents ?? [],
+          drawings: att.play.drawings ?? [],
+          shapes: att.play.shapes ?? [],
+          stepCount: att.play.stepCount ?? 1,
+          guides: att.play.guides ?? {},
+          pitchView: att.play.pitchView ?? "full",
+        };
+        return renderTacticPng(state);
+      }
+      if (att.kind === "drill" && att.drill) {
+        return renderDrillPng(att.drill);
+      }
+      return null;
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [att, board.state]);
+
+  return (
+    <div className="artatt">
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13 }}>
+        <span className="artcat" style={{ marginTop: 0 }}>
+          {att.kind === "play" ? "戦術" : "練習"}
+        </span>
+        {att.title}
+      </div>
+      {pngUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={pngUrl} alt={att.title} />
+      ) : (
+        <div className="artlead">プレビューを表示できません</div>
+      )}
+      <button
+        type="button"
+        className="bigbtn ghost"
+        style={{ marginTop: 10 }}
+        onClick={() => {
+          if (att.kind === "play" && att.play) board.loadPlayData(att.play);
+          else if (att.kind === "drill" && att.drill) board.openDrillData(att.drill);
+        }}
+      >
+        開く
+      </button>
+    </div>
   );
 }
 

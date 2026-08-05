@@ -1389,6 +1389,12 @@ header {
   min-height: 0;
   overflow-y: auto;
 }
+/* 記事のマスター・ディテールも同じ保険(モバイル幅で描画されてもクリップされない最低限) */
+.artpane, .artmain {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 /* レール(=PCのサブナビ)が無い幅ではペイン内タブで戦術/練習を切り替える */
 .libpane .libtabs {
   display: flex;
@@ -3433,8 +3439,41 @@ header {
   line-height: 1.85;
   color: var(--ink);
 }
-.artbody p { margin: 0 0 14px; }
+.artbody p { margin: 0 0 14px; white-space: pre-line; }
 .artbody .bigbtn.ghost { width: 100%; margin: 0; }
+
+/* 投稿記事の行に添える「投稿者・日付」。ArticlesBody(SheetManager)は
+   モバイルのシート表示にも共有されるため、PC専用にはせずBASEに置く */
+.artby {
+  font-size: var(--fs-label);
+  color: var(--mut);
+  margin-top: 2px;
+}
+/* 記事内添付カード / 投稿フォームの添付行: シート表示・モバイル幅でも
+   最低限崩れない箱(border+radius+img max-width)だけをここで保証する */
+.artatt {
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  padding: 10px;
+  /* シート表示では本文(.artbody padding 0 18px)と左端を揃える。PC右ペインでは0に戻す */
+  margin: 0 18px 12px;
+}
+.artatt img {
+  max-width: 100%;
+  border-radius: var(--r-md);
+  display: block;
+  margin-top: 8px;
+}
+.artattrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  margin-bottom: 6px;
+}
+
 
 /* ---------- Login: tabs / error / switch ---------- */
 .logintabs {
@@ -3838,6 +3877,17 @@ header {
 .chatmain {
   display: none;
 }
+/* PC専用の第2ペイン。チャットの.chatmain(3838)と同じ流儀:
+   モバイルではここで完全に隠し、PC1側の .teamapp:has(.teammain) で表示を復活させる */
+.teammain {
+  display: none;
+}
+/* 第2ペイン(詳細)はモバイルでは完全不可視。.chatmain(3838)と同じ流儀で基底では常時非表示にし、
+   PC(min-width:1024px)側の .coachapp:has(.nbmain) 経由でのみ表示させる */
+.nbmain {
+  display: none;
+}
+
 .convlist {
   display: flex;
   flex-direction: column;
@@ -5875,52 +5925,66 @@ header {
   color: var(--mut);
 }
 
-.noteapp .chart-line svg {
+.noteapp .chart-line svg,
+.teamapp .chart-line svg {
   width: 100%;
   height: auto;
   display: block;
 }
-.noteapp .chart-line .clg {
+.noteapp .chart-line .clg,
+.teamapp .chart-line .clg {
   stroke: var(--outline);
   stroke-width: 1;
 }
-.noteapp .chart-line .cla {
+.noteapp .chart-line .cla,
+.teamapp .chart-line .cla {
   fill: var(--primary);
   opacity: 0.08;
 }
-.noteapp .chart-line .cl {
+.noteapp .chart-line .cl,
+.teamapp .chart-line .cl {
   fill: none;
   stroke: var(--primary);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
-.noteapp .chart-line .clp {
+.noteapp .chart-line .clp,
+.teamapp .chart-line .clp {
   fill: var(--primary);
 }
-.noteapp .chart-line .clv {
+.noteapp .chart-line .clv,
+.teamapp .chart-line .clv {
   fill: var(--mut);
   font-size: 9.5px;
   font-variant-numeric: tabular-nums;
   text-anchor: middle;
 }
-.noteapp .chart-line .cll {
+.noteapp .chart-line .cll,
+.teamapp .chart-line .cll {
   fill: var(--mut);
   font-size: 9px;
   text-anchor: middle;
 }
-.noteapp .chart-line .cl2 { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 4 3; stroke-linecap: round; stroke-linejoin: round; }
-.noteapp .cl-legend { display: flex; gap: 14px; margin-top: 6px; font-size: var(--fs-label); font-weight: 600; }
-.noteapp .cl-legend .lg1 { color: var(--primary); }
-.noteapp .cl-legend .lg2 { color: var(--accent); }
+.noteapp .chart-line .cl2,
+.teamapp .chart-line .cl2 { fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 4 3; stroke-linecap: round; stroke-linejoin: round; }
+.noteapp .cl-legend,
+.teamapp .cl-legend { display: flex; gap: 14px; margin-top: 6px; font-size: var(--fs-label); font-weight: 600; }
+.noteapp .cl-legend .lg1,
+.teamapp .cl-legend .lg1 { color: var(--primary); }
+.noteapp .cl-legend .lg2,
+.teamapp .cl-legend .lg2 { color: var(--accent); }
 .noteapp .spark { margin-top: 8px; }
 .noteapp .spark svg { width: 100%; height: 26px; display: block; }
 .noteapp .spark .sp { fill: none; stroke: var(--primary); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
 /* 多系列チャート（案D） */
-.noteapp .mlchart svg { width: 100%; height: auto; display: block; }
-.noteapp .mlchart .gr { stroke: var(--outline); }
-.noteapp .mlchart text { font-size: 8.5px; fill: var(--mut); }
+.noteapp .mlchart svg,
+.teamapp .mlchart svg { width: 100%; height: auto; display: block; }
+.noteapp .mlchart .gr,
+.teamapp .mlchart .gr { stroke: var(--outline); }
+.noteapp .mlchart text,
+.teamapp .mlchart text { font-size: 8.5px; fill: var(--mut); }
 
 /* 分析パネル（案D） */
 .noteapp .apanel { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 12px; }
@@ -6701,10 +6765,13 @@ header {
 }
 .dx .dxpitchwrap {
   flex: 1;
-  min-height: 0;
+  /* dxsteps/dxintentが縦を食っても操作可能なピッチ高さを最低限確保(モバイル横向き対策) */
+  min-height: 200px;
   display: grid;
   place-items: center;
   container-type: size;
+  /* .dxundo(絶対配置)の基準。layout containmentでも基準になるが明示しておく */
+  position: relative;
 }
 
 /* ピッチはコート種類ごとのアスペクト比で使える領域にフィット（cqで確実に収める） */
@@ -6938,6 +7005,127 @@ header {
   width: 15px;
   height: 15px;
 }
+
+/* ---- 場面（シーン）チップ列 ---- */
+.dxsteps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 10px;
+}
+.dxstep {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--mut);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+.dxstep:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.dxstep.on {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+/* 場面削除の×（sceneCount>1のときだけ各チップに描画される。押下はチップ本体のクリックへ伝播させない） */
+.dxstep .dxstepx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dxstep .dxstepx:hover {
+  background: rgba(0, 0, 0, 0.18);
+}
+/* ＋ 場面（ghost風の追加ボタン。上限6場面でdisabled化） */
+.dxstepadd {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: var(--r-full);
+  border: 1px dashed var(--outline-strong);
+  background: transparent;
+  color: var(--mut);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dxstepadd:hover {
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--accent);
+  border-color: var(--accent-tint-strong);
+}
+.dxstepadd:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: transparent;
+  color: var(--mut);
+  border-color: var(--outline-strong);
+}
+
+/* ---- 場面ごとの意図テキスト ---- */
+.dxintent {
+  flex: 0 0 auto;
+  margin-top: 8px;
+}
+.dxintent label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--mut);
+}
+.dxintent textarea {
+  display: block;
+  width: 100%;
+  resize: vertical;
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  padding: 8px 10px;
+  color: var(--ink);
+  font-size: var(--fs-body-s);
+  font-family: var(--font-ui);
+}
+.dxintent textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* 狭い画面ではチップ・追加ボタンの余白を少し詰める（dx系はPC/モバイルでレイアウトを分けないため、
+   この調整もBASE内の@mediaに収める＝例外的に許可されている書式） */
+@media (max-width: 879px) {
+  .dxsteps {
+    padding: 2px 0 8px;
+  }
+  .dxstep,
+  .dxstepadd {
+    padding: 5px 9px;
+  }
+}
+
 
 /* ---- ヘッダー ---- */
 .dx header .hact {
@@ -8383,7 +8571,9 @@ header {
   /* カード角丸をノートの正(r-lg)に統一 */
   .teamapp .evcard,
   .teamapp .matchcard,
-  .teamapp .msgcard,
+  .teamapp .msgcard {
+    border-radius: var(--r-lg);
+  }
   /* ホーム：dashcols準拠(狭い列=左280px)。ヘッダCTAと重複する「予定を追加」はPCでは隠す */
   .teamapp .quickrow .bigbtn:not(.ghost) {
     display: none;
@@ -8523,6 +8713,174 @@ header {
   .teamapp .sheetx:hover,
   .conshell ~ .sheet .sheetx:hover {
     background: var(--outline);
+    color: var(--ink);
+  }
+
+  /* ---------------------------------------------------------
+     3面グリッドの雛形（.chatapp:has(.chatmain) / .libapp:has(.libmain) と同じ文法）。
+     teamappはheader+rolebarの2段の白帯を持つ点がchat/libと異なるため、両方をgrid-row:1/2へ明示的に固定する
+     （罫線はheader側ではなくrolebar側の下辺が担う。8329-8365の既存.teamapp header/.rolebarに準拠） */
+  .teamapp:has(.teammain) {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .teamapp:has(.teammain) header {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+  .teamapp:has(.teammain) .rolebar {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+  /* 一覧(rec/ros/att)を第2ペイン化（レールに接続して見える白面+右罫線。chatapp:has(.chatmain) .scroll と同じ文法） */
+  .teamapp:has(.teammain) .scroll {
+    grid-row: 3;
+    grid-column: 1;
+    max-width: none;
+    width: auto;
+    margin: 0;
+    padding: 10px;
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+    overflow-y: auto;
+  }
+  /* 第2ペイン(詳細/サマリー)。:has()の判定対象そのものなので has() ラッパーは付けない（.chatapp .chatmain と同じ） */
+  .teamapp .teammain {
+    grid-row: 3;
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 24px calc(env(safe-area-inset-bottom) + 24px);
+  }
+
+  /* ---------------------------------------------------------
+     :has(.teammain) スコープの上書き（第2ペインが出る幅=左が300pxの狭い列になるための調整） */
+  /* 8429の一覧グリッド(auto-fillカード)を解除し、狭い1列の縦積みリストへ（librow/convrowと同じ密度の考え方） */
+  .teamapp:has(.teammain) .attlist,
+  .teamapp:has(.teammain) .reclist {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .teamapp:has(.teammain) .roslist,
+  .teamapp:has(.teammain) .controls {
+    max-width: none;
+    margin: 0;
+  }
+  /* 8455-8461の中央寄せ(auto)は300px列では不要かつ左に寄せたいため0に上書き。
+     インラインstyleのwidth:100%/marginと衝突するため!important必要（8455-8461と同じ事情） */
+  .teamapp:has(.teammain) .scroll > .bigbtn,
+  .teamapp:has(.teammain) .scroll > .empty-msg,
+  .teamapp:has(.teammain) .scroll > .dynadd {
+    max-width: none;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+  /* 統計カード(.statcard 972-1018)はRecSummaryPane(右ペイン)と内容が重複するため左ペインでは隠す */
+  .teamapp:has(.teammain) .statcard {
+    display: none;
+  }
+  .teamapp:has(.teammain) .cmpbar {
+    flex-wrap: wrap;
+  }
+  /* 一覧行の選択状態。.librow/.convrow の.sel文法(accent-tint)に合わせる */
+  .teamapp:has(.teammain) .matchcard.sel,
+  .teamapp:has(.teammain) .evcard.sel,
+  .teamapp:has(.teammain) .prow.sel {
+    background: var(--accent-tint);
+    border-color: var(--accent-tint-strong);
+  }
+  /* 大会フィルタ(.cmpbar/.cmpchip)は出欠タブの期間チップにも流用するため、選択色を
+     デザイン文法の「選択=accent」に合わせて上書きする（基底の.cmpchip.onは--lime=--primaryでCTA専用色のため）。
+     .noteapp .cmpchip.on(4865)と同じ考え方 */
+  .teamapp:has(.teammain) .cmpchip.on {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+
+  /* ---------------------------------------------------------
+     右ペイン用の新規クラス */
+  /* 左ペイン先頭の「チーム全体のサマリー」「出欠サマリー」行。.librow(9284-9313)と同じ文法+.sel */
+  .teamapp .teamsumrow {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border: 0;
+    background: none;
+    border-radius: var(--r-md);
+    cursor: pointer;
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: var(--fs-body);
+    margin-bottom: 4px;
+  }
+  .teamapp .teamsumrow:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .teamapp .teamsumrow.sel {
+    background: var(--accent-tint);
+    color: var(--accent);
+  }
+  /* 詳細列: 見出し・数値・グラフ・一覧を同じ760px列に載せる（.libdetail 9322-9328と同じ考え方） */
+  .teamapp .tmdetail {
+    max-width: 760px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  /* 「‹ サマリー」戻りリンク */
+  .teamapp .tmback {
+    display: inline-block;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: var(--fs-body-s);
+    font-weight: 700;
+    margin: 2px 16px 10px;
+  }
+  .teamapp .tmback:hover {
+    text-decoration: underline;
+  }
+  /* 出欠バー行（学年別・個人別ランキング共通）。バー地=accent-tint-strong、塗り=accent、高さ8px、r-full */
+  .teamapp .attbarrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 16px;
+  }
+  .teamapp .attbarlabel {
+    flex: 0 0 130px;
+    font-size: var(--fs-body-s);
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .teamapp .attbar {
+    flex: 1;
+    height: 8px;
+    border-radius: var(--r-full);
+    background: var(--accent-tint-strong);
+    overflow: hidden;
+    display: block;
+  }
+  .teamapp .attbar i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: var(--r-full);
+  }
+  .teamapp .attbarpct {
+    flex: 0 0 auto;
+    min-width: 76px;
+    text-align: right;
+    font-family: var(--font-display);
+    font-size: var(--fs-body-s);
     color: var(--ink);
   }
 
@@ -9414,6 +9772,281 @@ header {
     font-size: var(--fs-body);
   }
 
+  /* ---------------------------------------------------------
+     お役立ち記事の3面化（左: 一覧 or 自分の記事 / 右: 本文 or 投稿フォーム）
+     .libapp:has(.libmain)(9253) と同じ文法。.artmain の存在でのみ発火するため
+     モバイルのシート表示(SheetManager)には影響しない。新規クラスは.artappスコープで閉じる */
+  .artapp:has(.artmain) {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .artapp:has(.artmain) header {
+    grid-column: 1 / -1;
+  }
+  .artapp .artpane {
+    grid-column: 1;
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+    overflow-y: auto;
+    padding: 10px;
+  }
+  .artapp .artmain {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 24px calc(env(safe-area-inset-bottom) + 24px);
+  }
+  .artapp .artmain .artatt {
+    margin: 0 0 12px;
+  }
+  .artapp .artempty {
+    margin: auto;
+    color: var(--mut);
+  }
+
+  /* ペイン内カテゴリ絞り込み: 横スクロールではなく折り返しにする（720px幅の縦長ペイン向け） */
+  .artpane .catbar {
+    flex-wrap: wrap;
+    padding: 0 0 10px;
+  }
+  /* 「＋ 新しい記事を書く」はペイン幅いっぱいに揃える */
+  .artpane .bigbtn {
+    width: 100%;
+    margin: 0 0 14px;
+  }
+
+  /* 一覧行: .librow/.convrow(9284/8725)と同じ密度・角丸・hover・選択色に揃える */
+  .artapp .artpane .artrow {
+    padding: 8px 10px;
+    border-radius: var(--r-md);
+  }
+  .artapp .artpane .artrow:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .artapp .artpane .artrow.sel {
+    background: var(--accent-tint);
+  }
+  .artapp .artpane .artrow.sel .arttitle {
+    color: var(--accent);
+  }
+  /* 自分の記事一覧のセクション見出し（下書き／公開中）。既存の.setsec-hを流用 */
+  .artpane .setsec-h {
+    margin: 14px 4px 6px;
+  }
+  .artpane .setsec-h:first-child {
+    margin-top: 2px;
+  }
+
+  /* ---------------------------------------------------------
+     投稿フォーム(note/Classroom型・単一カラム・Markdownなし) */
+  .artform {
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  /* フォーム上部の操作バー(下書き保存/公開する 等) */
+  .artactbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--outline);
+  }
+  .artactbar .bigbtn {
+    width: auto;
+    margin: 0;
+    padding: 12px 22px;
+  }
+  .artform .ffield {
+    margin-bottom: 14px;
+  }
+  .artform .ffield label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: var(--fs-body-s);
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: 6px;
+  }
+  .artform .reqb, .artform .optb {
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: var(--r-full);
+    padding: 2px 7px;
+  }
+  .artform .reqb {
+    color: #ffffff;
+    background: var(--red);
+  }
+  .artform .optb {
+    color: var(--mut);
+    background: var(--surface-container);
+  }
+  .artform .ffield input,
+  .artform .ffield textarea {
+    width: 100%;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-md);
+    padding: 10px 12px;
+    font-family: var(--font-ui);
+    font-size: var(--fs-body);
+    color: var(--ink);
+  }
+  .artform .ffield input.big {
+    font-size: var(--fs-title-s);
+    font-weight: 700;
+    padding: 12px 14px;
+  }
+  .artform .ffield textarea {
+    min-height: 260px;
+    line-height: 1.7;
+    resize: vertical;
+  }
+  .artform .ffield input:focus,
+  .artform .ffield textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-tint);
+  }
+  .artform .ffield input[aria-invalid="true"],
+  .artform .ffield textarea[aria-invalid="true"] {
+    border-color: var(--red);
+  }
+  /* カテゴリチップは読み物側の.catbar/.catchipをそのまま流用（折り返し表示にする） */
+  .artform .ffield .catbar {
+    padding: 0;
+    overflow-x: visible;
+    flex-wrap: wrap;
+  }
+  .arterr {
+    margin-top: 4px;
+    font-size: var(--fs-label);
+    color: var(--red);
+    font-weight: 700;
+  }
+
+  /* 添付: 追加済み行の中身(種別タグ+タイトル+×)。箱(border/radius)はBASE側で定義済み */
+  .artattrow .artattkind {
+    flex: none;
+    font-size: var(--fs-label);
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+    padding: 2px 8px;
+  }
+  .artattrow .artatttitle {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--fs-body-s);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .artattrow .artattdel {
+    flex: none;
+    border: 0;
+    background: none;
+    color: var(--mut);
+    cursor: pointer;
+    font-size: var(--fs-title-s);
+    line-height: 1;
+    padding: 2px 4px;
+  }
+  .artattrow .artattdel:hover {
+    color: var(--red);
+  }
+  .artform .artaddbtn {
+    border: 1px dashed var(--outline);
+    background: none;
+    border-radius: var(--r-md);
+    padding: 8px 12px;
+    color: var(--accent);
+    font-size: var(--fs-body-s);
+    font-weight: 700;
+    cursor: pointer;
+    margin: 2px 8px 0 0;
+  }
+  .artform .artaddbtn:hover {
+    background: var(--accent-tint);
+  }
+  /* ピッカー(保存済みの戦術/練習から選ぶ枠内リスト) */
+  .artpick {
+    border: 1px solid var(--outline);
+    border-radius: var(--r-md);
+    max-height: 240px;
+    overflow-y: auto;
+    margin-top: 8px;
+  }
+  .artpick button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 10px;
+    border: 0;
+    border-bottom: 1px solid var(--outline);
+    background: none;
+    cursor: pointer;
+    font-family: var(--font-ui);
+    font-size: var(--fs-body-s);
+    color: var(--ink);
+  }
+  .artpick button:last-child {
+    border-bottom: 0;
+  }
+  .artpick button:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .artpick .artpickempty {
+    padding: 10px;
+    color: var(--mut);
+    font-size: var(--fs-body-s);
+  }
+
+  /* 記事内添付カード(閲覧側)。箱はBASE側、ここではボタンをカード幅に合わせて調整 */
+  .artatt .bigbtn.ghost {
+    display: block;
+    width: 100%;
+    margin: 10px 0 0;
+  }
+
+  /* 公開取り消し・削除の弱リンク */
+  .artform .artweaklink {
+    border: 0;
+    background: none;
+    color: var(--mut);
+    font-size: var(--fs-body-s);
+    cursor: pointer;
+    padding: 8px 2px;
+  }
+  .artform .artweaklink:hover {
+    color: var(--ink);
+    text-decoration: underline;
+  }
+  .artform .artdangerzone {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--outline);
+  }
+  .artform .artdangerlink {
+    border: 0;
+    background: none;
+    color: var(--red);
+    font-size: var(--fs-body-s);
+    font-weight: 700;
+    cursor: pointer;
+    padding: 4px 2px;
+  }
+  .artform .artdangerlink:hover {
+    text-decoration: underline;
+  }
+
   /* 押せるサマリーカード(button)はPCのみホバーで示す。
      プレイヤー側ホームのクリック不可カードは div のままなので自動的に除外される */
   .noteapp button.dashbox {
@@ -9477,6 +10110,102 @@ header {
   .coachapp .heattbl .hdot.on { color: var(--primary); }
   .coachapp .heattbl td:first-child { font-weight: 700; white-space: nowrap; }
   .coachapp .heattbl td:last-child { font-weight: 700; text-align: right; }
+
+  /* コーチのマスター・ディテール化（左: 提出/配信/通知の一覧 / 右: 詳細）。
+     .chatapp:has(.chatmain)(8697) / .libapp:has(.libmain)(9253) と同じ流儀。
+     .nbmain の存在(=コーチ×notes/deliver/notifsタブ)でのみ発火するため、選手側・モバイルには影響しない */
+  .coachapp:has(.nbmain) {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: 300px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .coachapp:has(.nbmain) header {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+  /* フィルタ行(.fbar)は提出(notes)タブにしか存在しない。無いタブでは auto 行が0に潰れるだけで済む */
+  .coachapp:has(.nbmain) .fbar {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    padding: 6px 18px 10px;
+  }
+  /* 一覧(左ペイン)。.chatapp:has(.chatmain) .scroll(8707)と同じ文法 */
+  .coachapp:has(.nbmain) .scroll {
+    grid-row: 3;
+    grid-column: 1;
+    padding: 10px;
+    max-width: none;
+    margin: 0;
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+    overflow-y: auto;
+  }
+  /* 詳細(右ペイン) */
+  .coachapp .nbmain {
+    grid-row: 3;
+    grid-column: 2;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 24px calc(env(safe-area-inset-bottom) + 24px);
+  }
+
+  /* ---- 左ペイン内の一覧をレールの行文法(密度・角丸・hover・選択色)に合わせて上書き ---- */
+  .coachapp:has(.nbmain) .scroll .notecards {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .coachapp:has(.nbmain) .scroll .notetools {
+    max-width: none;
+    margin: 0;
+  }
+  .coachapp:has(.nbmain) .scroll .searchbar {
+    max-width: none;
+  }
+  /* 提出カード(.notecard)を .librow/.convrow と同じ行密度にコンパクト化 */
+  .coachapp:has(.nbmain) .scroll .notecard {
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    box-shadow: none;
+  }
+  .coachapp:has(.nbmain) .scroll .notecard:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .coachapp:has(.nbmain) .scroll .notecard.sel {
+    background: var(--accent-tint);
+  }
+  /* 配信カード(.dlvcard)も同様にコンパクト化 */
+  .coachapp:has(.nbmain) .dlvcard {
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    box-shadow: none;
+  }
+  .coachapp:has(.nbmain) .dlvcard:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .coachapp:has(.nbmain) .dlvcard.sel {
+    background: var(--accent-tint);
+  }
+  /* 通知一覧の行・今日のまとめカードの選択色（.notifrow/.kpialertとも同じアクセント塗り） */
+  .coachapp:has(.nbmain) .notifrow.sel {
+    background: var(--accent-tint);
+  }
+  .coachapp:has(.nbmain) .kpialert.sel {
+    background: var(--accent-tint);
+  }
+  /* .digestbox（今日のまとめの外枠）はそのままの見え方を維持する（上書きなし） */
+
+  /* 右ペインの空状態。.chatempty/.libempty と同じ文法 */
+  .coachapp:has(.nbmain) .nbempty {
+    margin: auto;
+    color: var(--mut);
+    font-size: var(--fs-body);
+  }
+  /* 右ペインの .notedetail/.noteform は既存の max-width:720px 中央寄せ(9462-9463)がそのまま効くため上書き不要 */
 
   /* ===== 共有コンソールシェル（左レール+メイン）: アプリ全体の外枠 ===== */
   /* 行高を明示しないと内容がはみ出た際にトラックが伸びて .conrail がスクロール不能になる */
@@ -9573,6 +10302,15 @@ header {
     grid-template-columns: 340px minmax(0, 1fr);
   }
   .libapp:has(.libmain) {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+  .teamapp:has(.teammain) {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+  .coachapp:has(.nbmain) {
+    grid-template-columns: 340px minmax(0, 1fr);
+  }
+  .artapp:has(.artmain) {
     grid-template-columns: 340px minmax(0, 1fr);
   }
 }
