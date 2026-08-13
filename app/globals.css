@@ -4638,6 +4638,10 @@ header {
 .noteapp .hdrusr {
   display: none;
 }
+/* 通知ベルもPC専用(モバイルはボトムナビの通知タブが導線) */
+.noteapp .hdrbell {
+  display: none;
+}
 
 /* ---------- 種別タブ（チップ） ---------- */
 .noteapp .fbar {
@@ -10070,6 +10074,51 @@ header {
   /* PCトップバー（アイコンレール化に伴いクロームを白+薄罫線+ブルーリンクへ） */
   .noteapp header { background: var(--surface-lowest); border-bottom: 1px solid var(--outline); padding: 10px 18px; }
   .noteapp .hdrcta { display: inline-block; margin-left: auto; background: var(--primary); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+  /* 通知ベル(ヘッダー右上)。未読は赤バッジで件数を出す */
+  .noteapp .hdrbell {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    flex: none;
+    width: 34px;
+    height: 34px;
+    margin-left: 10px;
+    padding: 0;
+    border: 1px solid var(--outline);
+    border-radius: 50%;
+    background: var(--surface-lowest);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .noteapp .hdrbell:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .noteapp .hdrbell.on {
+    border-color: var(--accent-tint-strong);
+    background: var(--accent-tint);
+    color: var(--accent);
+  }
+  .noteapp .hdrbell .emj,
+  .noteapp .hdrbell svg {
+    width: 17px;
+    height: 17px;
+  }
+  .noteapp .hdrbellbadge {
+    position: absolute;
+    top: -4px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--red);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+  }
   .noteapp .hdrusr { display: inline; color: var(--mut); font-size: 12px; }
   /* コーチダッシュボード: 左=スタッツ列 / 右=分析パネル以下（案D準拠） */
   .coachapp .dashcols { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; align-items: start; }

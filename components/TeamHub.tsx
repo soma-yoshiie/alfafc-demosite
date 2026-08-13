@@ -350,9 +350,16 @@ function Inner() {
             {board.state.teamName ?? "マイチーム"}
           </div>
         </div>
-        {board.auth.role === "coach" && (
+        {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
+            カレンダー=予定を追加 / 試合記録=試合結果を記録。他タブでは出さない */}
+        {board.auth.role === "coach" && activeTab === "cal" && (
           <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
             ＋ 予定を追加
+          </button>
+        )}
+        {board.auth.role === "coach" && activeTab === "rec" && (
+          <button className="teamcta" type="button" onClick={() => setSheet({ type: "match" })}>
+            ＋ 試合結果を記録
           </button>
         )}
       </header>
@@ -1222,7 +1229,9 @@ function MatchesTab({
         </div>
       )}
 
-      {isCoach && (
+      {/* PCでは記録導線をヘッダー右上の「＋ 試合結果を記録」に一本化(ページ内の大ボタンは出さない)。
+          モバイルはヘッダーCTAが無いため従来どおりここに残す */}
+      {isCoach && !pc && (
         <button className="bigbtn" style={{ width: "100%", margin: "10px 0 6px" }} onClick={() => setSheet({ type: "match" })}>
           ＋ 試合結果を記録
         </button>

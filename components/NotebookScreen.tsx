@@ -241,7 +241,9 @@ export default function NotebookScreen() {
   const consoleSubnav = useMemo(
     () => ({
       anchor: "notebook" as const,
-      items: navItems.map((it) => ({
+      // 通知はレールのサブナビには出さない(PCはヘッダー右上のベル+未読バッジが導線。
+      // モバイルのボトムナビは従来どおり通知タブを持つ)
+      items: navItems.filter((it) => it.t !== "notifs").map((it) => ({
         key: it.t,
         label: it.label,
         icon: <E n={it.icon} />,
@@ -281,6 +283,17 @@ export default function NotebookScreen() {
               onClick={() => (isCoach ? switchTab("deliver") : setSheetOpen(true))}
             >
               {isCoach ? "＋ 配信" : "＋ ノートを作成"}
+            </button>
+            {/* 通知ベル(PC専用・モバイルは基底CSSで非表示)。未読があれば赤バッジで件数を出す */}
+            <button
+              className={"hdrbell" + (tab === "notifs" ? " on" : "")}
+              type="button"
+              title="通知"
+              aria-label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
+              onClick={() => switchTab("notifs")}
+            >
+              <E n="bell" />
+              {unread > 0 && <span className="hdrbellbadge">{unread > 9 ? "9+" : unread}</span>}
             </button>
             <span className="hdrusr">
               {board.auth.name}
