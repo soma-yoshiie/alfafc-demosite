@@ -5241,6 +5241,112 @@ header {
   color: var(--accent);
   background: var(--accent-tint);
 }
+
+/* 表示切替セグメント。.scopebar/.scopechip(5223-5243)と同じ文法。選択色はaccent（緑はCTA専用） */
+.noteapp .ngbar {
+  display: flex;
+  gap: 8px;
+  margin: 2px 0 10px;
+}
+.noteapp .ngchip {
+  flex: 1;
+  padding: 9px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.noteapp .ngchip.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+
+/* 予定のグループ行（開閉ボタン） */
+.noteapp .evgrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.noteapp .evgrow:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+.noteapp .evgrow:active {
+  transform: scale(0.99);
+}
+.noteapp .evgrowdate {
+  flex: 0 0 auto;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--mut);
+}
+/* 種別バッジ。.evkind(2341)の寸法に、.noteapp .pill(6656)の配色を合わせる（練習=グレー / 試合=accent） */
+.noteapp .evgrowkind {
+  flex: 0 0 auto;
+  font-size: var(--fs-label);
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: var(--r-full);
+  background: var(--surface-container);
+  color: var(--mut);
+}
+.noteapp .evgrowkind.match {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.noteapp .evgrowtitle {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  font-weight: 700;
+}
+.noteapp .evgrowcount {
+  flex: 0 0 auto;
+  font-family: var(--font-display);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  color: var(--mut);
+}
+/* 開閉シェブロン。開いている行(.on)で90度回転させる（文字は「›」のまま） */
+.noteapp .evgrowchev {
+  flex: 0 0 auto;
+  display: inline-block;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--mut);
+  transition: transform var(--dur-s) var(--ease-standard);
+}
+.noteapp .evgrow.on .evgrowchev {
+  transform: rotate(90deg);
+}
+
+/* 展開部（中身は既存の .notecards/.notecard をそのまま使う） */
+.noteapp .evgnotes {
+  margin: 0 0 10px 4px;
+  padding-left: 10px;
+  border-left: 2px solid var(--outline);
+}
+.noteapp .evgnotes .evnote {
+  padding: 2px 2px 6px;
+  margin-top: 0;
+}
 .noteapp .phasebar {
   display: flex;
   gap: 6px;
@@ -10225,6 +10331,24 @@ header {
   }
   .coachapp:has(.nbmain) .scroll .notecard.sel {
     background: var(--accent-tint);
+  }
+  /* 左ペイン内はレールの行文法(.librow/.convrow)に合わせて枠なし・高密度にする */
+  .coachapp:has(.nbmain) .scroll .evgrow {
+    padding: 7px 10px;
+    margin-bottom: 2px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+  }
+  .coachapp:has(.nbmain) .scroll .evgrow:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .coachapp:has(.nbmain) .scroll .evgrow:active {
+    transform: none;
+  }
+  .coachapp:has(.nbmain) .scroll .evgnotes {
+    margin: 0 0 6px 4px;
+    padding-left: 8px;
   }
   /* 配信カード(.dlvcard)も同様にコンパクト化 */
   .coachapp:has(.nbmain) .dlvcard {

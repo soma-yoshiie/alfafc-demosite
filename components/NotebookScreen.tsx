@@ -21,6 +21,7 @@ import type {
   SoloKind,
   SoloNote,
   StaffReaction,
+  TeamEvent,
 } from "@/lib/types";
 import {
   deliverTargets,
@@ -937,6 +938,23 @@ function PlayerStats({
 }
 
 /* ===================== 一覧 ===================== */
+
+/** 予定別ビューの「予定に紐づかない提出」グループのキー。TeamEvent.id と衝突しない値にする */
+const UNLINKED_KEY = "@unlinked";
+
+/**
+ * ノートがその予定に属するか。
+ * (a) eventId を持つ練習ノートは明示紐づけのみで判定する（同日の別予定への二重掲載を防ぐ）
+ * (b) それ以外は 日付範囲(date〜endDate) ＋ 種別対応(練習予定→練習ノート/試合予定→試合ノート)
+ * 自主練ノートはどの予定にも入れない。
+ */
+function noteBelongsToEvent(n: NotebookEntry, ev: TeamEvent): boolean {
+  if (n.kind === "practice" && (n as PracticeNote).eventId) return (n as PracticeNote).eventId === ev.id;
+  if (n.kind === "solo") return false;
+  if (n.kind !== (ev.kind === "match" ? "match" : "practice")) return false;
+  return n.date >= ev.date && n.date <= (ev.endDate ?? ev.date);
+}
+
 function NoteList({
   kind,
   isCoach,
@@ -997,11 +1015,92 @@ function NoteList({
     return Object.entries(counts).sort((a, b) => b[1] - a[1]);
   }, [board.notebook, kind, isCoach, me]);
 
+  // 一覧の表示切替。既定は従来どおりのフラット一覧（flat）
+  const [listView, setListView] = useState<"flat" | "byEvent">("flat");
+  // 展開中のグループキー集合（複数同時に開ける）
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const toggleGroup = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+
+  // 予定はlocalStorage直読み（作成シートの todayEventKinds と同じ作法）。
+  // 予定別へ切り替えるたびに読み直すので、他画面での予定編集も反映される
+  const events = useMemo(() => {
+    if (listView !== "byEvent") return [];
+    const today = todayStr();
+    return (loadTeam()?.events ?? [])
+      .filter((e) => e.date <= today)
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 30);
+  }, [listView]);
+
+  // グループ分けは種別チップ(fbar)で絞り込んだ後の entries に対して行う（バッジ件数もフィルタ後の数）
+  const grouped = useMemo(() => {
+    const used = new Set<string>();
+    const list = events.map((ev) => {
+      const notes = entries.filter((n) => noteBelongsToEvent(n, ev));
+      notes.forEach((n) => used.add(n.id));
+      return { ev, notes };
+    });
+    return { list, unlinked: entries.filter((n) => !used.has(n.id)) };
+  }, [events, entries]);
+
+  // フラット/予定別で同じカード表示（選択ハイライト・開き方の分岐も共通）
+  const renderCard = (n: NotebookEntry) => (
+    <NoteCard
+      key={n.id}
+      entry={n}
+      who={isCoach || (kind === "practice" && scope === "team") ? nameOf(n.playerId) : undefined}
+      showKind={kind === "all"}
+      selected={selectedId != null && n.id === selectedId}
+      onClick={() => onOpen(n.id)}
+    />
+  );
+
+  const groupRow = (key: string, label: React.ReactNode, count: number, body: React.ReactNode) => {
+    const open = expanded.has(key);
+    return (
+      <Fragment key={key}>
+        <button
+          type="button"
+          className={`evgrow${open ? " on" : ""}`}
+          aria-expanded={open}
+          onClick={() => toggleGroup(key)}
+        >
+          {label}
+          <span className="evgrowcount">{count}件</span>
+          <span className="evgrowchev">›</span>
+        </button>
+        {open && <div className="evgnotes">{body}</div>}
+      </Fragment>
+    );
+  };
+
   return (
     <>
       <button className="searchbar" onClick={onSearch}>
         <E n="search" /> 気づき・目標・相手名などで検索
       </button>
+
+      <div className="ngbar">
+        <button
+          type="button"
+          className={`ngchip${listView === "flat" ? " on" : ""}`}
+          onClick={() => setListView("flat")}
+        >
+          提出一覧
+        </button>
+        <button
+          type="button"
+          className={`ngchip${listView === "byEvent" ? " on" : ""}`}
+          onClick={() => setListView("byEvent")}
+        >
+          予定別
+        </button>
+      </div>
 
       {!isCoach && kind === "practice" && (
         <div className="scopebar">
@@ -1031,38 +1130,64 @@ function NoteList({
         </div>
       )}
 
-      {entries.length === 0 ? (
-        <div className="empty-msg">
-          {kind === "practice" && scope === "team" ? (
-            "共有されたノートはまだありません。"
-          ) : isCoach ? (
-            "まだ提出がありません。"
-          ) : (
-            <>
-              まだ{kind === "all" ? "" : NOTE_KIND_LABEL[kind]}ノートがありません。
-              <button
-                className="bigbtn"
-                style={{ width: "100%", margin: "12px 0 0" }}
-                onClick={() => onWrite(kind === "all" ? "practice" : kind)}
-              >
-                ＋ 最初のノートを作成
-              </button>
-            </>
-          )}
-        </div>
+      {listView === "flat" ? (
+        entries.length === 0 ? (
+          <div className="empty-msg">
+            {kind === "practice" && scope === "team" ? (
+              "共有されたノートはまだありません。"
+            ) : isCoach ? (
+              "まだ提出がありません。"
+            ) : (
+              <>
+                まだ{kind === "all" ? "" : NOTE_KIND_LABEL[kind]}ノートがありません。
+                <button
+                  className="bigbtn"
+                  style={{ width: "100%", margin: "12px 0 0" }}
+                  onClick={() => onWrite(kind === "all" ? "practice" : kind)}
+                >
+                  ＋ 最初のノートを作成
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="notecards">{entries.map(renderCard)}</div>
+        )
       ) : (
-        <div className="notecards">
-          {entries.map((n) => (
-            <NoteCard
-              key={n.id}
-              entry={n}
-              who={isCoach || (kind === "practice" && scope === "team") ? nameOf(n.playerId) : undefined}
-              showKind={kind === "all"}
-              selected={selectedId != null && n.id === selectedId}
-              onClick={() => onOpen(n.id)}
-            />
-          ))}
-        </div>
+        <>
+          {events.length === 0 && (
+            <div className="evnote" style={{ margin: "2px 2px 8px" }}>
+              カレンダーに今日までの予定がありません。
+            </div>
+          )}
+          {grouped.list.map(({ ev, notes }) =>
+            groupRow(
+              ev.id,
+              <>
+                <span className="evgrowdate">{fmt(ev.date)}</span>
+                <span className={`evgrowkind ${ev.kind}`}>{NOTE_KIND_LABEL[ev.kind]}</span>
+                <span className="evgrowtitle">{ev.title || NOTE_KIND_LABEL[ev.kind]}</span>
+              </>,
+              notes.length,
+              notes.length === 0 ? (
+                <div className="evnote">この予定の提出はありません。</div>
+              ) : (
+                <div className="notecards">{notes.map(renderCard)}</div>
+              )
+            )
+          )}
+          {/* 自主練・予定の日付範囲外の提出は常設グループにまとめる（予定が0件でも出す） */}
+          {groupRow(
+            UNLINKED_KEY,
+            <span className="evgrowtitle">予定に紐づかない提出</span>,
+            grouped.unlinked.length,
+            grouped.unlinked.length === 0 ? (
+              <div className="evnote">該当する提出はありません。</div>
+            ) : (
+              <div className="notecards">{grouped.unlinked.map(renderCard)}</div>
+            )
+          )}
+        </>
       )}
     </>
   );
