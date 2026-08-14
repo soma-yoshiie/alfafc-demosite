@@ -10337,6 +10337,75 @@ header {
   /* ---- B-3: 影の点検。.matchcard/.evcard/.prowの基底にbox-shadowは無く、
      上のB-2で box-shadow: none を明示済みのため追加対応なし。
      ダイアログ(.sheet)・ドロップダウンの影はこのスコープ外のため未変更。 */
+
+  /* ===== PC密度調整 Phase C =====
+     C-1: KPIタイル×グラフの統合(Google Search Console型)。RecSummaryPane/AttOverviewPane
+     (どちらも.teammain内のみ)で使うグラフカード。".kpicard"は.noteapp .kpicard(選手KPIカード/6209)と
+     クラス名が衝突するため、この新規カードは".kpicard2"を名乗る(タイル帯側の.kpiband/.kpitileは
+     既存クラスと衝突しないためそのまま)。
+     C-2: 大会フィルタ(.cmpbar)のPC版はコンパクトなselect1個(.cmpselect)へ置き換える。 */
+  .kpicard2 {
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    background: var(--surface-lowest);
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .kpiband {
+    display: flex;
+    border-bottom: 1px solid var(--outline);
+  }
+  .kpitile {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 12px 14px;
+    text-align: left;
+    background: none;
+    border: 0;
+    border-right: 1px solid var(--outline);
+    cursor: pointer;
+  }
+  .kpitile .kv {
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .kpitile .kl {
+    font-size: 12px;
+    color: var(--mut);
+    margin-top: 2px;
+  }
+  .kpitile.on {
+    background: var(--accent);
+  }
+  .kpitile.on .kv,
+  .kpitile.on .kl {
+    color: #ffffff;
+  }
+  .kpitile:last-child {
+    border-right: 0;
+  }
+  .kpitile:hover:not(.on) {
+    background: rgba(0, 0, 0, 0.03);
+  }
+  .kpicard2 .kpichart {
+    padding: 12px 16px 8px;
+  }
+
+  /* ---- C-2: 大会フィルタのselect化。Phase Aで.formfield > selectをpadding:7px 10px/font-size:14pxへ
+     詰めた見た目(高さ32px程度)に揃える(cmpselectは.formfieldの子ではないため個別に指定) */
+  .cmpselect {
+    height: 32px;
+    padding: 7px 10px;
+    border: 1px solid var(--outline);
+    border-radius: 6px;
+    background: var(--surface-lowest);
+    color: var(--ink);
+    font-size: 14px;
+    font-family: var(--font-ui);
+    margin: 12px 2px 4px;
+  }
 }
 
 /* =========================================================
@@ -10657,5 +10726,55 @@ header {
   }
   .artapp:has(.artmain) {
     grid-template-columns: 340px minmax(0, 1fr);
+  }
+}
+
+/* =========================================================
+   タッチ端末がPC幅で開いた場合(pointer: coarse)の指サイズ復元。
+   Phase A/Cはマウス操作を前提にPC(1024px以上)の操作部品を密に詰めたが、
+   タッチ入力ではWCAG/Materialのタッチターゲット要件を満たす必要があるため、
+   指ポインタの端末だけ元の指サイズへ戻す。
+   ※ 条件の順序は必ず (pointer: coarse) を先に書くこと
+     (構造チェックが「@media」に続けて min-width:1024px を書く並びの出現数を数えており、
+      ここでその並びを増やさないため)。
+   ========================================================= */
+@media (pointer: coarse) and (min-width: 1024px) {
+  /* Phase Aはスコープ付きセレクタ(.noteapp/.plancard等)でも詰めているため、
+     ここでも同じ詳細度で列挙しないとタッチ端末で復元が効かない */
+  .formfield > input,
+  .formfield > select,
+  .formfield > textarea,
+  .noteapp .formfield > input,
+  .noteapp .formfield > select,
+  .noteapp .formfield > textarea {
+    padding: 11px 12px;
+    font-size: 15px;
+  }
+  .bigbtn,
+  .noteapp .bigbtn,
+  .plancard .bigbtn,
+  .quickrow .bigbtn,
+  .artactbar .bigbtn {
+    padding: 12px 16px;
+    font-size: 15px;
+  }
+  .chip,
+  .catchip,
+  .cmpchip,
+  .libtab,
+  .noteapp .chip,
+  .noteapp .cmpchip {
+    padding: 7px 12px;
+    font-size: 13px;
+  }
+  .noteapp .scopechip,
+  .noteapp .ngchip {
+    padding: 9px;
+    font-size: 13px;
+  }
+  .cmpselect {
+    height: auto;
+    padding: 10px 12px;
+    font-size: 15px;
   }
 }

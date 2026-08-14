@@ -63,7 +63,10 @@ export interface MonthlyAttendanceRow {
   ym: string;
   /** "M月" */
   label: string;
+  /** 記録エントリ数(選手×イベント) */
   recorded: number;
+  /** 記録済み予定の件数(1人でも記録があるイベント数)。KPIタイルの単位に合わせる */
+  events: number;
   /** 出席率(%)。recorded=0のときは0 */
   pct: number;
 }
@@ -87,17 +90,23 @@ export function monthlyAttendance(
     const ym = `${y}-${String(m).padStart(2, "0")}`;
     let yes = 0;
     let recorded = 0;
+    // その月の「記録済み予定」件数(1人でも記録があるイベント)。
+    // recordedは選手×イベントのエントリ数で単位が違うため、KPIタイル(予定件数)のグラフにはこちらを使う
+    let events = 0;
     team.events.forEach((e) => {
       if (e.date > today) return;
       if (!e.date.startsWith(ym)) return;
+      let evHasEntry = false;
       players.forEach((p) => {
         const entry = team.attendance[e.id]?.[p.id];
         if (!entry?.status) return;
         recorded++;
+        evHasEntry = true;
         if (entry.status === "yes") yes++;
       });
+      if (evHasEntry) events++;
     });
-    rows.push({ ym, label: `${m}月`, recorded, pct: recorded ? Math.round((yes / recorded) * 100) : 0 });
+    rows.push({ ym, label: `${m}月`, recorded, events, pct: recorded ? Math.round((yes / recorded) * 100) : 0 });
   }
   return rows;
 }

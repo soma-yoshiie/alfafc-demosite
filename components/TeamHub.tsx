@@ -166,11 +166,14 @@ function scorerAssisterRanks(matches: MatchRecord[]): {
   return { scorers: rank(gc), assisters: rank(ac) };
 }
 
-/** 直近nヶ月(既定6)・月別の勝率(%)と得点。RecSummaryPaneの月別推移(MultiLine)専用の集計 */
-function matchMonthlyTrend(matches: MatchRecord[], months = 6): { label: string; winPct: number; goals: number }[] {
+/** 直近nヶ月(既定6)・月別の試合数/勝率(%)/得点/失点。RecSummaryPaneのKPIタイル×グラフ(kpicard2)専用の集計 */
+function matchMonthlyTrend(
+  matches: MatchRecord[],
+  months = 6
+): { label: string; played: number; winPct: number; goals: number; conceded: number }[] {
   const today = todayStr();
   const [ty, tm] = today.split("-").map(Number);
-  const rows: { label: string; winPct: number; goals: number }[] = [];
+  const rows: { label: string; played: number; winPct: number; goals: number; conceded: number }[] = [];
   for (let i = months - 1; i >= 0; i--) {
     const dt = new Date(ty, tm - 1 - i, 1);
     const y = dt.getFullYear();
@@ -179,7 +182,14 @@ function matchMonthlyTrend(matches: MatchRecord[], months = 6): { label: string;
     const ms = matches.filter((mm) => mm.date.startsWith(ym));
     const wins = ms.filter((mm) => mm.ourScore > mm.theirScore).length;
     const goals = ms.reduce((s, mm) => s + mm.ourScore, 0);
-    rows.push({ label: `${m}月`, winPct: ms.length ? Math.round((wins / ms.length) * 100) : 0, goals });
+    const conceded = ms.reduce((s, mm) => s + mm.theirScore, 0);
+    rows.push({
+      label: `${m}月`,
+      played: ms.length,
+      winPct: ms.length ? Math.round((wins / ms.length) * 100) : 0,
+      goals,
+      conceded,
+    });
   }
   return rows;
 }
@@ -266,7 +276,11 @@ function Inner() {
     if (cmp !== "all" && cmp !== "none" && !team.team.competitions.some((c) => c.id === cmp)) {
       setCmp("all");
     }
-  }, [cmp, team.team.competitions]);
+    // 「その他」該当試合が0件になるとselectに一致optionが無くなり空欄表示になるため「すべて」へ戻す
+    if (cmp === "none" && !team.team.matches.some((m) => !m.competitionId)) {
+      setCmp("all");
+    }
+  }, [cmp, team.team.competitions, team.team.matches]);
   const [rosSel, setRosSel] = useState<string | null>(null);
   const [attSel, setAttSel] = useState<AttSel>({ kind: "overview" });
   const [attPeriod, setAttPeriod] = useState<AttPeriod>("all");
@@ -1171,28 +1185,39 @@ function MatchesTab({
         </div>
       )}
 
-      {/* 大会フィルタ */}
-      {(comps.length > 0 || hasOther) && (
-        <div className="cmpbar">
-          <button className={`cmpchip${cmp === "all" ? " on" : ""}`} onClick={() => setCmp("all")}>
-            すべて
-          </button>
-          {comps.map((c) => (
-            <button
-              key={c.id}
-              className={`cmpchip${cmp === c.id ? " on" : ""}`}
-              onClick={() => setCmp(c.id)}
-            >
-              {c.name}
+      {/* 大会フィルタ。PCはコンパクトなselect1個、モバイルは従来のチップ列(横スクロール) */}
+      {(comps.length > 0 || hasOther) &&
+        (pc ? (
+          <select className="cmpselect" value={cmp} onChange={(e) => setCmp(e.target.value)}>
+            <option value="all">すべて</option>
+            {comps.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+            {hasOther && <option value="none">その他</option>}
+          </select>
+        ) : (
+          <div className="cmpbar">
+            <button className={`cmpchip${cmp === "all" ? " on" : ""}`} onClick={() => setCmp("all")}>
+              すべて
             </button>
-          ))}
-          {hasOther && (
-            <button className={`cmpchip${cmp === "none" ? " on" : ""}`} onClick={() => setCmp("none")}>
-              その他
-            </button>
-          )}
-        </div>
-      )}
+            {comps.map((c) => (
+              <button
+                key={c.id}
+                className={`cmpchip${cmp === c.id ? " on" : ""}`}
+                onClick={() => setCmp(c.id)}
+              >
+                {c.name}
+              </button>
+            ))}
+            {hasOther && (
+              <button className={`cmpchip${cmp === "none" ? " on" : ""}`} onClick={() => setCmp("none")}>
+                その他
+              </button>
+            )}
+          </div>
+        ))}
       {isCoach && (
         <button className="cmpmanage" onClick={() => setSheet({ type: "competitions" })}>
           ＋ 大会を登録・管理
@@ -1659,6 +1684,9 @@ function PlayerDetailBody({
    試合記録タブ・PC右ペイン
    ---------------------------------------------------------------- */
 
+/** RecSummaryPaneのkpicard2で切り替える月別推移の指標。既定は勝率 */
+type RecKpiMetric = "played" | "winPct" | "goals" | "conceded";
+
 /** summary: 大会フィルタ適用後のチーム成績サマリー・月別推移・チーム技術・得点/アシストランキング・大会別成績 */
 function RecSummaryPane({
   cmp,
@@ -1671,6 +1699,7 @@ function RecSummaryPane({
 }) {
   const board = useBoard();
   const team = useTeam();
+  const [recMetric, setRecMetric] = useState<RecKpiMetric>("winPct");
   const comps = team.team.competitions;
   const allMatches = team.team.matches;
   const matches = allMatches.filter((m) =>
@@ -1701,22 +1730,66 @@ function RecSummaryPane({
         <div className="empty-msg">まだ試合記録がありません。</div>
       ) : (
         <>
+          {/* KPIタイル×グラフ(GSC型)。タイル1枚が選択中の指標=グラフの系列を兼ねる(既定=勝率) */}
+          <div className="kpicard2">
+            <div className="kpiband">
+              <button
+                type="button"
+                className={`kpitile${recMetric === "played" ? " on" : ""}`}
+                onClick={() => setRecMetric("played")}
+              >
+                <div className="kv">{sum.played}</div>
+                <div className="kl">試合数</div>
+              </button>
+              <button
+                type="button"
+                className={`kpitile${recMetric === "winPct" ? " on" : ""}`}
+                onClick={() => setRecMetric("winPct")}
+              >
+                <div className="kv">{sum.winPct ?? 0}%</div>
+                <div className="kl">勝率</div>
+              </button>
+              <button
+                type="button"
+                className={`kpitile${recMetric === "goals" ? " on" : ""}`}
+                onClick={() => setRecMetric("goals")}
+              >
+                <div className="kv">{sum.gf}</div>
+                <div className="kl">得点</div>
+              </button>
+              <button
+                type="button"
+                className={`kpitile${recMetric === "conceded" ? " on" : ""}`}
+                onClick={() => setRecMetric("conceded")}
+              >
+                <div className="kv">{sum.ga}</div>
+                <div className="kl">失点</div>
+              </button>
+            </div>
+            <div className="kpichart">
+              <div className="sech">
+                {recMetric === "played"
+                  ? "月別試合数の推移（直近6ヶ月）"
+                  : recMetric === "winPct"
+                  ? "月別勝率の推移（直近6ヶ月・%）"
+                  : recMetric === "goals"
+                  ? "月別得点の推移（直近6ヶ月）"
+                  : "月別失点の推移（直近6ヶ月）"}
+              </div>
+              <LineChart
+                data={trend.map((t) => ({ label: t.label, value: t[recMetric] }))}
+                max={recMetric === "winPct" ? 100 : undefined}
+                detailed
+              />
+            </div>
+          </div>
+
           <div className="hdash">
-            <div className="hstat"><div className="hstat-n">{sum.played}</div><div className="hstat-l">試合数</div></div>
             <div className="hstat"><div className="hstat-n ev">{sum.wins}-{sum.draws}-{sum.losses}</div><div className="hstat-l">勝-分-敗</div></div>
-            <div className="hstat"><div className="hstat-n">{sum.winPct ?? 0}%</div><div className="hstat-l">勝率</div></div>
-            <div className="hstat"><div className="hstat-n">{sum.gf}</div><div className="hstat-l">得点</div></div>
-            <div className="hstat"><div className="hstat-n">{sum.ga}</div><div className="hstat-l">失点</div></div>
             <div className="hstat"><div className="hstat-n">{sum.gf - sum.ga}</div><div className="hstat-l">得失点差</div></div>
             <div className="hstat"><div className="hstat-n">{cleanSheets}</div><div className="hstat-l">クリーンシート</div></div>
             <div className="hstat"><div className="hstat-n">{avgGf}</div><div className="hstat-l">1試合平均得点</div></div>
           </div>
-
-          {/* 勝率(0-100%)と得点(数点)は単位もレンジも違うため同一Y軸に載せない(片方が平線に潰れる) */}
-          <div className="sech">月別勝率の推移（直近6ヶ月・%）</div>
-          <LineChart data={trend.map((t) => ({ label: t.label, value: t.winPct }))} max={100} detailed />
-          <div className="sech">月別得点の推移（直近6ヶ月）</div>
-          <LineChart data={trend.map((t) => ({ label: t.label, value: t.goals }))} detailed />
 
           <div className="sech">チーム技術</div>
           <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
@@ -1991,6 +2064,9 @@ function RosPlayerPane({
 
 /* ---------------- 出欠タブ・PC右ペイン ---------------- */
 
+/** AttOverviewPaneのkpicard2で切り替える月別推移の指標。既定は平均出席率 */
+type AttKpiMetric = "pct" | "recorded";
+
 /** overview: 期間チップ＋平均出席率・月別推移・学年別・個人別ランキング */
 function AttOverviewPane({
   players,
@@ -2004,6 +2080,7 @@ function AttOverviewPane({
   setAttSel: (s: AttSel) => void;
 }) {
   const team = useTeam();
+  const [attMetric, setAttMetric] = useState<AttKpiMetric>("pct");
   const today = todayStr();
   const rows = perPlayerAttendance(team.team, players, attPeriod);
   const totalRecorded = rows.reduce((s, r) => s + r.recorded, 0);
@@ -2043,13 +2120,38 @@ function AttOverviewPane({
         ))}
       </div>
 
-      <div className="hdash">
-        <div className="hstat"><div className="hstat-n">{avgPct}%</div><div className="hstat-l">平均出席率</div></div>
-        <div className="hstat"><div className="hstat-n">{recordedEvents}</div><div className="hstat-l">記録済み予定数</div></div>
+      {/* KPIタイル×グラフ(GSC型)。タイル1枚が選択中の指標=グラフの系列を兼ねる(既定=平均出席率) */}
+      <div className="kpicard2">
+        <div className="kpiband">
+          <button
+            type="button"
+            className={`kpitile${attMetric === "pct" ? " on" : ""}`}
+            onClick={() => setAttMetric("pct")}
+          >
+            <div className="kv">{avgPct}%</div>
+            <div className="kl">平均出席率</div>
+          </button>
+          <button
+            type="button"
+            className={`kpitile${attMetric === "recorded" ? " on" : ""}`}
+            onClick={() => setAttMetric("recorded")}
+          >
+            <div className="kv">{recordedEvents}</div>
+            <div className="kl">記録済み予定</div>
+          </button>
+        </div>
+        <div className="kpichart">
+          <div className="sech">
+            {attMetric === "pct" ? "月別出席率の推移（直近6ヶ月）" : "月別の記録済み予定数（直近6ヶ月）"}
+          </div>
+          {/* タイル(予定件数)とグラフの単位を揃える: recordedはエントリ数のためeventsを使う */}
+          <LineChart
+            data={monthly.map((m) => ({ label: m.label, value: attMetric === "pct" ? m.pct : m.events }))}
+            max={attMetric === "pct" ? 100 : undefined}
+            detailed
+          />
+        </div>
       </div>
-
-      <div className="sech">月別出席率の推移（直近6ヶ月）</div>
-      <LineChart data={monthly.map((m) => ({ label: m.label, value: m.pct }))} max={100} detailed />
 
       <div className="sech">学年別出席率</div>
       {grades.length === 0 ? (
