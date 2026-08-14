@@ -779,22 +779,8 @@ function Inner() {
         </div>
         <div className="formfield">
           <label>メモ（ねらい・回数など）</label>
-          <textarea
-            value={memoDraft}
-            onChange={(e) => setMemoDraft(e.target.value)}
-            rows={5}
-            style={{
-              width: "100%",
-              background: "var(--panel2)",
-              border: "1px solid var(--line)",
-              borderRadius: 12,
-              padding: "12px 13px",
-              color: "var(--ink)",
-              fontSize: 15,
-              fontFamily: "var(--font-ui)",
-              resize: "vertical",
-            }}
-          />
+          {/* 寸法は .formfield textarea(基底CSS)が持つ。インラインで持つとPC密度調整が効かない */}
+          <textarea value={memoDraft} onChange={(e) => setMemoDraft(e.target.value)} rows={5} />
         </div>
         <button
           className="bigbtn"

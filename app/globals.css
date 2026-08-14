@@ -1650,7 +1650,8 @@ header {
   margin: 0 2px 6px;
 }
 .formfield input,
-.formfield select {
+.formfield select,
+.formfield textarea {
   width: 100%;
   background: var(--panel2);
   border: 1px solid var(--line);
@@ -1660,6 +1661,9 @@ header {
   font-size: 15px;
   font-family: var(--font-ui);
   outline: none;
+}
+.formfield textarea {
+  resize: vertical;
 }
 .formrow {
   display: flex;
@@ -10164,6 +10168,96 @@ header {
   }
   .noteapp button.dashbox:hover {
     border-color: var(--outline-strong);
+  }
+
+  /* ===== PC密度調整 Phase A =====
+     シート(ダイアログ)・フォーム・チップの寸法をデスクトップ標準へ調整する。
+     モバイル(base)側の値は一切変更しない(本ブロックはPC専用の追記のみ)。
+     既存ルールは書き換えず、詳細度が同等以上のセレクタを追記して上書きする。 */
+
+  /* ---- シート内フォーム(input/select/textarea): 高さ・角丸を詰める。
+     子コンビネータ(>)で.formfield直下のみに限定し、.dynrow/.scoreinput等の
+     入れ子コンポーネント(既に専用サイズを持つ数値入力等)は自動的に対象外とする */
+  .formfield > input,
+  .formfield > select,
+  .formfield > textarea {
+    padding: 7px 10px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+  .noteapp .formfield > input,
+  .noteapp .formfield > select,
+  .noteapp .formfield > textarea {
+    padding: 7px 10px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+
+  /* ---- シート見出し(.sheet h2): 24px→18px、下マージンを詰める。
+     .screenbody h2(レール直結画面の見出し)はセレクタを分けているため対象外のまま */
+  .sheet h2 {
+    font-size: 18px;
+    margin: 4px 16px 6px;
+  }
+
+  /* ---- .bigbtn(PC全般): 高さ・角丸を詰める。widthは既存レイアウトのまま変更しない ---- */
+  .bigbtn {
+    padding: 9px 16px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+  .noteapp .bigbtn {
+    padding: 9px 16px;
+    font-size: 14px;
+    border-radius: 6px;
+  }
+  .plancard .bigbtn {
+    padding: 9px 16px;
+    font-size: 14px;
+  }
+  .quickrow .bigbtn {
+    padding: 9px 16px;
+    font-size: 14px;
+  }
+  .artactbar .bigbtn {
+    padding: 9px 16px;
+  }
+
+  /* ---- チップ類: 高さを詰める。角丸(ピル/トークン)は現状維持のため変更しない ---- */
+  .chip,
+  .catchip,
+  .cmpchip,
+  .libtab {
+    padding: 4px 12px;
+    font-size: 12.5px;
+  }
+  .noteapp .chip,
+  .noteapp .cmpchip {
+    padding: 4px 12px;
+    font-size: 12.5px;
+  }
+  /* セグメントコントロール(flex:1の全幅2択)はピルと違い上下対称で詰める(潰さない) */
+  .noteapp .scopechip,
+  .noteapp .ngchip {
+    padding: 7px;
+    font-size: 12.5px;
+  }
+
+  /* ---- .dynrow(入れ子の行内入力): 直下入力より低い専用サイズを保つ ---- */
+  .noteapp .dynrow > input,
+  .noteapp .dynrow > select {
+    padding: 6px 8px;
+  }
+
+  /* ---- 数値表示: 桁を揃える ---- */
+  .hstat-n,
+  .kpinum,
+  .mscore,
+  .statbox .sv,
+  .teamapp .attbarpct,
+  .noteapp .evgrowcount,
+  .noteapp .dbv {
+    font-variant-numeric: tabular-nums;
   }
 }
 

@@ -2656,7 +2656,6 @@ function SheetHost({
             onChange={(e) => setText(e.target.value)}
             rows={4}
             placeholder="例）明日の練習は雨天中止の場合あり。朝7時に判断します。"
-            style={textareaStyle}
           />
         </div>
         {board.library.plays.length > 0 && (
@@ -3059,7 +3058,7 @@ function SheetHost({
 
         <div className="formfield">
           <label>メモ</label>
-          <textarea value={mnote} onChange={(e) => setMnote(e.target.value)} rows={3} style={textareaStyle} placeholder="試合の振り返りなど" />
+          <textarea value={mnote} onChange={(e) => setMnote(e.target.value)} rows={3} placeholder="試合の振り返りなど" />
         </div>
         <button
           className="bigbtn"
@@ -3313,18 +3312,6 @@ function SheetHost({
 function upd<T>(arr: T[], i: number, patch: Partial<T>): T[] {
   return arr.map((x, j) => (j === i ? { ...x, ...patch } : x));
 }
-
-const textareaStyle: React.CSSProperties = {
-  width: "100%",
-  background: "var(--panel2)",
-  border: "1px solid var(--line)",
-  borderRadius: 12,
-  padding: "12px 13px",
-  color: "var(--ink)",
-  fontSize: 15,
-  fontFamily: "Manrope, sans-serif",
-  resize: "vertical",
-};
 
 export default function TeamHub() {
   return <Inner />;
