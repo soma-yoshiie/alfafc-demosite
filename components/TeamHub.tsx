@@ -826,7 +826,17 @@ function EventCard({
   const ongoing = isOngoing(ev, todayStr());
   const selected = attSel?.kind === "event" && attSel.id === ev.id;
   return (
-    <div className={`evcard${selected ? " sel" : ""}`} style={past ? { opacity: 0.72 } : undefined}>
+    <div
+      className={`evcard${selected ? " sel" : ""}`}
+      style={past ? { opacity: 0.72 } : undefined}
+      // PC3ペインでは行全体を選択可能にする(行化した見た目=hover/selと挙動を一致させる)。
+      // モバイルでは従来どおり.evsummaryだけがシートを開く
+      onClick={() => {
+        if (isCoach && setAttSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
+          setAttSel({ kind: "event", id: ev.id });
+        }
+      }}
+    >
       <div className="evhead">
         <span className="evkind" style={{ background: cat.color }}>
           {cat.label}
@@ -834,9 +844,17 @@ function EventCard({
         <span className="evtitle">{ev.title}</span>
         {isCoach && (
           <span className="evacts">
-            <button onClick={() => setSheet({ type: "event", event: ev })}>✎</button>
             <button
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
+                setSheet({ type: "event", event: ev });
+              }}
+            >
+              ✎
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
                 if (ev.seriesId) {
                   setSheet({ type: "eventView", id: ev.id });
                   return;

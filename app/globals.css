@@ -10259,6 +10259,84 @@ header {
   .noteapp .dbv {
     font-variant-numeric: tabular-nums;
   }
+
+  /* ===== PC密度調整 Phase B =====
+     PC(1024px以上)の視覚的ノイズを削減する2施策。Phase Aと同様、
+     モバイル(base)側の値は一切変更しない(本ブロックはPC専用の追記のみ)。
+     既存ルールは書き換えず、詳細度が同等以上のセレクタを追記して上書きする。 */
+
+  /* ---- B-1: 塗りCTA(緑)の1画面1個化。
+     右ペイン(詳細側)の操作ボタンをセカンダリ(白+1px罫線)へ降格する。
+     基底 .bigbtn(1715)は background:var(--lime)/color:#fff/border:0 のみでbox-shadow・
+     gradientは持たないため、背景・文字色・枠線を明示的に打ち消し、box-shadowもnoneで初期化する。
+     残す緑(.teamcta/出欠・名簿左ペインの追加系/.artactbar内の公開する/ログイン/シート内主ボタン)は対象外のまま。 */
+  .teammain .bigbtn:not(.ghost),
+  .artapp .artpane .bigbtn {
+    background: var(--surface-lowest);
+    color: var(--ink);
+    border: 1px solid var(--outline-strong);
+    box-shadow: none;
+  }
+  .teammain .bigbtn:not(.ghost):hover,
+  .artapp .artpane .bigbtn:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  /* 同じボタン列のghost(キャプテン切替/削除等)も面と罫線だけ揃える(2種類のセカンダリが並ばないように)。
+     文字色は各ボタンの意味色(ink/赤)を保つため上書きしない */
+  .teammain .bigbtn.ghost {
+    background: var(--surface-lowest);
+    border-color: var(--outline-strong);
+  }
+  /* 記事投稿の初期状態(右ペインが空)では画面に緑が0個になるため、
+     唯一の起点「＋新しい記事を書く」だけ緑へ戻す(フォームが開けば降格が勝つ) */
+  .artapp:has(.artempty) .artpane .bigbtn {
+    background: var(--lime);
+    color: #ffffff;
+    border: 0;
+  }
+  /* カレンダータブはヘッダーの.teamctaと同一アクションの緑が二重になるため、ページ内側を隠す */
+  .teamapp .cal .bigbtn:not(.ghost) {
+    display: none;
+  }
+
+  /* ---- B-2: チーム運営3ペインの左ペイン行化。
+     .matchcard(2724)/.evcard(2333)/.prow(1433)の基底カード見た目(background/border/margin)を、
+     チャットの.convrow文法(9197-9203)と同じ「行」へ揃える。
+     .prowは元々border/backgroundを持たないが、他2つと文法を揃えるため同様に明示指定する。 */
+  .teamapp:has(.teammain) .scroll .matchcard,
+  .teamapp:has(.teammain) .scroll .evcard,
+  .teamapp:has(.teammain) .scroll .prow {
+    border: 0;
+    background: none;
+    box-shadow: none;
+    border-radius: var(--r-md);
+    padding: 8px 10px;
+    margin: 0 0 2px;
+  }
+  .teamapp:has(.teammain) .scroll .matchcard:hover,
+  .teamapp:has(.teammain) .scroll .evcard:hover,
+  .teamapp:has(.teammain) .scroll .prow:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  /* PC3ペインではEventCardの行全体にonClickを付けた(TeamHub側)ためカーソルも行文法に合わせる */
+  .teamapp:has(.teammain) .scroll .evcard {
+    cursor: pointer;
+  }
+  .teamapp:has(.teammain) .scroll .prow:active {
+    background: var(--panel2);
+  }
+  /* 既存の選択色ルール(8905-8910)は.scrollを含まず上のB-2基底ルールと同詳細度のため、
+     ソース順で後勝ちする background:none に負けてしまう。
+     .scrollを含めた同等以上の詳細度(かつhoverより後)で.sel(accent-tint)を再宣言する */
+  .teamapp:has(.teammain) .scroll .matchcard.sel,
+  .teamapp:has(.teammain) .scroll .evcard.sel,
+  .teamapp:has(.teammain) .scroll .prow.sel {
+    background: var(--accent-tint);
+  }
+
+  /* ---- B-3: 影の点検。.matchcard/.evcard/.prowの基底にbox-shadowは無く、
+     上のB-2で box-shadow: none を明示済みのため追加対応なし。
+     ダイアログ(.sheet)・ドロップダウンの影はこのスコープ外のため未変更。 */
 }
 
 /* =========================================================
