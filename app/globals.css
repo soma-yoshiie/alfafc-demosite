@@ -78,6 +78,8 @@
   --dur-s: 150ms;
   --dur-m: 300ms;
   --dur-l: 400ms;
+  /* マッチデー・ボード(PCコーチホーム)のグラフ線のみに使う専用の長尺トランジション。既存の640ms系は変更しない */
+  --dur-chart-slow: 1500ms;
 
   /* ---- 旧トークン互換（コンポーネントのインラインstyleが参照） ---- */
   --bg: var(--surface);
@@ -10406,6 +10408,757 @@ header {
     font-family: var(--font-ui);
     margin: 12px 2px 4px;
   }
+
+  /* ===== マッチデー・ボード(PCコーチホーム) =====
+     PC(min-width:1024px) かつ コーチ のときだけ HomeMenu が描画する専用ホーム。
+     モバイル/選手側のDOM(.homehero/.hdash/.todaycard/.hstats/.appgrid等)はここでは一切触らない
+     （新DOMはpc&&コーチの分岐でしかレンダリングされないため、基底側の対応は不要）。 */
+  .mdb-root {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .mdb-greetrow {
+    flex: none;
+    padding: 14px 0;
+    background: var(--surface-lowest);
+    border-bottom: 1px solid var(--outline);
+  }
+  /* .mdb-scrollの本文カラムと左右端を揃えるインナー(max-width/中央寄せ/左右paddingを.mdb-scrollと共通化) */
+  .mdb-greetin {
+    max-width: min(1520px, 100%);
+    margin: 0 auto;
+    width: 100%;
+    padding: 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .mdb-greet {
+    min-width: 0;
+  }
+  .mdb-date {
+    font-size: 12px;
+    color: var(--mut);
+    font-weight: 600;
+  }
+  .mdb-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+  .mdb-role {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+    padding: 2px 9px;
+  }
+  .mdb-greetactions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mdb-scroll {
+    max-width: min(1520px, 100%);
+    margin: 0 auto;
+    width: 100%;
+    padding: 20px 32px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  /* 直下の各区画をflexで縮ませない（overflow:hiddenな.mdb-hero等の自動最小サイズが0になり
+     内容が切れる問題への対処。.mdb-scroll自体がoverflow-y:autoでスクロールを引き受ける） */
+  .mdb-scroll > * {
+    flex: none;
+  }
+
+  /* ---- 区画2: 右上ベル(対応が必要なこと)。NotebookScreenの.hdrbellと同じ文法(独立クラス名)。
+     ドロップダウン内の行バッジ(.mdb-bellbadge)と衝突しないよう、ベルアイコン側は.mdb-bell系に改名 ---- */
+  .mdb-bellwrap {
+    position: relative;
+  }
+  .mdb-bell {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border: 1px solid var(--outline);
+    border-radius: 50%;
+    background: var(--surface-lowest);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .mdb-bell:hover {
+    background: rgba(0, 0, 0, 0.05);
+  }
+  .mdb-bell svg {
+    width: 17px;
+    height: 17px;
+  }
+  .mdb-bellcount {
+    position: absolute;
+    top: -4px;
+    right: -5px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: var(--danger);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+    animation: mdb-bellpulse 600ms ease-in-out 2;
+  }
+  .mdb-bellpanel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    width: 300px;
+    max-width: 80vw;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    box-shadow: var(--elev-2);
+    padding: 6px;
+    z-index: 20;
+  }
+  .mdb-bellrow {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    padding: 10px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    cursor: pointer;
+    font-family: var(--font-ui);
+  }
+  .mdb-bellrow:hover {
+    background: var(--surface-low);
+  }
+  .mdb-bellbadge {
+    flex: none;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--danger);
+    color: #ffffff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 18px;
+    text-align: center;
+  }
+  .mdb-bellbody {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .mdb-belltitle {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .mdb-bellreason {
+    font-size: 10.5px;
+    color: var(--mut);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mdb-bellempty {
+    padding: 14px;
+    font-size: 12px;
+    color: var(--mut);
+    text-align: center;
+  }
+
+  /* ---- 区画1: ヒーロー(次の予定/試合) ---- */
+  .mdb-herothin {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    background: var(--surface-low);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    color: var(--mut);
+    font-size: 12.5px;
+  }
+  .mdb-herothin-cta {
+    flex: none;
+    background: none;
+    border: 0;
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+  .mdb-hero {
+    position: relative;
+    overflow: hidden;
+    padding: 22px 26px 16px;
+    background: linear-gradient(135deg, rgba(44, 111, 214, 0.06), var(--surface-lowest) 55%);
+    border: 1px solid var(--outline);
+    border-left: 4px solid var(--accent);
+    border-radius: var(--r-lg);
+  }
+  .mdb-hero::before {
+    content: "";
+    position: absolute;
+    top: -50px;
+    right: -70px;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(44, 111, 214, 0.35), transparent 70%);
+    opacity: 0.4;
+    animation: mdb-drift 26s var(--ease-standard) infinite alternate;
+    pointer-events: none;
+    z-index: 0;
+  }
+  /* 裏タブ(visibilitychange)ではJS側で祖先要素に.mdb-pausedを付け、driftアニメを一時停止する */
+  .mdb-paused .mdb-hero::before {
+    animation-play-state: paused;
+  }
+  .mdb-herobody,
+  .mdb-metarow {
+    position: relative;
+    z-index: 1;
+  }
+  .mdb-herobody {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    text-align: center;
+  }
+  /* 対戦カード/カウントダウン/ピル行を縮ませない（同上の理由） */
+  .mdb-herobody > * {
+    flex: none;
+  }
+  .mdb-vscard {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    width: 100%;
+    min-width: 0;
+  }
+  .mdb-side {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mdb-side-own {
+    justify-content: flex-end;
+  }
+  .mdb-side-opp {
+    justify-content: flex-start;
+    min-width: 0;
+  }
+  .mdb-emblem {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  .mdb-emblem-fallback {
+    display: inline-grid;
+    place-items: center;
+    background: var(--accent-tint);
+    color: var(--accent);
+    font-weight: 800;
+    font-size: 14px;
+  }
+  .mdb-ownname {
+    min-width: 0;
+    max-width: 160px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mdb-vs {
+    flex: none;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--mut);
+  }
+  .mdb-oppname {
+    display: inline-block;
+    min-width: 0;
+    max-width: 100%;
+    font-size: clamp(16px, 1.6vw, 20px);
+    font-weight: 800;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mdb-eventcard {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .mdb-eventtitle {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    max-width: min(480px, 100%);
+    font-size: clamp(16px, 1.6vw, 20px);
+    font-weight: 800;
+    color: var(--ink);
+    text-align: center;
+  }
+  .mdb-eventcat {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+    padding: 2px 10px;
+  }
+  .mdb-countdownwrap {
+    display: flex;
+    justify-content: center;
+  }
+  .mdb-countdown {
+    font-family: var(--font-ui);
+    font-size: 40px;
+    font-weight: 800;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    animation: mdb-countfade 300ms var(--ease-standard);
+  }
+  .mdb-pillsrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .mdb-pills {
+    display: flex;
+    gap: 6px;
+  }
+  /* 塗り緑(ベタ色)は.mdb-cta 1個のみに統一。ピルは淡色地+濃色文字+1px淡色枠のチップ表現にする */
+  .mdb-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid transparent;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    animation: mdb-pop 220ms var(--ease-decel) both;
+  }
+  .mdb-pill.w {
+    background: #e6f4ea;
+    color: #137333;
+    border-color: rgba(19, 115, 51, 0.35);
+  }
+  .mdb-pill.d {
+    background: #f1f3f4;
+    color: #5f6368;
+    border-color: rgba(95, 99, 104, 0.35);
+  }
+  .mdb-pill.l {
+    background: #fce8e6;
+    color: #b3261e;
+    border-color: rgba(179, 38, 30, 0.35);
+  }
+  .mdb-pill.cur {
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .mdb-pillcaption {
+    font-size: 10.5px;
+    color: var(--mut);
+  }
+  .mdb-metarow {
+    display: flex;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--outline);
+  }
+  .mdb-metaitem {
+    flex: 1 1 140px;
+    min-width: 0;
+    padding: 0 16px;
+    border-left: 1px solid var(--outline);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .mdb-metaitem:first-child {
+    border-left: 0;
+    padding-left: 0;
+  }
+  .mdb-metalabel {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--mut);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .mdb-metaval {
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mdb-metaitem-att {
+    flex: 1 1 260px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .mdb-cta {
+    flex: none;
+    height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: var(--r-full);
+    background: var(--primary);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--font-ui);
+    cursor: pointer;
+  }
+  .mdb-cta:hover {
+    background: var(--primary-dim);
+  }
+
+  /* ---- 区画3: チームパルス(KPIタイル×グラフ)。.kpicard2/.kpiband/.kpitileはPhase Cをそのまま流用 ---- */
+  .mdb-pulse .kpiband {
+    flex-wrap: wrap;
+  }
+  .mdb-pulse .kpitile {
+    position: relative;
+  }
+  .mdb-kpidelta {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 1px 6px;
+    border-radius: var(--r-full);
+    font-size: 10.5px;
+    font-weight: 700;
+    background: var(--surface-low);
+    color: var(--mut);
+  }
+  .mdb-kpidelta.up {
+    background: var(--primary-container);
+    color: var(--primary-dim);
+  }
+  .mdb-kpidelta.down {
+    background: rgba(217, 45, 32, 0.1);
+    color: var(--danger);
+  }
+  .kpitile.on .mdb-kpidelta {
+    background: rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+  }
+  .mdb-ringrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .mdb-ring {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    transform: rotate(-90deg);
+  }
+  .mdb-ringtrack {
+    fill: none;
+    stroke: var(--outline);
+    stroke-width: 3;
+  }
+  .mdb-ringval {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dasharray var(--dur-m) var(--ease-standard);
+  }
+  .kpitile.on .mdb-ringtrack {
+    stroke: rgba(255, 255, 255, 0.35);
+  }
+  .kpitile.on .mdb-ringval {
+    stroke: #ffffff;
+  }
+  .mdb-charttitle {
+    margin: 2px 2px 6px;
+  }
+  .mdb-chartwrap {
+    width: 100%;
+  }
+  .mdb-chartsvg {
+    display: block;
+    width: 100%;
+    height: 90px;
+    overflow: visible;
+  }
+  .mdb-chartline {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 100;
+    stroke-dashoffset: 100;
+    transition: stroke-dashoffset var(--dur-chart-slow) var(--ease-decel);
+  }
+  .mdb-chartline.on {
+    stroke-dashoffset: 0;
+  }
+  .mdb-chartarea {
+    fill: var(--accent-tint);
+    stroke: none;
+    opacity: 0;
+    transition: opacity 400ms var(--ease-standard) 1200ms;
+  }
+  .mdb-chartarea.on {
+    opacity: 1;
+  }
+  .mdb-chartdot {
+    fill: var(--accent);
+  }
+  .mdb-chartlabel {
+    font-size: 9px;
+    fill: var(--mut);
+  }
+  .mdb-autorow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px 12px;
+    font-size: 11px;
+    color: var(--mut);
+    cursor: pointer;
+    user-select: none;
+  }
+  .mdb-autorow input {
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* ---- 区画4: 今月のトピック × 最新の動き(2カラム) ---- */
+  .mdb-cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .mdb-panel {
+    min-width: 0;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 14px 16px;
+  }
+  .mdb-panel-head {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .mdb-panel-h {
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--ink);
+  }
+  .mdb-panel-sub {
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--mut);
+  }
+  .mdb-topicempty {
+    font-size: 12px;
+    color: var(--mut);
+    padding: 8px 0;
+  }
+  .mdb-topicrows {
+    display: flex;
+    flex-direction: column;
+  }
+  .mdb-topicrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 30px;
+  }
+  .mdb-topicrank {
+    flex: none;
+    width: 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--mut);
+  }
+  .mdb-topicname {
+    flex: 0 0 76px;
+    min-width: 0;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mdb-topicbartrack {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 8px;
+    border-radius: var(--r-full);
+    background: var(--surface-low);
+    overflow: hidden;
+  }
+  .mdb-topicbar {
+    display: block;
+    height: 100%;
+    width: 0%;
+    border-radius: var(--r-full);
+    background: var(--accent);
+    transition: width 1200ms var(--ease-decel);
+  }
+  .mdb-topicval {
+    flex: none;
+    width: 44px;
+    text-align: right;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .mdb-topicfallback {
+    margin-top: 6px;
+    font-size: 10px;
+    color: var(--mut);
+  }
+  .mdb-topicnext {
+    margin-top: 10px;
+    font-size: 10.5px;
+    color: var(--mut);
+  }
+  .mdb-feedlist {
+    height: 160px;
+    overflow: hidden;
+    position: relative;
+  }
+  .mdb-feedtrack {
+    display: flex;
+    flex-direction: column;
+  }
+  .mdb-feeditem {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    min-width: 0;
+  }
+  .mdb-feedicon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--accent-tint);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 800;
+  }
+  .mdb-feedtext {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 12.5px;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mdb-feedtime {
+    flex: none;
+    font-size: 10.5px;
+    color: var(--mut);
+  }
+  .mdb-feedempty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    font-size: 12px;
+    color: var(--mut);
+  }
+  .mdb-highlights {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .mdb-chip {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    background: var(--accent-tint);
+    border-radius: var(--r-full);
+    padding: 5px 12px;
+  }
+}
+
+/* マッチデー・ボード(PCコーチホーム)専用のキーフレーム。
+   @mediaの外＝グローバル定義（PC以外の幅では対応DOMが存在しないため実害なし） */
+@keyframes mdb-drift {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(-24px, 18px) scale(1.08); }
+}
+@keyframes mdb-countfade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes mdb-pop {
+  from { transform: scale(0.6); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes mdb-bellpulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.25); }
 }
 
 /* =========================================================
@@ -10671,6 +11424,38 @@ header {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  /* マッチデー・ボード(PCコーチホーム): アニメ無効・最終状態を即表示（自動切替/自動送りはJS側でも既定OFF・停止する） */
+  .mdb-hero::before {
+    animation: none;
+    opacity: 0.4;
+  }
+  .mdb-pill {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .mdb-bellcount {
+    animation: none;
+  }
+  .mdb-countdown {
+    animation: none;
+    opacity: 1;
+  }
+  .mdb-chartline,
+  .mdb-chartarea,
+  .mdb-ringval,
+  .mdb-topicbar {
+    transition: none;
+  }
+  .mdb-chartline {
+    stroke-dashoffset: 0;
+  }
+  .mdb-chartarea {
+    opacity: 1;
+  }
+  .mdb-feedtrack {
+    transition: none !important;
   }
 }
 
