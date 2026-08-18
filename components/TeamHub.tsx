@@ -198,11 +198,25 @@ function Sheet({
   open,
   onClose,
   children,
+  pane,
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
+  /** PC専用: モーダル(scrim/sheet)の代わりに.teammain内の1ペインとして描画する */
+  pane?: boolean;
 }) {
+  if (pane) {
+    if (!open) return null;
+    return (
+      <div className="tmdetail tm-sheetpane">
+        <div className="tmback" onClick={onClose}>
+          ‹ 戻る
+        </div>
+        {children}
+      </div>
+    );
+  }
   return (
     <>
       <div className={`scrim${open ? " on" : ""}`} onClick={onClose} />
@@ -241,8 +255,9 @@ type SheetState =
   | {
       type: "match";
       record?: MatchRecord;
-      /** 試合イベントから引き継ぐ初期値（新規記録用） */
-      prefill?: { date?: string; opponent?: string };
+      /** 試合イベントから引き継ぐ初期値（新規記録用）。eventIdはtm-sheetpaneの「戻る」で
+          元のeventViewへ復帰するために使う */
+      prefill?: { date?: string; opponent?: string; eventId?: string };
     }
   | { type: "matchView"; id: string }
   | { type: "competitions" }
@@ -260,6 +275,9 @@ function Inner() {
   const board = useBoard();
   const team = useTeam();
   const players = board.state.players;
+  // PC(min-width:1024px)ではシートをモーダルでなく.teammain内のペインとして描画するため、
+  // SheetHostの出し分け・.teammainの描画条件で使う
+  const pc = usePc();
   const [tab, setTab] = useState<Tab>("home");
   const [sheet, setSheet] = useState<SheetState>(null);
   // カレンダーの表示月・表示モードはタブを跨いで保持する
@@ -344,6 +362,26 @@ function Inner() {
     return () => mql.removeEventListener("change", sync);
   }, [isCoach, sheet, activeTab]);
 
+  // teamIntent消費: 他画面からの「チームHubのこのタブ・選手を開く」という遷移指示を反映する。
+  // コーチが選手プレビュー中(team.viewer.role!=="coach")にros/attを指すintentが来た場合、
+  // そのままではタブがコーチ専任のため出ずhomeに丸められてしまう。先にスタッフ表示へ戻す。
+  // 選手ログイン(board.auth.role!=="coach")でros等が来た場合はtabsに無く自然にhomeへ丸まる
+  // だけなので、intentを破棄する以上の特別処理はしない(現状維持)
+  useEffect(() => {
+    const intent = board.teamIntent;
+    if (!intent) return;
+    if (
+      board.auth.role === "coach" &&
+      team.viewer.role !== "coach" &&
+      (intent.tab === "ros" || intent.tab === "att")
+    ) {
+      team.setViewer("coach", null);
+    }
+    setTab(intent.tab);
+    if (intent.playerId) setRosSel(intent.playerId);
+    board.setTeamIntent(null);
+  }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer]);
+
   return (
     <div className="app teamapp">
       <header>
@@ -418,93 +456,137 @@ function Inner() {
         ))}
       </div>
 
-      {/* paddingは基底CSS(.teamapp .scroll)へ移設（PCで上書きできるように） */}
-      <div className="scroll">
-        {activeTab === "home" && (
-          <HomeTab isCoach={isCoach} setSheet={setSheet} setTab={setTab} />
-        )}
-        {activeTab === "att" && (
-          <AttendanceTab
-            isCoach={isCoach}
-            setSheet={setSheet}
-            attSel={attSel}
-            setAttSel={setAttSel}
-          />
-        )}
-        {activeTab === "cal" && (
-          <CalendarTab
-            isCoach={isCoach}
-            setSheet={setSheet}
-            ym={calYm}
-            setYm={setCalYm}
-            view={calView}
-            setView={setCalView}
-          />
-        )}
-        {activeTab === "rec" && (
-          <MatchesTab
-            isCoach={isCoach}
-            players={players}
-            setSheet={setSheet}
-            recSel={recSel}
-            setRecSel={setRecSel}
-            cmp={cmp}
-            setCmp={setCmp}
-          />
-        )}
-        {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
-          <RosterTab players={players} setSheet={setSheet} rosSel={rosSel} setRosSel={setRosSel} />
-        )}
-      </div>
+      {/* PC専用の第2ペインを出す(=グリッドが発火する)のは、元来の3ペイン構成である
+          コーチのrec/ros/attタブのみ。それ以外(home/calタブ・選手ロール)でsheetを開くと
+          グリッドが破綻するため、そちらは.scroll直下の全幅表示(画面切替方式)へ回す */}
+      {(() => {
+        const showTeammain = pc && isCoach && (activeTab === "rec" || activeTab === "ros" || activeTab === "att");
+        const sheetInTeammain = showTeammain && sheet != null;
+        // showTeammain対象外(home/calタブ、または選手ロール)でsheetが開いているときは、
+        // .scroll内のタブ本体を出さず、代わりにSheetHost(pane)を.scroll直下に全幅表示する
+        const sheetInline = pc && sheet != null && !sheetInTeammain;
+        return (
+          <>
+            {/* paddingは基底CSS(.teamapp .scroll)へ移設（PCで上書きできるように） */}
+            <div className="scroll">
+              {sheetInline ? (
+                <SheetHost
+                  key={sheetKey(sheet)}
+                  pane
+                  sheet={sheet}
+                  setSheet={setSheet}
+                  players={players}
+                  isCoach={isCoach}
+                />
+              ) : (
+                <>
+                  {activeTab === "home" && (
+                    <HomeTab isCoach={isCoach} setSheet={setSheet} setTab={setTab} />
+                  )}
+                  {activeTab === "att" && (
+                    <AttendanceTab
+                      isCoach={isCoach}
+                      setSheet={setSheet}
+                      attSel={attSel}
+                      setAttSel={setAttSel}
+                    />
+                  )}
+                  {activeTab === "cal" && (
+                    <CalendarTab
+                      isCoach={isCoach}
+                      setSheet={setSheet}
+                      ym={calYm}
+                      setYm={setCalYm}
+                      view={calView}
+                      setView={setCalView}
+                    />
+                  )}
+                  {activeTab === "rec" && (
+                    <MatchesTab
+                      isCoach={isCoach}
+                      players={players}
+                      setSheet={setSheet}
+                      recSel={recSel}
+                      setRecSel={setRecSel}
+                      cmp={cmp}
+                      setCmp={setCmp}
+                    />
+                  )}
+                  {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
+                    <RosterTab players={players} setSheet={setSheet} rosSel={rosSel} setRosSel={setRosSel} />
+                  )}
+                </>
+              )}
+            </div>
 
-      {/* PC専用の第2ペイン（コーチのみ・rec/ros/attタブのみ）。選手ビューでは絶対に描画しない。
-          モバイルでは base の .teammain{display:none}（チャットの.chatmainと同じ流儀）で不可視 */}
-      {isCoach && (activeTab === "rec" || activeTab === "ros" || activeTab === "att") && (
-        <div className="teammain">
-          {activeTab === "rec" &&
-            (recSel.kind === "summary" ? (
-              <RecSummaryPane cmp={cmp} players={players} setRecSel={setRecSel} />
-            ) : recSel.kind === "match" ? (
-              <RecMatchPane id={recSel.id} players={players} setRecSel={setRecSel} setSheet={setSheet} isCoach={isCoach} />
-            ) : (
-              <RecPlayerPane id={recSel.id} players={players} setRecSel={setRecSel} />
-            ))}
-          {activeTab === "ros" &&
-            (rosSel ? (
-              <RosPlayerPane playerId={rosSel} players={players} isCoach={isCoach} setSheet={setSheet} setRosSel={setRosSel} />
-            ) : (
-              <div className="empty-msg" style={{ margin: "auto" }}>
-                選手を選んでください
+            {/* コーチのrec/ros/attタブのみの第2ペイン。sheetが開いていればSheetHostをペイン表示し(sel系ペインより優先)、
+                sheetが無いときは従来どおりsel系ペインを出す。
+                モバイルでは base の .teammain{display:none}（チャットの.chatmainと同じ流儀）で不可視 */}
+            {showTeammain && (
+              <div className="teammain">
+                {sheetInTeammain ? (
+                  <SheetHost
+                    key={sheetKey(sheet)}
+                    pane
+                    sheet={sheet}
+                    setSheet={setSheet}
+                    players={players}
+                    isCoach={isCoach}
+                  />
+                ) : (
+                  <>
+                    {activeTab === "rec" &&
+                      (recSel.kind === "summary" ? (
+                        <RecSummaryPane cmp={cmp} players={players} setRecSel={setRecSel} />
+                      ) : recSel.kind === "match" ? (
+                        <RecMatchPane id={recSel.id} players={players} setRecSel={setRecSel} setSheet={setSheet} isCoach={isCoach} />
+                      ) : (
+                        <RecPlayerPane id={recSel.id} players={players} setRecSel={setRecSel} />
+                      ))}
+                    {activeTab === "ros" &&
+                      (rosSel ? (
+                        <RosPlayerPane playerId={rosSel} players={players} isCoach={isCoach} setSheet={setSheet} setRosSel={setRosSel} />
+                      ) : (
+                        <div className="empty-msg" style={{ margin: "auto" }}>
+                          選手を選んでください
+                        </div>
+                      ))}
+                    {activeTab === "att" &&
+                      (attSel.kind === "overview" ? (
+                        <AttOverviewPane
+                          players={players}
+                          attPeriod={attPeriod}
+                          setAttPeriod={setAttPeriod}
+                          setAttSel={setAttSel}
+                        />
+                      ) : attSel.kind === "event" ? (
+                        <AttEventPane id={attSel.id} players={players} setAttSel={setAttSel} />
+                      ) : (
+                        <AttPlayerPane
+                          id={attSel.id}
+                          players={players}
+                          attPeriod={attPeriod}
+                          setAttSel={setAttSel}
+                        />
+                      ))}
+                  </>
+                )}
               </div>
-            ))}
-          {activeTab === "att" &&
-            (attSel.kind === "overview" ? (
-              <AttOverviewPane
-                players={players}
-                attPeriod={attPeriod}
-                setAttPeriod={setAttPeriod}
-                setAttSel={setAttSel}
-              />
-            ) : attSel.kind === "event" ? (
-              <AttEventPane id={attSel.id} players={players} setAttSel={setAttSel} />
-            ) : (
-              <AttPlayerPane
-                id={attSel.id}
-                players={players}
-                attPeriod={attPeriod}
-                setAttSel={setAttSel}
-              />
-            ))}
-        </div>
-      )}
+            )}
+          </>
+        );
+      })()}
 
-      <SheetHost
-        key={sheetKey(sheet)}
-        sheet={sheet}
-        setSheet={setSheet}
-        players={players}
-        isCoach={isCoach}
-      />
+      {/* モバイルは従来どおりトップレベルにシートをマウント（PCはペイン化のため.teammain内へ移設済み） */}
+      {!pc && (
+        <SheetHost
+          key={sheetKey(sheet)}
+          sheet={sheet}
+          setSheet={setSheet}
+          players={players}
+          isCoach={isCoach}
+        />
+      )}
     </div>
   );
 }
@@ -2313,15 +2395,32 @@ function SheetHost({
   setSheet,
   players,
   isCoach,
+  pane,
 }: {
   sheet: SheetState;
   setSheet: (s: SheetState) => void;
   players: Player[];
   isCoach: boolean;
+  /** PC専用: 配下の全Sheetをモーダルでなく.teammain内の1ペインとして描画する */
+  pane?: boolean;
 }) {
   const board = useBoard();
   const team = useTeam();
   const close = () => setSheet(null);
+  // tm-sheetpane(PCペイン)の「戻る」用: 最小限の親復帰マップ。
+  // categoriesは呼び出し元のevent編集シートへ、prefill.eventId付きのmatchは
+  // 呼び出し元のeventView(試合結果を記録)へ戻し、それ以外はモーダル同様に閉じる
+  const paneBack = () => {
+    if (sheet?.type === "categories") {
+      setSheet({ type: "event" });
+      return;
+    }
+    if (sheet?.type === "match" && sheet.prefill?.eventId) {
+      setSheet({ type: "eventView", id: sheet.prefill.eventId });
+      return;
+    }
+    setSheet(null);
+  };
 
   // event form
   const ev = sheet?.type === "event" ? sheet.event : undefined;
@@ -2405,7 +2504,7 @@ function SheetHost({
   return (
     <>
       {/* 予定（イベント）フォーム */}
-      <Sheet open={sheet?.type === "event"} onClose={close}>
+      <Sheet open={sheet?.type === "event"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>{ev ? "予定を編集" : "予定を追加"}</h2>
         <div className="formfield">
           <label>カテゴリ</label>
@@ -2617,7 +2716,7 @@ function SheetHost({
       </Sheet>
 
       {/* カテゴリ管理 */}
-      <Sheet open={sheet?.type === "categories"} onClose={close}>
+      <Sheet open={sheet?.type === "categories"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>カテゴリ管理</h2>
         <div className="list">
           {team.categories.map((c) => (
@@ -2760,14 +2859,14 @@ function SheetHost({
 
       {/* 出欠一覧（スタッフが記録）: 未記録→欠席→未定→出席の順にグルーピング。
           UI本体はAttendanceRecordBody（PC右ペイン att/event と共有） */}
-      <Sheet open={sheet?.type === "attendance"} onClose={close}>
+      <Sheet open={sheet?.type === "attendance"} onClose={pane ? paneBack : close} pane={pane}>
         {sheet?.type === "attendance" && (
           <AttendanceRecordBody eventId={sheet.eventId} players={players} />
         )}
       </Sheet>
 
       {/* 連絡フォーム */}
-      <Sheet open={sheet?.type === "announce"} onClose={close}>
+      <Sheet open={sheet?.type === "announce"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>連絡を送る</h2>
         <div className="formfield">
           <label>本文</label>
@@ -2810,7 +2909,7 @@ function SheetHost({
       </Sheet>
 
       {/* 連絡の一覧 */}
-      <Sheet open={sheet?.type === "annList"} onClose={close}>
+      <Sheet open={sheet?.type === "annList"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>連絡</h2>
         {isCoach && (
           <button
@@ -2831,7 +2930,7 @@ function SheetHost({
       </Sheet>
 
       {/* 日別（カレンダー） */}
-      <Sheet open={sheet?.type === "day"} onClose={close}>
+      <Sheet open={sheet?.type === "day"} onClose={pane ? paneBack : close} pane={pane}>
         {sheet?.type === "day" && (
           <>
             <h2>{fmtDate(sheet.date)} の予定</h2>
@@ -2880,7 +2979,7 @@ function SheetHost({
       </Sheet>
 
       {/* 予定の詳細 */}
-      <Sheet open={sheet?.type === "eventView"} onClose={close}>
+      <Sheet open={sheet?.type === "eventView"} onClose={pane ? paneBack : close} pane={pane}>
         {sheet?.type === "eventView" &&
           (() => {
             const e = team.team.events.find((x) => x.id === sheet.id);
@@ -2975,7 +3074,7 @@ function SheetHost({
                         onClick={() =>
                           setSheet({
                             type: "match",
-                            prefill: { date: e.date, opponent: opponentFromTitle(e.title) },
+                            prefill: { date: e.date, opponent: opponentFromTitle(e.title), eventId: e.id },
                           })
                         }
                       >
@@ -3039,7 +3138,7 @@ function SheetHost({
       </Sheet>
 
       {/* 試合記録フォーム */}
-      <Sheet open={sheet?.type === "match"} onClose={close}>
+      <Sheet open={sheet?.type === "match"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>{mr ? "試合記録を編集" : "試合結果を記録"}</h2>
         <div className="formgrid">
           <div className="formfield" style={{ flex: 2, margin: 0 }}>
@@ -3220,7 +3319,7 @@ function SheetHost({
       </Sheet>
 
       {/* 大会の登録・管理 */}
-      <Sheet open={sheet?.type === "competitions"} onClose={close}>
+      <Sheet open={sheet?.type === "competitions"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>大会の登録・管理</h2>
         <div className="formfield">
           <label>新しい大会を登録</label>
@@ -3274,7 +3373,7 @@ function SheetHost({
       </Sheet>
 
       {/* 試合詳細。UI本体はMatchDetailBody（PC右ペイン rec/match と共有） */}
-      <Sheet open={sheet?.type === "matchView"} onClose={close}>
+      <Sheet open={sheet?.type === "matchView"} onClose={pane ? paneBack : close} pane={pane}>
         {sheet?.type === "matchView" &&
           (() => {
             const m = team.team.matches.find((x) => x.id === sheet.id);
@@ -3292,7 +3391,7 @@ function SheetHost({
       </Sheet>
 
       {/* 選手プロフィール。UI本体はPlayerDetailBody（PC右ペイン ros/選手選択 と共有） */}
-      <Sheet open={sheet?.type === "playerDetail"} onClose={close}>
+      <Sheet open={sheet?.type === "playerDetail"} onClose={pane ? paneBack : close} pane={pane}>
         {sheet?.type === "playerDetail" &&
           (() => {
             const p = players.find((x) => x.id === sheet.playerId);
@@ -3309,7 +3408,7 @@ function SheetHost({
       </Sheet>
 
       {/* 選手フォーム（新規追加・編集） */}
-      <Sheet open={sheet?.type === "playerForm"} onClose={close}>
+      <Sheet open={sheet?.type === "playerForm"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>{pf ? "選手を編集" : "選手を追加"}</h2>
         <div className="formfield">
           <label>名前</label>

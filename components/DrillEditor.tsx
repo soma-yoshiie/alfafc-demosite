@@ -17,6 +17,7 @@ import { ITEM_LABEL, LINE_COLORS, LINE_LABEL } from "@/lib/drillDraw";
 import { renderDrillThumbPng } from "@/lib/exportDrill";
 import { useBoard } from "./BoardProvider";
 import { DrillProvider, ITEM_TOOLS, LINE_TOOLS, useDrill } from "./DrillProvider";
+import type { DrillSheet } from "./DrillProvider";
 import { SendTargetField, targetThreadKey, type SendTarget } from "./SendTarget";
 import DrillItemView from "./DrillItemView";
 import DrillLines from "./DrillLines";
@@ -33,6 +34,33 @@ import {
 } from "./icons";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+
+/** PC(min-width:1024px)判定のブレークポイント。TeamHub.tsx usePc() と同じ値・同じ手法 */
+const PC_MQ = "(min-width: 1024px)";
+
+/** PC幅かどうかを追跡するフック（TeamHub.tsx usePc() と同じ手法） */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
+
+/** PCの練習メニューで中央ダイアログ（旧：レールごと暗転するボトムシート）の代わりに
+ * 右カラム(.dxside)のパネルに出す4面のタイトル（TacticsBoard.tsx BOARD_PANEL_TITLE と同じ手法） */
+const DRILL_PANEL_TITLE: Record<Exclude<DrillSheet, null>, string> = {
+  library: "保存した練習メニュー",
+  memo: "タイトル・メモ",
+  saveAs: "ライブラリに保存",
+  send: "選手アプリに送信",
+};
 
 const PITCH_LABEL: Record<PitchType, string> = {
   half: "ハーフ",
@@ -221,6 +249,7 @@ function LineHandle({ line, index }: { line: DrillLine; index: number }) {
 function Inner() {
   const board = useBoard();
   const drill = useDrill();
+  const pc = usePc();
   const { doc, tool, selection, stampLock, scene } = drill;
   // 盤面に描くのは現在の場面（シーン）のitems/linesだけ。旧データはstep未定義＝場面0扱い
   const sceneItems = doc.items.filter((it) => (it.step ?? 0) === scene);
@@ -387,6 +416,12 @@ function Inner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [drill]);
 
+  // PC専用パネル(.dxside)が開いたら選択中ツールを解除する。
+  // パレットが見えない状態でツールが選択されたままだとピッチへ誤って置いてしまうため
+  useEffect(() => {
+    if (pc && drill.sheet != null) drill.setTool(null);
+  }, [pc, drill.sheet, drill.setTool]);
+
   /* ---- 選択中の対象とコンテキストバーの位置 ---- */
   const selItem =
     selection?.type === "item" ? doc.items.find((i) => i.id === selection.id) : undefined;
@@ -413,6 +448,125 @@ function Inner() {
 
   // 確認つき読み込みはProvider側に集約（ライブラリシートの練習タブ経由でも同じ挙動になる）
   const loadWithConfirm = (id: string) => drill.loadDrillConfirmed(id);
+
+  /* ---- 4面（ライブラリ／メモ／保存／送信）の中身。PCでは右カラムのパネル、
+     モバイルでは従来のボトムシートへ、器だけを出し分けて同じJSXを流用する ---- */
+  const libraryBody = (
+    <>
+      <h2>
+        保存した練習メニュー <span>{drill.drills.length}件</span>
+      </h2>
+      <div className="controls">
+        <button className="bigbtn" style={{ width: "100%", margin: 0 }} onClick={drill.newDrill}>
+          ＋ 新規作成
+        </button>
+      </div>
+      <div className="list">
+        {drill.drills.length === 0 ? (
+          <div className="empty-msg">まだ保存された練習メニューはありません。</div>
+        ) : (
+          [...drill.drills]
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .map((s) => (
+              <div key={s.id} className={`drillcard${drill.currentId === s.id ? " cur" : ""}`}>
+                <button className="dcimg" onClick={() => loadWithConfirm(s.id)}>
+                  <DrillThumb drill={s} />
+                </button>
+                <div className="dcbody" onClick={() => loadWithConfirm(s.id)}>
+                  <div className="playtitle">{s.title}</div>
+                  <div className="playsub">
+                    {PITCH_LABEL[s.pitchType]}
+                    {drillSceneCount(s) > 1 ? ` ・ 場面${drillSceneCount(s)}` : ""} ・{" "}
+                    {fmtDate(s.updatedAt)}
+                  </div>
+                  {s.memo ? <div className="dcmemo">{s.memo}</div> : null}
+                </div>
+                <button
+                  className="dcdel"
+                  title="削除"
+                  onClick={() => {
+                    if (window.confirm(`「${s.title}」を削除しますか？`)) drill.deleteDrill(s.id);
+                  }}
+                >
+                  <IconTrash />
+                </button>
+              </div>
+            ))
+        )}
+      </div>
+    </>
+  );
+
+  const memoBody = (
+    <>
+      <h2>タイトル・メモ</h2>
+      <div className="formfield">
+        <label>タイトル</label>
+        <input value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} autoFocus />
+      </div>
+      <div className="formfield">
+        <label>メモ（ねらい・回数など）</label>
+        {/* 寸法は .formfield textarea(基底CSS)が持つ。インラインで持つとPC密度調整が効かない */}
+        <textarea value={memoDraft} onChange={(e) => setMemoDraft(e.target.value)} rows={5} />
+      </div>
+      <button
+        className="bigbtn"
+        onClick={() => {
+          drill.setTitle(titleDraft.trim() || "練習メニュー");
+          drill.setMemo(memoDraft);
+          drill.openSheet(null);
+        }}
+      >
+        保存
+      </button>
+    </>
+  );
+
+  const saveAsBody = (
+    <>
+      <h2>ライブラリに保存</h2>
+      <div className="formfield">
+        <label>タイトル</label>
+        <input
+          value={asTitle || doc.title}
+          onChange={(e) => setAsTitle(e.target.value)}
+          autoFocus
+        />
+      </div>
+      <button className="bigbtn" onClick={() => drill.saveAsNew(asTitle || doc.title)}>
+        保存する
+      </button>
+    </>
+  );
+
+  const sendBody = (
+    <>
+      <h2>選手アプリに送信</h2>
+      <div className="formfield">
+        <label>タイトル</label>
+        <input value={asTitle || doc.title} onChange={(e) => setAsTitle(e.target.value)} />
+      </div>
+      <SendTargetField
+        players={board.state.players}
+        value={drillTarget}
+        onChange={setDrillTarget}
+        allowNone={false}
+      />
+      <button className="bigbtn" disabled={!drillThreadKey} onClick={sendDrill}>
+        送信する
+      </button>
+    </>
+  );
+
+  // PC(matchMedia 1024px)ではシート(.scrim/.sheet)を描画せず、右カラム(.dxside)を
+  // ツールパレットからパネルへ差し替える。sheet状態自体はモバイルと共通(drill.sheet)のまま
+  const dxPanelType: Exclude<DrillSheet, null> | null = pc ? drill.sheet : null;
+  const dxPanelBody: Record<Exclude<DrillSheet, null>, React.ReactNode> = {
+    library: libraryBody,
+    memo: memoBody,
+    saveAs: saveAsBody,
+    send: sendBody,
+  };
 
   return (
     <div className="app drillapp dx">
@@ -646,185 +800,127 @@ function Inner() {
         </div>
 
         <aside className="dxside">
-          <section className="dxsec">
-            <h3>ピッチ</h3>
-            <div className="dxseg">
-              {(["half", "full", "fullh", "blank"] as PitchType[]).map((p) => (
+          {dxPanelType ? (
+            // PC(1024px以上)：drill.sheetが開いている間はツールパレットの代わりに
+            // 「パネル」（ヘッダ＝タイトル＋‹ツールへ戻る＋各シートの中身）を表示する。
+            // 中身(libraryBody等)はモバイルのボトムシートと共通のJSXをそのまま流用
+            <div className="dxpanel">
+              <div className="dxpanelhead">
                 <button
-                  key={p}
-                  className={doc.pitchType === p ? "on" : ""}
-                  onClick={() => drill.setPitchType(p)}
+                  type="button"
+                  className="dxpanelback"
+                  onClick={() => drill.openSheet(null)}
                 >
-                  {PITCH_LABEL[p]}
+                  ‹ ツールへ戻る
                 </button>
-              ))}
-            </div>
-            <div className="dxrow">
-              <span className="dxlbl">丸の大きさ</span>
-              <div className="dxseg sm">
-                {(["L", "M", "S"] as DiscSize[]).map((s) => (
-                  <button
-                    key={s}
-                    className={(doc.discSize ?? "L") === s ? "on" : ""}
-                    onClick={() => drill.setDiscSize(s)}
-                  >
-                    {DISC_LABEL[s]}
-                  </button>
-                ))}
+                <div className="dxpaneltitle">{DRILL_PANEL_TITLE[dxPanelType]}</div>
               </div>
+              <div className="dxpanelbody">{dxPanelBody[dxPanelType]}</div>
             </div>
-          </section>
+          ) : (
+            <>
+              <section className="dxsec">
+                <h3>ピッチ</h3>
+                <div className="dxseg">
+                  {(["half", "full", "fullh", "blank"] as PitchType[]).map((p) => (
+                    <button
+                      key={p}
+                      className={doc.pitchType === p ? "on" : ""}
+                      onClick={() => drill.setPitchType(p)}
+                    >
+                      {PITCH_LABEL[p]}
+                    </button>
+                  ))}
+                </div>
+                <div className="dxrow">
+                  <span className="dxlbl">丸の大きさ</span>
+                  <div className="dxseg sm">
+                    {(["L", "M", "S"] as DiscSize[]).map((s) => (
+                      <button
+                        key={s}
+                        className={(doc.discSize ?? "L") === s ? "on" : ""}
+                        onClick={() => drill.setDiscSize(s)}
+                      >
+                        {DISC_LABEL[s]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </section>
 
-          <section className="dxsec">
-            <h3>
-              アイテム<span className="dxhint">選んでピッチをタップ</span>
-            </h3>
-            <div className="dxpal">
-              {ITEM_TOOLS.map((k) => (
-                <button
-                  key={k}
-                  className={tool === k ? "on" : ""}
-                  onClick={() => drill.setTool(tool === k ? null : k)}
-                >
-                  <ItemPreview kind={k} />
-                  {ITEM_LABEL[k]}
-                </button>
-              ))}
-            </div>
-          </section>
+              <section className="dxsec">
+                <h3>
+                  アイテム<span className="dxhint">選んでピッチをタップ</span>
+                </h3>
+                <div className="dxpal">
+                  {ITEM_TOOLS.map((k) => (
+                    <button
+                      key={k}
+                      className={tool === k ? "on" : ""}
+                      onClick={() => drill.setTool(tool === k ? null : k)}
+                    >
+                      <ItemPreview kind={k} />
+                      {ITEM_LABEL[k]}
+                    </button>
+                  ))}
+                </div>
+              </section>
 
-          <section className="dxsec">
-            <h3>
-              動線<span className="dxhint">選んでピッチをなぞる</span>
-            </h3>
-            <div className="dxpal lines">
-              {LINE_TOOLS.map((k) => (
-                <button
-                  key={k}
-                  className={tool === k ? "on" : ""}
-                  onClick={() => drill.setTool(tool === k ? null : k)}
-                >
-                  <LinePreview kind={k} />
-                  {LINE_LABEL[k].replace(/（.+）/, "")}
-                </button>
-              ))}
-            </div>
-          </section>
+              <section className="dxsec">
+                <h3>
+                  動線<span className="dxhint">選んでピッチをなぞる</span>
+                </h3>
+                <div className="dxpal lines">
+                  {LINE_TOOLS.map((k) => (
+                    <button
+                      key={k}
+                      className={tool === k ? "on" : ""}
+                      onClick={() => drill.setTool(tool === k ? null : k)}
+                    >
+                      <LinePreview kind={k} />
+                      {LINE_LABEL[k].replace(/（.+）/, "")}
+                    </button>
+                  ))}
+                </div>
+              </section>
 
-          <label className="dxlock">
-            <input
-              type="checkbox"
-              checked={stampLock}
-              onChange={(e) => drill.setStampLock(e.target.checked)}
-            />
-            連続して配置する
-          </label>
+              <label className="dxlock">
+                <input
+                  type="checkbox"
+                  checked={stampLock}
+                  onChange={(e) => drill.setStampLock(e.target.checked)}
+                />
+                連続して配置する
+              </label>
 
-          <button className="dxclear" onClick={confirmClear}>
-            <IconTrash /> 全消去
-          </button>
+              <button className="dxclear" onClick={confirmClear}>
+                <IconTrash /> 全消去
+              </button>
+            </>
+          )}
         </aside>
       </div>
 
-      {/* sheets */}
-      <Sheet open={drill.sheet === "library"} onClose={() => drill.openSheet(null)}>
-        <h2>
-          保存した練習メニュー <span>{drill.drills.length}件</span>
-        </h2>
-        <div className="controls">
-          <button className="bigbtn" style={{ width: "100%", margin: 0 }} onClick={drill.newDrill}>
-            ＋ 新規作成
-          </button>
-        </div>
-        <div className="list">
-          {drill.drills.length === 0 ? (
-            <div className="empty-msg">まだ保存された練習メニューはありません。</div>
-          ) : (
-            [...drill.drills]
-              .sort((a, b) => b.updatedAt - a.updatedAt)
-              .map((s) => (
-                <div key={s.id} className={`drillcard${drill.currentId === s.id ? " cur" : ""}`}>
-                  <button className="dcimg" onClick={() => loadWithConfirm(s.id)}>
-                    <DrillThumb drill={s} />
-                  </button>
-                  <div className="dcbody" onClick={() => loadWithConfirm(s.id)}>
-                    <div className="playtitle">{s.title}</div>
-                    <div className="playsub">
-                      {PITCH_LABEL[s.pitchType]}
-                      {drillSceneCount(s) > 1 ? ` ・ 場面${drillSceneCount(s)}` : ""} ・{" "}
-                      {fmtDate(s.updatedAt)}
-                    </div>
-                    {s.memo ? <div className="dcmemo">{s.memo}</div> : null}
-                  </div>
-                  <button
-                    className="dcdel"
-                    title="削除"
-                    onClick={() => {
-                      if (window.confirm(`「${s.title}」を削除しますか？`)) drill.deleteDrill(s.id);
-                    }}
-                  >
-                    <IconTrash />
-                  </button>
-                </div>
-              ))
-          )}
-        </div>
-      </Sheet>
+      {/* sheets（モバイルのみ。PCは.dxsideのパネルに出すためシート自体(.scrim/.sheet)を描画しない） */}
+      {!pc && (
+        <>
+          <Sheet open={drill.sheet === "library"} onClose={() => drill.openSheet(null)}>
+            {libraryBody}
+          </Sheet>
 
-      <Sheet open={drill.sheet === "memo"} onClose={() => drill.openSheet(null)}>
-        <h2>タイトル・メモ</h2>
-        <div className="formfield">
-          <label>タイトル</label>
-          <input value={titleDraft} onChange={(e) => setTitleDraft(e.target.value)} autoFocus />
-        </div>
-        <div className="formfield">
-          <label>メモ（ねらい・回数など）</label>
-          {/* 寸法は .formfield textarea(基底CSS)が持つ。インラインで持つとPC密度調整が効かない */}
-          <textarea value={memoDraft} onChange={(e) => setMemoDraft(e.target.value)} rows={5} />
-        </div>
-        <button
-          className="bigbtn"
-          onClick={() => {
-            drill.setTitle(titleDraft.trim() || "練習メニュー");
-            drill.setMemo(memoDraft);
-            drill.openSheet(null);
-          }}
-        >
-          保存
-        </button>
-      </Sheet>
+          <Sheet open={drill.sheet === "memo"} onClose={() => drill.openSheet(null)}>
+            {memoBody}
+          </Sheet>
 
-      <Sheet open={drill.sheet === "saveAs"} onClose={() => drill.openSheet(null)}>
-        <h2>ライブラリに保存</h2>
-        <div className="formfield">
-          <label>タイトル</label>
-          <input
-            value={asTitle || doc.title}
-            onChange={(e) => setAsTitle(e.target.value)}
-            autoFocus
-          />
-        </div>
-        <button className="bigbtn" onClick={() => drill.saveAsNew(asTitle || doc.title)}>
-          保存する
-        </button>
-      </Sheet>
+          <Sheet open={drill.sheet === "saveAs"} onClose={() => drill.openSheet(null)}>
+            {saveAsBody}
+          </Sheet>
 
-      <Sheet open={drill.sheet === "send"} onClose={() => drill.openSheet(null)}>
-        <h2>選手アプリに送信</h2>
-        <div className="formfield">
-          <label>タイトル</label>
-          <input value={asTitle || doc.title} onChange={(e) => setAsTitle(e.target.value)} />
-        </div>
-        <SendTargetField
-          players={board.state.players}
-          value={drillTarget}
-          onChange={setDrillTarget}
-          allowNone={false}
-        />
-        <button className="bigbtn" disabled={!drillThreadKey} onClick={sendDrill}>
-          送信する
-        </button>
-      </Sheet>
+          <Sheet open={drill.sheet === "send"} onClose={() => drill.openSheet(null)}>
+            {sendBody}
+          </Sheet>
+        </>
+      )}
     </div>
   );
 }

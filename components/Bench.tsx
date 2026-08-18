@@ -132,8 +132,13 @@ export default function Bench() {
             board.toast(out ? `${out.name} → ${inP?.name ?? ""} に交代` : `${inP?.name ?? ""} を投入`);
           }
         } else {
-          // タップ＝プロフィールを開く
-          board.openSheet({ type: "playerDetail", playerId: d.pid });
+          // タップ＝プロフィールを開く（PCはチーム運営の名簿タブへ画面遷移）
+          if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+            board.setTeamIntent({ tab: "ros", playerId: d.pid });
+            board.setScreen("team");
+          } else {
+            board.openSheet({ type: "playerDetail", playerId: d.pid });
+          }
         }
       }
       endDrag();

@@ -14,7 +14,7 @@ import {
   type NotifInput,
   type NotifTarget,
 } from "@/lib/notifications";
-import { useBoard } from "./BoardProvider";
+import { useBoard, type KpiMetric } from "./BoardProvider";
 
 function fmt(d: string): string {
   const [y, m, day] = d.split("-").map(Number);
@@ -215,10 +215,13 @@ export function CoachDashboard({
   onOpenPlayer,
   onReport,
   onOpenNote,
+  onOpenKpi,
 }: {
   onOpenPlayer: (playerId: string) => void;
   onReport: (playerId: string) => void;
   onOpenNote: (id: string) => void;
+  /** PC: サマリーカードの内訳をペイン表示するコールバック（未指定/モバイルは従来のシート） */
+  onOpenKpi?: (metric: KpiMetric) => void;
 }) {
   const board = useBoard();
   const [showHeat, setShowHeat] = useState(false);
@@ -276,6 +279,15 @@ export function CoachDashboard({
     [board.notebook]
   );
 
+  // PCはモーダルを出さず onOpenKpi でペイン表示、モバイル(またはonOpenKpi未指定)は従来のシート
+  const openKpi = (metric: KpiMetric) => {
+    if (onOpenKpi && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+      onOpenKpi(metric);
+    } else {
+      board.openSheet({ type: "kpi", kpiMetric: metric });
+    }
+  };
+
   return (
     <div className="notetools">
       <h2><E n="chart" /> コーチ・ダッシュボード</h2>
@@ -285,10 +297,10 @@ export function CoachDashboard({
       <div className="dashcols">
       <div className="dashcol side">
       <div className="dashsum">
-        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "attendance" })}>
+        <button type="button" className="dashbox" onClick={() => openKpi("attendance")}>
           <div className="dbv">{summary.avgAttendance != null ? summary.avgAttendance + "%" : "—"}</div><div className="dbl">平均出席率</div>
         </button>
-        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "notesWeek" })}>
+        <button type="button" className="dashbox" onClick={() => openKpi("notesWeek")}>
           <div className="dbv">{summary.notesThisWeek}</div>
           <div className="dbl">今週のノート</div>
           <div className={"dbd " + (weekNoteDiff > 0 ? "up" : weekNoteDiff < 0 ? "down" : "flat")}>
@@ -296,10 +308,10 @@ export function CoachDashboard({
           </div>
           <Sparkline values={teamWeeklyChart.map((w) => w.value)} />
         </button>
-        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "uncommented" })}>
+        <button type="button" className="dashbox" onClick={() => openKpi("uncommented")}>
           <div className="dbv">{summary.uncommentedTotal}</div><div className="dbl">未コメント</div>
         </button>
-        <button type="button" className="dashbox" onClick={() => board.openSheet({ type: "kpi", kpiMetric: "solo" })}>
+        <button type="button" className="dashbox" onClick={() => openKpi("solo")}>
           <div className="dbv">{summary.soloActive}</div><div className="dbl">自主練継続</div>
         </button>
       </div>

@@ -925,6 +925,11 @@ interface BoardContextValue {
   setMatchesPublic: (v: boolean) => void;
   drillIntent: "library" | { open: string } | null;
   setDrillIntent: (v: "library" | { open: string } | null) => void;
+  /** チームHub: 他画面からタブ・選手を指定して遷移させる意図（消費後はnullに戻す） */
+  teamIntent: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string } | null;
+  setTeamIntent: (
+    v: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string } | null
+  ) => void;
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
   sendMessage: (msg: Omit<ChatMessage, "id" | "ts">) => void;
@@ -968,6 +973,7 @@ interface BoardContextValue {
   buildShareSnapshot: () => ShareSnapshot;
   pendingImport: ShareSnapshot | null;
   applyImport: () => void;
+  discardImport: () => void;
   // お役立ち記事（ユーザー投稿）
   userArticles: UserArticle[];
   /** 新規投稿を追加し、生成した記事IDを返す */
@@ -1324,7 +1330,7 @@ export function BoardProvider({
 
   // ---- UI state ----
   const [mode, setMode] = useState<"edit" | "anim">("edit");
-  const [screen, setScreen] = useState<ScreenName>("home");
+  const [screen, setScreenState] = useState<ScreenName>("home");
   const [selActor, setSelActor] = useState<Actor | null>(null);
   // イベントハンドラ（usePointerDrag等）から最新値を読むためのミラー
   const selActorRef = useRef<Actor | null>(null);
@@ -1452,6 +1458,9 @@ export function BoardProvider({
   const [playerPassword, setPlayerPasswordState] = useState("");
   const [matchesPublic, setMatchesPublicState] = useState(true);
   const [drillIntent, setDrillIntent] = useState<"library" | { open: string } | null>(null);
+  const [teamIntent, setTeamIntent] = useState<
+    { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string } | null
+  >(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
   // lazy初期化で保存データを直接読む（mount後のload→saveの競合・上書きを防ぐ。TeamProviderと同方針）
   const [messages, setMessages] = useState<ChatMessage[]>(
@@ -1548,9 +1557,16 @@ export function BoardProvider({
   useEffect(() => {
     saveLibrary(library);
   }, [library]);
-  // 共有リンクで来たら確認シートを開く
+  // 共有リンクで来たら確認シートを開く。PCの戦術ボードでは中央ダイアログではなく
+  // 画面上部のバナー(TacticsBoardのImportBanner)で出すため、シートは開かず盤面へ遷移する
   useEffect(() => {
-    if (pendingImport) setSheet({ type: "importShared" });
+    if (!pendingImport) return;
+    const pc = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+    if (pc) {
+      setScreen("board");
+    } else {
+      setSheet({ type: "importShared" });
+    }
   }, [pendingImport]);
 
   // ---- refs ----
@@ -2040,6 +2056,13 @@ export function BoardProvider({
   // ---- sheet ----
   const openSheet = useCallback((s: SheetState) => setSheet(s), []);
   const closeSheet = useCallback(() => setSheet({ type: null }), []);
+  // 画面遷移時は必ずグローバルシートを閉じる（遷移先の画面でPCモーダルとして
+  // 残留・復活するのを防ぐ）。setScreen→openSheetの順で呼ぶ既存フローは、
+  // 直後のopenSheetが最終的なsheet値を上書きするため影響しない
+  const setScreen = useCallback((s: ScreenName) => {
+    setSheet({ type: null });
+    setScreenState(s);
+  }, []);
 
   // ---- library / plan / share actions ----
   const cloneTactic = useCallback(() => {
@@ -2466,6 +2489,16 @@ export function BoardProvider({
     showToast("共有された戦術を読み込みました");
   }, [pendingImport, stopPlay, showToast, persistSettings]);
 
+  // 共有リンク読み込みの破棄。pendingImportを消してURLの#p=…も除去し、
+  // 開いている確認シート/バナーも閉じる（TacticsBoardの「破棄」・SheetManagerの
+  // ImportSheetの「キャンセル」の双方から共通で呼ぶ）
+  const discardImport = useCallback(() => {
+    setPendingImport(null);
+    if (typeof window !== "undefined")
+      history.replaceState(null, "", window.location.pathname);
+    setSheet({ type: null });
+  }, []);
+
   // ---- action wrappers ----
   const value = useMemo<BoardContextValue>(
     () => ({
@@ -2722,6 +2755,8 @@ export function BoardProvider({
       setMatchesPublic,
       drillIntent,
       setDrillIntent,
+      teamIntent,
+      setTeamIntent,
       messages,
       sendMessage,
       removeMessage,
@@ -2758,6 +2793,7 @@ export function BoardProvider({
       buildShareSnapshot,
       pendingImport,
       applyImport,
+      discardImport,
       userArticles,
       addUserArticle,
       updateUserArticle,
@@ -2830,6 +2866,8 @@ export function BoardProvider({
       setMatchesPublic,
       drillIntent,
       setDrillIntent,
+      teamIntent,
+      setTeamIntent,
       messages,
       sendMessage,
       removeMessage,
@@ -2862,6 +2900,7 @@ export function BoardProvider({
       buildShareSnapshot,
       pendingImport,
       applyImport,
+      discardImport,
       userArticles,
       addUserArticle,
       updateUserArticle,

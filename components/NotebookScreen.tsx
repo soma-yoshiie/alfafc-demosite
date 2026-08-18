@@ -34,7 +34,7 @@ import {
   STAFF_REACTION_LABEL,
 } from "@/lib/types";
 import { FORMATION_KEYS, buildSlots } from "@/lib/formations";
-import { useBoard } from "./BoardProvider";
+import { useBoard, type KpiMetric } from "./BoardProvider";
 import { E, ConditionIcon, type EmojiName } from "./Emoji";
 import { FormationPitch, GoalCourseView, isInGoalFrame, PlayAreaPitch, type PlayTool } from "./MiniPitch";
 import { LineChart, Sparkline } from "./Charts";
@@ -51,6 +51,7 @@ import { attendanceRate } from "@/lib/teamStats";
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
 import { DeliverBlock, DeliverComposer, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, CoachDashboard, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
+import { KpiBody } from "./SheetManager";
 import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
 
@@ -158,6 +159,8 @@ export default function NotebookScreen() {
   const [selNote, setSelNote] = useState<string | null>(null);
   const [selDeliver, setSelDeliver] = useState<string | { create: DeliverKind } | null>(null);
   const [selNotif, setSelNotif] = useState<{ target: NotifTarget; notifId?: string } | null>(null);
+  // PC: ホームのコーチ・ダッシュボードのサマリーカードから開いた内訳指標（右ペイン表示用）
+  const [selKpi, setSelKpi] = useState<KpiMetric | null>(null);
   // PC×コーチのときだけ選択state経路を使う。それ以外(モバイル/選手)は従来のview遷移のまま
   const isPcCoach = () => isCoach && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches;
 
@@ -192,6 +195,7 @@ export default function NotebookScreen() {
     setSelNote(null);
     setSelDeliver(null);
     setSelNotif(null);
+    setSelKpi(null);
   };
 
   const navTarget = (t: NotifTarget, notifId?: string) => {
@@ -324,11 +328,40 @@ export default function NotebookScreen() {
       <div className="scroll">
         {isRoot && tab === "home" && (
           isCoach ? (
-            <CoachDashboard
-              onOpenPlayer={(playerId) => setView({ mode: "search", playerId })}
-              onReport={(playerId) => setView({ mode: "report", playerId })}
-              onOpenNote={(id) => setView({ mode: "detail", id })}
-            />
+            <>
+              <CoachDashboard
+                onOpenPlayer={(playerId) => setView({ mode: "search", playerId })}
+                onReport={(playerId) => setView({ mode: "report", playerId })}
+                onOpenNote={(id) => setView({ mode: "detail", id })}
+                onOpenKpi={(metric) => setSelKpi(metric)}
+              />
+              {/* KPI内訳: .nbmain(コーチ×notes/deliver/notifsの3ペイン専用)は使わず、
+                  homeタブの内容としてCoachDashboard直下にインライン展開する */}
+              {selKpi && (
+                <div className="nb-kpiinline">
+                  {/* tmback風(青リンク)の戻りリンク。.tmbackは.teamapp限定スコープのため
+                      同じ見た目をインラインstyleで再現する */}
+                  <button
+                    type="button"
+                    onClick={() => setSelKpi(null)}
+                    style={{
+                      display: "inline-block",
+                      background: "none",
+                      border: 0,
+                      padding: 0,
+                      marginBottom: 10,
+                      color: "var(--accent)",
+                      fontSize: "var(--fs-body-s)",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ‹ 閉じる
+                  </button>
+                  <KpiBody metric={selKpi} />
+                </div>
+              )}
+            </>
           ) : (
             <PlayerHome
               onOpenNote={(id) => setView({ mode: "detail", id })}
@@ -418,7 +451,8 @@ export default function NotebookScreen() {
         )}
       </div>
 
-      {/* PC専用の第2ペイン(詳細)。コーチ×notes/deliver/notifsタブでのみマウントする。
+      {/* PC専用の第2ペイン(詳細)。コーチ×notes/deliver/notifsタブでのみマウントする
+          (KPI内訳はhomeタブのCoachDashboard直下へインライン展開したためここでは扱わない)。
           view は root のまま進めるため、上の.scroll側の一覧(NoteList/DeliverBlock/NotificationsView)は
           そのままマスター一覧として表示され続ける(モバイル・選手側は selNote 等が常にnullで従来どおり) */}
       {isCoach && isRoot && (tab === "notes" || tab === "deliver" || tab === "notifs") && (

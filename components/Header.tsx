@@ -17,7 +17,13 @@ export default function Header() {
         {coach ? (
           <button
             className={`tag${name ? " team" : ""}`}
-            onClick={() => board.openSheet({ type: "settings" })}
+            onClick={() => {
+              if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+                board.setScreen("settings");
+              } else {
+                board.openSheet({ type: "settings" });
+              }
+            }}
             title="設定（チーム名・プラン）"
           >
             {title ? `${name ?? "マイチーム"}・${title}` : name ?? "チーム名を設定"}
@@ -45,7 +51,17 @@ export default function Header() {
             <path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
           </svg>
         </div>
-        <div className="icon" title="保存した戦術" onClick={() => board.openSheet({ type: "library" })}>
+        <div
+          className="icon"
+          title="保存した戦術"
+          onClick={() => {
+            if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+              board.setScreen("library");
+            } else {
+              board.openSheet({ type: "library" });
+            }
+          }}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6l-1.7-2.1a1 1 0 0 0-.8-.4H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" />
           </svg>

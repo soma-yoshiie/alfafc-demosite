@@ -10,10 +10,11 @@ import { monthlyWinPct, weeklyAttendancePct, weeklyNoteCounts, weeklyShotPct } f
 import type { TrendPoint } from "@/lib/homeStats";
 import { NOTE_KIND_LABEL } from "@/lib/types";
 import type { EventCategory, MatchRecord, Player, TeamData, TeamEvent } from "@/lib/types";
-import { useBoard } from "./BoardProvider";
+import { useBoard, type StatMetric } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
+import { StatBody } from "./SheetManager";
 import {
   IconBook,
   IconCalendarCheck,
@@ -97,6 +98,8 @@ export default function HomeMenu() {
   const teamCtx = useTeam();
   const coach = board.auth.role === "coach";
   const pc = usePc();
+  // PC選手ホーム「マイスタッツ」カードから開いた内訳指標（.hstats直下にインライン展開）
+  const [statSel, setStatSel] = useState<StatMetric | null>(null);
   const logout = () => window.dispatchEvent(new Event("alfa-logout"));
   const today = new Date().toLocaleDateString("ja-JP", {
     month: "long",
@@ -147,6 +150,14 @@ export default function HomeMenu() {
     [board.notebook, board.auth.playerId]
   );
   const pctOrDash = (v: number | null) => (v != null ? `${v}%` : "—");
+  // PC選手ホーム: マイスタッツのカードは.hstats直下にインライン展開。モバイルは.hstats自体が非表示のため従来のシートのまま
+  const openStat = (metric: StatMetric) => {
+    if (typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
+      setStatSel(metric);
+    } else {
+      board.openSheet({ type: "stat", statMetric: metric });
+    }
+  };
 
   // PC×コーチのみ「マッチデー・ボード」へ刷新。モバイル・選手のJSXは以下、一切変更しない
   if (pc && coach) {
@@ -309,15 +320,15 @@ export default function HomeMenu() {
               </button>
             ) : (
               <>
-                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "shot" })}>
+                <button className="hstat" onClick={() => openStat("shot")}>
                   <span className="hstat-n">{myTech.shots}</span>
                   <span className="hstat-l">シュート ・ 決定率{pctOrDash(myTech.shotPct)}</span>
                 </button>
-                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "pass" })}>
+                <button className="hstat" onClick={() => openStat("pass")}>
                   <span className="hstat-n">{myTech.pass}</span>
                   <span className="hstat-l">パス ・ 成功率{pctOrDash(myTech.passPct)}</span>
                 </button>
-                <button className="hstat" onClick={() => board.openSheet({ type: "stat", statMetric: "dribble" })}>
+                <button className="hstat" onClick={() => openStat("dribble")}>
                   <span className="hstat-n">{myTech.dribble}</span>
                   <span className="hstat-l">ドリブル ・ 成功率{pctOrDash(myTech.dribblePct)}</span>
                 </button>
@@ -325,6 +336,27 @@ export default function HomeMenu() {
             )}
           </div>
         </div>
+        {!coach && pc && statSel && (
+          <div className="mdb-statinline">
+            <button
+              type="button"
+              onClick={() => setStatSel(null)}
+              style={{
+                background: "none",
+                border: 0,
+                padding: 0,
+                marginBottom: 10,
+                color: "var(--mut)",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              ‹ 閉じる
+            </button>
+            <StatBody metric={statSel} />
+          </div>
+        )}
         <div className="appgrid">
           {coach ? (
             <>

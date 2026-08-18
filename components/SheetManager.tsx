@@ -73,6 +73,35 @@ function newId(p: string): string {
   return `${p}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e4)}`;
 }
 
+/** PC(min-width:1024px)判定のブレークポイント。TeamHub.tsx usePc() と同じ値・同じ手法 */
+const PC_MQ = "(min-width: 1024px)";
+
+/** PC幅かどうかを追跡するフック（TeamHub.tsx usePc() と同じ手法） */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
+
+/** PCの戦術ボード画面でシートの代わりに右カラム(.boardside)のパネルに出す種別 */
+const BOARD_PANEL_TYPES = new Set<string>([
+  "assign",
+  "slotMenu",
+  "oppMenu",
+  "formation",
+  "save",
+  "share",
+  "importShared",
+]);
+
 /* ---------------- Sheet shell ---------------- */
 function Sheet({
   open,
@@ -113,8 +142,9 @@ function Sheet({
 }
 
 /* ---------------- Assign player to slot ---------------- */
-function AssignSheet({ slot }: { slot: number }) {
+export function AssignBody({ slot }: { slot: number }) {
   const board = useBoard();
+  const pc = usePc();
   const [q, setQ] = useState("");
   const { slots, players } = board.state;
   const inXi = new Set(slots.map((s) => s.pid).filter(Boolean));
@@ -181,19 +211,38 @@ function AssignSheet({ slot }: { slot: number }) {
       </div>
       <button
         className="bigbtn ghost"
-        onClick={() =>
-          board.openSheet({ type: "playerForm", assignSlot: slot })
-        }
+        onClick={() => {
+          // PCでは選手フォームをパネル化していないため、名簿(チーム画面)へ遷移して
+          // 追加してもらう（モバイルは従来どおりネストしたシートでその場作成）。
+          // 画面遷移後にassignシートが残ると他画面にPCダイアログとして再出現するため閉じる
+          if (pc) {
+            board.closeSheet();
+            board.setTeamIntent({ tab: "ros" });
+            board.setScreen("team");
+          } else {
+            board.openSheet({ type: "playerForm", assignSlot: slot });
+          }
+        }}
       >
         ＋ 新しい選手を追加して配置
       </button>
+      {pc && (
+        <p className="planseote" style={{ padding: "6px 16px 0" }}>
+          ※ 名簿で追加してから配置できます
+        </p>
+      )}
     </>
   );
 }
 
+function AssignSheet({ slot }: { slot: number }) {
+  return <AssignBody slot={slot} />;
+}
+
 /* ---------------- Slot action menu ---------------- */
-function SlotMenu({ slot }: { slot: number }) {
+export function SlotMenuBody({ slot }: { slot: number }) {
   const board = useBoard();
+  const pc = usePc();
   const s = board.state.slots[slot];
   const player = s.pid ? board.state.players.find((p) => p.id === s.pid) : null;
   const [note, setNote] = useState(player?.roleNote ?? "");
@@ -245,7 +294,17 @@ function SlotMenu({ slot }: { slot: number }) {
         </div>
         <div
           className="mitem"
-          onClick={() => board.openSheet({ type: "playerDetail", playerId: player.id })}
+          onClick={() => {
+            // PCはチーム運営の名簿タブへ画面遷移、モバイルは従来のplayerDetailシート
+            // （Bench.tsxのタップ時分岐と同じ流儀）
+            if (pc) {
+              board.closeSheet();
+              board.setTeamIntent({ tab: "ros", playerId: player.id });
+              board.setScreen("team");
+            } else {
+              board.openSheet({ type: "playerDetail", playerId: player.id });
+            }
+          }}
         >
           <div className="mi"><E n="pencil" /></div> 選手プロフィールを開く
         </div>
@@ -264,8 +323,12 @@ function SlotMenu({ slot }: { slot: number }) {
   );
 }
 
+function SlotMenu({ slot }: { slot: number }) {
+  return <SlotMenuBody slot={slot} />;
+}
+
 /* ---------------- Opponent token menu ---------------- */
-function OppMenu({ index }: { index: number }) {
+export function OppMenuBody({ index }: { index: number }) {
   const board = useBoard();
   const o = (board.state.opponents ?? [])[index];
   const [label, setLabel] = useState(o?.label ?? "");
@@ -320,6 +383,10 @@ function OppMenu({ index }: { index: number }) {
       </div>
     </>
   );
+}
+
+function OppMenu({ index }: { index: number }) {
+  return <OppMenuBody index={index} />;
 }
 
 /* ---------------- Roster list ---------------- */
@@ -398,7 +465,7 @@ const KPI_HINT: Record<KpiMetric, string> = {
   solo: "自主練が続いている選手の人数です（週は月曜起点）。",
 };
 
-function KpiSheet({ metric }: { metric: KpiMetric }) {
+export function KpiBody({ metric }: { metric: KpiMetric }) {
   const board = useBoard();
   const kpis = useMemo(() => {
     const team = loadTeam();
@@ -470,10 +537,16 @@ function KpiSheet({ metric }: { metric: KpiMetric }) {
             <div
               key={k.playerId}
               className="prow"
-              onClick={() =>
-                // 戻ったときに同じ内訳へ帰れるよう、開いた指標を持ち回す
-                board.openSheet({ type: "playerDetail", playerId: k.playerId, kpiMetric: metric })
-              }
+              onClick={() => {
+                // PCはモーダルを出さず、チーム運営(名簿タブ)へ画面遷移する
+                if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+                  board.setTeamIntent({ tab: "ros", playerId: k.playerId });
+                  board.setScreen("team");
+                } else {
+                  // 戻ったときに同じ内訳へ帰れるよう、開いた指標を持ち回す
+                  board.openSheet({ type: "playerDetail", playerId: k.playerId, kpiMetric: metric });
+                }
+              }}
             >
               <div className="meta">
                 <div className="nm">{k.name}</div>
@@ -502,6 +575,10 @@ function KpiSheet({ metric }: { metric: KpiMetric }) {
       <div className="kpihint">{KPI_HINT[metric]}</div>
     </>
   );
+}
+
+function KpiSheet({ metric }: { metric: KpiMetric }) {
+  return <KpiBody metric={metric} />;
 }
 
 /* ---------------- PCホーム「チームスタッツ」/選手側「マイスタッツ」カード → 内訳 ---------------- */
@@ -543,7 +620,7 @@ function techPick(
   return { count: s.dribble, ok: s.dribbleOk, okLabel: "成功", p: statPct(s.dribbleOk, s.dribble) };
 }
 
-function StatSheet({ metric }: { metric: StatMetric }) {
+export function StatBody({ metric }: { metric: StatMetric }) {
   const board = useBoard();
   const teamCtx = useTeam();
   const coach = board.auth.role === "coach";
@@ -699,6 +776,10 @@ function StatSheet({ metric }: { metric: StatMetric }) {
       <div className="kpihint">{STAT_HINT[metric]}</div>
     </>
   );
+}
+
+function StatSheet({ metric }: { metric: StatMetric }) {
+  return <StatBody metric={metric} />;
 }
 
 /* ---------------- Player add / edit form ---------------- */
@@ -1060,7 +1141,7 @@ function InjuryForm({ playerId, injuryId }: { playerId: string; injuryId?: strin
 }
 
 /* ---------------- Formation picker ---------------- */
-function FormationSheet() {
+export function FormationBody() {
   const board = useBoard();
   return (
     <>
@@ -1087,6 +1168,10 @@ function FormationSheet() {
       </p>
     </>
   );
+}
+
+function FormationSheet() {
+  return <FormationBody />;
 }
 
 /* ---------------- More menu ---------------- */
@@ -1156,7 +1241,7 @@ function ChatSheet({ to }: { to: string }) {
   );
 }
 
-function SaveSheet() {
+export function SaveBody() {
   const board = useBoard();
   const n = board.library.plays.length;
   const [title, setTitle] = useState(
@@ -1235,6 +1320,10 @@ function SaveSheet() {
       )}
     </>
   );
+}
+
+function SaveSheet() {
+  return <SaveBody />;
 }
 
 /* ---------------- Library ---------------- */
@@ -1466,7 +1555,7 @@ function dateStamp(): string {
   return `${y}${m}${day}`;
 }
 
-function ShareSheet() {
+export function ShareBody() {
   const board = useBoard();
   const img = useMemo(() => {
     try {
@@ -1576,6 +1665,10 @@ function ShareSheet() {
       </button>
     </>
   );
+}
+
+function ShareSheet() {
+  return <ShareBody />;
 }
 
 /* ---------------- Settings（チーム設定＋プラン） ---------------- */
@@ -1966,7 +2059,7 @@ function ImportSheet() {
       <button className="bigbtn" onClick={board.applyImport}>
         この戦術を読み込む
       </button>
-      <button className="bigbtn ghost" onClick={board.closeSheet}>
+      <button className="bigbtn ghost" onClick={board.discardImport}>
         キャンセル
       </button>
     </>
@@ -1976,8 +2069,12 @@ function ImportSheet() {
 /* ---------------- Manager ---------------- */
 export default function SheetManager() {
   const board = useBoard();
-  const { sheet } = board;
-  const open = sheet.type !== null;
+  const { sheet, screen } = board;
+  const pc = usePc();
+  // PCの戦術ボード画面では、右カラム(.boardside)のパネル／画面上部バナーに出すため
+  // シート自体は描画しない（scrimも出さない）。状態(board.sheet)自体は不変。
+  const onBoardPanel = pc && screen === "board" && !!sheet.type && BOARD_PANEL_TYPES.has(sheet.type);
+  const open = sheet.type !== null && !onBoardPanel;
 
   let content: React.ReactNode = null;
   switch (sheet.type) {
