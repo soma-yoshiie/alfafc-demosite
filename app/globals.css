@@ -20,6 +20,8 @@
 
   /* ---- アクセント（ブルー）: クローム・選択・リンクの色 ---- */
   --accent: #2c6fd6;
+  /* PC青統一(クローム緑→accent)で塗りCTAのhoverに使う濃い青 */
+  --accent-strong: #1e56ad;
   /* アクセントのティント2段: tint=選択・情報面・リング用 / strong=枠線用 */
   --accent-tint: rgba(44, 111, 214, 0.1);
   --accent-tint-strong: rgba(44, 111, 214, 0.18);
@@ -8773,8 +8775,8 @@ header {
     font-size: 11px;
     font-family: var(--font-ui);
     font-weight: 700;
-    color: var(--lime);
-    background: rgba(19, 138, 77, 0.12);
+    color: var(--accent);
+    background: var(--accent-tint);
     padding: 3px 9px;
     border-radius: 999px;
     margin-left: auto;
@@ -8813,11 +8815,11 @@ header {
     cursor: pointer;
   }
   .bimportbtn.primary {
-    background: var(--primary);
+    background: var(--accent);
     color: var(--on-primary);
   }
   .bimportbtn.primary:hover {
-    background: var(--primary-dim);
+    background: var(--accent-strong);
   }
   .bimportbtn.ghost {
     background: transparent;
@@ -8853,7 +8855,7 @@ header {
   .teamapp .teamcta {
     display: inline-block;
     margin-left: auto;
-    background: var(--primary);
+    background: var(--accent);
     color: var(--on-primary);
     border: 0;
     border-radius: var(--r-sm);
@@ -8861,6 +8863,9 @@ header {
     font-weight: 600;
     font-size: 12.5px;
     cursor: pointer;
+  }
+  .teamapp .teamcta:hover {
+    background: var(--accent-strong);
   }
   .teamapp .rolebar {
     background: var(--surface-lowest);
@@ -9250,13 +9255,13 @@ header {
   }
   /* 「共有・出力」のみ主要CTAとして緑を1つ立てる（保存等はセカンダリのまま） */
   .boardapp .icon[title="共有・出力"] {
-    background: var(--primary);
-    border-color: var(--primary);
+    background: var(--accent);
+    border-color: var(--accent);
     color: var(--on-primary);
   }
   .boardapp .icon[title="共有・出力"]:hover {
-    background: var(--primary-dim);
-    border-color: var(--primary-dim);
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
   }
   .boardapp .fbar {
     background: var(--surface-lowest);
@@ -9365,6 +9370,11 @@ header {
     border-color: var(--accent);
     background: var(--accent-tint);
     color: var(--accent);
+  }
+  .chatapp .chatrow.mine .chatbubble,
+  .sheet .chatrow.mine .chatbubble {
+    background: var(--accent-tint);
+    border-color: var(--accent-tint-strong);
   }
   .chatapp .chatplus.on,
   .sheet .chatplus.on {
@@ -9672,7 +9682,8 @@ header {
   .sheet .artrow, .screenbody .artrow {
     border-radius: var(--r-md);
   }
-  /* 設定: プランカード（選択枠=青・価格数字=ink。CTAのbigbtnは緑のまま） */
+  /* 設定: プランカード（選択枠=青・価格数字=ink。CTAのbigbtnは
+     「PC青統一」パスで緑→青に変更済み） */
   .sheet .plancard, .screenbody .plancard {
     border-radius: var(--r-lg);
   }
@@ -9734,7 +9745,8 @@ header {
     background: var(--surface-lowest);
     box-shadow: 0 0 0 3px var(--accent-tint);
   }
-  /* ロールタブ: 選択=青の原則（CTAのbigbtnは緑のまま） */
+  /* ロールタブ: 選択=青の原則（CTAのbigbtnは
+     「PC青統一」パスで緑→青に変更済み） */
   .logintabs {
     border-radius: var(--r-md);
   }
@@ -9763,13 +9775,18 @@ header {
      ※ レイアウト・機能UI(ピッチ上の描画物)は不変。
         選択状態の緑→青、旧赤生値のトークン整合、ティント値の文法標準化
         (0.08/0.1系へ)のみ。
-        送信CTA(.hact.primary)の緑は据え置き。保存済みバッジ(.dtstate.saved)の背景は
-        Step Dで--primaryティントへ整合(文字色は基底のvar(--lime)のまま)
+        送信CTA(.hact.primary)は「PC青統一」パスで緑→青に変更済み(下方の
+        .dx header .hact.primary を参照)。保存済みバッジ(.dtstate.saved)は
+        「状態を意味する緑」として維持し、背景のみStep Dで--primaryティントへ
+        整合(文字色は基底のvar(--lime)のまま)
      ========================================================= */
-  /* ピッチ種別・丸の大きさのセグメント: 選択=青の原則 */
+  /* ピッチ種別・丸の大きさのセグメント: 選択=青の原則。
+     ベタ塗り(background:accent)は送信CTA(.hact.primary)と同フィルになり衝突するため、
+     .dxpal button.on と同じ「青枠+青文字+青ティント背景」の二層分離形式に統一 */
   .dxseg button.on {
-    background: var(--accent);
-    color: var(--on-primary);
+    border: 1px solid var(--accent);
+    background: var(--accent-tint);
+    color: var(--accent);
   }
   /* アイテム・動線パレットの選択状態 */
   .dxpal button.on {
@@ -9784,6 +9801,10 @@ header {
   }
   /* ライブラリの現在ドリル表示（選択=青。チップ選択と同式） */
   .drillcard.cur {
+    border-color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .playrow.cur {
     border-color: var(--accent);
     background: var(--accent-tint);
   }
@@ -10492,7 +10513,9 @@ header {
      右ペイン(詳細側)の操作ボタンをセカンダリ(白+1px罫線)へ降格する。
      基底 .bigbtn(1715)は background:var(--lime)/color:#fff/border:0 のみでbox-shadow・
      gradientは持たないため、背景・文字色・枠線を明示的に打ち消し、box-shadowもnoneで初期化する。
-     残す緑(.teamcta/出欠・名簿左ペインの追加系/.artactbar内の公開する/ログイン/シート内主ボタン)は対象外のまま。 */
+     ここで対象外にした残りの塗りCTA(.teamcta/出欠・名簿左ペインの追加系/.artactbar内の
+     公開する/ログイン/シート内主ボタン)は、下方の「PC青統一」セクションの
+     .bigbtn:not(.ghost) 一括上書きにより緑→青(var(--accent))へ変わる。 */
   .teammain .bigbtn:not(.ghost),
   .artapp .artpane .bigbtn {
     background: var(--surface-lowest);
@@ -10510,10 +10533,11 @@ header {
     background: var(--surface-lowest);
     border-color: var(--outline-strong);
   }
-  /* 記事投稿の初期状態(右ペインが空)では画面に緑が0個になるため、
-     唯一の起点「＋新しい記事を書く」だけ緑へ戻す(フォームが開けば降格が勝つ) */
+  /* 記事投稿の初期状態(右ペインが空)では画面にCTAが0個になるため、
+     唯一の起点「＋新しい記事を書く」だけ塗りへ戻す(フォームが開けば降格が勝つ)。
+     色はPC青統一により--accent(下方セクション参照)。 */
   .artapp:has(.artempty) .artpane .bigbtn {
-    background: var(--lime);
+    background: var(--accent);
     color: #ffffff;
     border: 0;
   }
@@ -11076,7 +11100,7 @@ header {
     padding: 0 14px;
     border: 0;
     border-radius: var(--r-full);
-    background: var(--primary);
+    background: var(--accent);
     color: #ffffff;
     font-size: 12px;
     font-weight: 700;
@@ -11084,7 +11108,7 @@ header {
     cursor: pointer;
   }
   .mdb-cta:hover {
-    background: var(--primary-dim);
+    background: var(--accent-strong);
   }
 
   /* ---- 区画3: チームパルス(KPIタイル×グラフ)。.kpicard2/.kpiband/.kpitileはPhase Cをそのまま流用 ---- */
@@ -11361,6 +11385,320 @@ header {
     border-radius: var(--r-full);
     padding: 5px 12px;
   }
+
+  /* =========================================================
+     PC青統一(クローム緑→accent)
+     残っていた塗りボタン/CTA・グラフ線・選択/フォーカス系の緑を、
+     PC(1024px以上)のみ青(var(--accent))へ統一する。モバイル側の値は
+     一切変更しない(このセクションはPC専用の追記のみ)。
+     「勝ち」バッジ・出欠○・コンディション好調・deltaの正方向・
+     evkind等のカテゴリ色・成功トースト・ピッチ上のチーム識別色(自陣=緑/
+     相手=赤)・ポジション別カラー(GK/DF/MF/FW)・保存済み状態など
+     「状態・結果・識別を意味する緑」、およびブランドロゴの緑
+     (.logo b等、既存踏襲で対象外)は変更しない。
+     ========================================================= */
+
+  /* ---- 塗りボタン/CTA全般。個別に上書き済みの箇所(Phase B降格・
+     mdb-cta等)は詳細度が同等以上のため引き続きそちらが優先される ---- */
+  .bigbtn:not(.ghost) {
+    background: var(--accent);
+  }
+  .bigbtn:not(.ghost):hover {
+    background: var(--accent-strong);
+  }
+
+  /* ---- タクティクスボード/ロースター共通 ---- */
+  .chip.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 4px 14px rgba(44, 111, 214, 0.25);
+  }
+  .tok.sel .disc,
+  .tok.drop-target .disc {
+    box-shadow: 0 0 0 3px var(--accent), 0 5px 14px rgba(0, 0, 0, 0.5);
+  }
+  .bench-ghost .gdisc {
+    border-color: var(--accent);
+  }
+  .ball.sel .b {
+    box-shadow: 0 0 0 3px var(--accent), 0 3px 8px rgba(0, 0, 0, 0.55);
+  }
+  /* 数値系の強調は「青=リンク/選択・数値=ink」の原則(.teamapp .statbox .sv等)に揃える */
+  .stat .v,
+  .bench .bh i,
+  .bcard .bp,
+  .prow .num,
+  .statbox .sv,
+  .scorerrow .rank,
+  .scorerrow .sgoals,
+  .mvscore,
+  .memname small,
+  .pcprice {
+    color: var(--ink);
+  }
+  .tbtn.play {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .scrub::-webkit-slider-thumb {
+    background: var(--accent);
+  }
+  .scrub::-moz-range-thumb {
+    background: var(--accent);
+  }
+  .toolchip.on {
+    background: var(--accent-tint);
+    color: var(--accent);
+    border-color: var(--accent-tint-strong);
+  }
+  .nlrun {
+    background: var(--accent);
+  }
+  .tlchip.on {
+    background: var(--accent-tint);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .clip.sel {
+    border-color: var(--accent);
+  }
+  .cedit label b {
+    color: var(--accent);
+  }
+  .cedit input[type="range"]::-webkit-slider-thumb {
+    background: var(--accent);
+  }
+  .cedit input[type="range"]::-moz-range-thumb {
+    background: var(--accent);
+  }
+  .mitem .mi {
+    color: var(--accent);
+  }
+  .rolememo label {
+    color: var(--accent);
+  }
+  .rolememo .rmrole {
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  .rmsave.on {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-primary);
+  }
+  .formbtn .fb-cur {
+    background: var(--accent);
+  }
+  .fcell.on {
+    background: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 4px 14px rgba(44, 111, 214, 0.25);
+  }
+  .fmini svg {
+    color: var(--accent);
+  }
+  .fmini.on {
+    background: var(--accent-tint);
+    border-color: var(--accent);
+  }
+  .fptag b {
+    color: var(--accent);
+  }
+  .fpbtn.fplay {
+    background: var(--accent);
+  }
+  .upsell b {
+    color: var(--accent);
+  }
+
+  /* ---- 選手管理/プラン/設定シート: .sheet・.screenbody配下以外の
+     フォールバック(単独マウント時にも青を効かせる) ---- */
+  .plancard.on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+  .pcnow {
+    color: var(--accent);
+  }
+  .trialbanner {
+    background: var(--accent-tint);
+    border-color: var(--accent-tint-strong);
+    color: var(--accent);
+  }
+  .billtoggle button.on {
+    background: var(--accent);
+  }
+  .pcbadge {
+    background: var(--accent);
+  }
+  .folderhdr {
+    color: var(--accent);
+  }
+
+  /* ---- チーム運営(TeamHub): 出欠フィルタ・カレンダー・送信対象・比較チップ ---- */
+  .cmpchip.on {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .calcell.today,
+  .agrow.today .agdate {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent) inset;
+  }
+  .callegend .calhint {
+    color: var(--accent);
+  }
+  .msgfrom {
+    background: var(--accent);
+  }
+  .msgplay {
+    background: var(--accent-tint);
+    border-color: var(--accent-tint-strong);
+    color: var(--accent);
+  }
+  .calviewtoggle button.on {
+    background: var(--accent);
+  }
+  .sendtgt label.on {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .sendtgt label:has(input:focus-visible) {
+    outline-color: var(--accent);
+  }
+  .sendtgt input {
+    accent-color: var(--accent);
+  }
+  .ratebar i {
+    background: linear-gradient(90deg, var(--accent-strong), var(--accent));
+  }
+
+  /* ---- ホーム・チャット・アプリ一覧 ---- */
+  .homehello span {
+    background: var(--accent);
+  }
+  .homeicon {
+    color: var(--accent);
+  }
+  .hometeam {
+    color: var(--accent);
+  }
+  .appicon {
+    background: var(--accent);
+    border-color: var(--accent-strong);
+  }
+  /* アバターは本人系表示のため青ティントへ(.chatapp/.sheet配下は上流で対応済み。
+     ここは単独マウント時のフォールバック) */
+  .convavatar {
+    background: var(--accent-tint);
+    color: var(--accent);
+  }
+  .chatsend {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .pubtoggle input:checked ~ .switch {
+    background: rgba(44, 111, 214, 0.4);
+  }
+  .pubtoggle input:checked ~ .switch::after {
+    background: var(--accent);
+  }
+
+  /* ---- 折れ線チャート/スパークライン(TeamHub・ノート共通)。
+     比較系列(.cl2/.lg2)はそもそもaccentのため変更なし ---- */
+  .noteapp .chart-line .cla,
+  .teamapp .chart-line .cla {
+    fill: var(--accent);
+  }
+  .noteapp .chart-line .cl,
+  .teamapp .chart-line .cl {
+    stroke: var(--accent);
+  }
+  .noteapp .chart-line .clp,
+  .teamapp .chart-line .clp {
+    fill: var(--accent);
+  }
+  .noteapp .cl-legend .lg1,
+  .teamapp .cl-legend .lg1 {
+    color: var(--accent);
+  }
+
+  /* ---- ドリルエディタ(残りのツール選択色・パネル見出し) ---- */
+  .dxpanelbody h2 span {
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .dx header .hact.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+  .dxhandle {
+    border-color: var(--accent);
+  }
+  .wdchip.on {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+  .stepchip.on {
+    background: var(--accent-tint);
+    border-color: var(--accent);
+  }
+  .stepchip.on .stepdur {
+    color: var(--accent);
+  }
+  .stepchip.add {
+    color: var(--accent);
+  }
+  .tbtn.playall {
+    background: var(--accent-tint);
+    color: var(--accent);
+    border-color: var(--accent-tint-strong);
+  }
+  .tlchip.kind.on {
+    background: var(--accent-tint);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .penswatch.on {
+    box-shadow: 0 0 0 3px var(--accent);
+  }
+  .penwidth.on,
+  .pendash.on {
+    border-color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .tseg.on {
+    background: var(--accent);
+  }
+  .penscope.on {
+    border-color: var(--accent);
+    background: var(--accent-tint);
+    color: var(--accent);
+  }
+  .shapehandle {
+    stroke: var(--accent);
+  }
+  .shapetext.sel {
+    box-shadow: 0 0 0 2px var(--accent);
+  }
+  .ditem.sel::after {
+    box-shadow: 0 0 0 2px rgba(44, 111, 214, 0.9), 0 2px 8px rgba(0, 0, 0, 0.35);
+  }
+  .pendinghint {
+    color: var(--accent);
+  }
+  .shapetextinput:focus {
+    border-color: var(--accent);
+  }
+  .evcatchip.catmanage {
+    color: var(--accent);
+  }
+  .formfield label.daytoggle input:checked + span {
+    background: var(--accent);
+    border-color: var(--accent);
+  }
 }
 
 /* マッチデー・ボード(PCコーチホーム)専用のキーフレーム。
@@ -11394,7 +11732,8 @@ header {
   .noteapp .fab { right: 28px; bottom: 28px; }
   /* PCトップバー（アイコンレール化に伴いクロームを白+薄罫線+ブルーリンクへ） */
   .noteapp header { background: var(--surface-lowest); border-bottom: 1px solid var(--outline); padding: 10px 18px; }
-  .noteapp .hdrcta { display: inline-block; margin-left: auto; background: var(--primary); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+  .noteapp .hdrcta { display: inline-block; margin-left: auto; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
+  .noteapp .hdrcta:hover { background: var(--accent-strong); }
   /* 通知ベル(ヘッダー右上)。未読は赤バッジで件数を出す */
   .noteapp .hdrbell {
     display: inline-flex;
@@ -11603,6 +11942,91 @@ header {
     padding: 16px 20px;
     margin-top: 12px;
     max-width: 960px;
+  }
+
+  /* =========================================================
+     PC青統一(クローム緑→accent) — .noteappスコープ
+     .noteapp配下で残っていた塗りCTA/選択色/グラフ線の緑をPCのみ青へ。
+     「done」「share」「good」「streak」等の状態バッジ、shotmark/goalresbtn
+     の結果色、weekdot.on(活動記録)、dbd(delta)、pill.prac(evkind)、
+     dlvdot.done、daybadge等、状態・結果・カテゴリを意味する緑は
+     対象外のまま残す。
+     ========================================================= */
+  .noteapp .dynadd {
+    color: var(--accent);
+  }
+  .noteapp .sendtgt input {
+    accent-color: var(--accent);
+  }
+  .noteapp .notesec.staffcmt .notesec-b {
+    background: var(--accent-tint);
+  }
+  .noteapp .reactpill {
+    color: var(--accent);
+  }
+  .noteapp .ps-chip b {
+    color: var(--accent);
+  }
+  .noteapp .sharetoggle input {
+    accent-color: var(--accent);
+  }
+  .noteapp .achbar span {
+    background: var(--accent);
+  }
+  .noteapp .noteform input[type="range"] {
+    accent-color: var(--accent);
+  }
+  .noteapp .dlvcreate .dynadd {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .noteapp .dlvcreate .dynadd:active {
+    background: var(--accent-tint);
+  }
+  .noteapp .dlvtag.menu,
+  .noteapp .dlvtag.assignment,
+  .noteapp .dlvtag.meeting {
+    color: var(--accent-strong);
+    background: var(--accent-tint);
+  }
+  .noteapp .star.on {
+    color: var(--accent-strong);
+    border-color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .noteapp .spark .sp {
+    stroke: var(--accent);
+  }
+  .noteapp .statrow .srb span {
+    background: var(--accent);
+  }
+  .noteapp .kpireport {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .noteapp .fab {
+    background: var(--accent);
+  }
+  .noteapp .wsheetic {
+    background: var(--accent-tint);
+    color: var(--accent-strong);
+  }
+  .noteapp .weekdot.today {
+    box-shadow: inset 0 0 0 1.5px var(--accent);
+  }
+  .noteapp .weekdot.sel {
+    background: var(--accent);
+  }
+  /* 出席ヒートマップ(緑3段階)を青3段階へ写像。セル内にテキストは無いため文字色調整は不要。
+     .coachapp .heattbl .hdot.on(出席の有無=意味色)とは別コンポーネントのため対象外 */
+  .noteapp .statheat .shc.l1 {
+    background: rgba(44, 111, 214, 0.18);
+  }
+  .noteapp .statheat .shc.l2 {
+    background: rgba(44, 111, 214, 0.45);
+  }
+  .noteapp .statheat .shc.l3 {
+    background: rgba(44, 111, 214, 0.85);
   }
 
   /* ===== 共有コンソールシェル（左レール+メイン）: アプリ全体の外枠 ===== */
