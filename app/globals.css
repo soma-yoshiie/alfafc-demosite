@@ -8725,6 +8725,10 @@ header {
     display: flex;
     flex-direction: column;
     height: 100%;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 14px;
   }
   .bpanelhead {
     display: flex;
@@ -9155,19 +9159,26 @@ header {
     color: var(--accent);
   }
   /* 詳細列: 見出し・数値・グラフ・一覧を同じ760px列に載せる（.libdetail 9322-9328と同じ考え方） */
+  /* カード文法(灰色地へ直接コンテンツが載るペインへの共通カード枠)。
+     .tmdetail.tm-sheetpane(ペイン化シート12場面)と.tmdetail.screenbody(右ペイン7場面)の
+     両方をこの1ルールで覆う。max-width 760/560の既存差は個別ルール側で維持。 */
   .teamapp .tmdetail {
     max-width: 760px;
     margin: 0 auto;
     width: 100%;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px 20px;
   }
-  /* 「‹ サマリー」戻りリンク */
+  /* 「‹ サマリー」戻りリンク。カード内に入ったため水平マージン16pxは不要 */
   .teamapp .tmback {
     display: inline-block;
     color: var(--accent);
     cursor: pointer;
     font-size: var(--fs-body-s);
     font-weight: 700;
-    margin: 2px 16px 10px;
+    margin: 0 0 12px;
   }
   .teamapp .tmback:hover {
     text-decoration: underline;
@@ -9950,16 +9961,31 @@ header {
     background: var(--accent-tint);
   }
   /* 一覧は広く使ってよいが、記事本文だけは可読幅に収める(ノート詳細と同じ流儀) */
-  .artapp .artbody {
+  .artapp .artmain .artbody {
     max-width: 760px;
     margin-left: auto;
     margin-right: auto;
+    width: 100%;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
   }
   .libapp .scroll, .artapp .scroll, .setapp .scroll {
     max-width: min(1520px, 100%);
     margin: 0 auto;
     width: 100%;
     padding: 16px 0 calc(env(safe-area-inset-bottom) + 40px);
+  }
+  /* 設定画面: .scroll.screenbody直下の内容全体をカードで包む。内側の既存白カード
+     (プラン表等)はそのまま */
+  .setapp .setwrap {
+    max-width: 860px;
+    margin: 0 auto;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
   }
 
   /* ---------------------------------------------------------
@@ -10041,6 +10067,10 @@ header {
     margin: 0 auto;
     display: flex;
     flex-direction: column;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
   }
   /* 見出し(チャットの .chatpanehead と同じ文法) */
   .libapp .libpanehead {
@@ -10200,10 +10230,14 @@ header {
 
   /* ---------------------------------------------------------
      投稿フォーム(note/Classroom型・単一カラム・Markdownなし) */
-  .artform {
+  .artapp .artform {
     width: 100%;
     max-width: 720px;
     margin: 0 auto;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
   }
   /* フォーム上部の操作バー(下書き保存/公開する 等) */
   .artactbar {
@@ -11932,11 +11966,22 @@ header {
     color: var(--mut);
     font-size: var(--fs-body);
   }
-  /* 右ペインの .notedetail/.noteform は既存の max-width:720px 中央寄せ(9462-9463)がそのまま効くため上書き不要 */
+  /* 右ペインの .notedetail/.noteform は既存の max-width:720px 中央寄せ(11837-11838)がそのまま効く。
+     ここではカード文法(灰色地へ直接コンテンツが載るのを防ぐ枠)のみ追加する。
+     配信フォーム/提出詳細/配信詳細/通知詳細の4場面をこの1ルールで覆う */
+  .coachapp .nbmain .noteform,
+  .coachapp .nbmain .notedetail {
+    width: 100%;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
+  }
 
   /* ホームタブのKPI内訳(選手側サマリーカード展開)。.nbmain(3ペイン専用)は使わず、
      CoachDashboard直下にインライン展開するための枠 */
   .nb-kpiinline {
+    background: var(--surface-lowest);
     border: 1px solid var(--outline);
     border-radius: var(--r-lg);
     padding: 16px 20px;
@@ -12027,6 +12072,40 @@ header {
   }
   .noteapp .statheat .shc.l3 {
     background: rgba(44, 111, 214, 0.85);
+  }
+
+  /* .nbmain非マウント時(.scroll直上)に出る各フォームにもカード文法を適用。
+     .nbmainは.scrollの兄弟要素(親子関係なし)のため、このセレクタは.coachapp .nbmain側の
+     .noteform(11968付近の別ルール)には重複適用されない。max-width/中央寄せは既存の
+     .noteapp .noteform, .noteapp .notedetail(11837-11838)がそのまま効くためここでは追加しない。
+     対象: NoteForm(練習/自主練/試合ノート作成)、DeliverComposer(配信フォームの非nbmain経路) */
+  .noteapp .scroll .noteform,
+  .noteapp .scroll .notedetail {
+    width: 100%;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
+  }
+  /* シーズンレポートの期間指定フォーム(.formgrid.noprint)。同じ.notetools内でも
+     結果本体(.reportsheet)とは別要素のため、この1要素だけを安全にカード化できる。
+     .formgrid単体は他フォームの行レイアウトに広く使われるため対象を.noprint併記に限定する */
+  .noteapp .formgrid.noprint {
+    margin: 0 0 14px;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
+  }
+  /* ノート検索(view.mode==="search")の絞り込みUI(検索ボックス・種別チップ・選手セレクト)。
+     結果一覧(.notecards)とは別要素として NoteSearch(NotebookTools.tsx) 側で
+     専用ラッパー.searchwrapを追加したためカード化できる */
+  .noteapp .searchwrap {
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 18px 20px;
+    margin-bottom: 14px;
   }
 
   /* ===== 共有コンソールシェル（左レール+メイン）: アプリ全体の外枠 ===== */

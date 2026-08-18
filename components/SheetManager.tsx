@@ -539,7 +539,7 @@ export function KpiBody({ metric }: { metric: KpiMetric }) {
               className="prow"
               onClick={() => {
                 // PCはモーダルを出さず、チーム運営(名簿タブ)へ画面遷移する
-                if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+                if (typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
                   board.setTeamIntent({ tab: "ros", playerId: k.playerId });
                   board.setScreen("team");
                 } else {
@@ -581,7 +581,7 @@ function KpiSheet({ metric }: { metric: KpiMetric }) {
   return <KpiBody metric={metric} />;
 }
 
-/* ---------------- PCホーム「チームスタッツ」/選手側「マイスタッツ」カード → 内訳 ---------------- */
+/* ---------------- ホーム「チームスタッツ」(モバイル)/選手側「マイスタッツ」カード → 内訳 ---------------- */
 const STAT_TITLE: Record<StatMetric, string> = {
   record: "試合成績",
   shot: "シュート",
@@ -716,10 +716,16 @@ export function StatBody({ metric }: { metric: StatMetric }) {
                 <div
                   key={r.playerId}
                   className="prow"
-                  onClick={() =>
-                    // 戻ったときに同じ内訳へ帰れるよう、開いた指標を持ち回す（KpiSheetと同じ方式）
-                    board.openSheet({ type: "playerDetail", playerId: r.playerId, statMetric: metric })
-                  }
+                  onClick={() => {
+                    // PCはモーダルを出さず、チーム運営(名簿タブ)へ画面遷移する
+                    if (typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
+                      board.setTeamIntent({ tab: "ros", playerId: r.playerId });
+                      board.setScreen("team");
+                    } else {
+                      // 戻ったときに同じ内訳へ帰れるよう、開いた指標を持ち回す（KpiSheetと同じ方式）
+                      board.openSheet({ type: "playerDetail", playerId: r.playerId, statMetric: metric });
+                    }
+                  }}
                 >
                   <div className="meta">
                     <div className="nm">{r.name}</div>

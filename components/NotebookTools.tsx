@@ -157,33 +157,35 @@ export function NoteSearch({
   return (
     <div className="notetools">
       <h2><E n="search" /> ノートを検索</h2>
-      <div className="formfield">
-        <input
-          className="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="気づき・目標・メモ・相手名などで検索"
-          autoFocus
-        />
-      </div>
-      <div className="cmpbar" style={{ paddingTop: 0 }}>
-        {(["all", "match", "practice", "solo"] as const).map((k) => (
-          <button key={k} className={`cmpchip${kind === k ? " on" : ""}`} onClick={() => setKind(k)}>
-            {k === "all" ? "すべて" : NOTE_KIND_LABEL[k]}
-          </button>
-        ))}
-      </div>
-      {isCoach && (
+      <div className="searchwrap">
         <div className="formfield">
-          <label>選手で絞り込み</label>
-          <select value={playerId} onChange={(e) => setPlayerId(e.target.value)}>
-            <option value="all">全員</option>
-            {board.state.players.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          <input
+            className="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="気づき・目標・メモ・相手名などで検索"
+            autoFocus
+          />
         </div>
-      )}
+        <div className="cmpbar" style={{ paddingTop: 0 }}>
+          {(["all", "match", "practice", "solo"] as const).map((k) => (
+            <button key={k} className={`cmpchip${kind === k ? " on" : ""}`} onClick={() => setKind(k)}>
+              {k === "all" ? "すべて" : NOTE_KIND_LABEL[k]}
+            </button>
+          ))}
+        </div>
+        {isCoach && (
+          <div className="formfield">
+            <label>選手で絞り込み</label>
+            <select value={playerId} onChange={(e) => setPlayerId(e.target.value)}>
+              <option value="all">全員</option>
+              {board.state.players.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
 
       <div className="searchcount">{results.length}件</div>
       {results.length === 0 ? (

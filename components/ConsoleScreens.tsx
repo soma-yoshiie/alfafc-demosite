@@ -1091,7 +1091,9 @@ export function SettingsScreen() {
         </div>
       </header>
       <div className="scroll screenbody">
-        <SettingsBody hideTitle />
+        <div className="setwrap">
+          <SettingsBody hideTitle />
+        </div>
       </div>
     </div>
   );
