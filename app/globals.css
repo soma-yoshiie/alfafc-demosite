@@ -8646,8 +8646,23 @@ header {
    ※ 同一詳細度の基底ルールに勝つため、ファイル末尾にまとめて配置
    ============================================================ */
 @media (min-width: 1024px) {
+  /* ============================================================
+     Phase A: 階層の復元
+     実測監査(font-weight宣言の98.4%が600以上で階層が無い/文字色--mut #6b7280が
+     非白背景でWCAG AA未達/罫線--outline #e3e6eaが背景と非弁別/和文アプリに
+     ラテン専用のBebas Neueが数字・和文混在文字列へ適用/font-sizeが36種・
+     0.5px刻み45件/和文の行間がnormal(≒1.2))を受け、PC(1024px以上)のみ
+     トークンを再定義し、情報階層をサイズ3段+ウェイト400/600+色2値の
+     原則(GitHub実装を参考)で復元する。モバイル側の値は一切変更しない。 */
+  :root {
+    --mut: #59636e;            /* 旧#6b7280。全サーフェスでAA達成 */
+    --outline: #d1d9e0;        /* 旧#e3e6ea。罫線を見える濃さへ(GitHub実値) */
+    --outline-strong: #b6bfc9; /* 旧#d5dae1より1段濃く */
+  }
+
   .app {
     max-width: 1220px;
+    --font-display: var(--font-ui); /* Bebas NeueをPCから撤去(数字も和文もManrope/Notoで統一)。.appスコープに限定しシェル(.conrail/.conproduct)へは波及させない */
   }
 
   /* 戦術ボード: ピッチを大きく左、操作パネルを右の2カラム（ボード画面のみ） */
@@ -11733,6 +11748,532 @@ header {
     background: var(--accent);
     border-color: var(--accent);
   }
+
+  /* ============================================================
+     Phase A (続き): --outline/--line/--outline-strongの副作用ガード
+     この3トークンを「罫線」ではなく背景色(トラック/ハンドル/区切り線/
+     ホバー面)として使っている箇所は、階層復元の対象外のため旧値へ固定する。
+     .teamapp .sheetx:hoverは同一セレクタがこのブロック前方(9060行付近)に
+     既にあるため、ここ(ブロック末尾)に置いてソース順で確実に勝たせる。
+     グローバルシート側の同型セレクタ(共有コンソールシェル区画と兄弟結合子で
+     結びつく方)はシェル区画不可侵のためここでは触れず、旧トーンより一段濃い
+     新--outlineをそのまま許容する（背景と区別できる程度のごく僅かな変化）。
+     ============================================================ */
+  .scrub,
+  .cedit input[type="range"],
+  .tltick,
+  .grab,
+  .login-or::before,
+  .login-or::after,
+  .pubtoggle .switch,
+  .chatchip button,
+  .chipsep {
+    background: #e3e6ea;
+  }
+  .teamapp .sheetx:hover {
+    background: #e3e6ea;
+  }
+  .noteapp .wsheet::before {
+    background: #d5dae1;
+  }
+
+  /* ============================================================
+     A2: 数字の等幅化（コンテナ継承）
+     ============================================================ */
+  .teamapp,
+  .homeapp,
+  .boardapp,
+  .libapp,
+  .artapp,
+  .setapp,
+  .chatapp,
+  .mdb-scroll {
+    font-feature-settings: "palt" 1, "tnum" 1;
+  }
+
+  /* ============================================================
+     A3: ウェイト再設計（最重要）
+     基底CSSのfont-weight 700/800宣言、および--font-display(Bebas Neue)の
+     太さに依存していた数字・見出し類(明示ウェイト無し)を、
+       a) 見出し・行タイトル・選択状態/主要CTA・KPI大数字 → 600
+       b) メタ/サブ/ラベル/キャプション/チップ(非選択)/バッジ/日付・
+          ボタン(セカンダリ/ゴースト) → 400
+     の2段(a/bをまとめてb=title系/c・d=meta系として以下400群→600群の順で列挙。
+     600群を後に置くことで、.chip.on等「同一詳細度で400群と衝突する選択状態」を
+     ソース順で確実に勝たせる)に統一する。800は全て600へ、
+     プライマリ塗りボタンは600、セカンダリ/ゴーストボタンは400。
+     共有コンソールシェル区画(左レール+メインの外枠)は対象外。
+     ============================================================ */
+
+  /* ---- 400群: メタ/サブ/ラベル/キャプション/チップ(非選択)/バッジ/日付/
+     セカンダリ・ゴーストボタン ---- */
+  .tag.team,
+  .disc .capt,
+  .holdguide,
+  .tbtn,
+  .spd select,
+  .toolchip,
+  .nlrun,
+  .tllabel,
+  .tldur,
+  .tlselinfo,
+  .tlchip,
+  .cdel,
+  .sheet .statwdl,
+  .rolememo label,
+  .rolememo .rmrole,
+  .rmsave,
+  .toast,
+  .fphint,
+  .fpback,
+  .pcnow,
+  .trialbanner,
+  .billtoggle button,
+  .pcbadge,
+  .teamapp .rolebar > span,
+  .teamapp .rolebar select,
+  .evkind,
+  .att,
+  .evopen,
+  .attbtn,
+  .msgfrom,
+  .msgplay,
+  .calwd,
+  .caldate,
+  .dynadd,
+  .login-sso,
+  .login-guest,
+  .pubtoggle,
+  .memname small,
+  .ratetxt,
+  .injbadge,
+  .bench-ghost .gname,
+  .fmini,
+  .artcat,
+  .logintabs button,
+  .login-err,
+  .login-switch,
+  .homehello span,
+  .sheetback,
+  .catchip,
+  .calviewtoggle button,
+  .agkind,
+  .chatbadge,
+  .chatattcard,
+  .chatpick,
+  .hometeam,
+  .homerole,
+  .todaystat-l,
+  .appbadge,
+  .role,
+  .bcard .bp,
+  .prow .pos,
+  .chip,
+  .bigbtn.ghost {
+    font-weight: 400;
+  }
+  .noteapp .tag.team,
+  .noteapp .fpback,
+  .noteapp .chip,
+  .noteapp .formfield label,
+  .noteapp .toast,
+  .noteapp .dynadd,
+  .noteapp .notewho,
+  .noteapp .notetag,
+  .noteapp .detailtoggle,
+  .noteapp .detailhide,
+  .noteapp .reactbtn,
+  .noteapp .reactpill,
+  .noteapp .seenpill,
+  .noteapp .scopechip,
+  .noteapp .ngchip,
+  .noteapp .evgrowdate,
+  .noteapp .evgrowkind,
+  .noteapp .phasechip,
+  .noteapp .canvaschip,
+  .noteapp .mtok,
+  .noteapp .goalresbtn,
+  .noteapp .menupick .mpk-check,
+  .noteapp .playline,
+  .noteapp .playkind,
+  .noteapp .dlvtag,
+  .noteapp .videolink,
+  .noteapp .heattoggle,
+  .noteapp .statbig small,
+  .noteapp .statrow .srl,
+  .noteapp .kpireport,
+  .noteapp .repbrand,
+  .noteapp .notenav-badge,
+  .noteapp .daybadge,
+  .noteapp .wsheetcancel,
+  .noteapp .homedate,
+  .noteapp .homecta-done,
+  .noteapp .homecta-streak,
+  .noteapp .weekdot,
+  .noteapp .pill,
+  .noteapp .bigbtn.ghost {
+    font-weight: 400;
+  }
+  .dxseg button,
+  .dxrow .dxlbl,
+  .dxpal button,
+  .dxlock,
+  .dxclear,
+  .dxpanelback,
+  .dxstep,
+  .dxstepadd,
+  .dxintent label,
+  .dx header .hact,
+  .dtstate,
+  .dxctx button .tx,
+  .seclink,
+  .calev,
+  .calmore,
+  .formfield label.daytoggle,
+  .evcatchip,
+  .wdchip,
+  .maplinks a,
+  .ongoing,
+  .stepchip,
+  .stepchip .stepdur,
+  .stepchip .stepdel,
+  .penact,
+  .tltoggle,
+  .tseg,
+  .penscope,
+  .shapeadd,
+  .hullcount,
+  .guidelabel,
+  .legendrow,
+  .pendinghint {
+    font-weight: 400;
+  }
+  .bpanelback,
+  .bimporttext,
+  .bimportbtn,
+  .teamapp .tmback,
+  .chatapp .chatpaneall,
+  .libtab,
+  .libapp .libpanetype,
+  .artform .ffield label,
+  .artform .reqb,
+  .artform .optb,
+  .arterr,
+  .artattrow .artattkind,
+  .artform .artaddbtn,
+  .artform .artdangerlink,
+  .mdb-role,
+  .mdb-bellcount,
+  .mdb-bellbadge,
+  .mdb-vs,
+  .mdb-eventcat,
+  .mdb-pill,
+  .mdb-metalabel,
+  .mdb-feedicon,
+  .mdb-chip {
+    font-weight: 400;
+  }
+
+  /* ---- 600群: 見出し・行タイトル/選択状態・主要CTA・KPI大数字 ---- */
+  .disc,
+  .app.anim .tok.drag .disc::before,
+  .pname,
+  .bav,
+  .bcard .bn,
+  .cname,
+  .sheet h2 span,
+  .screenbody h2 span,
+  .prow .nm,
+  .prow .num,
+  .mitem,
+  .emblemprev.empty,
+  .playtitle,
+  .folderhdr,
+  .pcname,
+  .impname,
+  .drilltitle,
+  .d-disc,
+  .evtitle,
+  .attname,
+  .scorerrow .rank,
+  .scorerrow .snm,
+  .scorerrow .sgoals,
+  .mres,
+  .mopp,
+  .dsec-h,
+  .scoreinput input,
+  .memname,
+  .injarea,
+  .bench-ghost .gdisc,
+  .formbtn .fb-label,
+  .formbtn .fb-cur,
+  .setsec-h,
+  .arttitle,
+  .homehello,
+  .hometitle,
+  .agtitle,
+  .convavatar,
+  .convname,
+  .chatname,
+  .chatpicker-h,
+  .chatsend,
+  .homename,
+  .todaycard-h,
+  .todaystat-n,
+  .stattitle,
+  .cmpnm,
+  .stat .v,
+  .bench .bh b,
+  .stitle b,
+  .kpinum,
+  .hstat-n,
+  .statbox .sv,
+  .bigbtn,
+  .fptag,
+  .fpbtn.fplay,
+  .pcprice,
+  .calnav b,
+  .mscore,
+  .mvscore,
+  .splash-title,
+  .login-logo,
+  .fcell,
+  .profcell .pv,
+  .agdate b {
+    font-weight: 600;
+  }
+  .noteapp .logo,
+  .noteapp .logo b,
+  .noteapp .bigbtn,
+  .noteapp .noteform h2,
+  .noteapp .notetools h2,
+  .noteapp .detailwrap-h,
+  .noteapp .notesec-h,
+  .noteapp .evgrowtitle,
+  .noteapp .streakcard,
+  .noteapp .possummary .ps-h,
+  .noteapp .phasehd,
+  .noteapp .formgroup-h,
+  .noteapp .aisv,
+  .noteapp .dlvblock-h,
+  .noteapp .dlvtitle,
+  .noteapp .resnm,
+  .noteapp .apanel-h,
+  .noteapp .apanel-sum .n,
+  .noteapp .statrow .srv,
+  .noteapp .kpiname,
+  .noteapp .repname,
+  .noteapp .repsec-h,
+  .noteapp .notenav-item,
+  .noteapp .wsheet-h,
+  .noteapp .homecta-msg,
+  .noteapp .daypanel-h,
+  .noteapp .homesec-h,
+  .noteapp .evgrowcount,
+  .noteapp .statbig {
+    font-weight: 600;
+  }
+  .dx .pv-text,
+  .dxpanelbody h2,
+  .dxpanelbody h2 span,
+  .dxlabeledit input,
+  .d-text,
+  .sech,
+  .attgh,
+  .tlstephead,
+  .shapetext,
+  .ghosttok,
+  .dxpaneltitle {
+    font-weight: 600;
+  }
+  .bpanelbody h2,
+  .bpanelbody h2 span,
+  .bpaneltitle,
+  .teamapp .logo,
+  .teamapp .teamsumrow,
+  .teamapp .attbarpct,
+  .boardapp .logo,
+  .chatapp .logo,
+  .chatapp .chatpanename,
+  .hstat-n.ev,
+  .hstats-h,
+  .libapp .logo,
+  .artapp .logo,
+  .setapp .logo,
+  .libapp .librowtitle,
+  .libapp .libpanename,
+  .artform .ffield input.big,
+  .kpitile .kv,
+  .mdb-name,
+  .mdb-belltitle,
+  .mdb-herothin-cta,
+  .mdb-emblem-fallback,
+  .mdb-ownname,
+  .mdb-oppname,
+  .mdb-eventtitle,
+  .mdb-countdown,
+  .mdb-metaval,
+  .mdb-cta,
+  .mdb-kpidelta,
+  .mdb-panel-h,
+  .mdb-topicrank,
+  .mdb-topicname,
+  .mdb-topicval,
+  .homewhen {
+    font-weight: 600;
+  }
+  /* <b>の合成太字解消: 親.logo/.fptagがPCで600化されると、font-weight未指定の
+     子<b>はUA既定のbolder(600→900相当)で解決され、可変フォントに900が無いため
+     合成(擬似)太字が発生する。親と同じ600を明示して回避する
+     (.noteapp .logo bは上方で既に600指定済み) */
+  .teamapp .logo b,
+  .boardapp .logo b,
+  .chatapp .logo b,
+  .libapp .logo b,
+  .artapp .logo b,
+  .setapp .logo b,
+  .fptag b {
+    font-weight: 600;
+  }
+
+  /* ---- 選択状態・プライマリCTA（同一詳細度の400群より後段に置き、
+     ソース順で確実に勝たせる） ---- */
+  .chip.on,
+  .toolchip.on,
+  .tlchip.on,
+  .tlchip.kind.on,
+  .rmsave.on,
+  .attbtn.yes.on,
+  .attbtn.maybe.on,
+  .attbtn.no.on,
+  .evcatchip.on,
+  .catchip.on,
+  .libtab.on,
+  .logintabs button.on,
+  .billtoggle button.on,
+  .calviewtoggle button.on,
+  .wdchip.on,
+  .stepchip.on,
+  .tseg.on,
+  .penscope.on,
+  .dxseg button.on,
+  .dxpal button.on,
+  .dxstep.on,
+  .fmini.on,
+  .noteapp .canvaschip.on,
+  .noteapp .playkind.on,
+  .noteapp .playline.on,
+  .dx header .hact.primary,
+  .bimportbtn.primary,
+  .mdb-pill.cur {
+    font-weight: 600;
+  }
+
+  /* ============================================================
+     A4: サイズの整流
+     0.5px刻み(12.5/11.5/10.5/9.5/13.5/14.5)と9px未満(7/8/8.5)を整数化。
+     ・.tag.team::before / .noteapp .tag.team::before(7px)は固定サイズの
+       丸ドット記号(●)で、10pxへ拡大するとピル内で潰れる恐れがあるためスキップ。
+     ・.app.anim .tok.drag .disc::before(8px)はドラッグ中トークンの固定円に
+       収める小バッジのため、拡大するとレイアウトが崩れる恐れがありスキップ。
+     ・.noteapp .mlchart text / .teamapp .mlchart text(8.5px)はグラフSVG内
+       ネイティブtext要素のため、10pxへ一気に上げずゆるやかに9pxへ留める。
+     h2(.sheet h2 / .screenbody h2)は24px、.dxpanelbody h2 / .bpanelbody h2は
+     狭幅(252px)サイドパネル用に18pxへ意図的に縮小済みのため現状維持のまま、
+     .sheet h2 / .screenbody h2のみ20px/600へ統一する
+     (.noteapp .noteform h2 / .noteapp .notetools h2は既に20px相当のため対象外)。
+     ============================================================ */
+  .sheet h2,
+  .screenbody h2 {
+    font-size: 20px;
+    font-weight: 600;
+  }
+  .rolememo textarea,
+  .artbody,
+  .chattext {
+    font-size: 14px;
+  }
+  .chatattcard {
+    font-size: 13px;
+  }
+  .planlede,
+  .login-err,
+  .sendtgt label,
+  .chatchip,
+  .applabel,
+  .noteapp .playline,
+  .tseg,
+  .shapetextinput,
+  .bimportbtn,
+  .teamapp .teamcta,
+  .chip,
+  .catchip,
+  .cmpchip,
+  .libtab,
+  .noteapp .chip,
+  .noteapp .cmpchip,
+  .noteapp .scopechip,
+  .noteapp .ngchip,
+  .mdb-belltitle,
+  .mdb-herothin,
+  .mdb-herothin-cta,
+  .mdb-metaval,
+  .mdb-topicname,
+  .mdb-topicval,
+  .mdb-feedtext,
+  .noteapp .hdrcta {
+    font-size: 12px;
+  }
+  .pchint,
+  .formatbar .shapetextinput,
+  .penscope {
+    font-size: 11px;
+  }
+  .tllabel,
+  .tldur,
+  .noteapp .mtok,
+  .noteapp .chart-line .clv,
+  .teamapp .chart-line .clv,
+  .noteapp .notenav-badge,
+  .noteapp .pill,
+  .stepchip .stepdur,
+  .guidelabel,
+  .mdb-bellreason,
+  .mdb-pillcaption,
+  .mdb-kpidelta,
+  .mdb-panel-sub,
+  .mdb-topicnext,
+  .mdb-feedtime {
+    font-size: 10px;
+  }
+  .noteapp .mlchart text,
+  .teamapp .mlchart text {
+    font-size: 9px;
+  }
+
+  /* ============================================================
+     A5: 行間の統一
+     読みテキスト系のline-heightを1.55前後に統一する。固定高さの行部品
+     (チップ/ボタン/カレンダーセル等)には適用しない。
+     ============================================================ */
+  .msgtext,
+  .chattext,
+  .artlead,
+  .artbody p,
+  .artbody li,
+  .empty-msg,
+  .noteapp .empty-msg,
+  .noteapp .notebody,
+  .noteapp .dlvsub,
+  .fieldhint,
+  .pchint {
+    line-height: 1.55;
+  }
+  /* 意味色コントラスト: var(--red)直値は白系サーフェス(--panel2 #f3f5f7)上で
+     AA未達のため、同色相で暗くしたPC専用値へ差し替える(対#f3f5f7で約6.2:1、AA達成) */
+  .att.no {
+    color: #b42318;
+  }
 }
 
 /* マッチデー・ボード(PCコーチホーム)専用のキーフレーム。
@@ -12106,6 +12647,40 @@ header {
     border-radius: var(--r-lg);
     padding: 18px 20px;
     margin-bottom: 14px;
+  }
+
+  /* ============================================================
+     Phase A: 階層の復元（.noteapp区画）
+     A2: 数字の等幅化。A3: .noteapp .hdrbellbadge / .coachapp .heattbl th・
+     td:first-child・td:last-childは、このブロック内(上方12322/12370/12375行
+     付近)に既存のfont-weight 700宣言があるため、同一詳細度でソース順に
+     勝たせるにはこのブロックの中で上書きする必要がある
+     (1つ目のPC @mediaブロック末尾からではソース順で負けるため不可)。
+     ============================================================ */
+  .noteapp {
+    font-feature-settings: "palt" 1, "tnum" 1;
+  }
+  .noteapp .hdrbellbadge,
+  .coachapp .heattbl th {
+    font-weight: 400;
+  }
+  .coachapp .heattbl td:first-child,
+  .coachapp .heattbl td:last-child {
+    font-weight: 600;
+  }
+  .noteapp .dbv,
+  .noteapp .repsv {
+    font-weight: 600;
+  }
+  /* ---- 選択状態(.noteapp): 同一詳細度の400群より後段に置き、ソース順で確実に勝たせる ---- */
+  .noteapp .scopechip.on,
+  .noteapp .ngchip.on,
+  .noteapp .phasechip.on,
+  .noteapp .reactbtn.on,
+  .noteapp .weekdot.on,
+  .noteapp .weekdot.sel,
+  .noteapp .goalresbtn.on {
+    font-weight: 600;
   }
 
   /* ===== 共有コンソールシェル（左レール+メイン）: アプリ全体の外枠 ===== */
