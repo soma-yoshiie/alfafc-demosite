@@ -8658,6 +8658,11 @@ header {
     --mut: #59636e;            /* 旧#6b7280。全サーフェスでAA達成 */
     --outline: #d1d9e0;        /* 旧#e3e6ea。罫線を見える濃さへ(GitHub実値) */
     --outline-strong: #b6bfc9; /* 旧#d5dae1より1段濃く */
+    /* Phase B(部品の統制): 余白トークン。4/8/16/24pxの4段のみを使う(GitHub実装準拠) */
+    --sp-1: 4px;
+    --sp-2: 8px;
+    --sp-3: 16px;
+    --sp-4: 24px;
   }
 
   .app {
@@ -10493,27 +10498,28 @@ header {
     margin: 4px 16px 6px;
   }
 
-  /* ---- .bigbtn(PC全般): 高さ・角丸を詰める。widthは既存レイアウトのまま変更しない ---- */
+  /* ---- .bigbtn(PC全般): 高さ・角丸を詰める。widthは既存レイアウトのまま変更しない。
+     値はB1(下方12294〜)の外形統一(h32/padding 0 14px/13px)と一本化済み ---- */
   .bigbtn {
-    padding: 9px 16px;
-    font-size: 14px;
+    padding: 0 14px;
+    font-size: 13px;
     border-radius: 6px;
   }
   .noteapp .bigbtn {
-    padding: 9px 16px;
-    font-size: 14px;
+    padding: 0 14px;
+    font-size: 13px;
     border-radius: 6px;
   }
   .plancard .bigbtn {
-    padding: 9px 16px;
-    font-size: 14px;
+    padding: 0 14px;
+    font-size: 13px;
   }
   .quickrow .bigbtn {
-    padding: 9px 16px;
-    font-size: 14px;
+    padding: 0 14px;
+    font-size: 13px;
   }
   .artactbar .bigbtn {
-    padding: 9px 16px;
+    padding: 0 14px;
   }
 
   /* ---- チップ類: 高さを詰める。角丸(ピル/トークン)は現状維持のため変更しない ---- */
@@ -12274,6 +12280,311 @@ header {
   .att.no {
     color: #b42318;
   }
+
+  /* ============================================================
+     Phase B: 部品の統制
+     実測監査(ボタン外観40種/「＋作成」系だけで9箇所9外観/「選択中」表現9イディオム/
+     同型カードの角丸9通り/左右インセット5値/ホーム画面内でカード左端が5段ズレ/
+     ヘッダ構造の画面ごとの不統一)を受け、PC(1024px以上)のみボタン・選択状態・
+     余白・角丸・ヘッダをGitHub実装を参考にした少数のレシピへ統制する。
+     モバイル側の値は一切変更しない(本ブロックはPC専用の追記のみ)。
+     ※ 上方(10561)の既存「PC密度調整 Phase B」とは別の施策のため名称の混同に注意
+       (あちらは緑CTA1画面1個化/チーム運営行密度化の2施策、こちらはB1〜B5)。
+     ============================================================ */
+
+  /* ---- B1: ボタンのレシピ統一 ----
+     primary  : bg accent / 白文字 / h32 / r6 / padding 0 14px / 13px・600 / hover accent-strong
+     secondary: bg 白 / 1px solid outline / ink文字 / h32 / r6 / 13px・400 / hover #f6f8fa
+     danger   : 既存の危険色はそのまま、形(h32/r6)だけ揃える
+     アイコンボタン(.chatplus/.chatsend/.mdb-bell/.noteapp .hdrbell): 円形(50%)→32×32 / r6
+     写像(grepで各定義を確認済み):
+       primary   = .teamapp .teamcta / .noteapp .hdrcta / .mdb-cta /
+                   .dx header .hact.primary / .bimportbtn.primary / .bigbtn:not(.ghost)
+       secondary = .bigbtn.ghost / .formbtn / .cmpmanage / .dynadd(dashed→solid) /
+                   .homeout / .fmini(ボード上部ツールバー、h32/padding 0 13pxで下端を揃える)
+       追加対応  = .dx header .hact(非primary)は元々secondaryと同じ見た目(白地+枠+ink)
+                   のため同じ外形(h32/r6)へ揃える(同じ行に並ぶ.hact.primaryとの高さ
+                   不揃いを防ぐ)。.bimportbtn(無印)も同様に.primary/.ghostの高さを揃える
+                   ため外形のみここでまとめて上書きする。
+     .noteapp .hdrcta は実体(background/padding/border-radius)が2つ目のPC @media
+     ブロック側(.noteapp header直下)で定義されているため、そちらにも同内容の
+     補足上書きを追記している(このブロック内だけではソース順で負けるため)。 */
+
+  /* -- 外形(primary/secondaryで共通。fminiのみpaddingを後段で13pxへ個別調整) --
+     インライン系(見出し行に収まる小型ボタン) */
+  .teamapp .teamcta,
+  .noteapp .hdrcta,
+  .mdb-cta,
+  .dx header .hact,
+  .bimportbtn,
+  .formbtn,
+  .homeout,
+  .fmini {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    letter-spacing: normal;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* ブロック系(width:100%の全幅ボタン。幅は変更しない) */
+  .bigbtn,
+  .cmpmanage,
+  .dynadd {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    letter-spacing: normal;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  /* .formbtn内の現在値バッジ(.fb-cur)はボタン本体と別の意味色バッジのため対象外。
+     ラベル文言(.fb-label)だけを本体の文字文法(13px・400)へ揃える */
+  .formbtn .fb-label {
+    font-size: 13px;
+    font-weight: 400;
+  }
+
+  /* -- primary色: bg accent / 白文字 / hover accent-strong -- */
+  .teamapp .teamcta,
+  .noteapp .hdrcta,
+  .mdb-cta,
+  .dx header .hact.primary,
+  .bimportbtn.primary,
+  .bigbtn:not(.ghost) {
+    background: var(--accent);
+    color: var(--on-primary);
+    border: 0;
+  }
+  .teamapp .teamcta:hover,
+  .noteapp .hdrcta:hover,
+  .mdb-cta:hover,
+  .dx header .hact.primary:hover,
+  .bimportbtn.primary:hover,
+  .bigbtn:not(.ghost):hover {
+    background: var(--accent-strong);
+  }
+
+  /* -- secondary色: bg 白 / 1px solid outline / ink文字 / hover #f6f8fa --
+     .cmpmanage/.homeoutは基底(モバイル)のfont-weight:600がPCで未上書きのまま
+     残っていたため、ここで400へ揃える(他の対象は既存のPC専用ウェイト群で400済み) */
+  .dx header .hact,
+  .bigbtn.ghost,
+  .formbtn,
+  .cmpmanage,
+  .dynadd,
+  .homeout {
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    color: var(--ink);
+  }
+  .cmpmanage,
+  .homeout {
+    font-weight: 400;
+  }
+  .dx header .hact:hover,
+  .bigbtn.ghost:hover,
+  .formbtn:hover,
+  .cmpmanage:hover,
+  .dynadd:hover,
+  .homeout:hover {
+    background: #f6f8fa;
+  }
+
+  /* -- .fmini(secondary。ボード上部ツールバーの下端を他CTAと揃えるため、
+     外形グループのpadding 0 14pxを0 13pxへ差し替え、高さ32pxのまま横幅だけ詰める) -- */
+  .fmini {
+    background: var(--surface-lowest);
+    border-color: var(--outline);
+    border-radius: var(--r-sm);
+    padding: 0 13px;
+  }
+  .fmini:hover {
+    background: #f6f8fa;
+  }
+
+  /* -- アイコンボタン: 円形50%→32×32 r6 -- */
+  .chatplus,
+  .chatsend {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-sm);
+  }
+  /* -- アイコンボタン: .mdb-bell(円形50%→32×32 r6。.noteapp .hdrbellは実体が
+     2つ目のPC @mediaブロック側にあるため、そちらにも同内容を追記している) -- */
+  .mdb-bell {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-sm);
+  }
+  /* -- 設定画面のエンブレム画像ボタンも外形グループのh32へ揃える(.formbtn単体より
+     詳細度を上げて上書き) -- */
+  .emblemrow .formbtn {
+    height: 32px;
+    min-height: 32px; /* 基底のタップ領域用min-height:44pxをPCでは解除 */
+  }
+
+  /* ---- B2: 選択状態を「tint背景+1px accent枠+accent文字(+600)」の1イディオムへ統一 ----
+     対象(grepで洗い出したベタ塗り選択。font-weight:600は既存の選択状態グループで
+     既に付与済みのためここでは再掲のみ): .chip.on / .rmsave.on / .fcell.on /
+     .logintabs button.on / .billtoggle button.on(無印+.sheet/.screenbody両scope) /
+     .calviewtoggle button.on / .wdchip.on / .tseg.on / .kpitile.on(+子要素)。
+     ピル/丸形状(.chip/.wdchip/.tseg等)は形状を維持し色文法のみ変更する。
+     下線タブ(.noteapp .notenav-item)はPCでは非表示(.notenav{display:none})のため対象外
+     (=第2の公認イディオムとして現状のまま特に手を入れない)。 */
+  .chip.on,
+  .rmsave.on,
+  .fcell.on,
+  .logintabs button.on,
+  .billtoggle button.on,
+  .sheet .billtoggle button.on,
+  .screenbody .billtoggle button.on,
+  .calviewtoggle button.on,
+  .wdchip.on,
+  .tseg.on {
+    background: var(--accent-tint);
+    color: var(--accent);
+    border-color: var(--accent);
+    box-shadow: none;
+    font-weight: 600;
+  }
+  .kpitile.on {
+    background: var(--accent-tint);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+  .kpitile.on .kv,
+  .kpitile.on .kl {
+    color: var(--accent);
+  }
+  .kpitile.on .mdb-kpidelta {
+    background: var(--surface-lowest);
+    color: var(--mut);
+  }
+  .kpitile.on .mdb-ringtrack {
+    stroke: var(--outline);
+  }
+  .kpitile.on .mdb-ringval {
+    stroke: var(--accent);
+  }
+  .fmini.on {
+    color: var(--accent);
+  }
+  /* ボード上部ツールバーのペン/シェイプ/ハーフコートは基底(8169/8449/8173)で
+     黄・水色の専用色を持つ3分裂状態のため、他の選択状態と同じ
+     「tint背景+accent枠+accent文字」へ揃える(.fminiより詳細度が高いためソース順に依らず勝つ) */
+  .fmini.pen.on,
+  .fmini.shapes.on,
+  .fmini.half.on {
+    background: var(--accent-tint);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  /* プランカードの選択状態: 既存(2053/11570)のinset ring(box-shadow)はそのまま活かし、
+     背景のみ他の選択状態と同じaccent-tintへ揃える(.kpitile.onと同じ「第2イディオム」扱い) */
+  .plancard.on {
+    background: var(--accent-tint);
+  }
+
+  /* ---- B3: 余白トークンと整列 ----
+     各画面の.scroll系左右パディングを24px(--sp-4)へ統一。
+     ボード(.boardapp .scroll)は左右パディングのみ変更し、gap(22px)や
+     .pitchのheight:calc(100dvh - 158px)等の縦方向の値には触れない(grepで確認済み)。 */
+  .mdb-scroll {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
+  .boardapp:not(.fullplay) .scroll {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
+  .libapp .libpane {
+    padding-left: var(--sp-3);
+    padding-right: var(--sp-3);
+  }
+  /* ホームのカード内左端を揃える(監査の左端5段=240/241/257/259/270pxを2段以内へ)。
+     .kpichart(10688)/.mdb-panel(11289)は実測時点で既に左右16pxのため対象外(変更不要)。
+     .mdb-herothin/.kpitileは.mdb-hero/.mdb-panelと同じ16px系へ揃え、
+     左端の分散を2レーン程度(通常カード=16px系、.mdb-heroのみアクセント枠4px分の
+     ずれが残る)へ収束させる */
+  .mdb-hero {
+    padding: 20px 16px;
+  }
+  .mdb-herothin {
+    padding: 14px 16px;
+  }
+  .kpitile {
+    padding: 12px 16px;
+  }
+
+  /* ---- B4: 角丸統制 ----
+     同型カードをPCでは既存の5段トークンのうち2段(--r-lg=10px/--r-md=8px)へ統制する。
+     ピル(999px)と円(50%)は対象外(grepで確認済み・本節の対象クラスに999px/50%指定は無い)。
+     .evcard/.matchcard/.convrowは実際にはより詳細度の高い「行」文法
+     (.teamapp:has(.teammain) .scroll .matchcard等(10603)/.chatapp:has(.chatmain)
+     .convrow(9452)等)で常にvar(--r-md)=8pxへ上書きされ、このvar(--r-lg)指定は
+     一度も効いていない死にルールだったため対象から外す(8pxが正)。 */
+  .statcard,
+  .bcard,
+  .msgcard,
+  .homecard,
+  .plancard,
+  .dxside,
+  .todaycard,
+  .memrow,
+  .chatpicker {
+    border-radius: var(--r-lg);
+  }
+  .icon,
+  .tlacts,
+  .drilltitle,
+  .selrow,
+  .calcell,
+  .dynx {
+    border-radius: var(--r-md);
+  }
+  /* 上記グループに未参加の角丸カード/行を2段トークンへ寄せる。
+     .emblemprev/.pubtoggle/.dxpal/.dxclearは既存詳細度(単一クラス)と同等かつ
+     ソース順で後段のためこれで上書きできる(.noteapp .dashbox/.noteapp .notifrowは
+     2つ目のPC @mediaブロック側で同内容を追記している) */
+  .emblemprev,
+  .pubtoggle {
+    border-radius: 10px;
+  }
+  .dxpal,
+  .dxclear {
+    border-radius: var(--r-md);
+  }
+
+  /* ---- B5: ヘッダ統一 ----
+     (a)(c)は各画面コンポーネント側(TSX)のusePc分岐で対応済み。
+     (d) header高さを65pxへ統一(現行65/66px混在)。
+     全画面のheader実体は共通してpadding:10px 18px・同一の.logo/.tagタイポで
+     構成されており、border-bottomの有無だけが1pxの差を生んでいたため、
+     border-bottomをbox-shadowへ置き換えて高さへの寄与を無くす。
+     .teamapp/.boardapp headerは元々border無しのため実効高さは変わらないが、
+     罫線の描画方式(box-shadow)を他画面と揃えるためここに合流させる。
+     .dx headerのみpadding:10px 18pxが未適用(基底headerのsafe-area基準のまま)
+     だったため、他7画面と同じ実体を個別に補う。8画面(chatapp/libapp/artapp/
+     setapp/teamapp/boardapp/noteapp/dx)で罫線を1系統に統一する。
+     .noteapp headerは2つ目のPC @mediaブロック側で定義されているため、
+     そちらにも同内容の補足上書きを追記している。 */
+  .chatapp header,
+  .libapp header,
+  .artapp header,
+  .setapp header,
+  .dx header,
+  .teamapp header,
+  .boardapp header {
+    border-bottom: 0;
+    box-shadow: 0 1px 0 var(--outline);
+  }
+  .dx header {
+    padding: 10px 18px;
+  }
 }
 
 /* マッチデー・ボード(PCコーチホーム)専用のキーフレーム。
@@ -12309,6 +12620,23 @@ header {
   .noteapp header { background: var(--surface-lowest); border-bottom: 1px solid var(--outline); padding: 10px 18px; }
   .noteapp .hdrcta { display: inline-block; margin-left: auto; background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 14px; font-weight: 600; font-size: 12.5px; cursor: pointer; }
   .noteapp .hdrcta:hover { background: var(--accent-strong); }
+  /* Phase B(部品の統制)補足: 直上2行(.noteapp header/.noteapp .hdrcta)が
+     1つ目のPC @mediaブロック末尾より後段(このブロック)で定義されているため、
+     ソース順で確実に勝たせるためここで同内容を再上書きする。
+     詳細は1つ目のPC @mediaブロック末尾の「Phase B: 部品の統制」コメント参照。 */
+  .noteapp header {
+    border-bottom: 0;
+    box-shadow: 0 1px 0 var(--outline);
+  }
+  .noteapp .hdrcta {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
   /* 通知ベル(ヘッダー右上)。未読は赤バッジで件数を出す */
   .noteapp .hdrbell {
     display: inline-flex;
@@ -12354,7 +12682,26 @@ header {
     line-height: 16px;
     text-align: center;
   }
+  /* Phase B(部品の統制)補足: アイコンボタン外形(32×32/r6)を.noteapp .hdrbellにも適用。
+     直上の既存.noteapp .hdrbell(34×34/円形)より後段のため、ソース順で上書きする。
+     バッジは円→角丸への変化とサイズ縮小(-2px)に合わせ、基準座標を1pxずつ内側へ調整する。 */
+  .noteapp .hdrbell {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-sm);
+  }
+  .noteapp .hdrbellbadge {
+    top: -3px;
+    right: -4px;
+  }
   .noteapp .hdrusr { display: inline; color: var(--mut); font-size: 12px; }
+  /* Phase B(部品の統制)補足: 角丸統制(B4)を.noteapp .dashbox/.noteapp .notifrowにも適用。
+     基底(var(--r-md))が1つ目のPC @mediaブロックの角丸統制と同じ詳細度で書けないため、
+     ここでソース順によりvar(--r-lg)へ上書きする。 */
+  .noteapp .dashbox,
+  .noteapp .notifrow {
+    border-radius: var(--r-lg);
+  }
   /* コーチダッシュボード: 左=スタッツ列 / 右=分析パネル以下（案D準拠） */
   .coachapp .dashcols { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 14px; align-items: start; }
   .coachapp .dashcol.side .dashsum { flex-direction: column; }

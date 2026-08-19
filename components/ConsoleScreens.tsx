@@ -14,6 +14,21 @@ import { loadDrills } from "@/lib/storage";
 
 const PC_MQ = "(min-width: 1024px)";
 
+/** PC幅かどうかを追跡するフック（TeamHub.tsx usePc() と同じ手法） */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
+
 /**
  * PCレール直結の3画面（ライブラリ／お役立ち記事／設定）。
  * 従来はモーダル(シート)で開いていたが、レールの他項目と同様に
@@ -41,6 +56,8 @@ function fmtDateTime(ts: number): string {
 
 export function LibraryScreen() {
   const board = useBoard();
+  // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
+  const pc = usePc();
   const [tab, setTabState] = useState<"plays" | "drills">("plays");
   // 初期選択（マウント時のみ）: 戦術タブの先頭項目
   const [selectedId, setSelectedId] = useState<string | null>(() => {
@@ -136,7 +153,7 @@ export function LibraryScreen() {
     <div className="app libapp">
       <header>
         <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ メニュー
+          ‹ {pc ? "ホーム" : "メニュー"}
         </div>
         <div className="brand" style={{ marginLeft: 4 }}>
           <div className="logo">ライブラリ</div>
@@ -513,7 +530,8 @@ export function ArticlesScreen() {
     <div className="app artapp">
       <header>
         {/* PCの読み物は選択が常に入る2ペインなので、LibraryScreenと同じく1クリックでメニューへ戻す。
-            「‹ 戻る」の二段戻りは狭幅の単一カラム時のみ */}
+            「‹ 戻る」の二段戻りは狭幅の単一カラム時のみ。
+            戻り先がホームのラベルはPCでは「ホーム」に(モバイルの「メニュー」は現状維持) */}
         <div
           className="fpback"
           onClick={() => {
@@ -522,7 +540,7 @@ export function ArticlesScreen() {
             else setSelected(null);
           }}
         >
-          ‹ {mode === "post" && pc ? "記事一覧" : pc || isRoot ? "メニュー" : "戻る"}
+          ‹ {mode === "post" && pc ? "記事一覧" : pc ? "ホーム" : isRoot ? "メニュー" : "戻る"}
         </div>
         <div className="brand" style={{ marginLeft: 4 }}>
           <div className="logo">
@@ -1076,12 +1094,14 @@ function ArticleForm({
 
 export function SettingsScreen() {
   const board = useBoard();
+  // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
+  const pc = usePc();
 
   return (
     <div className="app setapp">
       <header>
         <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ メニュー
+          ‹ {pc ? "ホーム" : "メニュー"}
         </div>
         <div className="brand" style={{ marginLeft: 4 }}>
           <div className="logo">設定</div>

@@ -8,6 +8,21 @@ import { E } from "./Emoji";
 
 const PC_MQ = "(min-width: 1024px)";
 
+/** PC幅かどうかを追跡するフック（TeamHub.tsx usePc() と同じ手法） */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
+
 /**
  * 直近に開いていたスレッド（画面を離れて戻ったときの復元用）。
  * 添付の戦術/練習を開くと別画面へ遷移するため、モジュールスコープで持たないと
@@ -65,17 +80,17 @@ export default function ChatScreen() {
   const players = board.state.players;
   const threadTitle = (to: string): string =>
     to === "team" ? "チーム全員" : players.find((p) => dmThreadKey(p.id) === to)?.name ?? "会話";
+  // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
+  const pc = usePc();
 
   return (
     <div className="app chatapp">
       <header>
         <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ メニュー
+          ‹ {pc ? "ホーム" : "メニュー"}
         </div>
         <div className="brand" style={{ marginLeft: 4 }}>
-          <div className="logo">
-            CHAT<b> ルーム</b>
-          </div>
+          <div className="logo">チャット</div>
           <div className="tag team" style={{ marginTop: 4 }}>
             {board.state.teamName ?? "マイチーム"}
           </div>

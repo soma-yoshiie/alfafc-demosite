@@ -385,8 +385,9 @@ function Inner() {
   return (
     <div className="app teamapp">
       <header>
+        {/* 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま) */}
         <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ メニュー
+          ‹ {pc ? "ホーム" : "メニュー"}
         </div>
         <div className="brand" style={{ marginLeft: 4 }}>
           <div className="logo">

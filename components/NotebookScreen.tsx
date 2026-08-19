@@ -136,6 +136,21 @@ type Tab = "home" | "notes" | "deliver" | "notifs" | "report";
 /** PCのマスター・ディテール分岐に使うブレークポイント（ChatScreen.tsxのRowクリック分岐と同じ基準） */
 const PC_MQ = "(min-width: 1024px)";
 
+/** PC幅かどうかを追跡するフック（TeamHub.tsx usePc() と同じ手法） */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
+
 type View =
   | { mode: "root" }
   | { mode: "form"; kind: NoteKind; edit?: NotebookEntry; menuId?: string }
@@ -163,6 +178,8 @@ export default function NotebookScreen() {
   const [selKpi, setSelKpi] = useState<KpiMetric | null>(null);
   // PC×コーチのときだけ選択state経路を使う。それ以外(モバイル/選手)は従来のview遷移のまま
   const isPcCoach = () => isCoach && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches;
+  // 戻りラベル: 押下先がホームのとき、PCでは「‹ ホーム」に(モバイルの「‹ メニュー」は現状維持)
+  const pc = usePc();
 
   const identity = notifIdentity(board.auth.role, board.auth.playerId);
   const [seenAt, setSeenAt] = useState<number>(() => loadNotifSeen()[identity] ?? 0);
@@ -270,7 +287,7 @@ export default function NotebookScreen() {
             className="fpback"
             onClick={() => (isRoot ? board.setScreen("home") : setView({ mode: "root" }))}
           >
-            ‹ {isRoot ? "メニュー" : "戻る"}
+            ‹ {isRoot ? (pc ? "ホーム" : "メニュー") : "戻る"}
           </div>
         )}
         <div className="brand" style={{ marginLeft: 4 }}>

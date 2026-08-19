@@ -1,18 +1,40 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useBoard } from "./BoardProvider";
+
+/** PC(min-width:1024px)判定のブレークポイント。TeamHub.tsx usePc() と同じ値・同じ手法 */
+const PC_MQ = "(min-width: 1024px)";
+
+/** PC幅かどうかを追跡するフック（TeamHub.tsx usePc() と同じ手法） */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
 
 export default function Header() {
   const board = useBoard();
   const name = board.state.teamName;
   const title = board.currentPlayTitle;
   const coach = board.auth.role === "coach";
+  // PCでは他画面(ライブラリ/チーム運営等)と同様に画面名をロゴに出す。
+  // モバイルは従来どおりブランド名(ALFA FOOTBALL)のまま変更しない
+  const pc = usePc();
 
   return (
     <header>
       <div className="brand">
         <div className="logo">
-          ALFA<b> FOOTBALL</b>
+          {pc ? "戦術ボード" : (<>ALFA<b> FOOTBALL</b></>)}
         </div>
         {coach ? (
           <button
