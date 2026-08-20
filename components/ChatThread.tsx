@@ -7,6 +7,7 @@ import { loadDrills } from "@/lib/storage";
 import { fileToAttachment } from "@/lib/media";
 import { useBoard } from "./BoardProvider";
 import { E } from "./Emoji";
+import { IconSend } from "./icons";
 
 /**
  * 1つの会話（チーム全員 or 個人DM）を表示するチャット。
@@ -226,7 +227,7 @@ export default function ChatThread({
           placeholder="メッセージを入力"
         />
         <button className="chatsend" onClick={send} aria-label="送信">
-          ➤
+          <IconSend />
         </button>
       </div>
 

@@ -24,6 +24,7 @@ import DrillLines from "./DrillLines";
 import {
   IconCopy,
   IconDownload,
+  IconEdit,
   IconFolder,
   IconRedo,
   IconRotate,
@@ -590,7 +591,9 @@ function Inner() {
         >
           <span className="dtname">
             {doc.title}
-            <span className="dtedit">✎</span>
+            <span className="dtedit">
+              <IconEdit />
+            </span>
           </span>
           <span className={`dtstate ${stateCls}`}>{stateLabel}</span>
         </button>

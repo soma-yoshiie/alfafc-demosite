@@ -418,6 +418,28 @@ export function IconFilm(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** 戦術ボード（クリップボード。ConsoleShell/HomeMenuのレール・メニューで共用） */
+export function IconClipboard(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <rect x="4" y="3" width="16" height="18" rx="2" />
+      <path d="M9 3h6v3H9z" />
+      <circle cx="12" cy="13" r="3.2" />
+      <path d="M12 3v3M4 13h2M18 13h2" />
+    </Svg>
+  );
+}
+
+/** 編集（鉛筆。IconPenと同形状だがボタン専用の記号文字置き換え用） */
+export function IconEdit(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+      <path d="m15 5 4 4" />
+    </Svg>
+  );
+}
+
 /** ハーフコート（長方形の下半分が点線＝敵陣ハーフの拡大表示） */
 export function IconHalfPitch(p: SVGProps<SVGSVGElement>) {
   return (

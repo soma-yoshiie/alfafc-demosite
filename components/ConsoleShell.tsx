@@ -11,6 +11,7 @@ import {
   IconBook,
   IconCalendarCheck,
   IconChat,
+  IconClipboard,
   IconCog,
   IconCone,
   IconFolder,
@@ -63,17 +64,6 @@ function IconHome() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 11.5 12 4l9 7.5" />
       <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" />
-    </svg>
-  );
-}
-
-function IconClipboard() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="3" width="16" height="18" rx="2" />
-      <path d="M9 3h6v3H9z" />
-      <circle cx="12" cy="13" r="3.2" />
-      <path d="M12 3v3M4 13h2M18 13h2" />
     </svg>
   );
 }

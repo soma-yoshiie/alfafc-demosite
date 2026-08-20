@@ -26,7 +26,7 @@ import {
   saveTeam,
   saveViewer,
 } from "@/lib/storage";
-import { addDaysStr, daysAgoStr, localDateStr } from "@/lib/dates";
+import { addDaysStr, localDateStr } from "@/lib/dates";
 import { SAMPLE_PLAYERS } from "@/lib/sampleTeam";
 import {
   addDays,
@@ -62,6 +62,25 @@ function sampleTeam(): TeamData {
   return {
     events: [
       {
+        id: "ev_practice_pastA",
+        kind: "practice",
+        title: "全体練習",
+        date: addDaysStr(today, -28),
+        time: "17:00",
+        endTime: "18:45",
+        place: "市民グラウンド",
+      },
+      {
+        id: "ev_practice_pastB",
+        kind: "practice",
+        title: "全体練習",
+        date: addDaysStr(today, -14),
+        time: "17:15",
+        endTime: "19:00",
+        place: "市民グラウンド",
+        note: "新戦術の確認",
+      },
+      {
         id: "ev_practice_today",
         kind: "practice",
         title: "全体練習",
@@ -76,8 +95,8 @@ function sampleTeam(): TeamData {
         kind: "match",
         title: "練習試合 vs 青空FC",
         date: addDaysStr(today, 2),
-        time: "9:30",
-        endTime: "12:30",
+        time: "9:15",
+        endTime: "12:00",
         place: "青空G",
       },
       {
@@ -113,14 +132,25 @@ function sampleTeam(): TeamData {
       },
     ],
     attendance: {
+      ev_practice_pastA: sampleAttendance(
+        { p09: "maybe", p14: "maybe", p04: "no", p12: "no" },
+        {},
+        ["p07"]
+      ),
+      ev_practice_pastB: sampleAttendance(
+        { p11: "maybe", p06: "no" },
+        {},
+        ["p02"]
+      ),
       ev_practice_today: sampleAttendance(
-        { p05: "no", p13: "maybe" },
-        { p05: "怪我のためお休みします" }
+        { p13: "maybe", p05: "no" },
+        { p05: "怪我のためお休みします" },
+        ["p16"]
       ),
       ev_match_next: sampleAttendance(
-        { p05: "maybe", p16: "no" },
-        { p16: "習い事と重なり遅れて参加します" },
-        ["p07", "p14"] // 未回答のまま（催促UIのデモ用）
+        { p03: "maybe", p10: "no" },
+        { p10: "所用のため参加できません" },
+        ["p07", "p09"] // 未回答のまま（催促UIのデモ用）
       ),
       // ev_practice_camp / ev_practice_meeting は未回答のまま（未回答デモを兼ねる）
     },
@@ -128,10 +158,10 @@ function sampleTeam(): TeamData {
       {
         id: "a1",
         ts: Date.now() - 3600_000,
-        text: "今週末は練習試合です。集合10時・忘れ物に注意！",
+        text: "今週末は練習試合です。集合8時45分・忘れ物に注意！",
       },
     ],
-    coaches: ["監督 田中", "スタッフ 鈴木"],
+    coaches: ["監督 岡本", "スタッフ 藤田"],
     categories: [
       { id: "cat_camp", label: "遠征・合宿", color: "#0f766e" },
       { id: "cat_meet", label: "保護者会", color: "#7c5cbf" },
@@ -143,19 +173,84 @@ function sampleTeam(): TeamData {
     matches: [
       {
         id: "m1",
-        date: daysAgoStr(5),
+        date: addDaysStr(today, -116),
         opponent: "みどり台SC",
-        competitionId: "cmp2",
-        competition: "練習試合",
+        competitionId: "cmp1",
         ourScore: 3,
         theirScore: 1,
         goals: [
           { playerId: "p10", minute: 12 },
-          { playerId: "p09", minute: 34, assistPlayerId: "p08" },
-          { playerId: "p10", minute: 70 },
+          { playerId: "p09", minute: 27, assistPlayerId: "p08" },
+          { playerId: "p10", minute: 39 },
         ],
-        subs: [{ outPlayerId: "p09", inPlayerId: "p15", minute: 60 }],
-        note: "前半から主導権を握れた。サイドの突破が機能。",
+        subs: [{ outPlayerId: "p09", inPlayerId: "p15", minute: 33 }],
+        note: "序盤から主導権を握れた。左右のワイドが起点になった。",
+      },
+      {
+        id: "m2",
+        date: addDaysStr(today, -95),
+        opponent: "白鷺FC",
+        competitionId: "cmp1",
+        ourScore: 1,
+        theirScore: 2,
+        goals: [{ playerId: "p08", minute: 41, assistPlayerId: "p06" }],
+        subs: [{ outPlayerId: "p07", inPlayerId: "p14", minute: 30 }],
+        note: "後半に運動量が落ち、終盤の失点が響いた。",
+      },
+      {
+        id: "m3",
+        date: addDaysStr(today, -67),
+        opponent: "東ヶ丘少年団",
+        competitionId: "cmp1",
+        ourScore: 2,
+        theirScore: 0,
+        goals: [
+          { playerId: "p11", minute: 8 },
+          { playerId: "p10", minute: 35, assistPlayerId: "p09" },
+        ],
+        subs: [],
+        note: "早い時間の先制が効いた。守備の連携も安定していた。",
+      },
+      {
+        id: "m4",
+        date: addDaysStr(today, -53),
+        opponent: "コスモスJFC",
+        competitionId: "cmp1",
+        ourScore: 2,
+        theirScore: 2,
+        goals: [
+          { playerId: "p09", minute: 15 },
+          { playerId: "p06", minute: 44 },
+        ],
+        subs: [{ outPlayerId: "p11", inPlayerId: "p15", minute: 30 }],
+        note: "終盤に追いつかれたが、粘って追いつき返した。",
+      },
+      {
+        id: "m5",
+        date: addDaysStr(today, -32),
+        opponent: "青葉SC",
+        competitionId: "cmp2",
+        ourScore: 0,
+        theirScore: 3,
+        goals: [],
+        subs: [{ outPlayerId: "p07", inPlayerId: "p14", minute: 25 }],
+        note: "相手の運動量に終始押し込まれた。次への課題が見えた試合。",
+      },
+      {
+        id: "m6",
+        date: addDaysStr(today, -11),
+        opponent: "高砂フットボールクラブ",
+        competitionId: "cmp2",
+        ourScore: 4,
+        theirScore: 2,
+        goals: [
+          { playerId: "p10", minute: 5 },
+          { playerId: "p08", minute: 22, assistPlayerId: "p11" },
+          { playerId: "p09", minute: 30 },
+          { playerId: "p10", minute: 38 },
+        ],
+        subs: [{ outPlayerId: "p10", inPlayerId: "p15", minute: 42 }],
+        note: "終始主導権を握り、複数得点で快勝。",
       },
     ],
   };

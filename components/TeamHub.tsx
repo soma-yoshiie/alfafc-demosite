@@ -43,6 +43,7 @@ import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
+import { IconEdit } from "./icons";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -948,14 +949,16 @@ function EventCard({
         {isCoach && (
           <span className="evacts">
             <button
+              aria-label="編集"
               onClick={(e) => {
                 e.stopPropagation();
                 setSheet({ type: "event", event: ev });
               }}
             >
-              ✎
+              <IconEdit />
             </button>
             <button
+              aria-label="削除"
               onClick={(e) => {
                 e.stopPropagation();
                 if (ev.seriesId) {
@@ -2852,17 +2855,19 @@ function SheetHost({
                   </div>
                   <button
                     className="msgdel"
+                    aria-label="編集"
                     onClick={() => {
                       setCatEditId(c.id);
                       setCatEditLabel(c.label);
                       setCatEditColor(c.color);
                     }}
                   >
-                    ✎
+                    <IconEdit />
                   </button>
                   {!c.builtin && (
                     <button
                       className="msgdel"
+                      aria-label="削除"
                       onClick={() => {
                         if (
                           window.confirm(

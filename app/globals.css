@@ -1170,21 +1170,6 @@ header {
   color: var(--mut);
   font-variant-numeric: tabular-nums;
 }
-.gantt {
-  margin-top: 7px;
-  height: 9px;
-  border-radius: 5px;
-  background: var(--panel2);
-  position: relative;
-  overflow: hidden;
-}
-.gbar {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 5px;
-  opacity: 0.9;
-}
 .cedit {
   margin-top: 11px;
   display: none;
@@ -1912,24 +1897,6 @@ header {
 }
 
 /* ---------- Library / save / share / plan ---------- */
-.upsell {
-  margin: 4px 16px 14px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px;
-  font-size: 13px;
-  color: var(--mut);
-  line-height: 1.7;
-}
-.upsell b {
-  color: var(--lime);
-}
-.upsell .bigbtn {
-  width: 100%;
-  margin: 12px 0 0;
-}
-
 .shareprev {
   margin: 0 16px 12px;
   border-radius: 14px;
@@ -2380,7 +2347,16 @@ header {
   border-radius: 8px;
   width: 30px;
   height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+}
+/* 直下svgのみ対象(<E n="trash"/>は.emj svgが別途100%基準で処理するため、
+   ここでは.emjでラップされていない直接のIconEditのみを1em(=隣の.emjと外形一致)へ揃える) */
+.evacts button > svg {
+  width: 1em;
+  height: 1em;
 }
 .evmeta {
   font-size: 12px;
@@ -2517,7 +2493,16 @@ header {
   color: var(--mut);
   border-radius: 8px;
   padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+}
+/* 直下svgのみ対象(<E n="trash"/>は.emj svgが別途100%基準で処理するため、
+   ここでは.emjでラップされていない直接のIconEditのみを1em(=隣の.emjと外形一致)へ揃える) */
+.msgdel > svg {
+  width: 1em;
+  height: 1em;
 }
 .msgtext {
   font-size: 14px;
@@ -3033,50 +3018,6 @@ header {
   font-family: var(--font-ui);
   outline: none;
 }
-.login-or {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--mut);
-  font-size: 12px;
-  margin: 14px 0;
-}
-.login-or::before,
-.login-or::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: var(--line);
-}
-.login-sso {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  background: #ffffff;
-  color: #1f1f1f;
-  border: 0;
-  border-radius: 12px;
-  padding: 12px;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-  margin-bottom: 10px;
-}
-.login-sso:active { transform: scale(0.98); }
-.login-guest {
-  width: 100%;
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--ink);
-  border-radius: 12px;
-  padding: 12px;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-}
-.login-guest:active { transform: scale(0.98); }
 .login-note {
   color: var(--mut);
   font-size: 11px;
@@ -3131,26 +3072,6 @@ header {
 }
 
 /* ---------- 選手管理（出席率・怪我） ---------- */
-.memnote {
-  font-size: 11px;
-  color: var(--mut);
-  margin: 12px 2px 8px;
-}
-.memrow {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  cursor: pointer;
-}
-.memmain { flex: 1; min-width: 0; }
-.memname { font-weight: 800; font-size: 14px; }
-.memname small { color: var(--lime-dim); font-weight: 700; margin-left: 4px; }
-.membars { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .ratebar {
   flex: 1;
   height: 7px;
@@ -3541,73 +3462,6 @@ header {
   flex: 0 0 auto;
 }
 .homemark svg { width: 100%; height: 100%; }
-.homehello {
-  font-weight: 800;
-  font-size: 16px;
-  margin: 10px 4px 14px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.homehello span {
-  font-size: 11px;
-  font-weight: 800;
-  color: #ffffff;
-  background: var(--lime);
-  padding: 3px 10px;
-  border-radius: 999px;
-}
-.homegrid {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.homecard {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  width: 100%;
-  text-align: left;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 15px 14px;
-  cursor: pointer;
-  color: var(--ink);
-  font-family: var(--font-ui);
-}
-.homecard:active { transform: scale(0.99); background: var(--panel2); }
-.homeicon {
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  border-radius: 13px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  display: grid;
-  place-items: center;
-  color: var(--lime);
-}
-.homeicon svg { width: 22px; height: 22px; }
-.homemeta { flex: 1; min-width: 0; }
-.hometitle {
-  font-weight: 800;
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.homelock { font-size: 12px; }
-.homedesc {
-  font-size: 12px;
-  color: var(--mut);
-  margin-top: 2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.homechev { color: var(--mut); font-size: 22px; flex: 0 0 auto; }
-
 /* ---------- 選手プロフィール: メール / ヒント ---------- */
 .profmail {
   margin: 0 16px 10px;
@@ -4197,7 +4051,14 @@ header {
   background: var(--panel2);
   color: var(--ink);
   font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+}
+.chatsend svg {
+  width: 18px;
+  height: 18px;
 }
 .chatplus.on {
   border-color: var(--lime);
@@ -4489,7 +4350,7 @@ header {
   text-align: center;
   line-height: 1.25;
 }
-/* 説明文はモバイルでは非表示（スプリングボード維持）、PCのみ表示 */
+/* タイル説明は全プラットフォームで非表示（スプリングボード維持）。文言はデータとして保持 */
 .appdesc {
   display: none;
 }
@@ -7375,6 +7236,11 @@ header {
   margin-left: 5px;
   color: var(--mut);
   font-size: 12px;
+}
+.dx .drilltitle .dtedit svg {
+  width: 1em;
+  height: 1em;
+  display: block;
 }
 .dtstate {
   flex: 0 0 auto;
@@ -11372,11 +11238,6 @@ header {
     font-size: 10px;
     color: var(--mut);
   }
-  .mdb-topicnext {
-    margin-top: 10px;
-    font-size: 10.5px;
-    color: var(--mut);
-  }
   .mdb-feedlist {
     height: 160px;
     overflow: hidden;
@@ -11487,7 +11348,6 @@ header {
   .scorerrow .rank,
   .scorerrow .sgoals,
   .mvscore,
-  .memname small,
   .pcprice {
     color: var(--ink);
   }
@@ -11562,9 +11422,6 @@ header {
   .fpbtn.fplay {
     background: var(--accent);
   }
-  .upsell b {
-    color: var(--accent);
-  }
 
   /* ---- 選手管理/プラン/設定シート: .sheet・.screenbody配下以外の
      フォールバック(単独マウント時にも青を効かせる) ---- */
@@ -11631,12 +11488,6 @@ header {
   }
 
   /* ---- ホーム・チャット・アプリ一覧 ---- */
-  .homehello span {
-    background: var(--accent);
-  }
-  .homeicon {
-    color: var(--accent);
-  }
   .hometeam {
     color: var(--accent);
   }
@@ -11769,8 +11620,6 @@ header {
   .cedit input[type="range"],
   .tltick,
   .grab,
-  .login-or::before,
-  .login-or::after,
   .pubtoggle .switch,
   .chatchip button,
   .chipsep {
@@ -11847,10 +11696,7 @@ header {
   .calwd,
   .caldate,
   .dynadd,
-  .login-sso,
-  .login-guest,
   .pubtoggle,
-  .memname small,
   .ratetxt,
   .injbadge,
   .bench-ghost .gname,
@@ -11859,7 +11705,6 @@ header {
   .logintabs button,
   .login-err,
   .login-switch,
-  .homehello span,
   .sheetback,
   .catchip,
   .calviewtoggle button,
@@ -12008,15 +11853,12 @@ header {
   .mopp,
   .dsec-h,
   .scoreinput input,
-  .memname,
   .injarea,
   .bench-ghost .gdisc,
   .formbtn .fb-label,
   .formbtn .fb-cur,
   .setsec-h,
   .arttitle,
-  .homehello,
-  .hometitle,
   .agtitle,
   .convavatar,
   .convname,
@@ -12248,7 +12090,6 @@ header {
   .mdb-pillcaption,
   .mdb-kpidelta,
   .mdb-panel-sub,
-  .mdb-topicnext,
   .mdb-feedtime {
     font-size: 10px;
   }
@@ -12530,11 +12371,9 @@ header {
   .statcard,
   .bcard,
   .msgcard,
-  .homecard,
   .plancard,
   .dxside,
   .todaycard,
-  .memrow,
   .chatpicker {
     border-radius: var(--r-lg);
   }
@@ -12584,6 +12423,35 @@ header {
   }
   .dx header {
     padding: 10px 18px;
+  }
+
+  /* ---- D3: 見出し・ラベル直前の装飾アイコン(.emj)をPCで非表示化 ----
+     監査(<E n>91箇所中64箇所が「見出し/ラベル直前の飾り」=絵文字時代の名残)を受け、
+     GitHub等の実装慣行(見出し文字列に装飾アイコンを持たない)へ寄せる。
+     対象は「見出し/ラベル/ステータスバナー」系コンテナの直下のみに限定し、
+     ボタン内・ナビ(レール/ボトムナブ)・通知ベル・条件アイコン(.kpicond/.notecond等)・
+     データ行(.evmeta/.dline/.mvmeta等)・ピッチ上表示は対象外(機能アイコンのため常時表示を維持)。
+     TSX側からアイコン要素は削除しない(モバイルは本ブロック外のため無変更)。 */
+  h2 .emj,
+  h3 .emj,
+  .notesec-h .emj,
+  .dsec-h .emj,
+  .setsec-h .emj,
+  .sech .emj,
+  .apanel-h .emj,
+  .repsec-h .emj,
+  .homesec-h .emj,
+  .dlvblock-h .emj,
+  .formgroup-h .emj,
+  .wsheet-h .emj,
+  .formfield label .emj,
+  .folderhdr .emj,
+  .streakcard .emj,
+  .homecta-done .emj,
+  .homecta-streak .emj,
+  .stattitle .emj,
+  .trialbanner .emj {
+    display: none;
   }
 }
 

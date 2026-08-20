@@ -141,8 +141,7 @@ export function generateSeasonSummary(d: Omit<SeasonReportData, "summary">): str
   if (d.assignmentTotal > 0) s.push(`個人課題は${d.assignmentDone}/${d.assignmentTotal}件を達成。`);
   if (d.insights[0]) s.push(`代表的な気づき：「${d.insights[0]}」。`);
   if (s.length === 0) s.push("この期間の記録はまだ少なめです。まずはノート提出から始めましょう。");
-  else s.push("次のシーズンも継続して取り組んでいきましょう。");
-  return s.join(" ");
+  return s.join("");
 }
 
 /* ---------- 共有用1枚画像（PNG dataURL） ---------- */

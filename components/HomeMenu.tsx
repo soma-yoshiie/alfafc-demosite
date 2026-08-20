@@ -19,6 +19,7 @@ import {
   IconBook,
   IconCalendarCheck,
   IconChat,
+  IconClipboard,
   IconCog,
   IconCone,
   IconFolder,
@@ -184,7 +185,7 @@ export default function HomeMenu() {
         <div className="homegreet">
           <div className="homedate">{today}</div>
           <div className="homename">
-            こんにちは、{board.auth.name} さん
+            こんにちは、{board.auth.name}さん
             <span className="homerole">{coach ? "スタッフ" : "選手・保護者"}</span>
           </div>
         </div>
@@ -363,25 +364,25 @@ export default function HomeMenu() {
               <Tile
                 icon={<IconClipboard />}
                 label="戦術ボード"
-                desc="スタメン作成・戦術アニメーション"
+                desc="スタメンを並べて動きをアニメで確認"
                 onClick={() => board.setScreen("board")}
               />
               <Tile
                 icon={<IconFolder />}
                 label="保存した戦術"
-                desc="保存した戦術を一覧・読み込み"
+                desc="保存した戦術を選んで読み込む"
                 onClick={() => board.openSheet({ type: "library" })}
               />
               <Tile
                 icon={<IconCone />}
                 label="練習メニュー"
-                desc="コーン配置・動線で練習図を作成"
+                desc="コーンを並べて動線を描き、練習図を作る"
                 onClick={() => board.setScreen("drill")}
               />
               <Tile
                 icon={<IconFolder />}
                 label="保存した練習"
-                desc="保存した練習メニューを一覧"
+                desc="保存した練習メニューを一覧で確認する"
                 onClick={() => {
                   board.setDrillIntent("library");
                   board.setScreen("drill");
@@ -390,32 +391,32 @@ export default function HomeMenu() {
               <Tile
                 icon={<IconCalendarCheck />}
                 label="チーム運営"
-                desc="名簿・出欠・カレンダー・試合記録"
+                desc="名簿や出欠、試合の記録をまとめて管理する"
                 onClick={() => board.setScreen("team")}
               />
               <Tile
                 icon={<IconChat />}
                 label="チャット"
-                desc="戦術・画像・動画を送受信"
+                desc="戦術や写真、動画をチームに送って共有する"
                 onClick={() => board.setScreen("chat")}
               />
               <Tile
                 icon={<IconNote />}
                 label="サッカーノート"
-                desc="試合・練習・自主練の振り返り"
+                desc="試合や練習を振り返ってノートに書く"
                 badge={noteUnread}
                 onClick={() => board.setScreen("notebook")}
               />
               <Tile
                 icon={<IconBook />}
                 label="お役立ち記事"
-                desc="練習法・コンディション・戦術"
+                desc="練習法やコンディション作りの記事を読む"
                 onClick={() => board.openSheet({ type: "articles" })}
               />
               <Tile
                 icon={<IconCog />}
                 label="設定"
-                desc="チーム名・プラン・公開設定"
+                desc="チーム名やプラン、公開範囲を変更する"
                 onClick={() => board.openSheet({ type: "settings" })}
               />
             </>
@@ -424,19 +425,19 @@ export default function HomeMenu() {
               <Tile
                 icon={<IconCalendarCheck />}
                 label="チーム"
-                desc="カレンダー・試合記録"
+                desc="予定や試合の結果を確認する"
                 onClick={() => board.setScreen("team")}
               />
               <Tile
                 icon={<IconChat />}
                 label="チャット"
-                desc="スタッフ・チームとやりとり"
+                desc="スタッフやチームとメッセージをやりとりする"
                 onClick={() => board.setScreen("chat")}
               />
               <Tile
                 icon={<IconNote />}
                 label="サッカーノート"
-                desc="試合・練習・自主練の振り返り"
+                desc="試合や練習を振り返ってノートに書く"
                 badge={noteUnread}
                 onClick={() => board.setScreen("notebook")}
               />
@@ -445,17 +446,6 @@ export default function HomeMenu() {
         </div>
       </div>
     </div>
-  );
-}
-
-function IconClipboard() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="3" width="16" height="18" rx="2" />
-      <path d="M9 3h6v3H9z" />
-      <circle cx="12" cy="13" r="3.2" />
-      <path d="M12 3v3M4 13h2M18 13h2" />
-    </svg>
   );
 }
 
@@ -840,8 +830,13 @@ function MatchdayBoard({
   }, [players, team.team]);
   const attDelta = trendDelta(attSeries);
 
-  const rec = useMemo(() => matchSummary(team.team.matches), [team.team.matches]);
-  const winPct = rec.winPct;
+  // 勝率タイルの値: winDelta(「前月比」)と期間の意味論を揃えるため、
+  // 全期間集計(matchSummary)ではなく winSeries の最新の計測月(=直近の非null値)を使う。
+  // 計測月が1件もない(=全月null)場合は null のまま(「—」表示)。
+  const winPct = useMemo(() => {
+    const vals = winSeries.map((p) => p.value).filter((v): v is number => v != null);
+    return vals.length ? vals[vals.length - 1] : null;
+  }, [winSeries]);
   const winDelta = trendDelta(winSeries);
 
   const teamTechAll = useMemo(() => aggregateTech(board.notebook), [board.notebook]);
@@ -941,7 +936,6 @@ function MatchdayBoard({
   }, [topicMetricIdx, monthMatches, monthEvents, monthNotes, team.team, players, board.notebook, todayISO]);
   const topicMax = topic.rows[0]?.value ?? 0;
   const topicUnit = TOPIC_UNITS[topicMetricIdx];
-  const nextTopicLabel = TOPIC_LABELS[(topicMetricIdx + 1) % 4];
 
   // トピック(月ローテ)が切り替わるたびにバーを0%から伸長させ直す
   const [topicDrawn, setTopicDrawn] = useState(false);
@@ -1047,7 +1041,7 @@ function MatchdayBoard({
           <div className="mdb-greet">
             <div className="mdb-date">{today}</div>
             <div className="mdb-name">
-              こんにちは、{board.auth.name} さん
+              こんにちは、{board.auth.name}さん
               <span className="mdb-role">スタッフ</span>
             </div>
           </div>
@@ -1272,7 +1266,6 @@ function MatchdayBoard({
               </div>
             )}
             {topic.fallback && <div className="mdb-topicfallback">全期間</div>}
-            <div className="mdb-topicnext">来月は{nextTopicLabel}が主役</div>
           </div>
 
           <div className="mdb-panel mdb-feed">

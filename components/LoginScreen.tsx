@@ -103,7 +103,7 @@ export default function LoginScreen({ onLogin }: { onLogin: (s: Session) => void
         <div className="login-logo">
           ALFA<b> FOOTBALL</b>
         </div>
-        <div className="login-tag">ログインして続ける</div>
+        <div className="login-tag">チームの戦術とノートを、ひとつの場所で。</div>
       </div>
 
       <div className="login-card">

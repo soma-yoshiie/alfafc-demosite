@@ -68,12 +68,12 @@ export function generatePlayerAlerts(k: Omit<PlayerKpi, "alerts">): PlayerAlert[
   if (k.uncommented > 0)
     a.push({ level: "info", text: `未コメントのノートが${k.uncommented}件あります。` });
   if (k.soloStreak >= 5)
-    a.push({ level: "good", text: `自主練が${k.soloStreak}週連続。良い習慣です。` });
+    a.push({ level: "good", text: `自主練が${k.soloStreak}週連続で続いています。` });
   if (k.assignmentTotal > 0 && k.assignmentDone === 0)
-    a.push({ level: "info", text: "配布した課題が未達成です。" });
+    a.push({ level: "info", text: "配布した課題が未達成、または未回答です。" });
   if (k.conditionRecent === "bad" || k.conditionRecent === "tired")
     a.push({ level: "info", text: "直近のコンディションが低めです。負荷に注意。" });
-  if (a.length === 0) a.push({ level: "good", text: "特に問題なし。順調です。" });
+  if (a.length === 0) a.push({ level: "good", text: "直近のアラートはありません。" });
   return a;
 }
 
