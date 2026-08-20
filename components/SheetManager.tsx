@@ -1479,9 +1479,9 @@ export function LibraryBody({
           <div className="list">
             {plays.length === 0 ? (
               <div className="empty-msg">
-                まだ保存された戦術はありません。
+                <b>保存された戦術はありません</b>
                 <br />
-                盤面を作って上部の保存ボタンで保存しましょう。
+                盤面を作って共有・出力→ライブラリに保存から追加できます
               </div>
             ) : (
               <>
@@ -1519,7 +1519,11 @@ export function LibraryBody({
           </h2>
           <div className="list">
             {sortedDrills.length === 0 ? (
-              <div className="empty-msg">まだ保存された練習メニューはありません。</div>
+              <div className="empty-msg">
+                <b>保存された練習メニューはありません</b>
+                <br />
+                練習メニューを作成して保存すると、ここに一覧できます
+              </div>
             ) : (
               sortedDrills.map((d) => <DrillRow key={d.id} drill={d} />)
             )}

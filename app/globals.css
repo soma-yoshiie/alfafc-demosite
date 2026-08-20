@@ -13030,6 +13030,293 @@ header {
     font-weight: 600;
   }
 
+  /* =========================================================
+     Phase C: 一覧の行文法
+     一覧行(縦に繰り返される行)を「行の枠/角丸/背景を外し、border-bottom 1pxの横罫のみ
+     +hover背景#f6f8fa」というGitHub型の文法へ統一する。単独カード(ヒーロー/KPI/フォーム)・
+     複数列に折り返すカードギャラリー(.notecards/.kpigrid等のauto-fillグリッド)は対象外。
+     既存の「===== PC密度調整 Phase C =====」(10643, kpicard2/cmpbar)とは別区画のため注意。
+     適用対象・表の列構成はStructuredOutputのmapping参照。
+     ========================================================= */
+
+  /* ---- C1/C2: 一覧の表化で使う共通<table>文法。数値列は.numでtabular-nums右寄せ ---- */
+  .ptable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fs-body-s);
+  }
+  .ptable thead th {
+    text-align: left;
+    padding: 0 10px 8px;
+    font-size: var(--fs-label);
+    font-weight: 700;
+    color: var(--mut);
+    border-bottom: 1px solid var(--outline-strong);
+  }
+  .ptable tbody td {
+    padding: 10px;
+    border-bottom: 1px solid var(--outline);
+    vertical-align: middle;
+    color: var(--ink);
+  }
+  .ptable tbody tr:last-child td {
+    border-bottom: 0;
+  }
+  .ptable tbody tr {
+    cursor: pointer;
+  }
+  .ptable tbody tr:hover td {
+    background: #f6f8fa;
+  }
+  .ptable tbody tr.sel td {
+    background: var(--accent-tint);
+  }
+  .ptable th.num,
+  .ptable td.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  /* 全セルをnowrapにし、余り幅は氏名列(width:99%)へ集める。col-name以外は
+     shrink-to-fitで内容幅ちょうどになるため、状態バッジ等が1文字ずつ縦に
+     折れる事故(幅18pxに圧縮)を防ぐ */
+  .ptable th,
+  .ptable td {
+    white-space: nowrap;
+  }
+  .ptable .col-name {
+    width: 99%;
+  }
+  /* C1: 選手名セル(条件アイコン+氏名+アラート+レポート導線を1セルに横並び) */
+  .ptable-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ptable-nm {
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .ptable-cond {
+    flex: none;
+    font-size: 15px;
+    line-height: 1;
+  }
+  .ptable-alerts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .ptable-alerts .kpialert {
+    padding: 3px 8px;
+    font-size: 10.5px;
+  }
+  .ptable-report {
+    margin-left: auto;
+  }
+  /* C2: 名簿のポジションバッジ。従来の.prow .pos(1449)は.prow配下限定のスコープのため、
+     <table>内でも使えるよう見た目(色地+白文字+角丸)だけ複製する(色分岐は.pos.gk等(1459-1470)を流用) */
+  .ptable .pos {
+    display: inline-block;
+    font-family: var(--font-display);
+    font-size: 12px;
+    letter-spacing: 0.5px;
+    color: #fff;
+    border-radius: var(--r-sm);
+    padding: 3px 10px;
+  }
+  /* コーチダッシュボードの選手別レポート表(.ptable)に器を与える。他画面の.ptable
+     (名簿等)は独自の器(.roslist等)を別途持つため、.dashcol配下限定でスコープする */
+  .coachapp .dashcol .ptable {
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    overflow: hidden;
+  }
+
+  /* ---- C3: 出欠チップ(.evsummary)を固定4カラムのgridにし、縦に並ぶ予定間で
+     出席/未定/欠席/未記録の数字の桁位置を揃える。各列のラベル文言は行によらず一定のため、
+     セルを右寄せするだけで末尾の数字の位置が全行で一致する ---- */
+  .teamapp .evsummary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+    align-items: center;
+    column-gap: 10px;
+  }
+  .teamapp .evsummary .att {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .teamapp .evsummary .evopen {
+    margin-left: 0;
+    white-space: nowrap;
+  }
+
+  /* ---- C4: カード型一覧を横罫の行文法へ。対象は実際に縦一列で繰り返される一覧のみ
+     (複数列に折り返すカードギャラリーや単独のヒーロー/KPIカードは対象外)。
+     :not(:has(~ .X))で「後続に同クラスの兄弟が無い=一覧内で最後の行」を判定し、
+     最終行だけborder-bottomを外す ---- */
+
+  /* 出欠タブ/試合記録タブの3ペイン左一覧。既存(10608-10639)は背景hoverのみのため、
+     ここでborder-bottomと指定色#f6f8faのhoverを追加する(ソース順で本ブロックが後段のため上書きできる) */
+  .teamapp:has(.teammain) .scroll .evcard,
+  .teamapp:has(.teammain) .scroll .matchcard {
+    border-radius: 0;
+    border-bottom: 1px solid var(--outline);
+  }
+  .teamapp:has(.teammain) .scroll .evcard:not(:has(~ .evcard)),
+  .teamapp:has(.teammain) .scroll .matchcard:not(:has(~ .matchcard)) {
+    border-bottom: 0;
+  }
+  .teamapp:has(.teammain) .scroll .evcard:hover,
+  .teamapp:has(.teammain) .scroll .matchcard:hover {
+    background: #f6f8fa;
+  }
+
+  /* 選手ピッカー・技術スタッツ等(SheetManager .list > .prow)。器(.tmdetail/.nb-kpiinline)は
+     既に1px枠を持つため器側の追加は不要。名簿タブの.prowはC2で<table>化したためここでは対象外 */
+  .teamapp .list .prow,
+  .coachapp .list .prow {
+    border-radius: 0;
+    border-bottom: 1px solid var(--outline);
+  }
+  .teamapp .list .prow:not(:has(~ .prow)),
+  .coachapp .list .prow:not(:has(~ .prow)) {
+    border-bottom: 0;
+  }
+  .teamapp .list .prow:hover,
+  .coachapp .list .prow:hover {
+    background: #f6f8fa;
+  }
+
+  /* 連絡一覧(.msgcard)。ホームの2件プレビュー(器の無い単独ティーザー)は対象外とし、
+     「連絡」シートの全件一覧(.list内、器は.tmdetailが既に持つ)だけを行文法へ */
+  .teamapp .list .msgcard {
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--outline);
+  }
+  .teamapp .list .msgcard:not(:has(~ .msgcard)) {
+    border-bottom: 0;
+  }
+  .teamapp .list .msgcard:hover {
+    background: #f6f8fa;
+  }
+
+  /* 得点/アシストランキング(.scorerrow)。基底(2700-2705)で既にborder-bottom:1px var(--line)
+     (=var(--outline)の別名)を持つため、ここでは最終行の罫を消しhoverを追加するのみでよい */
+  .teamapp .scorerrow:not(:has(~ .scorerrow)) {
+    border-bottom: 0;
+  }
+  .teamapp .scorerrow:hover {
+    background: #f6f8fa;
+  }
+
+  /* コーチ通知(.notifrow)。基底(6292)のカード枠(border/radius/margin)を外し横罫化する。
+     3ペイン一覧(.coachapp:has(.nbmain) .scroll)・ダッシュボード埋め込み(「未確認の提出」)・
+     選手側の通知タブのいずれも縦一列の一覧のため、対象を絞らず.noteapp全体に適用する */
+  .noteapp .notifrow {
+    border: 0;
+    border-radius: 0;
+    background: none;
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--outline);
+  }
+  .noteapp .notifrow:not(:has(~ .notifrow)) {
+    border-bottom: 0;
+  }
+  .noteapp .notifrow:hover {
+    background: #f6f8fa;
+  }
+  .noteapp .notifrow.unread {
+    background: #edf6f0;
+  }
+
+  /* コーチ提出一覧(.notecard、3ペイン左列限定=12799で既にコンパクト化済みの行のみ対象)。
+     ノート検索・選手ホームの複数列ギャラリー(.notecards auto-fillグリッド)は対象外のまま維持する */
+  .coachapp:has(.nbmain) .scroll .notecard {
+    border-bottom: 1px solid var(--outline);
+    border-radius: 0;
+  }
+  .coachapp:has(.nbmain) .scroll .notecard:not(:has(~ .notecard)) {
+    border-bottom: 0;
+  }
+  .coachapp:has(.nbmain) .scroll .notecard:hover {
+    background: #f6f8fa;
+  }
+
+  /* コーチ配信一覧(.dlvcard、3ペイン=12830で既にコンパクト化済みの行のみ対象) */
+  .coachapp:has(.nbmain) .dlvcard {
+    border-bottom: 1px solid var(--outline);
+    border-radius: 0;
+  }
+  .coachapp:has(.nbmain) .dlvcard:not(:has(~ .dlvcard)) {
+    border-bottom: 0;
+  }
+  .coachapp:has(.nbmain) .dlvcard:hover {
+    background: #f6f8fa;
+  }
+
+  /* チャット一覧(.convrow、3ペイン=9452で既にコンパクト化済みの行のみ対象) */
+  .chatapp:has(.chatmain) .convrow {
+    border-bottom: 1px solid var(--outline);
+    border-radius: 0;
+  }
+  .chatapp:has(.chatmain) .convrow:not(:has(~ .convrow)) {
+    border-bottom: 0;
+  }
+  .chatapp:has(.chatmain) .convrow:hover {
+    background: #f6f8fa;
+  }
+
+  /* ライブラリ一覧(.librow)。基底(10046-10063)はhoverのみで横罫が無いため追加する。
+     器(.liblist)も枠を持たないためoutline+r10を合わせて与える。
+     フォルダ配下では行がネストし兄弟関係が折れるため、最終行判定(:not(:has(~ .librow)))は
+     ここでは付与しない(最終行のみ罫が二重に見える程度の軽微な差にとどめる) */
+  .libapp .liblist {
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+    padding: 4px;
+  }
+  .libapp .librow {
+    border-bottom: 1px solid var(--outline);
+  }
+  .libapp .librow:hover {
+    background: #f6f8fa;
+  }
+  /* 一覧全体としての最終行だけ下罫を外す。フォルダ配下(.libfolder)は行が
+     ネストするため、.liblistの直接の子(未分類/練習の平坦リスト)向けの指定と、
+     最後のフォルダ配下の最終行向けの指定を両方与える */
+  .libapp .liblist > .librow:last-child,
+  .libapp .liblist > .libfolder:last-child .librow:last-child {
+    border-bottom: 0;
+  }
+  .libapp .librow {
+    border-radius: 0;
+  }
+
+  /* ---- C5: 空状態の2行文法。1行目(<b>)=事実の宣言(ink・太字)、
+     2行目(<b>の外側、既存の.mut系文字色を継承)=次の一手。感嘆符・絵文字・励ましは使わない ---- */
+  .empty-msg b,
+  .nbempty b,
+  .libempty b {
+    display: block;
+    margin-bottom: 4px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  /* ライブラリ: 同義の空文が左右ペインに同時表示される問題を、右ペイン側1つへ集約する。
+     :has(.libctrls)で「左ペインに他の操作導線がある(=戦術タブ)」場合のみ左の.empty-msgを隠す。
+     練習タブは.libctrls相当の導線を持たず、隠すと左ペインが完全に空白になるため対象外のまま残す */
+  .libapp .libpane:has(.libctrls) > .empty-msg {
+    display: none;
+  }
+
   /* ===== 共有コンソールシェル（左レール+メイン）: アプリ全体の外枠 ===== */
   /* 行高を明示しないと内容がはみ出た際にトラックが伸びて .conrail がスクロール不能になる */
   .conshell { display: grid; grid-template-columns: 208px minmax(0, 1fr); grid-template-rows: 100dvh; height: 100dvh; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MatchNote, NoteKind, NotebookEntry, PracticeNote, SoloNote } from "@/lib/types";
 import { NOTE_KIND_LABEL, SOLO_KIND_LABEL } from "@/lib/types";
 import { E, ConditionIcon } from "./Emoji";
@@ -15,6 +15,23 @@ import {
   type NotifTarget,
 } from "@/lib/notifications";
 import { useBoard, type KpiMetric } from "./BoardProvider";
+
+const PC_MQ = "(min-width: 1024px)";
+
+/** PC幅かどうかを追跡するフック（TeamHub.tsx usePc() と同じ手法） */
+function usePc(): boolean {
+  const [pc, setPc] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia(PC_MQ).matches
+  );
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mql = window.matchMedia(PC_MQ);
+    const onChange = () => setPc(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, []);
+  return pc;
+}
 
 function fmt(d: string): string {
   const [y, m, day] = d.split("-").map(Number);
@@ -86,7 +103,11 @@ export function NotificationsView({
 
       <div className="notesec-h" style={{ marginTop: 14 }}>最近の動き</div>
       {events.length === 0 ? (
-        <div className="empty-msg">通知はまだありません。</div>
+        <div className="empty-msg">
+          <b>通知はまだありません</b>
+          <br />
+          出欠・ノート・配信の更新があるとここに表示されます
+        </div>
       ) : (
         events.map((n) => (
           <button
@@ -227,6 +248,8 @@ export function CoachDashboard({
 }) {
   const board = useBoard();
   const [showHeat, setShowHeat] = useState(false);
+  // 選手別レポート(kpigrid/kpicard)をPCのみ<table class="ptable">へ切替える(C1)。モバイルは従来のカード描画のまま
+  const pc = usePc();
 
   const { kpis, summary } = useMemo(() => {
     const team = loadTeam();
@@ -283,7 +306,7 @@ export function CoachDashboard({
 
   // PCはモーダルを出さず onOpenKpi でペイン表示、モバイル(またはonOpenKpi未指定)は従来のシート
   const openKpi = (metric: KpiMetric) => {
-    if (onOpenKpi && typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+    if (onOpenKpi && pc) {
       onOpenKpi(metric);
     } else {
       board.openSheet({ type: "kpi", kpiMetric: metric });
@@ -372,36 +395,96 @@ export function CoachDashboard({
         </>
       )}
 
-      <div className="kpigrid">
-      {kpis.map((k) => (
-        <button key={k.playerId} className="kpicard" onClick={() => onOpenPlayer(k.playerId)}>
-          <div className="kpihd">
-            <span className="kpiname">{k.name}</span>
-            <span className="kpicond">{k.conditionRecent ? <ConditionIcon c={k.conditionRecent} /> : ""}</span>
-            <span
-              className="kpireport"
-              style={{ marginLeft: "auto" }}
-              role="button"
-              tabIndex={0}
-              onClick={(e) => { e.stopPropagation(); onReport(k.playerId); }}
-            >
-              <E n="doc" /> レポート
-            </span>
-          </div>
-          <div className="kpistats">
-            <span>出席 {k.attendancePct != null ? k.attendancePct + "%" : "—"}</span>
-            <span>ノート {k.noteCount}</span>
-            <span>自主練 {k.soloCount}{k.soloStreak > 0 && <> (<E n="fire" /> 週{k.soloStreak})</>}</span>
-            {k.assignmentTotal > 0 && <span>課題 {k.assignmentDone}/{k.assignmentTotal}</span>}
-          </div>
-          <div className="kpialerts">
-            {k.alerts.map((a, i) => (
-              <span key={i} className={`kpialert ${a.level}`}>{a.text}</span>
+      {pc ? (
+        <table className="ptable">
+          <thead>
+            <tr>
+              <th>選手</th>
+              <th className="num">出席率</th>
+              <th className="num">ノート</th>
+              <th className="num">自主練</th>
+              <th className="num">継続</th>
+              <th className="num">課題進捗</th>
+            </tr>
+          </thead>
+          <tbody>
+            {kpis.map((k) => (
+              <tr
+                key={k.playerId}
+                className="ptable-row"
+                tabIndex={0}
+                onClick={() => onOpenPlayer(k.playerId)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenPlayer(k.playerId);
+                  }
+                }}
+              >
+                <td>
+                  <div className="ptable-main">
+                    <span className="ptable-cond">{k.conditionRecent ? <ConditionIcon c={k.conditionRecent} /> : ""}</span>
+                    <span className="ptable-nm">{k.name}</span>
+                    {k.alerts.length > 0 && (
+                      <span className="ptable-alerts">
+                        {k.alerts.map((a, i) => (
+                          <span key={i} className={`kpialert ${a.level}`}>{a.text}</span>
+                        ))}
+                      </span>
+                    )}
+                    <span
+                      className="kpireport ptable-report"
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onReport(k.playerId); }}
+                    >
+                      <E n="doc" /> レポート
+                    </span>
+                  </div>
+                </td>
+                <td className="num">{k.attendancePct != null ? `${k.attendancePct}%` : "—"}</td>
+                <td className="num">{k.noteCount ?? "—"}</td>
+                <td className="num">{k.soloCount}</td>
+                <td className="num">
+                  {k.soloStreak > 0 ? <><E n="fire" /> 週{k.soloStreak}</> : "—"}
+                </td>
+                <td className="num">{k.assignmentTotal > 0 ? `${k.assignmentDone}/${k.assignmentTotal}` : "—"}</td>
+              </tr>
             ))}
-          </div>
-        </button>
-      ))}
-      </div>
+          </tbody>
+        </table>
+      ) : (
+        <div className="kpigrid">
+        {kpis.map((k) => (
+          <button key={k.playerId} className="kpicard" onClick={() => onOpenPlayer(k.playerId)}>
+            <div className="kpihd">
+              <span className="kpiname">{k.name}</span>
+              <span className="kpicond">{k.conditionRecent ? <ConditionIcon c={k.conditionRecent} /> : ""}</span>
+              <span
+                className="kpireport"
+                style={{ marginLeft: "auto" }}
+                role="button"
+                tabIndex={0}
+                onClick={(e) => { e.stopPropagation(); onReport(k.playerId); }}
+              >
+                <E n="doc" /> レポート
+              </span>
+            </div>
+            <div className="kpistats">
+              <span>出席 {k.attendancePct != null ? k.attendancePct + "%" : "—"}</span>
+              <span>ノート {k.noteCount}</span>
+              <span>自主練 {k.soloCount}{k.soloStreak > 0 && <> (<E n="fire" /> 週{k.soloStreak})</>}</span>
+              {k.assignmentTotal > 0 && <span>課題 {k.assignmentDone}/{k.assignmentTotal}</span>}
+            </div>
+            <div className="kpialerts">
+              {k.alerts.map((a, i) => (
+                <span key={i} className={`kpialert ${a.level}`}>{a.text}</span>
+              ))}
+            </div>
+          </button>
+        ))}
+        </div>
+      )}
       </div>
       </div>
     </div>

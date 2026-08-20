@@ -549,7 +549,9 @@ function Inner() {
                         <RosPlayerPane playerId={rosSel} players={players} isCoach={isCoach} setSheet={setSheet} setRosSel={setRosSel} />
                       ) : (
                         <div className="empty-msg" style={{ margin: "auto" }}>
-                          選手を選んでください
+                          <b>選手が選択されていません</b>
+                          <br />
+                          左の一覧から選ぶと詳細が表示されます
                         </div>
                       ))}
                     {activeTab === "att" &&
@@ -871,7 +873,11 @@ function AttendanceTab({
         </button>
       )}
       {upcoming.length === 0 ? (
-        <div className="empty-msg">今後の予定はありません。</div>
+        <div className="empty-msg">
+          <b>今後の予定はありません</b>
+          <br />
+          予定が追加されるとここに表示されます
+        </div>
       ) : (
         <div className="attlist">
           {upcoming.map((ev) => (
@@ -1136,7 +1142,11 @@ function CalendarTab({
       ) : (
         <div className="agenda">
           {monthDays.length === 0 ? (
-            <div className="empty-msg">この月の予定はありません。</div>
+            <div className="empty-msg">
+              <b>この月の予定はありません</b>
+              <br />
+              月を変更すると他の予定を確認できます
+            </div>
           ) : (
             monthDays.map(({ d, ds, evs }) => {
               const wd = new Date(ym.y, ym.m, d).getDay();
@@ -1419,11 +1429,19 @@ function RosterTab({
   setRosSel?: (id: string | null) => void;
 }) {
   const board = useBoard();
+  const pc = usePc();
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
   const list = players.filter(
     (p) => !kw || p.name.toLowerCase().includes(kw) || p.position.toLowerCase().includes(kw)
   );
+  const onRowClick = (id: string) => {
+    if (setRosSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
+      setRosSel(id);
+    } else {
+      setSheet({ type: "playerDetail", playerId: id });
+    }
+  };
   return (
     <>
       <div className="controls" style={{ padding: "12px 0 8px" }}>
@@ -1435,7 +1453,53 @@ function RosterTab({
         />
       </div>
       {list.length === 0 ? (
-        <div className="empty-msg">選手がいません。下のボタンから追加してください。</div>
+        <div className="empty-msg">
+          <b>選手がいません</b>
+          <br />
+          下のボタンから追加できます
+        </div>
+      ) : pc ? (
+        <div className="roslist">
+          <table className="ptable">
+            <thead>
+              <tr>
+                <th className="num">#</th>
+                <th className="col-name">氏名</th>
+                <th>位置</th>
+                <th>学年</th>
+                <th>状態</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((p) => {
+                const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
+                return (
+                  <tr
+                    key={p.id}
+                    className={`ptable-row${rosSel === p.id ? " sel" : ""}`}
+                    tabIndex={0}
+                    onClick={() => onRowClick(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onRowClick(p.id);
+                      }
+                    }}
+                  >
+                    <td className="num">{p.number ?? "—"}</td>
+                    <td className="ptable-nm col-name">
+                      {p.name}
+                      {board.state.captain === p.id ? " (C)" : ""}
+                    </td>
+                    <td><span className={`pos ${groupOf(p.position)}`}>{p.position}</span></td>
+                    <td>{p.grade ? `${p.grade}年` : "—"}</td>
+                    <td>{inj ? <span className={`injbadge ${inj.status}`}>{INJURY_STATUS_LABEL[inj.status]}</span> : "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <div className="roslist">
         {list.map((p) => {
@@ -1444,13 +1508,7 @@ function RosterTab({
             <div
               key={p.id}
               className={`prow${rosSel === p.id ? " sel" : ""}`}
-              onClick={() => {
-                if (setRosSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
-                  setRosSel(p.id);
-                } else {
-                  setSheet({ type: "playerDetail", playerId: p.id });
-                }
-              }}
+              onClick={() => onRowClick(p.id)}
             >
               <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
               <div className="meta">

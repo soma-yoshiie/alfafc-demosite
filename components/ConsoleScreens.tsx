@@ -198,16 +198,16 @@ export function LibraryScreen() {
             </div>
             {plays.length === 0 ? (
               <div className="empty-msg">
-                まだ保存された戦術はありません。
+                <b>保存された戦術はありません</b>
                 <br />
-                盤面を作って上部の保存ボタンで保存しましょう。
+                盤面を作って共有・出力→ライブラリに保存から追加できます
               </div>
             ) : (
               <div className="liblist">
                 {board.library.folders.map((f) => {
                   const fp = plays.filter((p) => p.folderId === f.id);
                   return (
-                    <div key={f.id}>
+                    <div key={f.id} className="libfolder">
                       <div className="folderhdr">
                         <E n="folder" /> {f.name}
                         <button onClick={() => board.deleteFolder(f.id)}>削除</button>
@@ -232,7 +232,13 @@ export function LibraryScreen() {
             )}
           </>
         ) : drills.length === 0 ? (
-          <div className="empty-msg">まだ保存された練習メニューはありません。</div>
+          !pc && (
+            <div className="empty-msg">
+              <b>保存された練習メニューはありません</b>
+              <br />
+              練習メニューを作成して保存すると、ここに一覧できます
+            </div>
+          )
         ) : (
           <div className="liblist">
             {drills.map((d) => (
@@ -260,14 +266,38 @@ export function LibraryScreen() {
             <PlayPreview play={selectedPlay} onDelete={handleDeletePlay} />
           ) : (
             <div className="libempty">
-              {plays.length === 0 ? "まだ保存された戦術はありません" : "項目を選んでください"}
+              {plays.length === 0 ? (
+                <>
+                  <b>保存された戦術はありません</b>
+                  <br />
+                  盤面を作って共有・出力→ライブラリに保存から追加できます
+                </>
+              ) : (
+                <>
+                  <b>項目が選択されていません</b>
+                  <br />
+                  左の一覧から選ぶとプレビューが表示されます
+                </>
+              )}
             </div>
           )
         ) : selectedDrill ? (
           <DrillPreview drill={selectedDrill} />
         ) : (
           <div className="libempty">
-            {drills.length === 0 ? "まだ保存された練習メニューはありません" : "項目を選んでください"}
+            {drills.length === 0 ? (
+              <>
+                <b>保存された練習メニューはありません</b>
+                <br />
+                練習メニューを作成して保存すると、ここに一覧できます
+              </>
+            ) : (
+              <>
+                <b>項目が選択されていません</b>
+                <br />
+                左の一覧から選ぶとプレビューが表示されます
+              </>
+            )}
           </div>
         )}
       </div>

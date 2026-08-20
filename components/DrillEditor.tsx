@@ -463,7 +463,11 @@ function Inner() {
       </div>
       <div className="list">
         {drill.drills.length === 0 ? (
-          <div className="empty-msg">まだ保存された練習メニューはありません。</div>
+          <div className="empty-msg">
+            <b>保存された練習メニューはありません</b>
+            <br />
+            練習メニューを作成して保存すると、ここに一覧できます
+          </div>
         ) : (
           [...drill.drills]
             .sort((a, b) => b.updatedAt - a.updatedAt)

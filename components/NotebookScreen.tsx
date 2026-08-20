@@ -484,11 +484,19 @@ export default function NotebookScreen() {
                 onDeleted={() => setSelNote(null)}
               />
             ) : (
-              <div className="nbempty">提出を選んでください</div>
+              <div className="nbempty">
+                <b>提出を選択してください</b>
+                <br />
+                左の一覧から開くと内容が表示されます
+              </div>
             ))}
           {tab === "deliver" &&
             (selDeliver == null ? (
-              <div className="nbempty">配信を選ぶか、左の＋から作成してください</div>
+              <div className="nbempty">
+                <b>配信が選択されていません</b>
+                <br />
+                左の一覧から開くか、＋から新規作成できます
+              </div>
             ) : typeof selDeliver === "string" ? (
               <DeliverDetail id={selDeliver} key={selDeliver} onBack={() => setSelDeliver(null)} />
             ) : (
@@ -501,7 +509,11 @@ export default function NotebookScreen() {
             ))}
           {tab === "notifs" &&
             (selNotif == null ? (
-              <div className="nbempty">通知を選んでください</div>
+              <div className="nbempty">
+                <b>通知が選択されていません</b>
+                <br />
+                左の一覧から開くと詳細が表示されます
+              </div>
             ) : selNotif.target.kind === "note" ? (
               <NoteDetail
                 id={selNotif.target.id}
