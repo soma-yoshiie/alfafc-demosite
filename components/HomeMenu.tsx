@@ -6,8 +6,9 @@ import { localDateStr } from "@/lib/dates";
 import { buildEventNotifications } from "@/lib/notifications";
 import { aggregateTech, matchSummary } from "@/lib/teamStatsAgg";
 import { attendanceRate } from "@/lib/teamStats";
-import { monthlyWinPct, weeklyAttendancePct, weeklyNoteCounts, weeklyShotPct } from "@/lib/homeStats";
+import { monthlyWinPct, weeklyAttendancePct, weeklyNoteCounts } from "@/lib/homeStats";
 import type { TrendPoint } from "@/lib/homeStats";
+import { LEAGUE_STANDINGS, leaguePosition } from "@/lib/sampleLeague";
 import { NOTE_KIND_LABEL } from "@/lib/types";
 import type { EventCategory, MatchRecord, Player, TeamData, TeamEvent } from "@/lib/types";
 import { useBoard, type StatMetric } from "./BoardProvider";
@@ -462,8 +463,14 @@ type TeamCtx = ReturnType<typeof useTeam>;
 const AUTOROTATE_KEY = "alfa_home_autorotate";
 const TOPIC_LABELS = ["得点", "アシスト", "出席", "ノート提出"];
 const TOPIC_UNITS = ["点", "A", "%", "件"];
-const PULSE_METRICS = ["notes", "att", "win", "shot"] as const;
+const PULSE_METRICS = ["notes", "att", "win", "rank"] as const;
 type PulseMetric = (typeof PULSE_METRICS)[number];
+/** リーグ順位タイル用の簡易順位表: 上位5チーム＋自チーム行(6位以下=圏外のときのみ、区切り行つきで追加) */
+const LEAGUE_MINI_ROWS: ((typeof LEAGUE_STANDINGS)[number] | { gap: true })[] = (() => {
+  const top5 = LEAGUE_STANDINGS.slice(0, 5);
+  const own = LEAGUE_STANDINGS.find((r) => r.own);
+  return own && own.rank > 5 ? [...top5, { gap: true } as const, own] : top5;
+})();
 const ROW_H = 40; // .mdb-feeditem の行高(px)。JSのtranslateY計算とCSSの高さを一致させる
 
 /** タイトルから「vs 」以降を対戦相手名として抽出（単語境界必須）。マッチしなければ null（呼び出し側で非試合と同じ表示にフォールバック） */
@@ -475,10 +482,6 @@ function opponentFromTitle(title: string): string | null {
 function categoryLabel(e: TeamEvent, categories: EventCategory[]): string {
   const id = e.categoryId ?? e.kind;
   return categories.find((c) => c.id === id)?.label ?? (e.kind === "match" ? "試合" : "練習");
-}
-
-function resultOf(m: MatchRecord): "w" | "d" | "l" {
-  return m.ourScore > m.theirScore ? "w" : m.ourScore === m.theirScore ? "d" : "l";
 }
 
 /** 「きょう/昨日/N日前」の相対表示（カレンダー日単位。タイムゾーン跨ぎはlocalDateStrに委ねる） */
@@ -754,20 +757,6 @@ function MatchdayBoard({
 
   const unansweredNext = nextEvent ? team.summary(nextEvent.id).none : 0;
 
-  const last5 = useMemo(
-    () =>
-      [...team.team.matches]
-        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-        .slice(0, 5)
-        .reverse(),
-    [team.team.matches]
-  );
-  const scorerCount = useMemo(() => {
-    const s = new Set<string>();
-    last5.forEach((m) => m.goals.forEach((g) => s.add(g.playerId)));
-    return s.size;
-  }, [last5]);
-
   /* ---------------- 区画2: 右上ベル(対応が必要なこと) ---------------- */
   const uncommented = board.notebook.filter((n) => !n.staffComment).length;
   const bellBadge = unansweredNext + uncommented;
@@ -797,7 +786,10 @@ function MatchdayBoard({
         badge: unansweredNext,
         title: "出欠が未回答",
         reason: `${nextEvent.kind === "match" ? "試合" : "練習"}「${nextEvent.title}」、出欠が未回答 ・ ${unansweredNext}名`,
-        onClick: () => board.setScreen("team"),
+        onClick: () => {
+          board.setTeamIntent({ tab: "cal", eventId: nextEvent.id });
+          board.setScreen("team");
+        },
       });
     }
     if (uncommented > 0) {
@@ -816,7 +808,6 @@ function MatchdayBoard({
   const notesSeries = useMemo(() => weeklyNoteCounts(board.notebook, 7), [board.notebook]);
   const attSeries = useMemo(() => weeklyAttendancePct(team.team, players, 7), [team.team, players]);
   const winSeries = useMemo(() => monthlyWinPct(team.team.matches, 7), [team.team.matches]);
-  const shotSeries = useMemo(() => weeklyShotPct(board.notebook, 7), [board.notebook]);
 
   const notesThisWeek = notesSeries.at(-1)?.value ?? 0;
   const notesDelta = trendDelta(notesSeries);
@@ -839,9 +830,9 @@ function MatchdayBoard({
   }, [winSeries]);
   const winDelta = trendDelta(winSeries);
 
-  const teamTechAll = useMemo(() => aggregateTech(board.notebook), [board.notebook]);
-  const shotPct = teamTechAll.shotPct;
-  const shotDelta = trendDelta(shotSeries);
+  // リーグ順位タイルの値: lib/sampleLeague.ts の固定順位表(デモ用)から自チームの順位/参加チーム数を取得。
+  // 期間推移の概念がないためデルタ(先週比等)は算出しない
+  const leagueRank = leaguePosition();
 
   const [metricIdx, setMetricIdx] = useState(0);
   const metric: PulseMetric = PULSE_METRICS[metricIdx];
@@ -875,7 +866,8 @@ function MatchdayBoard({
     return () => clearInterval(id);
   }, [autorotate, pulseHover, reduceMotion]);
 
-  const chartData = metric === "notes" ? notesSeries : metric === "att" ? attSeries : metric === "win" ? winSeries : shotSeries;
+  // "rank"タイルはグラフ(MdbChart)ではなく簡易順位表(.ptable)を描くため、chartDataはそちらでは未使用
+  const chartData = metric === "notes" ? notesSeries : metric === "att" ? attSeries : winSeries;
   const chartMax = metric === "notes" ? undefined : 100;
   const chartTitle =
     metric === "notes"
@@ -884,14 +876,13 @@ function MatchdayBoard({
       ? "週別出席率の推移（直近7週・%）"
       : metric === "win"
       ? "月別勝率の推移（直近7ヶ月・%）"
-      : "週別シュート決定率の推移（直近7週・%）";
+      : "リーグ順位表（上位5チーム）";
 
   // useCountUpはフック規則上つねに数値を渡す必要があるため null は0にフォールバックし、
-  // 表示側は元の値(attPctAvg/winPct/shotPct)がnullかどうかで「—」と出し分ける
+  // 表示側は元の値(attPctAvg/winPct)がnullかどうかで「—」と出し分ける
   const notesCountUp = useCountUp(notesThisWeek, reduceMotion);
   const attCountUp = useCountUp(attPctAvg ?? 0, reduceMotion);
   const winCountUp = useCountUp(winPct ?? 0, reduceMotion);
-  const shotCountUp = useCountUp(shotPct ?? 0, reduceMotion);
 
   /* ---------------- 区画4左: 今月のトピック ---------------- */
   const ym = todayISO.slice(0, 7);
@@ -1133,31 +1124,6 @@ function MatchdayBoard({
                   </div>
                 )}
               </div>
-
-              {last5.length > 0 && (
-                <div className="mdb-pillsrow">
-                  <div className="mdb-pills">
-                    {last5.map((m, i) => {
-                      const r = resultOf(m);
-                      const resultChar = r === "w" ? "勝" : r === "d" ? "分" : "敗";
-                      const resultWord = r === "w" ? "勝ち" : r === "d" ? "分け" : "負け";
-                      const [, mo, d] = m.date.split("-").map(Number);
-                      return (
-                        <span
-                          key={m.id}
-                          className={`mdb-pill ${r}${i === last5.length - 1 ? " cur" : ""}`}
-                          style={{ animationDelay: `${i * 70}ms` }}
-                          title={`${m.date} vs ${m.opponent} ${m.ourScore}-${m.theirScore}`}
-                          aria-label={`${mo}/${d} vs ${m.opponent} ${m.ourScore}-${m.theirScore} ${resultWord}`}
-                        >
-                          {resultChar}
-                        </span>
-                      );
-                    })}
-                  </div>
-                  <div className="mdb-pillcaption">直近5戦で得点{scorerCount}人</div>
-                </div>
-              )}
             </div>
 
             <div className="mdb-metarow">
@@ -1218,17 +1184,35 @@ function MatchdayBoard({
                 <span className={`mdb-kpidelta${winDelta >= 0 ? " up" : " down"}`}>{fmtDelta("前月比", winDelta, "pt")}</span>
               )}
             </button>
-            <button type="button" className={`kpitile${metric === "shot" ? " on" : ""}`} onClick={() => setMetricIdx(3)}>
-              <div className="kv">{shotPct != null ? `${shotCountUp}%` : "—"}</div>
-              <div className="kl">シュート決定率</div>
-              {shotDelta != null && (
-                <span className={`mdb-kpidelta${shotDelta >= 0 ? " up" : " down"}`}>{fmtDelta("先週比", shotDelta, "pt")}</span>
-              )}
+            <button type="button" className={`kpitile${metric === "rank" ? " on" : ""}`} onClick={() => setMetricIdx(3)}>
+              <div className="kv">{leagueRank.rank}位</div>
+              <div className="kl">リーグ順位</div>
+              <span className="mdb-kpidelta">{leagueRank.size}チーム中</span>
             </button>
           </div>
           <div className="kpichart">
             <div className="sech mdb-charttitle">{chartTitle}</div>
-            <MdbChart data={chartData} max={chartMax} metricKey={metric} />
+            {metric === "rank" ? (
+              <table className="ptable mdb-ranktable">
+                <tbody>
+                  {LEAGUE_MINI_ROWS.map((r) =>
+                    "gap" in r ? (
+                      <tr className="mdb-rankgap" key="gap">
+                        <td colSpan={3}>…</td>
+                      </tr>
+                    ) : (
+                      <tr key={r.rank} className={r.own ? "own" : undefined}>
+                        <td className="num">{r.rank}</td>
+                        <td className="col-name">{r.name}</td>
+                        <td className="num leaguepts">{r.pts}</td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <MdbChart data={chartData} max={chartMax} metricKey={metric} />
+            )}
           </div>
           <label className="mdb-autorow">
             <input type="checkbox" checked={autorotate} onChange={(e) => setAutorotate(e.target.checked)} />

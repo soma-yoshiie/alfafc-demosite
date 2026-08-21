@@ -491,6 +491,8 @@ export interface TeamEvent {
   categoryId?: string;
   /** 住所（地図用）。place（会場名）と併存 */
   address?: string;
+  /** 紐付く大会ID（試合予定で使用。任意） */
+  competitionId?: string;
   /** 繰り返しの束ね。省略=単発 */
   seriesId?: string;
   /** この回だけ手動編集済み → シリーズ再生成から保護 */
@@ -561,11 +563,34 @@ export function threadPlayerId(key: ChatThreadKey): string | null {
   return key.startsWith("p:") ? key.slice(2) : null;
 }
 
+/**
+ * 得点・失点の起点分類。
+ * open=オープンプレー / set=セットプレー / counter=カウンター / pk=PK / own=オウンゴール / other=その他
+ */
+export type GoalOrigin = "open" | "set" | "counter" | "pk" | "own" | "other";
+
+export const GOAL_ORIGIN_LABELS: Record<GoalOrigin, string> = {
+  open: "オープンプレー",
+  set: "セットプレー",
+  counter: "カウンター",
+  pk: "PK",
+  own: "オウンゴール",
+  other: "その他",
+};
+
 /** 試合の得点 */
 export interface MatchGoal {
   playerId: string;
   minute?: number;
   assistPlayerId?: string;
+  /** 得点の起点（任意） */
+  origin?: GoalOrigin;
+}
+
+/** 失点の記録（任意。時刻・起点のみの簡易ログ） */
+export interface MatchConceded {
+  minute?: number;
+  origin?: GoalOrigin;
 }
 
 /** 試合の交代 */
@@ -598,8 +623,19 @@ export interface MatchRecord {
   goals: MatchGoal[];
   subs: MatchSub[];
   note?: string;
-  /** 1ハーフの分数(例: 20 = 20分ハーフ) */
+  /**
+   * 1ピリオドの分数(例: 20 = 20分ハーフ)。periods=1(1本)のときは試合全体の分数として流用。
+   * 旧データ(periods未設定)は前後半2ピリオド扱いの分数として解釈する。
+   */
   halfMinutes?: number;
+  /** 試合の区切り方。1=1本(前後半なし) / 2=前後半。旧データ未定義＝2 */
+  periods?: 1 | 2;
+  /** 使用フォーメーション（例: "3-3-1"）。任意 */
+  formation?: string;
+  /** スタメン配置（ポジション×選手）。任意 */
+  lineup?: { pos: string; playerId: string }[];
+  /** 失点の記録（時刻・起点）。任意 */
+  conceded?: MatchConceded[];
 }
 
 /* ===== サッカーノート（選手が提出する振り返り） ===== */

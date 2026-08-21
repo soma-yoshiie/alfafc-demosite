@@ -6,6 +6,8 @@ import type {
   Announcement,
   AttendanceStatus,
   DominantFoot,
+  GoalOrigin,
+  MatchConceded,
   MatchGoal,
   MatchRecord,
   MatchSub,
@@ -15,8 +17,9 @@ import type {
   TeamEvent,
   TeamEventKind,
 } from "@/lib/types";
-import { INJURY_STATUS_LABEL } from "@/lib/types";
+import { GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL } from "@/lib/types";
 import { ALL_POSITIONS, groupOf } from "@/lib/formations";
+import { LEAGUE_STANDINGS } from "@/lib/sampleLeague";
 import {
   addDays,
   byStartAsc,
@@ -74,6 +77,11 @@ function fmtDate(s: string): string {
   if (!y) return s;
   const dt = new Date(y, m - 1, d);
   return `${m}/${d}(${WD[dt.getDay()]})`;
+}
+/** 試合時間の表示（例: 「20分ハーフ」／1本(periods===1)は「40分」）。halfMinutes未設定はnull */
+function halfLabel(m: { halfMinutes?: number; periods?: 1 | 2 }): string | null {
+  if (!m.halfMinutes) return null;
+  return `${m.halfMinutes}分${m.periods === 1 ? "" : "ハーフ"}`;
 }
 function todayStr(): string {
   // toISOString(UTC基準)だとJSTの0〜9時に「今日」が前日にズレる(lib/dates.ts参照)
@@ -257,8 +265,8 @@ type SheetState =
       type: "match";
       record?: MatchRecord;
       /** 試合イベントから引き継ぐ初期値（新規記録用）。eventIdはtm-sheetpaneの「戻る」で
-          元のeventViewへ復帰するために使う */
-      prefill?: { date?: string; opponent?: string; eventId?: string };
+          元のeventViewへ復帰するために使う。competitionIdは予定に設定された大会をそのまま初期値へ引き継ぐ */
+      prefill?: { date?: string; opponent?: string; eventId?: string; competitionId?: string };
     }
   | { type: "matchView"; id: string }
   | { type: "competitions" }
@@ -279,7 +287,8 @@ function Inner() {
   // PC(min-width:1024px)ではシートをモーダルでなく.teammain内のペインとして描画するため、
   // SheetHostの出し分け・.teammainの描画条件で使う
   const pc = usePc();
-  const [tab, setTab] = useState<Tab>("home");
+  // PC初期タブ=カレンダー、モバイル初期タブ=ホーム（既存のpc判定で分岐。モバイルのタブ構成・チップ列は不変）
+  const [tab, setTab] = useState<Tab>(() => (pc ? "cal" : "home"));
   const [sheet, setSheet] = useState<SheetState>(null);
   // カレンダーの表示月・表示モードはタブを跨いで保持する
   const now = new Date();
@@ -315,24 +324,33 @@ function Inner() {
   tabs.push(["cal", "カレンダー"], ["rec", "試合記録"]);
   // 名簿は表示中のロールに合わせる（選手プレビュー時は隠して見え方を揃える）
   if (isCoach && board.auth.role === "coach") tabs.push(["ros", "名簿"]);
-  const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "home";
+  const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : pc ? "cal" : "home";
 
   // PC専用コンソールシェルの左レール：チーム運営項目の直下にタブ帯と同じ一覧を出す。
   // レールはスクリム(left:208px)の外にあるため、シートを開いたままタブ切替できてしまう。
   // 従来(画面内タブ帯)はスクリム配下で切替不可能だった挙動に合わせ、切替時にシートを閉じる
+  // PCサブメニューは「ホーム」「出欠」を出さず、カレンダー/試合記録/名簿の順で登録する。
+  // 出欠タブ自体（AttendanceTab等）は削除せず残すが、PCでの入口はカレンダーの予定詳細
+  // 「記録を見る・編集」経由のみに一本化する（タブとしての入口だけを外す）
+  const subnavTabs: Tab[] = ["cal", "rec", "ros"];
   const consoleSubnav = useMemo(
     () => ({
       anchor: "team" as const,
-      items: tabs.map(([t, label]) => ({
-        key: t,
-        label,
-        icon: <E n={ICON[t]} />,
-        on: activeTab === t,
-        onSelect: () => {
-          setSheet(null);
-          setTab(t);
-        },
-      })),
+      items: subnavTabs
+        .filter((t) => tabs.some(([tt]) => tt === t))
+        .map((t) => {
+          const label = tabs.find(([tt]) => tt === t)![1];
+          return {
+            key: t,
+            label,
+            icon: <E n={ICON[t]} />,
+            on: activeTab === t,
+            onSelect: () => {
+              setSheet(null);
+              setTab(t);
+            },
+          };
+        }),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [activeTab, isCoach, board.auth.role]
@@ -371,17 +389,18 @@ function Inner() {
   useEffect(() => {
     const intent = board.teamIntent;
     if (!intent) return;
-    if (
-      board.auth.role === "coach" &&
-      team.viewer.role !== "coach" &&
-      (intent.tab === "ros" || intent.tab === "att")
-    ) {
+    // viewer復帰ロジックはros(名簿)のみ残す。att(出欠)はPCでタブの入口が無くなったため対象から外す
+    if (board.auth.role === "coach" && team.viewer.role !== "coach" && intent.tab === "ros") {
       team.setViewer("coach", null);
     }
-    setTab(intent.tab);
+    // PCサブメニューから「ホーム」「出欠」を外したため、intentがそれらを指す場合はカレンダーへ
+    // フォールバックする（モバイルはタブ構成不変のため従来どおりintent.tabをそのまま使う）
+    const targetTab: Tab = pc && (intent.tab === "att" || intent.tab === "home") ? "cal" : intent.tab;
+    setTab(targetTab);
     if (intent.playerId) setRosSel(intent.playerId);
+    if (intent.eventId) setSheet({ type: "eventView", id: intent.eventId });
     board.setTeamIntent(null);
-  }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer]);
+  }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer, pc]);
 
   return (
     <div className="app teamapp">
@@ -405,7 +424,7 @@ function Inner() {
           </div>
         </div>
         {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
-            カレンダー=予定を追加 / 試合記録=試合結果を記録。他タブでは出さない */}
+            カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加。他タブでは出さない */}
         {board.auth.role === "coach" && activeTab === "cal" && (
           <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
             ＋ 予定を追加
@@ -414,6 +433,11 @@ function Inner() {
         {board.auth.role === "coach" && activeTab === "rec" && (
           <button className="teamcta" type="button" onClick={() => setSheet({ type: "match" })}>
             ＋ 試合結果を記録
+          </button>
+        )}
+        {board.auth.role === "coach" && activeTab === "ros" && (
+          <button className="teamcta" type="button" onClick={() => setSheet({ type: "playerForm" })}>
+            ＋ 新規選手を追加
           </button>
         )}
       </header>
@@ -1402,7 +1426,7 @@ function MatchesTab({
                   <div className="msub">
                     {fmtDate(m.date)}
                     {cmpName(m) ? ` ・ ${cmpName(m)}` : ""}
-                    {m.halfMinutes ? ` ・ ${m.halfMinutes}分ハーフ` : ""}
+                    {halfLabel(m) ? ` ・ ${halfLabel(m)}` : ""}
                   </div>
                 </div>
                 <div className="mscore">
@@ -1676,9 +1700,25 @@ function MatchDetailBody({
             : m.competition;
           return cn ? <> ・ <E n="trophy" /> {cn}</> : "";
         })()}
-        {m.halfMinutes ? <> ・ {m.halfMinutes}分ハーフ</> : ""}
+        {halfLabel(m) ? <> ・ {halfLabel(m)}</> : ""}
       </div>
       <div className="detail">
+        {(m.formation || (m.lineup && m.lineup.length > 0)) && (
+          <div className="dsec">
+            <div className="dsec-h"><E n="clipboard" /> フォーメーション</div>
+            {m.formation && <div className="dline">{m.formation}</div>}
+            {m.lineup && m.lineup.length > 0 && (
+              <div className="dline">
+                {m.lineup.map((l, i) => (
+                  <span key={i}>
+                    {i > 0 ? " ・ " : ""}
+                    {l.pos}: {nameOf(l.playerId)}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <div className="dsec">
           <div className="dsec-h"><E n="ball" /> 得点者</div>
           {m.goals.length === 0 ? (
@@ -1689,10 +1729,22 @@ function MatchDetailBody({
                 {g.minute != null ? `${g.minute}' ` : ""}
                 {nameOf(g.playerId)}
                 {g.assistPlayerId ? `（A: ${nameOf(g.assistPlayerId)}）` : ""}
+                {g.origin ? ` ・ ${GOAL_ORIGIN_LABELS[g.origin]}` : ""}
               </div>
             ))
           )}
         </div>
+        {m.conceded && m.conceded.length > 0 && (
+          <div className="dsec">
+            <div className="dsec-h"><E n="ball" /> 失点</div>
+            {m.conceded.map((c, i) => (
+              <div key={i} className="dline">
+                {c.minute != null ? `${c.minute}' ` : ""}
+                {c.origin ? GOAL_ORIGIN_LABELS[c.origin] : "形態未記録"}
+              </div>
+            ))}
+          </div>
+        )}
         <div className="dsec">
           <div className="dsec-h"><E n="refresh" /> 交代</div>
           {m.subs.length === 0 ? (
@@ -1868,8 +1920,49 @@ function RecSummaryPane({
     cmp === "all" ? "チーム全体のサマリー" : cmp === "none" ? "その他" : comps.find((c) => c.id === cmp)?.name ?? "サマリー";
 
   return (
-    <div className="tmdetail screenbody">
+    <div className="tmdetail screenbody recwide">
       <h2>{paneTitle}</h2>
+      {/* 2カラム化: 左(主役・広い)=リーグ順位表 / 右(サイド)=既存サマリーの縦積み。
+          リーグ順位表はデモ用の固定データ(lib/sampleLeague.ts)。大会フィルタ(cmp)には連動せず常に全体を表示する */}
+      <div className="recsplit">
+        <div className="recleague">
+          <div className="sech">リーグ順位表</div>
+          <div className="leaguewrap">
+            <table className="ptable leaguetable">
+              <thead>
+                <tr>
+                  <th className="num">順位</th>
+                  <th className="col-name">チーム</th>
+                  <th className="num">試合</th>
+                  <th className="num">勝</th>
+                  <th className="num">分</th>
+                  <th className="num">敗</th>
+                  <th className="num">得失</th>
+                  <th className="num">勝点</th>
+                </tr>
+              </thead>
+              <tbody>
+                {LEAGUE_STANDINGS.map((r) => {
+                  const diff = r.gf - r.ga;
+                  return (
+                    <tr key={r.rank} className={r.own ? "own" : undefined}>
+                      <td className="num">{r.rank}</td>
+                      <td className="col-name">{r.name}</td>
+                      <td className="num">{r.played}</td>
+                      <td className="num">{r.win}</td>
+                      <td className="num">{r.draw}</td>
+                      <td className="num">{r.loss}</td>
+                      <td className="num">{diff > 0 ? `+${diff}` : diff}</td>
+                      <td className="num leaguepts">{r.pts}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="recside">
       {matches.length === 0 ? (
         <div className="empty-msg">まだ試合記録がありません。</div>
       ) : (
@@ -2013,6 +2106,8 @@ function RecSummaryPane({
           )}
         </>
       )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2451,6 +2546,19 @@ function AttPlayerPane({
   );
 }
 
+/**
+ * 試合結果フォーム専用のスタメン枠定義（8人制）。pos文字列にGK/DF/MF/FWを明記し、
+ * MatchRecord.lineupのposへそのまま保存する。lib/formations.tsのFORMATIONS
+ * （ピッチ座標つき・戦術ボード用）とは別に、フォームの選手選択セレクト群だけに使う軽量定義
+ */
+const MATCH_FORMATION_SLOTS: Record<string, string[]> = {
+  "3-3-1": ["GK", "DF1", "DF2", "DF3", "MF1", "MF2", "MF3", "FW1"],
+  "2-4-1": ["GK", "DF1", "DF2", "MF1", "MF2", "MF3", "MF4", "FW1"],
+  "3-2-2": ["GK", "DF1", "DF2", "DF3", "MF1", "MF2", "FW1", "FW2"],
+  "2-3-2": ["GK", "DF1", "DF2", "MF1", "MF2", "MF3", "FW1", "FW2"],
+};
+const MATCH_FORMATION_KEYS = Object.keys(MATCH_FORMATION_SLOTS);
+
 /* ---------------- Sheets ---------------- */
 function SheetHost({
   sheet,
@@ -2500,6 +2608,8 @@ function SheetHost({
   const [place, setPlace] = useState(ev?.place ?? "");
   const [address, setAddress] = useState(ev?.address ?? "");
   const [note, setNote] = useState(ev?.note ?? "");
+  // 大会（種別=試合のときのみ表示。""=大会なし/練習試合など）
+  const [evCompId, setEvCompId] = useState(ev?.competitionId ?? "");
   // 繰り返し（新規作成時のみ使用）
   const [freqSel, setFreqSel] = useState<"none" | "weekly" | "biweekly" | "monthly">("none");
   const [byWeekday, setByWeekday] = useState<number[]>([]);
@@ -2532,14 +2642,31 @@ function SheetHost({
   const mpf = sheet?.type === "match" ? sheet.prefill : undefined;
   const [opponent, setOpponent] = useState(mr?.opponent ?? mpf?.opponent ?? "");
   const [mdate, setMdate] = useState(mr?.date ?? mpf?.date ?? todayStr());
-  // 大会: 登録済みから選択（""=未設定、"__new"=新規追加）
-  const [competitionId, setCompetitionId] = useState(mr?.competitionId ?? "");
+  // 大会: 登録済みから選択（""=未設定、"__new"=新規追加）。新規記録時は予定(eventView)からの
+  // prefillに大会が付いていればその大会IDを初期値に引き継ぐ
+  const [competitionId, setCompetitionId] = useState(mr?.competitionId ?? mpf?.competitionId ?? "");
   const [newCompName, setNewCompName] = useState("");
   const [ourScore, setOurScore] = useState(mr ? String(mr.ourScore) : "0");
   const [theirScore, setTheirScore] = useState(mr ? String(mr.theirScore) : "0");
+  // 試合形式: 前後半(2)/1本(1)。旧データ(periods未設定)は前後半扱い
+  const [periods, setPeriods] = useState<1 | 2>(mr?.periods ?? 2);
   const [halfMinutes, setHalfMinutes] = useState(mr?.halfMinutes != null ? String(mr.halfMinutes) : "");
+  // フォーメーション（8人制）。既定は""(未設定)。不明キーは未設定扱い
+  const [formation, setFormation] = useState<string>(
+    mr?.formation && MATCH_FORMATION_SLOTS[mr.formation] ? mr.formation : ""
+  );
+  // スタメン: ポジション枠(pos文字列)→選手IDのマップ。フォーメーションを切り替えても
+  // 同じpos文字列の枠は選択済み選手を保持する（未選択枠は保存時に除外）
+  const [lineupMap, setLineupMap] = useState<Record<string, string>>(() => {
+    const m: Record<string, string> = {};
+    (mr?.lineup ?? []).forEach((l) => {
+      m[l.pos] = l.playerId;
+    });
+    return m;
+  });
   const [goals, setGoals] = useState<MatchGoal[]>(mr?.goals ?? []);
   const [subs, setSubs] = useState<MatchSub[]>(mr?.subs ?? []);
+  const [conceded, setConceded] = useState<MatchConceded[]>(mr?.conceded ?? []);
   const [mnote, setMnote] = useState(mr?.note ?? "");
   // スコアの数値解釈はここ1箇所に統一する(追加ボタンのdisabled・ヒント・保存で共用)。
   // type=number でも "1e2"/"2.5"/"-3" が入力できるため、非負整数へ正規化する
@@ -2605,6 +2732,19 @@ function SheetHost({
           <label>タイトル</label>
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例）通常練習 / 練習試合 vs ○○" />
         </div>
+        {kind === "match" && (
+          <div className="formfield">
+            <label>大会</label>
+            <select value={evCompId} onChange={(e) => setEvCompId(e.target.value)}>
+              <option value="">大会なし（練習試合など）</option>
+              {team.team.competitions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="formfield">
           <label className="daytoggle">
             <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
@@ -2748,6 +2888,8 @@ function SheetHost({
               place: place.trim() || undefined,
               address: address.trim() || undefined,
               note: note.trim() || undefined,
+              // 大会は種別=試合のときのみ保存（種別を練習へ変更した場合は付け直さずクリアする）
+              competitionId: kind === "match" && evCompId ? evCompId : undefined,
             };
             saveLastEventCategory(categoryId);
             if (!ev) {
@@ -3012,6 +3154,10 @@ function SheetHost({
                       : e.allDay
                         ? "終日"
                         : fmtTimeRange(e);
+                    const compName =
+                      e.kind === "match" && e.competitionId
+                        ? team.team.competitions.find((c) => c.id === e.competitionId)?.name ?? "（削除された大会）"
+                        : null;
                     return (
                       <div
                         key={e.id}
@@ -3025,8 +3171,7 @@ function SheetHost({
                           <span className="evopen" style={{ marginLeft: "auto" }}>詳細 ›</span>
                         </div>
                         <div className="evmeta">
-                          {timeLabel ? `${timeLabel} ` : ""}
-                          {e.place ?? ""}
+                          {[timeLabel, e.place, compName].filter(Boolean).join(" ・ ")}
                         </div>
                       </div>
                     );
@@ -3077,6 +3222,12 @@ function SheetHost({
                     {series && (
                       <div className="dline" style={{ fontSize: 12, color: "var(--mut)" }}>
                         <E n="repeat" /> 繰り返し予定（{ruleDesc(series.rule)}）
+                      </div>
+                    )}
+                    {e.kind === "match" && e.competitionId && (
+                      <div className="dline">
+                        <E n="trophy" />{" "}
+                        {team.team.competitions.find((c) => c.id === e.competitionId)?.name ?? "（削除された大会）"}
                       </div>
                     )}
                     {e.place && (
@@ -3138,7 +3289,12 @@ function SheetHost({
                         onClick={() =>
                           setSheet({
                             type: "match",
-                            prefill: { date: e.date, opponent: opponentFromTitle(e.title), eventId: e.id },
+                            prefill: {
+                              date: e.date,
+                              opponent: opponentFromTitle(e.title),
+                              eventId: e.id,
+                              competitionId: e.competitionId,
+                            },
                           })
                         }
                       >
@@ -3236,12 +3392,23 @@ function SheetHost({
           )}
         </div>
         <div className="formfield">
-          <label>ハーフ時間</label>
+          <label>試合形式</label>
+          <div className="calviewtoggle">
+            <button type="button" className={periods === 2 ? "on" : ""} onClick={() => setPeriods(2)}>
+              前後半
+            </button>
+            <button type="button" className={periods === 1 ? "on" : ""} onClick={() => setPeriods(1)}>
+              1本
+            </button>
+          </div>
+        </div>
+        <div className="formfield">
+          <label>{periods === 1 ? "試合時間" : "ハーフ時間"}</label>
           <select value={halfMinutes} onChange={(e) => setHalfMinutes(e.target.value)}>
             <option value="">未設定</option>
             {[10, 15, 20, 25, 30, 35, 40, 45].map((n) => (
               <option key={n} value={n}>
-                {n}分ハーフ
+                {n}分{periods === 1 ? "" : "ハーフ"}
               </option>
             ))}
           </select>
@@ -3254,6 +3421,50 @@ function SheetHost({
             <input type="number" min={0} value={theirScore} onChange={(e) => setTheirScore(e.target.value)} />
           </div>
         </div>
+
+        <div className="formfield">
+          <label>フォーメーション</label>
+          <select value={formation} onChange={(e) => setFormation(e.target.value)}>
+            <option value="">未設定</option>
+            {MATCH_FORMATION_KEYS.map((k) => (
+              <option key={k} value={k}>
+                {k}（8人制）
+              </option>
+            ))}
+          </select>
+        </div>
+        {formation && (
+        <div className="formfield">
+          <label>スタメン</label>
+          <div className="formgrid" style={{ flexWrap: "wrap" }}>
+            {MATCH_FORMATION_SLOTS[formation].map((pos) => {
+              const selectedElsewhere = new Set(
+                MATCH_FORMATION_SLOTS[formation]
+                  .filter((p) => p !== pos)
+                  .map((p) => lineupMap[p])
+                  .filter((v): v is string => !!v)
+              );
+              return (
+              <div key={pos} className="formfield" style={{ flex: "1 1 130px", margin: 0 }}>
+                <label>{pos}</label>
+                <select
+                  value={lineupMap[pos] ?? ""}
+                  onChange={(e) => setLineupMap((cur) => ({ ...cur, [pos]: e.target.value }))}
+                >
+                  <option value="">未選択</option>
+                  {players.map((p) => (
+                    <option key={p.id} value={p.id} disabled={selectedElsewhere.has(p.id)}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              );
+            })}
+          </div>
+          <div className="fieldhint">未選択の枠は保存されません</div>
+        </div>
+        )}
 
         <div className="formfield">
           <label>得点者</label>
@@ -3280,6 +3491,20 @@ function SheetHost({
                   </option>
                 ))}
               </select>
+              <select
+                className="originsel"
+                value={g.origin ?? ""}
+                onChange={(e) =>
+                  setGoals(upd(goals, i, { origin: e.target.value ? (e.target.value as GoalOrigin) : undefined }))
+                }
+              >
+                <option value="">形態未設定</option>
+                {(Object.keys(GOAL_ORIGIN_LABELS) as GoalOrigin[]).map((k) => (
+                  <option key={k} value={k}>
+                    {GOAL_ORIGIN_LABELS[k]}
+                  </option>
+                ))}
+              </select>
               <button className="dynx" onClick={() => setGoals(goals.filter((_, j) => j !== i))}>
                 ×
               </button>
@@ -3299,6 +3524,52 @@ function SheetHost({
               : goals.length >= ourScoreNum
               ? `得点数（${ourScoreNum}）に達しました。増やすにはスコアを変更してください`
               : `得点数（${ourScoreNum}）まで追加できます`}
+          </div>
+        </div>
+
+        <div className="formfield">
+          <label>失点</label>
+          {conceded.map((c, i) => (
+            <div key={i} className="dynrow">
+              <input
+                type="number"
+                placeholder="分"
+                value={c.minute ?? ""}
+                onChange={(e) => setConceded(upd(conceded, i, { minute: e.target.value ? +e.target.value : undefined }))}
+              />
+              <select
+                className="originsel"
+                value={c.origin ?? ""}
+                onChange={(e) =>
+                  setConceded(upd(conceded, i, { origin: e.target.value ? (e.target.value as GoalOrigin) : undefined }))
+                }
+              >
+                <option value="">形態未設定</option>
+                {(Object.keys(GOAL_ORIGIN_LABELS) as GoalOrigin[]).map((k) => (
+                  <option key={k} value={k}>
+                    {GOAL_ORIGIN_LABELS[k]}
+                  </option>
+                ))}
+              </select>
+              <button className="dynx" onClick={() => setConceded(conceded.filter((_, j) => j !== i))}>
+                ×
+              </button>
+            </div>
+          ))}
+          <button
+            className="dynadd"
+            disabled={conceded.length >= theirScoreNum}
+            style={conceded.length >= theirScoreNum ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+            onClick={() => setConceded([...conceded, {}])}
+          >
+            ＋ 失点を追加
+          </button>
+          <div className="fieldhint">
+            {theirScoreNum === 0
+              ? "失点を入力すると失点行を追加できます"
+              : conceded.length >= theirScoreNum
+              ? `失点数（${theirScoreNum}）に達しました。増やすにはスコアを変更してください`
+              : `失点数（${theirScoreNum}）まで追加できます`}
           </div>
         </div>
 
@@ -3356,6 +3627,30 @@ function SheetHost({
               );
               return;
             }
+            if (conceded.length > theirScoreNum) {
+              board.toast(
+                `失点（${conceded.length}件）が失点数（${theirScoreNum}）を超えています。失点を × で減らすか、スコアを変更してください`
+              );
+              return;
+            }
+            // スタメン: 現在のフォーメーションの枠のみを対象に、未選択(空文字)の枠は除外して保存
+            // (フォーメーション未設定の場合はスタメンUI自体を出さないため保存もしない)
+            const lineup = formation && MATCH_FORMATION_SLOTS[formation]
+              ? MATCH_FORMATION_SLOTS[formation]
+                  .map((pos) => ({ pos, playerId: lineupMap[pos] ?? "" }))
+                  .filter((l) => l.playerId !== "")
+              : undefined;
+            if (lineup && lineup.length > 0) {
+              const seen = new Set<string>();
+              for (const l of lineup) {
+                if (seen.has(l.playerId)) {
+                  const dupName = players.find((p) => p.id === l.playerId)?.name ?? "選手";
+                  board.toast(`${dupName}が複数のポジションに設定されています`);
+                  return;
+                }
+                seen.add(l.playerId);
+              }
+            }
             // 大会: 新規入力があれば登録してそのIDを使う
             let cid: string | undefined =
               competitionId && competitionId !== "__new" ? competitionId : undefined;
@@ -3368,9 +3663,13 @@ function SheetHost({
               competitionId: cid,
               ourScore: ourScoreNum,
               theirScore: theirScoreNum,
+              periods,
               halfMinutes: halfMinutes ? +halfMinutes : undefined,
+              formation: formation || undefined,
+              lineup,
               goals,
               subs,
+              conceded,
               note: mnote.trim() || undefined,
             };
             if (mr) team.updateMatch({ ...mr, ...data });

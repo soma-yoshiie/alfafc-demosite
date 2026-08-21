@@ -3,7 +3,7 @@
 // と同じ意味論を保ちながら、HomeMenu が直接使える純関数として提供する（TeamHub側の内部実装は変更しない）。
 
 import { addDaysStr, localDateStr, weekStart, weeklyCounts } from "./dates";
-import type { MatchRecord, NotebookEntry, MatchNote, Player, TeamData } from "./types";
+import type { MatchRecord, NotebookEntry, Player, TeamData } from "./types";
 
 export interface TrendPoint {
   label: string;
@@ -72,24 +72,4 @@ export function monthlyWinPct(matches: MatchRecord[], months = 7): TrendPoint[] 
     rows.push({ label: `${m}月`, value: ms.length ? Math.round((wins / ms.length) * 100) : null });
   }
   return rows;
-}
-
-/**
- * 直近n週(既定7・月曜始まり)のシュート決定率(%)。
- * 試合ノート(kind:"match")の plays(kind:"shot")をノート日付(n.date)基準で週集計する
- * （teamStatsAgg.aggregateTech と同じ成否判定＝scored===trueを決定扱い）。
- * シュート0本の週は欠測として null を返す。
- */
-export function weeklyShotPct(notebook: NotebookEntry[], weeks = 7): TrendPoint[] {
-  const thisMonday = weekStart(localDateStr());
-  const notes = notebook.filter((n): n is MatchNote => n.kind === "match");
-  return Array.from({ length: weeks }, (_, k) => {
-    const monday = addDaysStr(thisMonday, -7 * (weeks - 1 - k));
-    const sunday = addDaysStr(monday, 6);
-    const [, m, d] = monday.split("-").map(Number);
-    const weekNotes = notes.filter((n) => n.date >= monday && n.date <= sunday);
-    const shots = weekNotes.flatMap((n) => n.plays ?? []).filter((p) => p.kind === "shot");
-    const goals = shots.filter((p) => p.scored === true).length;
-    return { label: `${m}/${d}`, value: shots.length ? Math.round((goals / shots.length) * 100) : null };
-  });
 }

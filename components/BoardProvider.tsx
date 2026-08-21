@@ -925,10 +925,10 @@ interface BoardContextValue {
   setMatchesPublic: (v: boolean) => void;
   drillIntent: "library" | { open: string } | null;
   setDrillIntent: (v: "library" | { open: string } | null) => void;
-  /** チームHub: 他画面からタブ・選手を指定して遷移させる意図（消費後はnullに戻す） */
-  teamIntent: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string } | null;
+  /** チームHub: 他画面からタブ・選手・予定を指定して遷移させる意図（消費後はnullに戻す） */
+  teamIntent: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string; eventId?: string } | null;
   setTeamIntent: (
-    v: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string } | null
+    v: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string; eventId?: string } | null
   ) => void;
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
@@ -1475,7 +1475,7 @@ export function BoardProvider({
   const [matchesPublic, setMatchesPublicState] = useState(true);
   const [drillIntent, setDrillIntent] = useState<"library" | { open: string } | null>(null);
   const [teamIntent, setTeamIntent] = useState<
-    { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string } | null
+    { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string; eventId?: string } | null
   >(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
   // lazy初期化で保存データを直接読む（mount後のload→saveの競合・上書きを防ぐ。TeamProviderと同方針）

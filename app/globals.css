@@ -2826,6 +2826,7 @@ header {
 }
 .dynrow {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 7px;
   align-items: center;
@@ -2848,6 +2849,12 @@ header {
   width: 54px;
   flex: 0 0 auto;
   text-align: center;
+}
+/* 形態セレクト(得点/失点の内容選択)専用クラス: モバイル幅では単独で2行目へ折り返し、
+   .dynrow内の他コントロール(選手/分/アシスト)を1行目に残して圧縮を防ぐ。
+   PC(1024px以上)では.dynrowが1行に収まるためauto(折り返さない)に戻す */
+.originsel {
+  flex-basis: 100%;
 }
 .dynx {
   flex: 0 0 auto;
@@ -9114,6 +9121,57 @@ header {
     margin: 0 auto;
   }
 
+  /* 試合記録タブ(RecSummaryPane)の2カラム化。左=リーグ順位表(主役)/右=既存サマリー(サイド)。
+     .tmdetail自体の760px上限では順位表が窮屈なため、recタブだけ上限を広げる（実際の描画幅は
+     .teammainの列幅に追従するため、1280px前後では従来同様に親幅で頭打ちになり安全）。
+     recsplitはflexで、右サイドは固定280px・左は残り幅いっぱい(min-width:0で潰れても良い) */
+  .tmdetail.recwide {
+    max-width: 1040px;
+  }
+  /* 1280pxの右ペイン(カード内幅≒684px)で「順位表+サイド」が横並びになるよう、
+     基準幅の合計(380+260+12=652)を内幅以下に抑える。これより狭い幅でのみ縦積みに落ちる */
+  .recsplit {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .recleague {
+    flex: 1 1 380px;
+    min-width: 0;
+  }
+  .recside {
+    flex: 0 1 260px;
+    width: 260px;
+    min-width: 0;
+  }
+  /* 順位表本体。列が窮屈な場合でもカード外へはみ出させず、表の内側だけ横スクロールさせる保険 */
+  .leaguewrap {
+    overflow-x: auto;
+  }
+  /* .ptableの既定padding(10px)は10列超の密な表には広すぎるため詰める。
+     クリック遷移のない一覧(非インタラクティブ)のためcursor/hoverも通常表示に戻す */
+  .ptable.leaguetable thead th {
+    padding: 0 8px 6px;
+  }
+  .ptable.leaguetable tbody td {
+    padding: 6px 8px;
+  }
+  .ptable.leaguetable tbody tr {
+    cursor: default;
+  }
+  .ptable.leaguetable tbody tr:hover td {
+    background: transparent;
+  }
+  /* 自チーム行のハイライト（.ptable .sel と同じaccent-tint文法。クリック選択ではないため
+     別クラス.ownを使う） */
+  .leaguetable tbody tr.own td {
+    background: var(--accent-tint);
+  }
+  .leaguetable .leaguepts {
+    font-weight: 600;
+  }
+
   /* =========================================================
      戦術ボード コンソール化（PCのみ・チーム運営コンソール化に準拠）
      ========================================================= */
@@ -10413,6 +10471,10 @@ header {
   .noteapp .dynrow > select {
     padding: 6px 8px;
   }
+  /* PCでは.dynrowが1行に収まるため、形態セレクトの強制折り返し(基底.originsel)を解除 */
+  .originsel {
+    flex-basis: auto;
+  }
 
   /* ---- 数値表示: 桁を揃える ---- */
   .hstat-n,
@@ -10876,12 +10938,15 @@ header {
     font-weight: 800;
     color: var(--mut);
   }
+  /* H1: 対戦カード(相手名)をヒーローの主役サイズへ。カウントダウン(下記.mdb-countdown)とは
+     逆に大→小の関係だったのを反転し、対戦相手が最初に目に入る構成にする。
+     white-space:nowrap+ellipsisは維持のため、拡大しても折返し・オーバーフローは発生しない */
   .mdb-oppname {
     display: inline-block;
     min-width: 0;
     max-width: 100%;
-    font-size: clamp(16px, 1.6vw, 20px);
-    font-weight: 800;
+    font-size: clamp(32px, 2.6vw, 36px);
+    font-weight: 600;
     color: var(--ink);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -10895,14 +10960,15 @@ header {
     min-width: 0;
     max-width: 100%;
   }
+  /* H1: 非試合(練習等)のフォールバック見出しも対戦カードと同じ主役サイズに揃える */
   .mdb-eventtitle {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     max-width: min(480px, 100%);
-    font-size: clamp(16px, 1.6vw, 20px);
-    font-weight: 800;
+    font-size: clamp(32px, 2.6vw, 36px);
+    font-weight: 600;
     color: var(--ink);
     text-align: center;
   }
@@ -10918,60 +10984,15 @@ header {
     display: flex;
     justify-content: center;
   }
+  /* H1: 対戦カード(相手名/大会タイトル)を主役サイズにした分、カウントダウンは従属サイズ(mut色)へ縮小 */
   .mdb-countdown {
     font-family: var(--font-ui);
-    font-size: 40px;
-    font-weight: 800;
-    color: var(--ink);
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--mut);
     font-variant-numeric: tabular-nums;
     line-height: 1;
     animation: mdb-countfade 300ms var(--ease-standard);
-  }
-  .mdb-pillsrow {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-  .mdb-pills {
-    display: flex;
-    gap: 6px;
-  }
-  /* 塗り緑(ベタ色)は.mdb-cta 1個のみに統一。ピルは淡色地+濃色文字+1px淡色枠のチップ表現にする */
-  .mdb-pill {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: 1px solid transparent;
-    font-size: 10px;
-    font-weight: 800;
-    line-height: 1;
-    animation: mdb-pop 220ms var(--ease-decel) both;
-  }
-  .mdb-pill.w {
-    background: #e6f4ea;
-    color: #137333;
-    border-color: rgba(19, 115, 51, 0.35);
-  }
-  .mdb-pill.d {
-    background: #f1f3f4;
-    color: #5f6368;
-    border-color: rgba(95, 99, 104, 0.35);
-  }
-  .mdb-pill.l {
-    background: #fce8e6;
-    color: #b3261e;
-    border-color: rgba(179, 38, 30, 0.35);
-  }
-  .mdb-pill.cur {
-    box-shadow: 0 0 0 1px var(--accent);
-  }
-  .mdb-pillcaption {
-    font-size: 10.5px;
-    color: var(--mut);
   }
   .mdb-metarow {
     display: flex;
@@ -11130,6 +11151,34 @@ header {
   .mdb-chartlabel {
     font-size: 9px;
     fill: var(--mut);
+  }
+  /* H3: リーグ順位タイル選択時、.kpichart内は折れ線(.mdb-chartwrap)の代わりにこの簡易順位表を描く。
+     .ptableの簡略利用(<thead>なし・3列のみ)。列/自チーム行の淡色地(.own)は.leaguetable(9139)と同じ文法 */
+  .mdb-ranktable {
+    margin-top: 2px;
+  }
+  .ptable.mdb-ranktable tbody td {
+    padding: 6px 8px;
+  }
+  .ptable.mdb-ranktable tbody tr {
+    cursor: default;
+  }
+  .ptable.mdb-ranktable tbody tr:hover td {
+    background: transparent;
+  }
+  .mdb-ranktable tbody tr.own td {
+    background: var(--accent-tint);
+    font-weight: 700;
+  }
+  .mdb-ranktable .leaguepts {
+    font-weight: 600;
+  }
+  /* 上位5チームと自チーム行の間の順位の飛び(圏外)を示す区切り行 */
+  .mdb-rankgap td {
+    padding: 2px 8px;
+    text-align: center;
+    color: var(--mut);
+    font-size: 10px;
   }
   .mdb-autorow {
     display: flex;
@@ -11818,7 +11867,6 @@ header {
   .mdb-bellbadge,
   .mdb-vs,
   .mdb-eventcat,
-  .mdb-pill,
   .mdb-metalabel,
   .mdb-feedicon,
   .mdb-chip {
@@ -12012,8 +12060,7 @@ header {
   .noteapp .playkind.on,
   .noteapp .playline.on,
   .dx header .hact.primary,
-  .bimportbtn.primary,
-  .mdb-pill.cur {
+  .bimportbtn.primary {
     font-weight: 600;
   }
 
@@ -12087,7 +12134,6 @@ header {
   .stepchip .stepdur,
   .guidelabel,
   .mdb-bellreason,
-  .mdb-pillcaption,
   .mdb-kpidelta,
   .mdb-panel-sub,
   .mdb-feedtime {
