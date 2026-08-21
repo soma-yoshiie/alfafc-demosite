@@ -10622,6 +10622,32 @@ header {
   .kpicard2 .kpichart {
     padding: 12px 16px 8px;
   }
+  /* R2: .recside(幅260px)では4枚横並びだと1枚あたり実質65px相当となり、
+     kv(数値。「50%」等)がタイル幅に収まらずはみ出す(実測: kv幅32pxに対しscrollWidth51px)。
+     .recside内のkpibandのみ2×2グリッド(各~124px)へ組み替え、数値フォントも詰める。
+     AttOverviewPane側(.recsideの外)のkpibandは対象外・従来どおり4枚横並びのまま */
+  .recside .kpiband {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .recside .kpitile {
+    border-right: 1px solid var(--outline);
+    border-bottom: 1px solid var(--outline);
+  }
+  .recside .kpitile:nth-child(2n) {
+    border-right: 0;
+  }
+  .recside .kpitile:nth-child(n + 3) {
+    border-bottom: 0;
+  }
+  .recside .kpitile .kv {
+    font-size: 20px;
+  }
+  /* R1: チーム成績/個人成績の切替セグメント(.toolseg/.tsegは既存の汎用部品をそのまま流用)。
+     h2見出しと本体(.recsplit / 個人成績の各ランキング表)の間の余白だけ調整する */
+  .recmodeseg {
+    margin: 4px 0 14px;
+  }
 
   /* ---- C-2: 大会フィルタのselect化。Phase Aで.formfield > selectをpadding:7px 10px/font-size:14pxへ
      詰めた見た目(高さ32px程度)に揃える(cmpselectは.formfieldの子ではないため個別に指定) */
@@ -11350,6 +11376,217 @@ header {
     border-radius: var(--r-full);
     padding: 5px 12px;
   }
+
+  /* =========================================================
+     ホーム専用配色レイヤー(PCコーチホーム限定・追記のみ)
+     直近のUI統制で無彩色化したマッチデー・ボードだけを、ホームの「顔」として
+     色を使って見栄えよく仕立て直す差分。上記の既存ルールは一切変更せず、
+     同じセレクタをこの位置で再宣言して該当プロパティだけを上書きする、
+     このファイル内で既に多用されている手法(「Phase B 補足」等と同じ)を踏襲する。
+     色トークンは:rootではなく.mdb-scroll配下限定の--mdb-*変数として定義し、
+     他画面へは一切波及させない。文字色は組み合わせ先背景に対しWCAG AA(4.5:1)
+     以上を確保している(検証値は各行のコメント参照)。 */
+  .mdb-scroll {
+    /* ヒーロー: 濃紺→ブランド青(1トーンに抑制。理由は直下コメント参照) */
+    --mdb-hero-1: #0b1f4d;
+    --mdb-hero-2: var(--accent-strong); /* #1e56ad */
+    --mdb-hero-3: var(--accent); /* #2c6fd6。ヒーロー地色には使わずCTA文字色等の差し色専用 */
+    --mdb-pill-bg: rgba(255, 255, 255, 0.9);
+    --mdb-pill-ink: var(--mdb-hero-1);
+
+    /* KPIタイル4枚の固有色(バー/ティント地)と、白系背景で4.5:1以上を満たす数値用インク */
+    --mdb-kpi-notes: var(--accent);        /* 今週の提出=青 */
+    --mdb-kpi-notes-ink: var(--accent-strong); /* 白地/淡青地で6:1以上 */
+    --mdb-kpi-notes-tint: #eef3fc;          /* 青8%tint */
+    --mdb-kpi-notes-tint-strong: #e6eefa;   /* 青12%tint(選択時) */
+
+    --mdb-kpi-att: #16a34a;                 /* 出席率=緑 */
+    --mdb-kpi-att-ink: #166534;              /* 白地/淡緑地で6:1以上 */
+    --mdb-kpi-att-tint: #ecf8f1;
+    --mdb-kpi-att-tint-strong: #e3f4e9;
+
+    --mdb-kpi-win: #f97316;                 /* 勝率=橙 */
+    --mdb-kpi-win-ink: #9a3412;              /* 白地/淡橙地で6:1以上 */
+    --mdb-kpi-win-tint: #fff4ec;
+    --mdb-kpi-win-tint-strong: #feeee3;
+
+    --mdb-kpi-rank: #7c3aed;                /* リーグ順位=紫 */
+    --mdb-kpi-rank-ink: #7c3aed;              /* 白地で5.7:1・淡紫地でも4.7:1以上 */
+    --mdb-kpi-rank-tint: #f5effe;
+    --mdb-kpi-rank-tint-strong: #efe7fd;
+
+    /* 最新の動き: 頭文字アバター5色(白文字でいずれも4.8:1以上) */
+    --mdb-avatar-0: var(--accent);
+    --mdb-avatar-1: #166534;
+    --mdb-avatar-2: #9a3412;
+    --mdb-avatar-3: #7c3aed;
+    --mdb-avatar-4: #be185d;
+  }
+
+  /* ---- 区画1 ヒーロー: 斜めグラデ+白文字。既存の.mdb-hero::before(mdb-drift)は
+     アニメ・停止処理とも一切変更せず、位置ドリフトのままの色揺らぎで活かす。
+     グラデは紺→accent-strongの2トーンに留める(紺→accent-strongの3トーンにすると
+     右下端の地色がaccentそのものになり、そこに白文字が乗ると4.83:1まで落ちて
+     区画6の基準を割り込むため。2トーンなら地色は最も明るい端でもaccent-strongで
+     白文字7.0:1を維持できる。accentは白ピル上の文字色としてのみ使う) ---- */
+  .mdb-hero {
+    border: none;
+    background: linear-gradient(135deg, var(--mdb-hero-1) 0%, var(--mdb-hero-2) 100%);
+  }
+  /* 薄いピッチ風の斜線+円弧(不透明度0.05/0.08で合成。既存::beforeのドリフト円の
+     さらに奥、コンテンツ(z-index:1)より手前という重なりにはしない静的な模様) */
+  .mdb-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0px, rgba(255, 255, 255, 0.05) 2px, transparent 2px, transparent 42px),
+      radial-gradient(circle at 12% 92%, rgba(255, 255, 255, 0.08), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .mdb-ownname,
+  .mdb-oppname,
+  .mdb-eventtitle,
+  .mdb-metaval,
+  .mdb-vs {
+    color: #ffffff;
+  }
+  /* ラベル系は主役(白)より控えめに。#d8e2f2は地色最明端(accent-strong)でも5.4:1 */
+  .mdb-metalabel {
+    color: #d8e2f2;
+  }
+  /* 自チームエンブレム代替/カテゴリピルは白地+紺文字の「ピル」系に統一(白文字だと
+     半透明地では容易に4.5:1を割るため、地そのものを白系にして確実性を取る) */
+  .mdb-emblem-fallback,
+  .mdb-eventcat {
+    background: var(--mdb-pill-bg);
+    color: var(--mdb-pill-ink);
+  }
+  /* カウントダウンは半透明白のピル。alpha0.9の白地+紺文字で地色位置に依らず12:1以上 */
+  .mdb-countdown {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: var(--r-full);
+    background: var(--mdb-pill-bg);
+    color: var(--mdb-pill-ink);
+    box-shadow: 0 1px 2px rgba(11, 31, 77, 0.18);
+  }
+  .mdb-metarow {
+    border-top-color: rgba(255, 255, 255, 0.28);
+  }
+  .mdb-metaitem {
+    border-left-color: rgba(255, 255, 255, 0.28);
+  }
+  /* CTAは1画面(ヒーロー内)で1つだけ強く: 白地+青文字(区画内の.mdb-cta実体はこの1個のみ) */
+  .mdb-hero .mdb-cta {
+    background: #ffffff;
+    color: var(--mdb-hero-3);
+  }
+  .mdb-hero .mdb-cta:hover {
+    background: var(--mdb-kpi-notes-tint);
+  }
+
+  /* ---- 区画3 KPIタイル: 4枚に固有色。JSX側でkpitileへmdb-tile-notes/att/win/rankを
+     追加付与し、この専用クラスで塗り分ける。既存の汎用選択色(Phase B: .kpitile.on)より
+     クラス数を1つ多く(=詳細度を高く)して上書きするため、ソース順に依らず確実に勝つ ---- */
+  .kpitile.mdb-tile-notes::before,
+  .kpitile.mdb-tile-att::before,
+  .kpitile.mdb-tile-win::before,
+  .kpitile.mdb-tile-rank::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+  }
+  .kpitile.mdb-tile-notes::before { background: var(--mdb-kpi-notes); }
+  .kpitile.mdb-tile-att::before { background: var(--mdb-kpi-att); }
+  .kpitile.mdb-tile-win::before { background: var(--mdb-kpi-win); }
+  .kpitile.mdb-tile-rank::before { background: var(--mdb-kpi-rank); }
+
+  .kpitile.mdb-tile-notes { background: var(--mdb-kpi-notes-tint); }
+  .kpitile.mdb-tile-att { background: var(--mdb-kpi-att-tint); }
+  .kpitile.mdb-tile-win { background: var(--mdb-kpi-win-tint); }
+  .kpitile.mdb-tile-rank { background: var(--mdb-kpi-rank-tint); }
+
+  /* 選択中はティントを強める(8%→12%) + 枠線もタイル固有色に */
+  .kpitile.mdb-tile-notes.on { background: var(--mdb-kpi-notes-tint-strong); box-shadow: inset 0 0 0 1px var(--mdb-kpi-notes); }
+  .kpitile.mdb-tile-att.on { background: var(--mdb-kpi-att-tint-strong); box-shadow: inset 0 0 0 1px var(--mdb-kpi-att); }
+  .kpitile.mdb-tile-win.on { background: var(--mdb-kpi-win-tint-strong); box-shadow: inset 0 0 0 1px var(--mdb-kpi-win); }
+  .kpitile.mdb-tile-rank.on { background: var(--mdb-kpi-rank-tint-strong); box-shadow: inset 0 0 0 1px var(--mdb-kpi-rank); }
+
+  /* 数値はタイル固有色(選択の有無に関わらず維持。既存Phase Bはaccent単色へ寄せるため上書き) */
+  .kpitile.mdb-tile-notes .kv,
+  .kpitile.mdb-tile-notes.on .kv { color: var(--mdb-kpi-notes-ink); }
+  .kpitile.mdb-tile-att .kv,
+  .kpitile.mdb-tile-att.on .kv { color: var(--mdb-kpi-att-ink); }
+  .kpitile.mdb-tile-win .kv,
+  .kpitile.mdb-tile-win.on .kv { color: var(--mdb-kpi-win-ink); }
+  .kpitile.mdb-tile-rank .kv,
+  .kpitile.mdb-tile-rank.on .kv { color: var(--mdb-kpi-rank-ink); }
+  /* ラベルは選択時も中間色(--mut)のまま(色が付くのは数値のみという設計方針) */
+  .kpitile.mdb-tile-notes.on .kl,
+  .kpitile.mdb-tile-att.on .kl,
+  .kpitile.mdb-tile-win.on .kl,
+  .kpitile.mdb-tile-rank.on .kl {
+    color: var(--mut);
+  }
+  /* 出席率タイルのリング弧も緑で固定(既存Phase Bはaccentへ寄せるため上書き) */
+  .kpitile.mdb-tile-att .mdb-ringval,
+  .kpitile.mdb-tile-att.on .mdb-ringval {
+    stroke: var(--mdb-kpi-att);
+  }
+
+  /* ---- 区画3 グラフ: 線・点・面グラデを選択中タイルの色に連動させる。
+     面グラデのstop-color(SVG側)はcurrentColor参照のため、.mdb-chartsvgのcolorだけを
+     メトリクスで切り替えれば線・点・面すべて同時に色が変わる ---- */
+  .mdb-chartline { stroke: currentColor; }
+  .mdb-chartdot { fill: currentColor; }
+  .mdb-chartarea { fill: url(#mdb-chart-grad); }
+  .mdb-chartsvg { color: var(--mdb-kpi-notes); }
+  .mdb-pulse.mdb-metric-notes .mdb-chartsvg { color: var(--mdb-kpi-notes); }
+  .mdb-pulse.mdb-metric-att .mdb-chartsvg { color: var(--mdb-kpi-att); }
+  .mdb-pulse.mdb-metric-win .mdb-chartsvg { color: var(--mdb-kpi-win); }
+
+  /* リーグ順位タイル選択時の簡易順位表: 自チーム行を紫ティントに */
+  .mdb-ranktable tbody tr.own td {
+    background: var(--mdb-kpi-rank-tint-strong);
+  }
+
+  /* ---- 区画4 今月のトピック: 1〜3位の横棒を既存--cat1〜3(:rootで定義済みの
+     汎用カテゴリ色。他画面でも使用中のため、ここではvar参照のみで新規定義はしない)で色分け ---- */
+  .mdb-topicrows .mdb-topicrow:nth-child(1) .mdb-topicbar { background: var(--cat1); }
+  .mdb-topicrows .mdb-topicrow:nth-child(2) .mdb-topicbar { background: var(--cat2); }
+  .mdb-topicrows .mdb-topicrow:nth-child(3) .mdb-topicbar { background: var(--cat3); }
+
+  /* ---- 区画4 最新の動き: 頭文字アバターを名前ハッシュ(JSX側hashIdx)で5色に ---- */
+  .mdb-feedicon.mdb-avatar-0 { background: var(--mdb-avatar-0); color: #ffffff; }
+  .mdb-feedicon.mdb-avatar-1 { background: var(--mdb-avatar-1); color: #ffffff; }
+  .mdb-feedicon.mdb-avatar-2 { background: var(--mdb-avatar-2); color: #ffffff; }
+  .mdb-feedicon.mdb-avatar-3 { background: var(--mdb-avatar-3); color: #ffffff; }
+  .mdb-feedicon.mdb-avatar-4 { background: var(--mdb-avatar-4); color: #ffffff; }
+
+  /* ---- 区画見出しに区画ごとの色ドットを前置(::beforeはmdb-panel-hに新規追加) ---- */
+  .mdb-topic .mdb-panel-h::before,
+  .mdb-feed .mdb-panel-h::before {
+    content: "";
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin-right: 6px;
+    border-radius: 50%;
+    vertical-align: middle;
+  }
+  .mdb-topic .mdb-panel-h::before { background: var(--mdb-kpi-win); }
+  .mdb-feed .mdb-panel-h::before { background: var(--mdb-kpi-notes); }
+
+  /* ---- 今月のハイライト: 種類ごとに緑/橙/紫のティント+同色文字
+     (ベルのバッジは既存の赤のまま・対象外) ---- */
+  .mdb-chip.mdb-chip-att { background: var(--mdb-kpi-att-tint); color: var(--mdb-kpi-att-ink); }
+  .mdb-chip.mdb-chip-notes { background: var(--mdb-kpi-win-tint); color: var(--mdb-kpi-win-ink); }
+  .mdb-chip.mdb-chip-goal { background: var(--mdb-kpi-rank-tint); color: var(--mdb-kpi-rank-ink); }
 
   /* =========================================================
      PC青統一(クローム緑→accent)

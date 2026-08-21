@@ -6,6 +6,8 @@ import type {
   Announcement,
   AttendanceStatus,
   DominantFoot,
+  FitnessRecord,
+  FitnessTest,
   GoalOrigin,
   MatchConceded,
   MatchGoal,
@@ -39,6 +41,13 @@ import { loadLastEventCategory, saveLastEventCategory } from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
 import { attendanceRate } from "@/lib/teamStats";
 import { aggregateTech, matchSummary, perMatchTech, perPlayerTech } from "@/lib/teamStatsAgg";
+import {
+  DRIBBLE_PCT_MIN_ATTEMPTS,
+  PASS_PCT_MIN_ATTEMPTS,
+  playerSeasonStats,
+  rankings,
+  SHOT_PCT_MIN_ATTEMPTS,
+} from "@/lib/playerStats";
 import type { AttPeriod } from "@/lib/attendanceStats";
 import { gradeAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
 import { LineChart } from "./Charts";
@@ -47,6 +56,7 @@ import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import { IconEdit } from "./icons";
+import { fmtFitnessValue } from "@/lib/fitness";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -273,6 +283,8 @@ type SheetState =
   | { type: "categories" }
   | { type: "playerDetail"; playerId: string }
   | { type: "playerForm"; player?: Player }
+  /** 体力測定の種目管理。playerForm(選手編集)から開いた場合、戻り先の選手を保持する */
+  | { type: "fitnessTests"; returnTo?: Player }
   | null;
 
 /** 試合記録タブ・PC右ペインの選択状態（既定 summary） */
@@ -571,7 +583,7 @@ function Inner() {
                       ))}
                     {activeTab === "ros" &&
                       (rosSel ? (
-                        <RosPlayerPane playerId={rosSel} players={players} isCoach={isCoach} setSheet={setSheet} setRosSel={setRosSel} />
+                        <RosPlayerPane key={rosSel} playerId={rosSel} players={players} isCoach={isCoach} setSheet={setSheet} setRosSel={setRosSel} />
                       ) : (
                         <div className="empty-msg" style={{ margin: "auto" }}>
                           <b>選手が選択されていません</b>
@@ -1796,11 +1808,15 @@ function PlayerDetailBody({
   isCoach,
   onEdit,
   onDelete,
+  hideFitness,
 }: {
   p: Player;
   isCoach: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  /** PC名簿詳細(RosPlayerPane)は体力測定をより詳しいセクション(最新値・前回差・履歴)として
+   * 別途描画するため、こちらの簡易一覧は二重表示を避けて非表示にする（モバイルは既定=表示のまま） */
+  hideFitness?: boolean;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -1832,14 +1848,18 @@ function PlayerDetailBody({
             ))}
           </div>
         )}
-        {p.fitness && p.fitness.length > 0 && (
+        {!hideFitness && p.fitness && p.fitness.length > 0 && (
           <div className="dsec">
             <div className="dsec-h">体力測定</div>
-            {p.fitness.map((f) => (
-              <div key={f.id} className="dline">
-                {f.name} {f.value}（{fmtDate(f.date)}）
-              </div>
-            ))}
+            {p.fitness.map((f, i) => {
+              const test = team.team.fitnessTests?.find((t) => t.id === f.testId);
+              return (
+                <div key={`${f.testId}-${i}`} className="dline">
+                  {test?.name ?? "削除済みの種目"} {f.value}
+                  {test?.unit ?? ""}（{fmtDate(f.date)}）
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1882,8 +1902,11 @@ function PlayerDetailBody({
 
 /** RecSummaryPaneのkpicard2で切り替える月別推移の指標。既定は勝率 */
 type RecKpiMetric = "played" | "winPct" | "goals" | "conceded";
+/** RecSummaryPane先頭のセグメント。既定=チーム成績 */
+type RecSummaryMode = "team" | "player";
 
-/** summary: 大会フィルタ適用後のチーム成績サマリー・月別推移・チーム技術・得点/アシストランキング・大会別成績 */
+/** summary: 大会フィルタ適用後のチーム成績(順位表+サイド)・個人成績(各種ランキング)を
+    先頭の.tsegセグメントで切り替える */
 function RecSummaryPane({
   cmp,
   players,
@@ -1895,21 +1918,18 @@ function RecSummaryPane({
 }) {
   const board = useBoard();
   const team = useTeam();
+  const [mode, setMode] = useState<RecSummaryMode>("team");
   const [recMetric, setRecMetric] = useState<RecKpiMetric>("winPct");
   const comps = team.team.competitions;
   const allMatches = team.team.matches;
   const matches = allMatches.filter((m) =>
     cmp === "all" ? true : cmp === "none" ? !m.competitionId : m.competitionId === cmp
   );
-  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
   const sum = matchSummary(matches);
   const cleanSheets = matches.filter((m) => m.theirScore === 0).length;
   const avgGf = sum.played ? (sum.gf / sum.played).toFixed(1) : "0.0";
   const trend = matchMonthlyTrend(matches);
   const tech = aggregateTech(board.notebook);
-  const ranks = scorerAssisterRanks(matches);
-  const topScorers = ranks.scorers.slice(0, 5);
-  const topAssisters = ranks.assisters.slice(0, 5);
   const byComp = [
     ...comps.map((c) => ({ id: c.id, name: c.name, ms: allMatches.filter((m) => m.competitionId === c.id) })),
     ...(allMatches.some((m) => !m.competitionId)
@@ -1917,198 +1937,392 @@ function RecSummaryPane({
       : []),
   ].filter((g) => g.ms.length > 0);
   const paneTitle =
-    cmp === "all" ? "チーム全体のサマリー" : cmp === "none" ? "その他" : comps.find((c) => c.id === cmp)?.name ?? "サマリー";
+    cmp === "all" ? "チーム成績" : cmp === "none" ? "その他" : comps.find((c) => c.id === cmp)?.name ?? "サマリー";
 
   return (
     <div className="tmdetail screenbody recwide">
       <h2>{paneTitle}</h2>
-      {/* 2カラム化: 左(主役・広い)=リーグ順位表 / 右(サイド)=既存サマリーの縦積み。
-          リーグ順位表はデモ用の固定データ(lib/sampleLeague.ts)。大会フィルタ(cmp)には連動せず常に全体を表示する */}
-      <div className="recsplit">
-        <div className="recleague">
-          <div className="sech">リーグ順位表</div>
-          <div className="leaguewrap">
-            <table className="ptable leaguetable">
-              <thead>
-                <tr>
-                  <th className="num">順位</th>
-                  <th className="col-name">チーム</th>
-                  <th className="num">試合</th>
-                  <th className="num">勝</th>
-                  <th className="num">分</th>
-                  <th className="num">敗</th>
-                  <th className="num">得失</th>
-                  <th className="num">勝点</th>
-                </tr>
-              </thead>
-              <tbody>
-                {LEAGUE_STANDINGS.map((r) => {
-                  const diff = r.gf - r.ga;
-                  return (
-                    <tr key={r.rank} className={r.own ? "own" : undefined}>
-                      <td className="num">{r.rank}</td>
-                      <td className="col-name">{r.name}</td>
-                      <td className="num">{r.played}</td>
-                      <td className="num">{r.win}</td>
-                      <td className="num">{r.draw}</td>
-                      <td className="num">{r.loss}</td>
-                      <td className="num">{diff > 0 ? `+${diff}` : diff}</td>
-                      <td className="num leaguepts">{r.pts}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* チーム成績(順位表+サイド) / 個人成績(各種ランキング)の切替。既存の.tseg文法を流用 */}
+      <div className="toolseg recmodeseg" role="tablist" aria-label="表示切替">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "team"}
+          className={`tseg${mode === "team" ? " on" : ""}`}
+          onClick={() => setMode("team")}
+        >
+          チーム成績
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={mode === "player"}
+          className={`tseg${mode === "player" ? " on" : ""}`}
+          onClick={() => setMode("player")}
+        >
+          個人成績
+        </button>
+      </div>
+
+      {mode === "player" ? (
+        <RecPlayerRankingsBody players={players} matches={matches} />
+      ) : (
+        /* 2カラム化: 左(主役・広い)=リーグ順位表 / 右(サイド)=既存サマリーの縦積み。
+           リーグ順位表はデモ用の固定データ(lib/sampleLeague.ts)。大会フィルタ(cmp)には連動せず常に全体を表示する */
+        <div className="recsplit">
+          <div className="recleague">
+            <div className="sech">リーグ順位表</div>
+            <div className="leaguewrap">
+              <table className="ptable leaguetable">
+                <thead>
+                  <tr>
+                    <th className="num">順位</th>
+                    <th className="col-name">チーム</th>
+                    <th className="num">試合</th>
+                    <th className="num">勝</th>
+                    <th className="num">分</th>
+                    <th className="num">敗</th>
+                    <th className="num">得失</th>
+                    <th className="num">勝点</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {LEAGUE_STANDINGS.map((r) => {
+                    const diff = r.gf - r.ga;
+                    return (
+                      <tr key={r.rank} className={r.own ? "own" : undefined}>
+                        <td className="num">{r.rank}</td>
+                        <td className="col-name">{r.name}</td>
+                        <td className="num">{r.played}</td>
+                        <td className="num">{r.win}</td>
+                        <td className="num">{r.draw}</td>
+                        <td className="num">{r.loss}</td>
+                        <td className="num">{diff > 0 ? `+${diff}` : diff}</td>
+                        <td className="num leaguepts">{r.pts}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="recside">
+            {matches.length === 0 ? (
+              <div className="empty-msg">まだ試合記録がありません。</div>
+            ) : (
+              <>
+                {/* KPIタイル×グラフ(GSC型)。タイル1枚が選択中の指標=グラフの系列を兼ねる(既定=勝率) */}
+                <div className="kpicard2">
+                  <div className="kpiband">
+                    <button
+                      type="button"
+                      className={`kpitile${recMetric === "played" ? " on" : ""}`}
+                      onClick={() => setRecMetric("played")}
+                    >
+                      <div className="kv">{sum.played}</div>
+                      <div className="kl">試合数</div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`kpitile${recMetric === "winPct" ? " on" : ""}`}
+                      onClick={() => setRecMetric("winPct")}
+                    >
+                      <div className="kv">{sum.winPct ?? 0}%</div>
+                      <div className="kl">勝率</div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`kpitile${recMetric === "goals" ? " on" : ""}`}
+                      onClick={() => setRecMetric("goals")}
+                    >
+                      <div className="kv">{sum.gf}</div>
+                      <div className="kl">得点</div>
+                    </button>
+                    <button
+                      type="button"
+                      className={`kpitile${recMetric === "conceded" ? " on" : ""}`}
+                      onClick={() => setRecMetric("conceded")}
+                    >
+                      <div className="kv">{sum.ga}</div>
+                      <div className="kl">失点</div>
+                    </button>
+                  </div>
+                  <div className="kpichart">
+                    <div className="sech">
+                      {recMetric === "played"
+                        ? "月別試合数の推移（直近6ヶ月）"
+                        : recMetric === "winPct"
+                        ? "月別勝率の推移（直近6ヶ月・%）"
+                        : recMetric === "goals"
+                        ? "月別得点の推移（直近6ヶ月）"
+                        : "月別失点の推移（直近6ヶ月）"}
+                    </div>
+                    <LineChart
+                      data={trend.map((t) => ({ label: t.label, value: t[recMetric] }))}
+                      max={recMetric === "winPct" ? 100 : undefined}
+                      detailed
+                    />
+                  </div>
+                </div>
+
+                <div className="hdash">
+                  <div className="hstat"><div className="hstat-n ev">{sum.wins}-{sum.draws}-{sum.losses}</div><div className="hstat-l">勝-分-敗</div></div>
+                  <div className="hstat"><div className="hstat-n">{sum.gf - sum.ga}</div><div className="hstat-l">得失点差</div></div>
+                  <div className="hstat"><div className="hstat-n">{cleanSheets}</div><div className="hstat-l">クリーンシート</div></div>
+                  <div className="hstat"><div className="hstat-n">{avgGf}</div><div className="hstat-l">1試合平均得点</div></div>
+                </div>
+
+                <div className="sech">チーム技術</div>
+                <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
+                <div className="hdash">
+                  <div className="hstat">
+                    <div className="hstat-n">{tech.shotPct ?? "—"}{tech.shotPct != null ? "%" : ""}</div>
+                    <div className="hstat-l">シュート決定率（{tech.goals}/{tech.shots}）</div>
+                  </div>
+                  <div className="hstat">
+                    <div className="hstat-n">{tech.passPct ?? "—"}{tech.passPct != null ? "%" : ""}</div>
+                    <div className="hstat-l">パス成功率（{tech.passOk}/{tech.pass}）</div>
+                  </div>
+                  <div className="hstat">
+                    <div className="hstat-n">{tech.dribblePct ?? "—"}{tech.dribblePct != null ? "%" : ""}</div>
+                    <div className="hstat-l">ドリブル成功率（{tech.dribbleOk}/{tech.dribble}）</div>
+                  </div>
+                </div>
+
+                {byComp.length > 0 && (
+                  <>
+                    <div className="sech">大会別成績</div>
+                    <div className="list">
+                      {byComp.map((g) => {
+                        const gs = matchSummary(g.ms);
+                        return (
+                          <div key={g.id} className="cmprow">
+                            <div className="cmpinfo">
+                              <div className="cmpnm">{g.name}</div>
+                              <div className="cmpsub">
+                                {gs.played}試合 ・ {gs.wins}-{gs.draws}-{gs.losses} ・ 得点{gs.gf}-失点{gs.ga}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
+      )}
+    </div>
+  );
+}
 
-        <div className="recside">
-      {matches.length === 0 ? (
-        <div className="empty-msg">まだ試合記録がありません。</div>
+/**
+ * 個人成績モード: lib/playerStats.rankings の各ランキング(得点/アシスト/シュート決定率/
+ * パス成功率/ドリブル成功率/出場数)を.ptable文法の表で並べる。行クリックで名簿の選手詳細へ
+ * (board.setTeamIntentによるros導線。Bench.tsx等の既存呼び出しと同じ経路)。
+ * 順位表・サイドのKPIは出さない(R1仕様)
+ */
+function RecPlayerRankingsBody({
+  players,
+  matches,
+}: {
+  players: Player[];
+  matches: MatchRecord[];
+}) {
+  const board = useBoard();
+  const ranks = rankings(players, matches, board.notebook);
+  const techByPlayer = useMemo(
+    () => new Map(perPlayerTech(board.notebook, players).map((r) => [r.playerId, r])),
+    [board.notebook, players]
+  );
+  const goToPlayer = (playerId: string) => board.setTeamIntent({ tab: "ros", playerId });
+
+  if (players.length === 0) {
+    return <div className="empty-msg">選手がいません。</div>;
+  }
+
+  return (
+    <>
+      <div className="sech">得点</div>
+      {ranks.goals.length === 0 ? (
+        <div className="empty-msg">記録がありません。</div>
+      ) : (
+        <table className="ptable">
+          <thead>
+            <tr>
+              <th className="num">順位</th>
+              <th className="col-name">選手</th>
+              <th className="num">得点</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranks.goals.map((r) => (
+              <tr key={r.playerId} onClick={() => goToPlayer(r.playerId)}>
+                <td className="num">{r.rank}</td>
+                <td className="col-name">{r.name}</td>
+                <td className="num">{r.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="sech">アシスト</div>
+      {ranks.assists.length === 0 ? (
+        <div className="empty-msg">記録がありません。</div>
+      ) : (
+        <table className="ptable">
+          <thead>
+            <tr>
+              <th className="num">順位</th>
+              <th className="col-name">選手</th>
+              <th className="num">アシスト</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranks.assists.map((r) => (
+              <tr key={r.playerId} onClick={() => goToPlayer(r.playerId)}>
+                <td className="num">{r.rank}</td>
+                <td className="col-name">{r.name}</td>
+                <td className="num">{r.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="sech">シュート決定率</div>
+      <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
+      {ranks.shotPct.length === 0 ? (
+        <div className="empty-msg">対象の選手がいません。</div>
       ) : (
         <>
-          {/* KPIタイル×グラフ(GSC型)。タイル1枚が選択中の指標=グラフの系列を兼ねる(既定=勝率) */}
-          <div className="kpicard2">
-            <div className="kpiband">
-              <button
-                type="button"
-                className={`kpitile${recMetric === "played" ? " on" : ""}`}
-                onClick={() => setRecMetric("played")}
-              >
-                <div className="kv">{sum.played}</div>
-                <div className="kl">試合数</div>
-              </button>
-              <button
-                type="button"
-                className={`kpitile${recMetric === "winPct" ? " on" : ""}`}
-                onClick={() => setRecMetric("winPct")}
-              >
-                <div className="kv">{sum.winPct ?? 0}%</div>
-                <div className="kl">勝率</div>
-              </button>
-              <button
-                type="button"
-                className={`kpitile${recMetric === "goals" ? " on" : ""}`}
-                onClick={() => setRecMetric("goals")}
-              >
-                <div className="kv">{sum.gf}</div>
-                <div className="kl">得点</div>
-              </button>
-              <button
-                type="button"
-                className={`kpitile${recMetric === "conceded" ? " on" : ""}`}
-                onClick={() => setRecMetric("conceded")}
-              >
-                <div className="kv">{sum.ga}</div>
-                <div className="kl">失点</div>
-              </button>
-            </div>
-            <div className="kpichart">
-              <div className="sech">
-                {recMetric === "played"
-                  ? "月別試合数の推移（直近6ヶ月）"
-                  : recMetric === "winPct"
-                  ? "月別勝率の推移（直近6ヶ月・%）"
-                  : recMetric === "goals"
-                  ? "月別得点の推移（直近6ヶ月）"
-                  : "月別失点の推移（直近6ヶ月）"}
-              </div>
-              <LineChart
-                data={trend.map((t) => ({ label: t.label, value: t[recMetric] }))}
-                max={recMetric === "winPct" ? 100 : undefined}
-                detailed
-              />
-            </div>
-          </div>
-
-          <div className="hdash">
-            <div className="hstat"><div className="hstat-n ev">{sum.wins}-{sum.draws}-{sum.losses}</div><div className="hstat-l">勝-分-敗</div></div>
-            <div className="hstat"><div className="hstat-n">{sum.gf - sum.ga}</div><div className="hstat-l">得失点差</div></div>
-            <div className="hstat"><div className="hstat-n">{cleanSheets}</div><div className="hstat-l">クリーンシート</div></div>
-            <div className="hstat"><div className="hstat-n">{avgGf}</div><div className="hstat-l">1試合平均得点</div></div>
-          </div>
-
-          <div className="sech">チーム技術</div>
-          <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
-          <div className="hdash">
-            <div className="hstat">
-              <div className="hstat-n">{tech.shotPct ?? "—"}{tech.shotPct != null ? "%" : ""}</div>
-              <div className="hstat-l">シュート決定率（{tech.goals}/{tech.shots}）</div>
-            </div>
-            <div className="hstat">
-              <div className="hstat-n">{tech.passPct ?? "—"}{tech.passPct != null ? "%" : ""}</div>
-              <div className="hstat-l">パス成功率（{tech.passOk}/{tech.pass}）</div>
-            </div>
-            <div className="hstat">
-              <div className="hstat-n">{tech.dribblePct ?? "—"}{tech.dribblePct != null ? "%" : ""}</div>
-              <div className="hstat-l">ドリブル成功率（{tech.dribbleOk}/{tech.dribble}）</div>
-            </div>
-          </div>
-
-          {topScorers.length > 0 && (
-            <>
-              <div className="sech">得点ランキング</div>
-              <div className="scorers">
-                {topScorers.map((s, i) => (
-                  <div
-                    key={s.pid}
-                    className="scorerrow"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setRecSel({ kind: "player", id: s.pid })}
-                  >
-                    <span className="rank">{i + 1}</span>
-                    <span className="snm">{nameOf(s.pid)}</span>
-                    <span className="sgoals">{s.n}点</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          {topAssisters.length > 0 && (
-            <>
-              <div className="sech">アシストランキング</div>
-              <div className="scorers">
-                {topAssisters.map((s, i) => (
-                  <div
-                    key={s.pid}
-                    className="scorerrow"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setRecSel({ kind: "player", id: s.pid })}
-                  >
-                    <span className="rank">{i + 1}</span>
-                    <span className="snm">{nameOf(s.pid)}</span>
-                    <span className="sgoals" style={{ color: "var(--blue)" }}>{s.n}A</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {byComp.length > 0 && (
-            <>
-              <div className="sech">大会別成績</div>
-              <div className="list">
-                {byComp.map((g) => {
-                  const gs = matchSummary(g.ms);
-                  return (
-                    <div key={g.id} className="cmprow">
-                      <div className="cmpinfo">
-                        <div className="cmpnm">{g.name}</div>
-                        <div className="cmpsub">
-                          {gs.played}試合 ・ {gs.wins}-{gs.draws}-{gs.losses} ・ 得点{gs.gf}-失点{gs.ga}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+          <table className="ptable">
+            <thead>
+              <tr>
+                <th className="num">順位</th>
+                <th className="col-name">選手</th>
+                <th className="num">シュート数</th>
+                <th className="num">得点</th>
+                <th className="num">決定率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranks.shotPct.map((r) => {
+                const t = techByPlayer.get(r.playerId);
+                return (
+                  <tr key={r.playerId} onClick={() => goToPlayer(r.playerId)}>
+                    <td className="num">{r.rank}</td>
+                    <td className="col-name">{r.name}</td>
+                    <td className="num">{t?.shots ?? 0}</td>
+                    <td className="num">{t?.goals ?? 0}</td>
+                    <td className="num">{r.value}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="evnote">シュート{SHOT_PCT_MIN_ATTEMPTS}本以上が対象です。</div>
         </>
       )}
-        </div>
-      </div>
-    </div>
+
+      <div className="sech">パス成功率</div>
+      {ranks.passPct.length === 0 ? (
+        <div className="empty-msg">対象の選手がいません。</div>
+      ) : (
+        <>
+          <table className="ptable">
+            <thead>
+              <tr>
+                <th className="num">順位</th>
+                <th className="col-name">選手</th>
+                <th className="num">試行</th>
+                <th className="num">成功</th>
+                <th className="num">成功率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranks.passPct.map((r) => {
+                const t = techByPlayer.get(r.playerId);
+                return (
+                  <tr key={r.playerId} onClick={() => goToPlayer(r.playerId)}>
+                    <td className="num">{r.rank}</td>
+                    <td className="col-name">{r.name}</td>
+                    <td className="num">{t?.pass ?? 0}</td>
+                    <td className="num">{t?.passOk ?? 0}</td>
+                    <td className="num">{r.value}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="evnote">パス{PASS_PCT_MIN_ATTEMPTS}本以上が対象です。</div>
+        </>
+      )}
+
+      <div className="sech">ドリブル成功率</div>
+      {ranks.dribblePct.length === 0 ? (
+        <div className="empty-msg">対象の選手がいません。</div>
+      ) : (
+        <>
+          <table className="ptable">
+            <thead>
+              <tr>
+                <th className="num">順位</th>
+                <th className="col-name">選手</th>
+                <th className="num">試行</th>
+                <th className="num">成功</th>
+                <th className="num">成功率</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranks.dribblePct.map((r) => {
+                const t = techByPlayer.get(r.playerId);
+                return (
+                  <tr key={r.playerId} onClick={() => goToPlayer(r.playerId)}>
+                    <td className="num">{r.rank}</td>
+                    <td className="col-name">{r.name}</td>
+                    <td className="num">{t?.dribble ?? 0}</td>
+                    <td className="num">{t?.dribbleOk ?? 0}</td>
+                    <td className="num">{r.value}%</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="evnote">ドリブル{DRIBBLE_PCT_MIN_ATTEMPTS}回以上が対象です。</div>
+        </>
+      )}
+
+      <div className="sech">出場数</div>
+      {!matches.some((m) => (m.lineup ?? []).length > 0) ? (
+        <div className="empty-msg">出場記録がありません。</div>
+      ) : ranks.apps.length === 0 ? (
+        <div className="empty-msg">記録がありません。</div>
+      ) : (
+        <table className="ptable">
+          <thead>
+            <tr>
+              <th className="num">順位</th>
+              <th className="col-name">選手</th>
+              <th className="num">出場</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ranks.apps.map((r) => (
+              <tr key={r.playerId} onClick={() => goToPlayer(r.playerId)}>
+                <td className="num">{r.rank}</td>
+                <td className="col-name">{r.name}</td>
+                <td className="num">{r.value}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }
 
@@ -2270,7 +2484,12 @@ function RecPlayerPane({
 
 /* ---------------- 名簿タブ・PC右ペイン ---------------- */
 
-/** rosSel選択時の右ペイン。PlayerDetailBodyをそのまま使う（戻りリンクなし＝右ペイン自体が詳細） */
+/**
+ * rosSel選択時の右ペイン。PlayerDetailBody(基本情報・怪我履歴)に加え、
+ * PC専用の詳細セクション(今季成績/出席/ノート提出/体力測定)を追加する(R3)。
+ * PlayerDetailBody自体の簡易な体力測定表示はここでは二重表示になるためhideFitnessで隠し、
+ * 代わりに種目ごとの最新値・前回差(意味色)・履歴展開を持つ詳しい表示をこちらで描画する
+ */
 function RosPlayerPane({
   playerId,
   players,
@@ -2284,16 +2503,155 @@ function RosPlayerPane({
   setSheet: (s: SheetState) => void;
   setRosSel: (id: string | null) => void;
 }) {
+  const board = useBoard();
+  const team = useTeam();
+  const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
   const p = players.find((x) => x.id === playerId);
+  const stats = p ? playerSeasonStats(p.id, team.team.matches, board.notebook) : null;
+  const attRow = p ? perPlayerAttendance(team.team, [p], "all")[0] : null;
+  const myNotes = p ? board.notebook.filter((n) => n.playerId === p.id) : [];
+  const lastNote = [...myNotes].sort((a, b) =>
+    a.date < b.date ? 1 : a.date > b.date ? -1 : b.ts - a.ts
+  )[0];
+
+  // 体力測定: 種目ごとに記録を新しい順へグルーピングし、最新値・前回差を出す
+  const fitnessByTest = new Map<string, FitnessRecord[]>();
+  (p?.fitness ?? []).forEach((f) => {
+    const list = fitnessByTest.get(f.testId) ?? [];
+    list.push(f);
+    fitnessByTest.set(f.testId, list);
+  });
+  fitnessByTest.forEach((list) => list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)));
+  // 種目定義(team.team.fitnessTests)に無いtestId(種目を削除した後も記録は残る)の記録が
+  // 無言で欠落しないよう、記録側のtestId集合も行として列挙する。他画面(PlayerDetailBody等)と
+  // 同じ「削除済みの種目」ラベルで、単位なし・差分は値のみ(意味色なし)で描画する
+  const knownTests = (team.team.fitnessTests ?? []).filter(
+    (t) => (fitnessByTest.get(t.id)?.length ?? 0) > 0
+  );
+  const knownTestIds = new Set(knownTests.map((t) => t.id));
+  const orphanTestIds = Array.from(fitnessByTest.keys()).filter((id) => !knownTestIds.has(id));
+  const testsWithRecords: { id: string; name: string; unit: string; lowerIsBetter?: boolean }[] = [
+    ...knownTests.map((t) => ({ id: t.id, name: t.name, unit: t.unit, lowerIsBetter: t.lowerIsBetter })),
+    ...orphanTestIds.map((id) => ({ id, name: "削除済みの種目", unit: "", lowerIsBetter: undefined })),
+  ];
+  const toggleTest = (id: string) =>
+    setExpandedTests((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   return (
     <div className="tmdetail screenbody">
-      {p ? (
-        <PlayerDetailBody
-          p={p}
-          isCoach={isCoach}
-          onEdit={() => setSheet({ type: "playerForm", player: p })}
-          onDelete={() => setRosSel(null)}
-        />
+      {p && stats ? (
+        <>
+          <PlayerDetailBody
+            p={p}
+            isCoach={isCoach}
+            onEdit={() => setSheet({ type: "playerForm", player: p })}
+            onDelete={() => setRosSel(null)}
+            hideFitness
+          />
+
+          <div className="sech">今季成績</div>
+          <div className="hdash">
+            <div className="hstat"><div className="hstat-n">{stats.apps}</div><div className="hstat-l">出場</div></div>
+            <div className="hstat"><div className="hstat-n">{stats.goals}</div><div className="hstat-l">得点</div></div>
+            <div className="hstat"><div className="hstat-n">{stats.assists}</div><div className="hstat-l">アシスト</div></div>
+          </div>
+          <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
+          <div className="hdash">
+            <div className="hstat">
+              <div className="hstat-n">{stats.shotPct ?? "—"}{stats.shotPct != null ? "%" : ""}</div>
+              <div className="hstat-l">シュート決定率（{stats.noteGoals}/{stats.shots}）</div>
+            </div>
+            <div className="hstat">
+              <div className="hstat-n">{stats.passPct ?? "—"}{stats.passPct != null ? "%" : ""}</div>
+              <div className="hstat-l">パス成功率（試行{stats.passAtt}）</div>
+            </div>
+            <div className="hstat">
+              <div className="hstat-n">{stats.dribblePct ?? "—"}{stats.dribblePct != null ? "%" : ""}</div>
+              <div className="hstat-l">ドリブル成功率（試行{stats.dribbleAtt}）</div>
+            </div>
+          </div>
+
+          <div className="sech">出席</div>
+          <div className="hdash">
+            <div className="hstat"><div className="hstat-n">{attRow?.pct ?? 0}%</div><div className="hstat-l">出席率</div></div>
+            <div className="hstat"><div className="hstat-n">{attRow?.yes ?? 0}</div><div className="hstat-l">出席</div></div>
+            <div className="hstat"><div className="hstat-n">{attRow?.no ?? 0}</div><div className="hstat-l">欠席</div></div>
+            <div className="hstat"><div className="hstat-n">{attRow?.maybe ?? 0}</div><div className="hstat-l">未定</div></div>
+          </div>
+
+          <div className="sech">ノート提出</div>
+          <div className="dline">
+            提出件数 {myNotes.length}件
+            {lastNote ? ` ・ 直近 ${fmtDate(lastNote.date)}` : ""}
+          </div>
+
+          <div className="sech">体力測定</div>
+          {testsWithRecords.length === 0 ? (
+            <div className="empty-msg">記録がありません。</div>
+          ) : (
+            <div className="list">
+              {testsWithRecords.map((t) => {
+                const recs = fitnessByTest.get(t.id)!;
+                const latest = recs[0];
+                const prev = recs[1];
+                const diff = prev != null ? Math.round((latest.value - prev.value) * 100) / 100 : null;
+                // 意味色: lowerIsBetter(小さい方が良い)を踏まえ、改善=緑・悪化=赤。
+                // 削除済みの種目(lowerIsBetter不明)は方向を判定できないため常にnull(色なし・値のみ)
+                const improved =
+                  diff != null && diff !== 0 && t.lowerIsBetter != null
+                    ? (t.lowerIsBetter ? diff < 0 : diff > 0)
+                    : null;
+                const expanded = expandedTests.has(t.id);
+                return (
+                  <div
+                    key={t.id}
+                    className="cmprow"
+                    style={{ cursor: "pointer", flexWrap: "wrap" }}
+                    onClick={() => toggleTest(t.id)}
+                  >
+                    <div className="cmpinfo">
+                      <div className="cmpnm">{t.name}</div>
+                      <div className="cmpsub">{fmtDate(latest.date)}</div>
+                    </div>
+                    <div className="sgoals">
+                      {fmtFitnessValue(latest.value, t.unit)}
+                      {diff != null && (
+                        <span
+                          style={{
+                            marginLeft: 6,
+                            color:
+                              improved === true ? "var(--lime)" : improved === false ? "var(--red)" : "var(--mut)",
+                          }}
+                        >
+                          {diff > 0 ? `+${diff}` : diff}{t.unit}
+                        </span>
+                      )}
+                    </div>
+                    {expanded && (
+                      <div style={{ width: "100%", marginTop: 6 }}>
+                        {recs.map((r, i) => (
+                          <div key={i} className="dline">
+                            {fmtDate(r.date)} {fmtFitnessValue(r.value, t.unit)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {isCoach && (
+            <button className="dynadd" onClick={() => setSheet({ type: "playerForm", player: p })}>
+              ＋ 測定記録を追加
+            </button>
+          )}
+        </>
       ) : (
         <div className="empty-msg">この選手は見つかりません。</div>
       )}
@@ -2589,6 +2947,10 @@ function SheetHost({
       setSheet({ type: "eventView", id: sheet.prefill.eventId });
       return;
     }
+    if (sheet?.type === "fitnessTests") {
+      setSheet(sheet.returnTo ? { type: "playerForm", player: sheet.returnTo } : { type: "playerForm" });
+      return;
+    }
     setSheet(null);
   };
 
@@ -2687,6 +3049,23 @@ function SheetHost({
   const [pfEmail, setPfEmail] = useState(pf?.email ?? "");
   // 学年（出欠の学年別集計・名簿表示用。""=未設定）
   const [pfGrade, setPfGrade] = useState(pf?.grade != null ? String(pf.grade) : "");
+
+  // 体力測定：記録一覧は保存中のplayers(常に最新)から読む(pfはシート起動時点のスナップショットのため、
+  // 追加/削除の直後は反映されない)。新規作成時(pf未定義)はまだ選手idが無いため対象外
+  const livePf = pf ? players.find((x) => x.id === pf.id) ?? pf : undefined;
+  const [fitTestId, setFitTestId] = useState(team.team.fitnessTests?.[0]?.id ?? "");
+  const [fitDate, setFitDate] = useState(todayStr());
+  const [fitValue, setFitValue] = useState("");
+  const fitTest = (team.team.fitnessTests ?? []).find((t) => t.id === fitTestId);
+
+  // 体力測定：種目管理（カテゴリ管理[2938行目付近]と同じ構造で編集/削除/追加）
+  const [newTestName, setNewTestName] = useState("");
+  const [newTestUnit, setNewTestUnit] = useState("");
+  const [newTestLower, setNewTestLower] = useState(false);
+  const [testEditId, setTestEditId] = useState<string | null>(null);
+  const [testEditName, setTestEditName] = useState("");
+  const [testEditUnit, setTestEditUnit] = useState("");
+  const [testEditLower, setTestEditLower] = useState(false);
 
   const firstPid = players[0]?.id ?? "";
 
@@ -3057,6 +3436,143 @@ function SheetHost({
             team.addCategory(newCatLabel, newCatColor);
             setNewCatLabel("");
             setNewCatColor(CATEGORY_PALETTE[0].color);
+          }}
+        >
+          追加する
+        </button>
+      </Sheet>
+
+      {/* 体力測定：種目管理（R4b）。カテゴリ管理と同じ構造(一覧+インライン編集+追加フォーム)。
+          記録が残っている種目の削除はteam.removeFitnessTest内でガードし、失敗時はboard.toastで案内する */}
+      <Sheet open={sheet?.type === "fitnessTests"} onClose={pane ? paneBack : close} pane={pane}>
+        <h2>種目を管理</h2>
+        <div className="list">
+          {(team.team.fitnessTests ?? []).length === 0 && (
+            <div className="empty-msg">登録された種目はありません。</div>
+          )}
+          {(team.team.fitnessTests ?? []).map((t) => (
+            <div key={t.id} className="catrow">
+              {testEditId === t.id ? (
+                <div style={{ flex: 1 }}>
+                  <input
+                    value={testEditName}
+                    onChange={(e) => setTestEditName(e.target.value)}
+                    style={{ marginBottom: 8 }}
+                    autoFocus
+                  />
+                  <div className="formgrid">
+                    <div className="formfield" style={{ flex: 1, margin: 0 }}>
+                      <label>単位</label>
+                      <input value={testEditUnit} onChange={(e) => setTestEditUnit(e.target.value)} />
+                    </div>
+                    <div className="formfield" style={{ flex: 1, margin: 0 }}>
+                      <label className="daytoggle">
+                        <input
+                          type="checkbox"
+                          checked={testEditLower}
+                          onChange={(e) => setTestEditLower(e.target.checked)}
+                        />
+                        <span />
+                        小さい方が良い
+                      </label>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button
+                      className="bigbtn"
+                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                      onClick={() => {
+                        if (!testEditName.trim() || !testEditUnit.trim()) {
+                          board.toast("種目名と単位を入力してください");
+                          return;
+                        }
+                        team.updateFitnessTest({
+                          id: t.id,
+                          name: testEditName.trim(),
+                          unit: testEditUnit.trim(),
+                          lowerIsBetter: testEditLower || undefined,
+                        });
+                        setTestEditId(null);
+                      }}
+                    >
+                      保存する
+                    </button>
+                    <button
+                      className="bigbtn ghost"
+                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                      onClick={() => setTestEditId(null)}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="cmpinfo">
+                    <div className="cmpnm">{t.name}</div>
+                    <div className="cmpsub">
+                      単位: {t.unit}
+                      {t.lowerIsBetter ? " ・ 小さい方が良い" : ""}
+                    </div>
+                  </div>
+                  <button
+                    className="msgdel"
+                    aria-label="編集"
+                    onClick={() => {
+                      setTestEditId(t.id);
+                      setTestEditName(t.name);
+                      setTestEditUnit(t.unit);
+                      setTestEditLower(!!t.lowerIsBetter);
+                    }}
+                  >
+                    <IconEdit />
+                  </button>
+                  <button
+                    className="msgdel"
+                    aria-label="削除"
+                    onClick={() => {
+                      if (window.confirm(`「${t.name}」を削除しますか？`)) team.removeFitnessTest(t.id);
+                    }}
+                  >
+                    <E n="trash" />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="formfield">
+          <label>新しい種目を追加</label>
+          <input
+            value={newTestName}
+            onChange={(e) => setNewTestName(e.target.value)}
+            placeholder="例）50m走 / 立ち幅跳び"
+          />
+        </div>
+        <div className="formgrid">
+          <div className="formfield" style={{ flex: 1, margin: 0 }}>
+            <label>単位</label>
+            <input value={newTestUnit} onChange={(e) => setNewTestUnit(e.target.value)} placeholder="例）秒 / cm / 回" />
+          </div>
+          <div className="formfield" style={{ flex: 1, margin: 0 }}>
+            <label className="daytoggle">
+              <input type="checkbox" checked={newTestLower} onChange={(e) => setNewTestLower(e.target.checked)} />
+              <span />
+              小さい方が良い
+            </label>
+          </div>
+        </div>
+        <button
+          className="bigbtn"
+          onClick={() => {
+            if (!newTestName.trim() || !newTestUnit.trim()) {
+              board.toast("種目名と単位を入力してください");
+              return;
+            }
+            team.addFitnessTest(newTestName, newTestUnit, newTestLower || undefined);
+            setNewTestName("");
+            setNewTestUnit("");
+            setNewTestLower(false);
           }}
         >
           追加する
@@ -3842,6 +4358,98 @@ function SheetHost({
           <label>メール（任意）</label>
           <input value={pfEmail} onChange={(e) => setPfEmail(e.target.value)} placeholder="ログイン用メール" />
         </div>
+
+        {/* 体力測定（R4a）: 既存選手の編集時のみ。新規作成時はまだ選手idが無いため、
+            保存後に選手詳細(RosPlayerPane)の「＋ 測定記録を追加」から行う */}
+        {pf && (
+          <div className="formfield">
+            <label>体力測定</label>
+            {(livePf?.fitness ?? []).length === 0 ? (
+              <div className="dsec-e">記録なし</div>
+            ) : (
+              <div className="list" style={{ marginBottom: 10 }}>
+                {(livePf?.fitness ?? []).map((f, i) => {
+                  const test = (team.team.fitnessTests ?? []).find((t) => t.id === f.testId);
+                  return (
+                    <div key={`${f.testId}-${i}`} className="catrow">
+                      <div className="cmpinfo">
+                        <div className="cmpnm">{test?.name ?? "削除済みの種目"}</div>
+                        <div className="cmpsub">
+                          {fmtDate(f.date)} ・ {f.value}
+                          {test ? test.unit : ""}
+                        </div>
+                      </div>
+                      <button
+                        className="msgdel"
+                        aria-label="削除"
+                        onClick={() => team.removeFitnessRecord(pf.id, i)}
+                      >
+                        <E n="trash" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {(team.team.fitnessTests ?? []).length === 0 ? (
+              <div className="evnote">種目が登録されていません。「種目を管理」から追加してください。</div>
+            ) : (
+              <>
+                <div className="formgrid">
+                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
+                    <label>種目</label>
+                    <select value={fitTestId} onChange={(e) => setFitTestId(e.target.value)}>
+                      {(team.team.fitnessTests ?? []).map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
+                    <label>計測日</label>
+                    <input type="date" value={fitDate} onChange={(e) => setFitDate(e.target.value)} />
+                  </div>
+                </div>
+                <div className="formgrid">
+                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
+                    <label>記録{fitTest ? `（${fitTest.unit}）` : ""}</label>
+                    <input
+                      value={fitValue}
+                      onChange={(e) => setFitValue(e.target.value.replace(/[^0-9.]/g, ""))}
+                      placeholder="数値のみ"
+                      inputMode="decimal"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="dynadd"
+                  onClick={() => {
+                    const v = Number(fitValue);
+                    if (!fitTestId || fitValue.trim() === "" || Number.isNaN(v)) {
+                      board.toast("種目と記録を入力してください");
+                      return;
+                    }
+                    team.addFitnessRecord(pf.id, { testId: fitTestId, value: v, date: fitDate });
+                    setFitValue("");
+                  }}
+                >
+                  ＋ 記録を追加
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="seclink"
+              style={{ display: "inline-block", marginTop: 8 }}
+              onClick={() => setSheet({ type: "fitnessTests", returnTo: pf })}
+            >
+              種目を管理 ›
+            </button>
+          </div>
+        )}
+
         <button
           className="bigbtn"
           onClick={() => {
@@ -3857,8 +4465,11 @@ function SheetHost({
             const email = pfEmail.trim() || undefined;
             const grade = pfGrade.trim() === "" ? null : parseInt(pfGrade, 10);
             if (pf) {
+              // ...pf は選手フォームを開いた時点のスナップショットのため、同フォーム内で
+              // team.addFitnessRecord/removeFitnessRecordが保存した最新のfitnessを含まない。
+              // livePf(常に最新のplayersから引く)をベースにし、基本情報だけを差分適用する
               board.updatePlayer({
-                ...pf,
+                ...(livePf ?? pf),
                 name: nm,
                 number,
                 position: pfPosition,

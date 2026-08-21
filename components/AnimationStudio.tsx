@@ -338,6 +338,8 @@ export default function AnimationStudio() {
         {/* ドラッグ操作の切替：配置移動 / ルート描画 */}
         <div className="toolseg" role="tablist" aria-label="ドラッグ操作">
           <button
+            role="tab"
+            aria-selected={board.animTool === "move"}
             className={`tseg${board.animTool === "move" ? " on" : ""}`}
             title="ドラッグで配置を移動（ルートも一緒に動きます）"
             onClick={() => board.setAnimTool("move")}
@@ -346,6 +348,8 @@ export default function AnimationStudio() {
             移動
           </button>
           <button
+            role="tab"
+            aria-selected={board.animTool === "draw"}
             className={`tseg${board.animTool === "draw" ? " on" : ""}`}
             title="ドラッグでルートを描画"
             onClick={() => board.setAnimTool("draw")}

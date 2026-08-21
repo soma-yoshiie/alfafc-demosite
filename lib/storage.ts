@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   CoachDeliverable,
   DrillDoc,
+  FitnessRecord,
   Library,
   NotebookEntry,
   SavedDrill,
@@ -11,6 +12,12 @@ import type {
   TeamViewer,
 } from "./types";
 import type { UserArticle } from "./articles";
+import {
+  DEFAULT_FITNESS_TESTS,
+  FITNESS_TEST_1000M,
+  FITNESS_TEST_50M,
+  FITNESS_TEST_SIDESTEP,
+} from "./sampleTeam";
 
 const KEY = "soccer_tactics_state_v1";
 const LIB_KEY = "soccer_tactics_library_v1";
@@ -27,6 +34,61 @@ const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
 
+/* ---- 体力測定：旧形式(id/name/value:string)→新形式(testId/value:number)の後方互換変換 ---- */
+
+/** 旧形式の体力測定記録（種目名・記録値が自由入力の文字列だった時代のデータ） */
+interface LegacyFitnessRecord {
+  id?: string;
+  name?: string;
+  value?: unknown;
+  date?: string;
+  /** 新形式データなら存在する（すでに変換済み＝素通しする目印） */
+  testId?: string;
+}
+
+/** 旧の自由入力値（例: "7.7秒" "6分04秒" "51回"）から数値を抽出する */
+function parseLegacyFitnessValue(raw: unknown): number {
+  const s = String(raw ?? "");
+  const mmss = s.match(/(\d+)\s*分\s*(\d+(?:\.\d+)?)\s*秒/);
+  if (mmss) return Number(mmss[1]) * 60 + Number(mmss[2]);
+  const m = s.match(/[\d.]+/);
+  const n = m ? parseFloat(m[0]) : NaN;
+  return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * 旧UIが例示していた自由入力の種目名 → デフォルト種目IDへの写像。
+ * 該当しない自由入力（ユーザーが独自に付けた種目名）はデータを失わないよう、
+ * 名前由来の暫定ID（"legacy_"+種目名）を割り当てて記録自体は保持する
+ * （対応する FitnessTest 未登録のため、種目名・単位の表示はUI側の扱いに委ねる）。
+ */
+function legacyFitnessTestId(name: string): string {
+  if (name.includes("50m")) return FITNESS_TEST_50M;
+  if (name.includes("1500m") || name.includes("1000m")) return FITNESS_TEST_1000M;
+  if (name.includes("反復横跳び")) return FITNESS_TEST_SIDESTEP;
+  return "legacy_" + name.trim().replace(/\s+/g, "_");
+}
+
+/** Player.fitness配列を旧形式→新形式へ変換する（すでに新形式の要素はtestIdの有無で判定し素通し） */
+function migrateFitness(fitness: unknown): FitnessRecord[] {
+  if (!Array.isArray(fitness)) return [];
+  return fitness.map((raw): FitnessRecord => {
+    const f = raw as LegacyFitnessRecord;
+    if (f && typeof f.testId === "string") {
+      return {
+        testId: f.testId,
+        date: String(f.date ?? ""),
+        value: typeof f.value === "number" ? f.value : parseLegacyFitnessValue(f.value),
+      };
+    }
+    return {
+      testId: legacyFitnessTestId(String(f?.name ?? "")),
+      date: String(f?.date ?? ""),
+      value: parseLegacyFitnessValue(f?.value),
+    };
+  });
+}
+
 /** localStorage から状態を復元（SSR/未保存時は null） */
 export function loadState(): BoardState | null {
   if (typeof window === "undefined") return null;
@@ -35,6 +97,11 @@ export function loadState(): BoardState | null {
     if (!raw) return null;
     const data = JSON.parse(raw) as BoardState;
     if (!data || !Array.isArray(data.slots)) return null;
+    if (Array.isArray(data.players)) {
+      data.players = data.players.map((p) =>
+        p && Array.isArray(p.fitness) ? { ...p, fitness: migrateFitness(p.fitness) } : p
+      );
+    }
     return data;
   } catch {
     return null;
@@ -175,6 +242,9 @@ export function loadTeam(): TeamData | null {
     if (!Array.isArray(data.coaches)) data.coaches = [];
     if (!Array.isArray(data.matches)) data.matches = [];
     if (!Array.isArray(data.competitions)) data.competitions = [];
+    // 旧データ（種目マスタ未導入）は初回のみデフォルト種目を補完する。
+    // 空配列（スタッフが全種目を削除した状態）は意図的な状態として上書きしない。
+    if (!Array.isArray(data.fitnessTests)) data.fitnessTests = DEFAULT_FITNESS_TESTS;
     return data;
   } catch {
     return null;

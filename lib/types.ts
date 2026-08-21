@@ -13,13 +13,30 @@ export type Group = "gk" | "df" | "mf" | "fw";
 /** 利き足 */
 export type DominantFoot = "right" | "left" | "both";
 
-/** 体力測定の記録1件（種目は自由入力） */
-export interface FitnessRecord {
+/**
+ * 体力測定の「種目」定義（チーム単位で登録・編集する）。
+ * 旧仕様は種目名を選手ごとに自由入力していたが、種目をチーム共通のマスタとして
+ * 登録する方式に変更し、種目ごとの単位・良し悪しの向きを一元管理できるようにした。
+ */
+export interface FitnessTest {
   id: string;
-  /** 種目名（例: 50m走 / 1500m走 / 反復横跳び） */
+  /** 種目名（例: 50m走 / 1000m走 / 反復横跳び） */
   name: string;
-  /** 記録値（例: 7.8秒 / 5分40秒 / 52回） */
-  value: string;
+  /** 記録値の単位（例: 秒 / cm / 回） */
+  unit: string;
+  /** true＝数値が小さいほど良い記録（例: 走タイム）。未設定＝大きいほど良い（既定） */
+  lowerIsBetter?: boolean;
+}
+
+/**
+ * 体力測定の記録1件。種目は FitnessTest.id で参照する（TeamData.fitnessTests）。
+ * 旧形式（id/name/value:string の自由入力）は storage.ts の loadState() で本形式へ変換する。
+ */
+export interface FitnessRecord {
+  /** 対応する FitnessTest.id */
+  testId: string;
+  /** 記録値（数値のみ。単位は FitnessTest.unit を参照） */
+  value: number;
   /** 計測日 YYYY-MM-DD */
   date: string;
 }
@@ -40,7 +57,7 @@ export interface Player {
   dominantFoot?: DominantFoot;
   /** 学年（1〜6年。出欠の学年別集計・名簿表示に使用。未設定可） */
   grade?: number | null;
-  /** 体力測定の記録 */
+  /** 体力測定の記録（種目はTeamData.fitnessTestsのFitnessTest.idで参照） */
   fitness?: FitnessRecord[];
   /** 怪我履歴（スタッフ管理） */
   injuries?: InjuryRecord[];
@@ -943,6 +960,8 @@ export interface TeamData {
   categories?: EventCategory[];
   /** 繰り返し予定のシリーズ（ルール保持） */
   series?: EventSeries[];
+  /** 体力測定の種目マスタ（チーム共通登録）。旧データは未定義＝storage.ts でデフォルト種目を補完 */
+  fitnessTests?: FitnessTest[];
 }
 
 /** デモ用の閲覧者ロール。coach=管理 / member=選手・保護者 */

@@ -47,6 +47,7 @@ import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
 import { SendTargetField, targetThreadKey, type SendTarget } from "./SendTarget";
+import { fmtFitnessValue } from "@/lib/fitness";
 import {
   IconBook,
   IconCalendarCheck,
@@ -936,15 +937,15 @@ function PlayerForm({
 /* ---------------- Player detail (profile / fitness / injury / attendance) ---------------- */
 function PlayerDetail({ playerId }: { playerId: string }) {
   const board = useBoard();
+  const team = useTeam();
   const p = board.state.players.find((x) => x.id === playerId);
   // 出席率は保存済みのチームデータから読み取り（読み取り専用）
   const att = useMemo(() => attendanceRate(loadTeam(), playerId), [playerId]);
   if (!p) return null;
   const fitness = p.fitness ?? [];
+  const fitnessTests = team.team.fitnessTests ?? [];
   const injuries = p.injuries ?? [];
 
-  const removeFitness = (id: string) =>
-    board.updatePlayer({ ...p, fitness: fitness.filter((f) => f.id !== id) });
   const removeInjury = (id: string) =>
     board.updatePlayer({ ...p, injuries: injuries.filter((i) => i.id !== id) });
 
@@ -990,16 +991,21 @@ function PlayerDetail({ playerId }: { playerId: string }) {
           {fitness.length === 0 ? (
             <div className="dsec-e">記録なし</div>
           ) : (
-            fitness.map((f) => (
-              <div key={f.id} className="injrow">
-                <div className="injmain">
-                  <div className="injarea">{f.name}：<b style={{ color: "var(--lime)" }}>{f.value}</b></div>
-                  <div className="injmeta">{f.date}</div>
+            fitness.map((f, i) => {
+              const test = fitnessTests.find((t) => t.id === f.testId);
+              return (
+                <div key={`${f.testId}-${i}`} className="injrow">
+                  <div className="injmain">
+                    <div className="injarea">
+                      {test?.name ?? "削除済みの種目"}：
+                      <b style={{ color: "var(--lime)" }}>{test ? fmtFitnessValue(f.value, test.unit) : f.value}</b>
+                    </div>
+                    <div className="injmeta">{f.date}</div>
+                  </div>
+                  <button className="injbtn" onClick={() => team.removeFitnessRecord(playerId, i)}>×</button>
                 </div>
-                <button className="injbtn" onClick={() => board.openSheet({ type: "fitness", playerId, fitnessId: f.id })}><E n="pencil" /></button>
-                <button className="injbtn" onClick={() => removeFitness(f.id)}>×</button>
-              </div>
-            ))
+              );
+            })
           )}
           <button className="dynadd" onClick={() => board.openSheet({ type: "fitness", playerId })}>
             ＋ 測定記録を追加
@@ -1033,48 +1039,66 @@ function PlayerDetail({ playerId }: { playerId: string }) {
 }
 
 /* ---------------- Fitness record form ---------------- */
-function FitnessForm({ playerId, fitnessId }: { playerId: string; fitnessId?: string }) {
+/** 体力測定の記録追加。種目はチーム共通マスタ(team.team.fitnessTests)から選ぶ方式のため、
+ * 記録に紐付く種目自体の変更はできない(編集は非対応・追加/削除のみ。TeamProvider.addFitnessRecord/
+ * removeFitnessRecordと同じ設計) */
+function FitnessForm({ playerId }: { playerId: string }) {
   const board = useBoard();
+  const team = useTeam();
   const p = board.state.players.find((x) => x.id === playerId);
-  const rec = p?.fitness?.find((f) => f.id === fitnessId);
-  const [fname, setFname] = useState(rec?.name ?? "");
-  const [value, setValue] = useState(rec?.value ?? "");
-  const [date, setDate] = useState(rec?.date ?? new Date().toISOString().slice(0, 10));
+  const tests = team.team.fitnessTests ?? [];
+  const [testId, setTestId] = useState(tests[0]?.id ?? "");
+  const [value, setValue] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   if (!p) return null;
+  const test = tests.find((t) => t.id === testId);
 
   return (
     <>
-      <h2>{rec ? "測定記録を編集" : "測定記録を追加"}</h2>
-      <div className="formfield">
-        <label>種目</label>
-        <input value={fname} onChange={(e) => setFname(e.target.value)} placeholder="例）50m走 / 1500m走 / 反復横跳び" autoFocus />
-      </div>
-      <div className="formgrid">
-        <div className="formfield" style={{ flex: 1, margin: 0 }}>
-          <label>記録</label>
-          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="例）7.8秒 / 5分40秒" />
+      <h2>測定記録を追加</h2>
+      {tests.length === 0 ? (
+        <div className="dsec-e">
+          種目が登録されていません。先に「種目を管理」から追加してください。
         </div>
-        <div className="formfield" style={{ flex: 1, margin: 0 }}>
-          <label>計測日</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-      </div>
+      ) : (
+        <>
+          <div className="formfield">
+            <label>種目</label>
+            <select value={testId} onChange={(e) => setTestId(e.target.value)}>
+              {tests.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="formgrid">
+            <div className="formfield" style={{ flex: 1, margin: 0 }}>
+              <label>記録{test ? `（${test.unit}）` : ""}</label>
+              <input
+                value={value}
+                onChange={(e) => setValue(e.target.value.replace(/[^0-9.]/g, ""))}
+                placeholder="数値のみ"
+                inputMode="decimal"
+              />
+            </div>
+            <div className="formfield" style={{ flex: 1, margin: 0 }}>
+              <label>計測日</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+          </div>
+        </>
+      )}
       <button
         className="bigbtn"
         onClick={() => {
-          if (!fname.trim() || !value.trim()) {
+          const v = Number(value);
+          if (!testId || value.trim() === "" || Number.isNaN(v)) {
             board.toast("種目と記録を入力してください");
             return;
           }
-          const list = p.fitness ?? [];
-          const next: FitnessRecord = {
-            id: rec?.id ?? newId("f"),
-            name: fname.trim(),
-            value: value.trim(),
-            date,
-          };
-          const fitness = rec ? list.map((f) => (f.id === rec.id ? next : f)) : [next, ...list];
-          board.updatePlayer({ ...p, fitness });
+          const rec: FitnessRecord = { testId, value: v, date };
+          team.addFitnessRecord(playerId, rec);
           board.openSheet({ type: "playerDetail", playerId });
         }}
       >
@@ -2107,7 +2131,7 @@ export default function SheetManager() {
       content = <PlayerDetail playerId={sheet.playerId!} />;
       break;
     case "fitness":
-      content = <FitnessForm playerId={sheet.playerId!} fitnessId={sheet.fitnessId} />;
+      content = <FitnessForm playerId={sheet.playerId!} />;
       break;
     case "injuryEdit":
       content = <InjuryForm playerId={sheet.playerId!} injuryId={sheet.injuryId} />;

@@ -12,6 +12,8 @@ import type {
   AttendanceStatus,
   Competition,
   EventCategory,
+  FitnessRecord,
+  FitnessTest,
   MatchRecord,
   RecurrenceRule,
   TeamData,
@@ -27,7 +29,7 @@ import {
   saveViewer,
 } from "@/lib/storage";
 import { addDaysStr, localDateStr } from "@/lib/dates";
-import { SAMPLE_PLAYERS } from "@/lib/sampleTeam";
+import { DEFAULT_FITNESS_TESTS, SAMPLE_PLAYERS } from "@/lib/sampleTeam";
 import {
   addDays,
   BUILTIN_CATEGORIES,
@@ -171,6 +173,7 @@ function sampleTeam(): TeamData {
       { id: "cmp1", name: "春季リーグ U-12", note: "4〜6月・市内リーグ" },
       { id: "cmp2", name: "練習試合", note: "" },
     ],
+    fitnessTests: DEFAULT_FITNESS_TESTS,
     matches: [
       {
         id: "m1",
@@ -180,6 +183,16 @@ function sampleTeam(): TeamData {
         ourScore: 3,
         theirScore: 1,
         formation: "3-3-1",
+        lineup: [
+          { pos: "GK", playerId: "p01" },
+          { pos: "DF1", playerId: "p02" },
+          { pos: "DF2", playerId: "p04" },
+          { pos: "DF3", playerId: "p16" },
+          { pos: "MF1", playerId: "p06" },
+          { pos: "MF2", playerId: "p08" },
+          { pos: "MF3", playerId: "p09" },
+          { pos: "FW1", playerId: "p10" },
+        ],
         periods: 2,
         halfMinutes: 20,
         goals: [
@@ -199,6 +212,16 @@ function sampleTeam(): TeamData {
         ourScore: 1,
         theirScore: 2,
         formation: "3-2-2",
+        lineup: [
+          { pos: "GK", playerId: "p01" },
+          { pos: "DF1", playerId: "p02" },
+          { pos: "DF2", playerId: "p04" },
+          { pos: "DF3", playerId: "p05" },
+          { pos: "MF1", playerId: "p06" },
+          { pos: "MF2", playerId: "p07" },
+          { pos: "FW1", playerId: "p08" },
+          { pos: "FW2", playerId: "p11" },
+        ],
         periods: 2,
         halfMinutes: 20,
         goals: [{ playerId: "p08", minute: 41, assistPlayerId: "p06", origin: "set" }],
@@ -217,6 +240,16 @@ function sampleTeam(): TeamData {
         ourScore: 2,
         theirScore: 0,
         formation: "3-3-1",
+        lineup: [
+          { pos: "GK", playerId: "p01" },
+          { pos: "DF1", playerId: "p02" },
+          { pos: "DF2", playerId: "p04" },
+          { pos: "DF3", playerId: "p16" },
+          { pos: "MF1", playerId: "p06" },
+          { pos: "MF2", playerId: "p09" },
+          { pos: "MF3", playerId: "p11" },
+          { pos: "FW1", playerId: "p10" },
+        ],
         periods: 2,
         halfMinutes: 20,
         goals: [
@@ -234,6 +267,16 @@ function sampleTeam(): TeamData {
         ourScore: 2,
         theirScore: 2,
         formation: "2-4-1",
+        lineup: [
+          { pos: "GK", playerId: "p01" },
+          { pos: "DF1", playerId: "p02" },
+          { pos: "DF2", playerId: "p16" },
+          { pos: "MF1", playerId: "p06" },
+          { pos: "MF2", playerId: "p07" },
+          { pos: "MF3", playerId: "p09" },
+          { pos: "MF4", playerId: "p11" },
+          { pos: "FW1", playerId: "p08" },
+        ],
         periods: 2,
         halfMinutes: 20,
         goals: [
@@ -325,6 +368,20 @@ interface TeamContextValue {
   removeCompetition: (id: string) => void;
   /** 名簿から選手を削除する際に、全イベントの出欠回答からその選手分を除去する */
   removePlayerAnswers: (playerId: string) => void;
+  /* ---- 体力測定：種目マスタ（チーム共通） ---- */
+  /** 種目を追加し、生成したIDを返す */
+  addFitnessTest: (name: string, unit: string, lowerIsBetter?: boolean) => string;
+  updateFitnessTest: (test: FitnessTest) => void;
+  /**
+   * 種目を削除する。既にこの種目の測定記録が1件でも存在する場合は、
+   * 記録の参照先を失わないよう削除を拒否してfalseを返す（記録の連鎖削除は行わない設計）。
+   * 削除するには先に該当選手の測定記録を removeFitnessRecord で削除しておく必要がある。
+   */
+  removeFitnessTest: (id: string) => boolean;
+  /* ---- 体力測定：選手ごとの記録（Player.fitness） ---- */
+  addFitnessRecord: (playerId: string, rec: FitnessRecord) => void;
+  /** index は対象選手の fitness 配列内の位置 */
+  removeFitnessRecord: (playerId: string, index: number) => void;
   summary: (eventId: string) => {
     yes: number;
     maybe: number;
@@ -693,6 +750,65 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  /* ---- 体力測定：種目マスタ（チーム共通） ---- */
+  const addFitnessTest = useCallback(
+    (name: string, unit: string, lowerIsBetter?: boolean): string => {
+      const nm = name.trim();
+      const id = nid("fit");
+      if (nm) {
+        const test: FitnessTest = { id, name: nm, unit: unit.trim(), lowerIsBetter };
+        setTeam((t) => ({ ...t, fitnessTests: [...(t.fitnessTests ?? []), test] }));
+        board.toast(`種目「${nm}」を追加しました`);
+      }
+      return id;
+    },
+    [board]
+  );
+  const updateFitnessTest = useCallback((test: FitnessTest) => {
+    setTeam((t) => ({
+      ...t,
+      fitnessTests: (t.fitnessTests ?? []).map((x) => (x.id === test.id ? test : x)),
+    }));
+  }, []);
+  const removeFitnessTest = useCallback(
+    (id: string): boolean => {
+      // この種目を参照する測定記録が選手側(board.state.players)に1件でも残っていれば削除を拒否する
+      const inUse = board.state.players.some((p) =>
+        (p.fitness ?? []).some((f) => f.testId === id)
+      );
+      if (inUse) {
+        board.toast("この種目の測定記録が残っているため削除できません");
+        return false;
+      }
+      setTeam((t) => ({
+        ...t,
+        fitnessTests: (t.fitnessTests ?? []).filter((x) => x.id !== id),
+      }));
+      return true;
+    },
+    [board]
+  );
+
+  /* ---- 体力測定：選手ごとの記録（Player.fitnessはBoardStateが保持するためboard.updatePlayer経由） ---- */
+  const addFitnessRecord = useCallback(
+    (playerId: string, rec: FitnessRecord) => {
+      const p = board.state.players.find((x) => x.id === playerId);
+      if (!p) return;
+      board.updatePlayer({ ...p, fitness: [rec, ...(p.fitness ?? [])] });
+    },
+    [board]
+  );
+  const removeFitnessRecord = useCallback(
+    (playerId: string, index: number) => {
+      const p = board.state.players.find((x) => x.id === playerId);
+      if (!p) return;
+      const list = p.fitness ?? [];
+      if (index < 0 || index >= list.length) return;
+      board.updatePlayer({ ...p, fitness: list.filter((_, i) => i !== index) });
+    },
+    [board]
+  );
+
   const summary = useCallback(
     (eventId: string) => {
       const att = team.attendance[eventId] ?? {};
@@ -738,6 +854,11 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       addCompetition,
       removeCompetition,
       removePlayerAnswers,
+      addFitnessTest,
+      updateFitnessTest,
+      removeFitnessTest,
+      addFitnessRecord,
+      removeFitnessRecord,
       summary,
     }),
     [
@@ -767,6 +888,11 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       addCompetition,
       removeCompetition,
       removePlayerAnswers,
+      addFitnessTest,
+      updateFitnessTest,
+      removeFitnessTest,
+      addFitnessRecord,
+      removeFitnessRecord,
       summary,
     ]
   );

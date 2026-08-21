@@ -494,6 +494,17 @@ function relTime(ts: number): string {
   return `${diffDays}日前`;
 }
 
+/** 名前から安定した0〜n-1のインデックスを算出(フィード頭文字アバターの配色に使用。表示のたびに色が変わらないよう名前文字列だけで決定する) */
+function hashIdx(name: string, n: number): number {
+  let h = 0;
+  // 単純な `h*31+code` は mod 5 だと 31%5===1 に縮退し偏るため、ビット混合で分散させる
+  for (let i = 0; i < name.length; i++) {
+    h = ((h << 5) - h + name.charCodeAt(i)) ^ (h >>> 13);
+    h >>>= 0;
+  }
+  return h % n;
+}
+
 function rankTop3(
   map: Record<string, number>,
   players: Player[]
@@ -660,6 +671,14 @@ function MdbChart({ data, max, metricKey }: { data: TrendPoint[]; max?: number; 
   return (
     <div className="mdb-chartwrap">
       <svg viewBox={`0 0 ${w} ${h}`} className="mdb-chartsvg">
+        {/* 面グラデ(上20%→下0%)。色そのものはCSS側(.mdb-chartsvgのcolor)が選択中タイルの色に
+            合わせて変えるため、ここではcurrentColorだけを参照する(色トークンはCSS側に一本化) */}
+        <defs>
+          <linearGradient id="mdb-chart-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="currentColor" stopOpacity="0.2" />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+          </linearGradient>
+        </defs>
         {segments.map((seg, si) => {
           if (seg.length < 2) return null;
           const linePath = "M" + seg.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" L ");
@@ -939,7 +958,7 @@ function MatchdayBoard({
   /* ---------------- 区画4右: 最新の動き ---------------- */
   const feedItems = useMemo(() => {
     const nameOf = (pid: string) => players.find((p) => p.id === pid)?.name ?? "選手";
-    const items: { id: string; ts: number; text: string; initial: string }[] = [];
+    const items: { id: string; ts: number; text: string; initial: string; colorIdx: number }[] = [];
     board.notebook.forEach((n) => {
       const name = nameOf(n.playerId);
       items.push({
@@ -947,6 +966,7 @@ function MatchdayBoard({
         ts: n.ts,
         text: `${name}さんが${NOTE_KIND_LABEL[n.kind]}ノートを提出`,
         initial: name.charAt(0),
+        colorIdx: hashIdx(name, 5),
       });
     });
     team.team.matches.forEach((m) => {
@@ -959,6 +979,7 @@ function MatchdayBoard({
           ts,
           text: `${name}さんが得点（vs ${m.opponent}）`,
           initial: name.charAt(0),
+          colorIdx: hashIdx(name, 5),
         });
       });
     });
@@ -970,6 +991,7 @@ function MatchdayBoard({
           ts: (r as { ts: number }).ts,
           text: `${name}さんが「${d.title}」に回答`,
           initial: name.charAt(0),
+          colorIdx: hashIdx(name, 5),
         });
       });
     });
@@ -1001,15 +1023,15 @@ function MatchdayBoard({
 
   /* ---------------- 区画4下: 今月のハイライト ---------------- */
   const highlightChips = useMemo(() => {
-    const chips: string[] = [];
+    const chips: { text: string; kind: "att" | "notes" | "goal" }[] = [];
     const fullAttendanceCount =
       players.length > 0
         ? monthEvents.filter((e) => team.summary(e.id).yes === players.length).length
         : 0;
-    if (fullAttendanceCount > 0) chips.push(`全員出席 ${fullAttendanceCount}回`);
+    if (fullAttendanceCount > 0) chips.push({ text: `全員出席 ${fullAttendanceCount}回`, kind: "att" });
 
     const weekMax = Math.max(0, ...notesSeries.map((p) => p.value ?? 0));
-    if (notesThisWeek > 0 && notesThisWeek >= weekMax) chips.push("ノート提出 週間最高");
+    if (notesThisWeek > 0 && notesThisWeek >= weekMax) chips.push({ text: "ノート提出 週間最高", kind: "notes" });
 
     const firstGoalDate: Record<string, string> = {};
     [...team.team.matches]
@@ -1018,7 +1040,7 @@ function MatchdayBoard({
         if (!firstGoalDate[g.playerId]) firstGoalDate[g.playerId] = mm.date;
       }));
     const firstGoalCount = Object.values(firstGoalDate).filter((d) => d.startsWith(ym)).length;
-    if (firstGoalCount > 0) chips.push(`初得点 ${firstGoalCount}人`);
+    if (firstGoalCount > 0) chips.push({ text: `初得点 ${firstGoalCount}人`, kind: "goal" });
 
     return chips;
   }, [monthEvents, team, players, notesSeries, notesThisWeek, ym]);
@@ -1156,16 +1178,16 @@ function MatchdayBoard({
         )}
 
         {/* 区画3: チームパルス */}
-        <div className="kpicard2 mdb-pulse" onMouseEnter={() => setPulseHover(true)} onMouseLeave={() => setPulseHover(false)}>
+        <div className={`kpicard2 mdb-pulse mdb-metric-${metric}`} onMouseEnter={() => setPulseHover(true)} onMouseLeave={() => setPulseHover(false)}>
           <div className="kpiband">
-            <button type="button" className={`kpitile${metric === "notes" ? " on" : ""}`} onClick={() => setMetricIdx(0)}>
+            <button type="button" className={`kpitile mdb-tile-notes${metric === "notes" ? " on" : ""}`} onClick={() => setMetricIdx(0)}>
               <div className="kv">{notesCountUp}</div>
               <div className="kl">今週の提出</div>
               {notesDelta != null && (
                 <span className={`mdb-kpidelta${notesDelta >= 0 ? " up" : " down"}`}>{fmtDelta("先週比", notesDelta, "件")}</span>
               )}
             </button>
-            <button type="button" className={`kpitile mdb-ringtile${metric === "att" ? " on" : ""}`} onClick={() => setMetricIdx(1)}>
+            <button type="button" className={`kpitile mdb-ringtile mdb-tile-att${metric === "att" ? " on" : ""}`} onClick={() => setMetricIdx(1)}>
               <div className="mdb-ringrow">
                 <MdbRing pct={attPctAvg} />
                 <div>
@@ -1177,14 +1199,14 @@ function MatchdayBoard({
                 <span className={`mdb-kpidelta${attDelta >= 0 ? " up" : " down"}`}>{fmtDelta("先週比", attDelta, "pt")}</span>
               )}
             </button>
-            <button type="button" className={`kpitile${metric === "win" ? " on" : ""}`} onClick={() => setMetricIdx(2)}>
+            <button type="button" className={`kpitile mdb-tile-win${metric === "win" ? " on" : ""}`} onClick={() => setMetricIdx(2)}>
               <div className="kv">{winPct != null ? `${winCountUp}%` : "—"}</div>
               <div className="kl">勝率</div>
               {winDelta != null && (
                 <span className={`mdb-kpidelta${winDelta >= 0 ? " up" : " down"}`}>{fmtDelta("前月比", winDelta, "pt")}</span>
               )}
             </button>
-            <button type="button" className={`kpitile${metric === "rank" ? " on" : ""}`} onClick={() => setMetricIdx(3)}>
+            <button type="button" className={`kpitile mdb-tile-rank${metric === "rank" ? " on" : ""}`} onClick={() => setMetricIdx(3)}>
               <div className="kv">{leagueRank.rank}位</div>
               <div className="kl">リーグ順位</div>
               <span className="mdb-kpidelta">{leagueRank.size}チーム中</span>
@@ -1269,7 +1291,7 @@ function MatchdayBoard({
                 >
                   {feedDisplay.map((it, i) => (
                     <div className="mdb-feeditem" key={`${it.id}-${i}`}>
-                      <span className="mdb-feedicon" aria-hidden="true">{it.initial}</span>
+                      <span className={`mdb-feedicon mdb-avatar-${it.colorIdx}`} aria-hidden="true">{it.initial}</span>
                       <span className="mdb-feedtext">{it.text}</span>
                       <span className="mdb-feedtime">{relTime(it.ts)}</span>
                     </div>
@@ -1283,8 +1305,8 @@ function MatchdayBoard({
         {highlightChips.length > 0 && (
           <div className="mdb-highlights">
             {highlightChips.map((c, i) => (
-              <span className="mdb-chip" key={i}>
-                {c}
+              <span className={`mdb-chip mdb-chip-${c.kind}`} key={i}>
+                {c.text}
               </span>
             ))}
           </div>
