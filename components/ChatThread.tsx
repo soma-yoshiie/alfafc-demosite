@@ -30,7 +30,7 @@ export default function ChatThread({
   const [text, setText] = useState("");
   const [pending, setPending] = useState<ChatAttachment[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
-  const [picker, setPicker] = useState<"play" | "drill" | null>(null);
+  const [picker, setPicker] = useState<"play" | "drill" | "setpiece" | null>(null);
   const imgInput = useRef<HTMLInputElement | null>(null);
   const vidInput = useRef<HTMLInputElement | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
@@ -133,6 +133,7 @@ export default function ChatThread({
               <span>
                 {a.kind === "play" && <E n="clipboard" />}
                 {a.kind === "drill" && <E n="run" />}
+                {a.kind === "setpiece" && <E n="target" />}
                 {a.kind === "image" && <E n="image" />}
                 {a.kind === "video" && <E n="video" />}{" "}
                 {a.title ?? a.kind}
@@ -152,6 +153,7 @@ export default function ChatThread({
             <>
               <button onClick={() => setPicker("play")}><E n="clipboard" /> 戦術</button>
               <button onClick={() => setPicker("drill")}><E n="run" /> トレーニング</button>
+              <button onClick={() => setPicker("setpiece")}><E n="target" /> セットプレー</button>
             </>
           )}
         </div>
@@ -205,6 +207,31 @@ export default function ChatThread({
               >
                 <E n="run" /> {d.title}
                 <span>{d.items.length}個の配置 ・ {d.lines.length}本の動線</span>
+              </button>
+            ))
+          )}
+        </div>
+      )}
+      {picker === "setpiece" && (
+        <div className="chatpicker">
+          <div className="chatpicker-h">
+            セットプレーを選ぶ
+            <button onClick={() => setPicker(null)}>×</button>
+          </div>
+          {(board.library.setPieces ?? []).length === 0 ? (
+            <div className="empty-msg">保存したセットプレーがありません。</div>
+          ) : (
+            board.library.setPieces!.map((p) => (
+              <button
+                key={p.id}
+                className="chatpick"
+                onClick={() => {
+                  setPending((cur) => [...cur, { kind: "setpiece", title: p.title, setpiece: p }]);
+                  setPicker(null);
+                  setAttachOpen(false);
+                }}
+              >
+                <E n="target" /> {p.title}
               </button>
             ))
           )}
@@ -268,6 +295,13 @@ function AttachmentView({ att }: { att: ChatAttachment }) {
     return (
       <button className="chatattcard" onClick={() => board.openDrillData(att.drill!)}>
         <E n="run" /> トレーニング「{att.title ?? att.drill.title}」を見る
+      </button>
+    );
+  }
+  if (att.kind === "setpiece" && att.setpiece) {
+    return (
+      <button className="chatattcard" onClick={() => board.loadSetPieceData(att.setpiece!)}>
+        <E n="target" /> セットプレー「{att.title ?? att.setpiece.title}」を見る
       </button>
     );
   }

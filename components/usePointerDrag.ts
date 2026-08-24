@@ -222,7 +222,11 @@ export function usePointerDrag(actor: Actor) {
       board.swapSlots(actor as number, target);
       board.toast("選手を入れ替えました");
     } else {
-      const role = roleFromXY(st.nx, st.ny);
+      // セットプレーデザイン中は、ドラッグ位置からの役割自動推定（roleFromXY）を行わない。
+      // プリセットが割り当てた役割（ニア/壁 等）は通常のピッチゾーンと対応しないため
+      const role = board.stateRef.current.setPiece
+        ? board.stateRef.current.slots[actor as number].role
+        : roleFromXY(st.nx, st.ny);
       board.moveSlot(actor as number, st.nx, st.ny, role);
     }
   };

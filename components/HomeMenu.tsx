@@ -25,6 +25,7 @@ import {
   IconCone,
   IconFolder,
   IconNote,
+  IconSetPiece,
 } from "./icons";
 
 /* ===================== PC判定（ConsoleScreens.tsx の PC_MQ 前例をそのままコピー） ===================== */
@@ -369,6 +370,12 @@ export default function HomeMenu() {
                 onClick={() => board.setScreen("board")}
               />
               <Tile
+                icon={<IconSetPiece />}
+                label="セットプレーデザイン"
+                desc="CK・FK・スローインの動きを設計して共有する"
+                onClick={() => board.setScreen("setpiece")}
+              />
+              <Tile
                 icon={<IconFolder />}
                 label="保存した戦術"
                 desc="保存した戦術を選んで読み込む"
@@ -423,6 +430,12 @@ export default function HomeMenu() {
             </>
           ) : (
             <>
+              <Tile
+                icon={<IconSetPiece />}
+                label="セットプレーデザイン"
+                desc="CK・FK・スローインの動きを設計して共有する"
+                onClick={() => board.setScreen("setpiece")}
+              />
               <Tile
                 icon={<IconCalendarCheck />}
                 label="チーム"

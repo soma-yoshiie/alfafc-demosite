@@ -5,6 +5,7 @@ import type {
   PenStroke,
   PitchViewMode,
   Player,
+  SetPieceMeta,
   ShareSnapshot,
   Shape,
   Slot,
@@ -58,6 +59,7 @@ export function buildSnapshot(
     stepCount: state.stepCount,
     guides: state.guides,
     pitchView: state.pitchView,
+    setPiece: state.setPiece,
   };
 }
 
@@ -91,6 +93,7 @@ export function snapshotToBoard(snap: ShareSnapshot): {
   stepCount: number;
   guides: { lanes?: boolean; zones?: boolean; legend?: boolean };
   pitchView: PitchViewMode;
+  setPiece: SetPieceMeta | undefined;
 } {
   const players: Player[] = [];
   let captain: string | null = null;
@@ -123,6 +126,7 @@ export function snapshotToBoard(snap: ShareSnapshot): {
     stepCount: snap.stepCount ?? 1,
     guides: snap.guides ?? {},
     pitchView: snap.pitchView ?? "full",
+    setPiece: snap.setPiece,
   };
 }
 

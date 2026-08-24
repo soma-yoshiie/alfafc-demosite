@@ -43,7 +43,11 @@ export default function PlayerToken({ index }: { index: number }) {
           {player.number ?? "–"}
         </div>
       ) : (
-        <div className="disc empty">+</div>
+        // セットプレーデザイン中は「+」（追加の意味合い）を出さず、薄い破線ディスクのまま
+        // 表示して空き枠だと分かるようにする（名簿変更・共有取込で空き枠が生じうるため）
+        <div className={`disc empty${board.state.setPiece ? " spempty" : ""}`}>
+          {board.state.setPiece ? "" : "+"}
+        </div>
       )}
       <div className="role">{s.role}</div>
       {player && <div className="pname">{player.name}</div>}

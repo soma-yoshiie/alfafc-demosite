@@ -7,7 +7,14 @@ import { E } from "./Emoji";
 import { ARTICLE_CATEGORIES, mergedArticles } from "@/lib/articles";
 import type { ArticleAttachment, UserArticle } from "@/lib/articles";
 import { ArticlesBody, ArticleBody, SettingsBody } from "./SheetManager";
-import type { BoardState, PitchType, SavedDrill, SavedPlay } from "@/lib/types";
+import type {
+  BoardState,
+  PitchType,
+  SavedDrill,
+  SavedPlay,
+  SavedSetPiece,
+  SetPieceKind,
+} from "@/lib/types";
 import { renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
 import { loadDrills } from "@/lib/storage";
@@ -45,6 +52,19 @@ const PITCH_LABEL: Record<PitchType, string> = {
   blank: "ブランク",
 };
 
+/** セットプレーの種別/攻守バッジ表示用ラベル（SetPieceBar.tsx の KIND_LABEL と同じ内容） */
+const SP_KIND_LABEL: Record<SetPieceKind, string> = {
+  ck: "CK",
+  fk: "FK",
+  gk: "ゴールキック",
+  throwin: "スローイン",
+  pk: "PK",
+};
+const SP_SIDE_LABEL: Record<"attack" | "defense", string> = {
+  attack: "攻撃",
+  defense: "守備",
+};
+
 function fmtDateTime(ts: number): string {
   return new Date(ts).toLocaleString("ja-JP", {
     month: "numeric",
@@ -58,7 +78,7 @@ export function LibraryScreen() {
   const board = useBoard();
   // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
   const pc = usePc();
-  const [tab, setTabState] = useState<"plays" | "drills">("plays");
+  const [tab, setTabState] = useState<"plays" | "drills" | "setpieces">("plays");
   // 初期選択（マウント時のみ）: 戦術タブの先頭項目
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     const list = [...board.library.plays].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -69,6 +89,10 @@ export function LibraryScreen() {
     () => [...board.library.plays].sort((a, b) => b.updatedAt - a.updatedAt),
     [board.library.plays]
   );
+  const setPieces = useMemo(
+    () => [...(board.library.setPieces ?? [])].sort((a, b) => b.updatedAt - a.updatedAt),
+    [board.library.setPieces]
+  );
   // DrillProvider はここでは使えないため localStorage から直接読む（LibraryBody と同じ方式）。
   // 練習タブを開いたときだけ読む
   const drills = useMemo(
@@ -76,19 +100,23 @@ export function LibraryScreen() {
     [tab]
   );
   // レールのサブナビが登録するonSelectは、ConsoleShell側の同値比較で更新が
-  // スキップされることがあり古い plays を閉じ込めるおそれがあるため、
+  // スキップされることがあり古い plays/setPieces を閉じ込めるおそれがあるため、
   // 常に最新値を参照できる ref 経由で読む（ChatScreen の教訓に倣う）
   const playsRef = useRef(plays);
   playsRef.current = plays;
+  const setPiecesRef = useRef(setPieces);
+  setPiecesRef.current = setPieces;
   const tabRef = useRef(tab);
   tabRef.current = tab;
 
   // タブ切替（レールサブナビとペイン内タブの両方から呼ばれる）。
   // 同じタブの再クリックで選択が先頭に巻き戻らないようガードする
-  const switchTab = (next: "plays" | "drills") => {
+  const switchTab = (next: "plays" | "drills" | "setpieces") => {
     if (tabRef.current === next) return;
     if (next === "plays") {
       setSelectedId(playsRef.current[0]?.id ?? null);
+    } else if (next === "setpieces") {
+      setSelectedId(setPiecesRef.current[0]?.id ?? null);
     } else {
       const list = [...loadDrills()].sort((a, b) => b.updatedAt - a.updatedAt);
       setSelectedId(list[0]?.id ?? null);
@@ -98,12 +126,23 @@ export function LibraryScreen() {
 
   const selectedPlay = tab === "plays" ? plays.find((p) => p.id === selectedId) ?? null : null;
   const selectedDrill = tab === "drills" ? drills.find((d) => d.id === selectedId) ?? null : null;
+  const selectedSetPiece =
+    tab === "setpieces" ? setPieces.find((p) => p.id === selectedId) ?? null : null;
 
   const handleDeletePlay = (id: string) => {
     board.deletePlay(id);
     setSelectedId((cur) => {
       if (cur !== id) return cur;
       const remaining = plays.filter((p) => p.id !== id);
+      return remaining[0]?.id ?? null;
+    });
+  };
+
+  const handleDeleteSetPiece = (id: string) => {
+    board.deleteSetPiece(id);
+    setSelectedId((cur) => {
+      if (cur !== id) return cur;
+      const remaining = setPieces.filter((p) => p.id !== id);
       return remaining[0]?.id ?? null;
     });
   };
@@ -126,6 +165,13 @@ export function LibraryScreen() {
           on: tab === "drills",
           onSelect: () => switchTab("drills"),
         },
+        {
+          key: "setpieces",
+          label: "セットプレー",
+          icon: <E n="target" />,
+          on: tab === "setpieces",
+          onSelect: () => switchTab("setpieces"),
+        },
       ],
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -146,6 +192,23 @@ export function LibraryScreen() {
       <div className="librowsub">
         {p.formation} ・ {p.moves.length}本のルート ・ {fmtDateTime(p.updatedAt)}
       </div>
+    </button>
+  );
+
+  const SetPieceRowBtn = ({ p }: { p: SavedSetPiece }) => (
+    <button
+      type="button"
+      className={`librow${selectedId === p.id ? " sel" : ""}`}
+      aria-current={selectedId === p.id ? "true" : undefined}
+      onClick={() => setSelectedId(p.id)}
+    >
+      <div className="librowtitle">
+        <span className="spkindbadge">
+          {SP_KIND_LABEL[p.setPiece.kind]}・{SP_SIDE_LABEL[p.setPiece.side]}
+        </span>
+        {p.title}
+      </div>
+      <div className="librowsub">{fmtDateTime(p.updatedAt)}</div>
     </button>
   );
 
@@ -177,6 +240,12 @@ export function LibraryScreen() {
             onClick={() => switchTab("drills")}
           >
             練習
+          </button>
+          <button
+            className={`libtab${tab === "setpieces" ? " on" : ""}`}
+            onClick={() => switchTab("setpieces")}
+          >
+            セットプレー
           </button>
         </div>
         {tab === "plays" ? (
@@ -231,30 +300,44 @@ export function LibraryScreen() {
               </div>
             )}
           </>
-        ) : drills.length === 0 ? (
-          !pc && (
-            <div className="empty-msg">
-              <b>保存された練習メニューはありません</b>
-              <br />
-              練習メニューを作成して保存すると、ここに一覧できます
+        ) : tab === "drills" ? (
+          drills.length === 0 ? (
+            !pc && (
+              <div className="empty-msg">
+                <b>保存された練習メニューはありません</b>
+                <br />
+                練習メニューを作成して保存すると、ここに一覧できます
+              </div>
+            )
+          ) : (
+            <div className="liblist">
+              {drills.map((d) => (
+                <button
+                  key={d.id}
+                  type="button"
+                  className={`librow${selectedId === d.id ? " sel" : ""}`}
+                  aria-current={selectedId === d.id ? "true" : undefined}
+                  onClick={() => setSelectedId(d.id)}
+                >
+                  <div className="librowtitle">{d.title || "無題の練習"}</div>
+                  <div className="librowsub">
+                    {PITCH_LABEL[d.pitchType] ?? "ピッチ"} ・ 配置{d.items?.length ?? 0}個 ・ 動線
+                    {d.lines?.length ?? 0}本 ・ {fmtDateTime(d.updatedAt)}
+                  </div>
+                </button>
+              ))}
             </div>
           )
+        ) : setPieces.length === 0 ? (
+          <div className="empty-msg">
+            <b>保存されたセットプレーはありません</b>
+            <br />
+            セットプレーデザイン画面で作って保存・送信から追加できます
+          </div>
         ) : (
           <div className="liblist">
-            {drills.map((d) => (
-              <button
-                key={d.id}
-                type="button"
-                className={`librow${selectedId === d.id ? " sel" : ""}`}
-                aria-current={selectedId === d.id ? "true" : undefined}
-                onClick={() => setSelectedId(d.id)}
-              >
-                <div className="librowtitle">{d.title || "無題の練習"}</div>
-                <div className="librowsub">
-                  {PITCH_LABEL[d.pitchType] ?? "ピッチ"} ・ 配置{d.items?.length ?? 0}個 ・ 動線
-                  {d.lines?.length ?? 0}本 ・ {fmtDateTime(d.updatedAt)}
-                </div>
-              </button>
+            {setPieces.map((p) => (
+              <SetPieceRowBtn key={p.id} p={p} />
             ))}
           </div>
         )}
@@ -281,15 +364,35 @@ export function LibraryScreen() {
               )}
             </div>
           )
-        ) : selectedDrill ? (
-          <DrillPreview drill={selectedDrill} />
+        ) : tab === "drills" ? (
+          selectedDrill ? (
+            <DrillPreview drill={selectedDrill} />
+          ) : (
+            <div className="libempty">
+              {drills.length === 0 ? (
+                <>
+                  <b>保存された練習メニューはありません</b>
+                  <br />
+                  練習メニューを作成して保存すると、ここに一覧できます
+                </>
+              ) : (
+                <>
+                  <b>項目が選択されていません</b>
+                  <br />
+                  左の一覧から選ぶとプレビューが表示されます
+                </>
+              )}
+            </div>
+          )
+        ) : selectedSetPiece ? (
+          <SetPiecePreview setPiece={selectedSetPiece} onDelete={handleDeleteSetPiece} />
         ) : (
           <div className="libempty">
-            {drills.length === 0 ? (
+            {setPieces.length === 0 ? (
               <>
-                <b>保存された練習メニューはありません</b>
+                <b>保存されたセットプレーはありません</b>
                 <br />
-                練習メニューを作成して保存すると、ここに一覧できます
+                セットプレーデザイン画面で作って保存・送信から追加できます
               </>
             ) : (
               <>
@@ -389,6 +492,96 @@ function PlayPreview({
           className="bigbtn ghost"
           onClick={() => {
             if (window.confirm(`「${play.title}」を削除しますか？`)) onDelete(play.id);
+          }}
+        >
+          削除
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** SetPieceMeta.kind/side のバッジ表示ラベル（本ファイル冒頭の SP_KIND_LABEL/SP_SIDE_LABEL を参照） */
+function SetPiecePreview({
+  setPiece,
+  onDelete,
+}: {
+  setPiece: SavedSetPiece;
+  onDelete: (id: string) => void;
+}) {
+  const board = useBoard();
+  // PlayPreview と同じ「SavedPlay(構造的に共通)+board.stateからBoardState再構成」レシピ。
+  // setPiece メタも埋め込みのものをそのまま渡す
+  const pngUrl = useMemo(() => {
+    try {
+      const state: BoardState = {
+        ...board.state,
+        formation: setPiece.formation,
+        slots: setPiece.slots,
+        ball: setPiece.ball,
+        moves: setPiece.moves,
+        holder: setPiece.holder ?? null,
+        opponents: setPiece.opponents ?? [],
+        drawings: setPiece.drawings ?? [],
+        shapes: setPiece.shapes ?? [],
+        stepCount: setPiece.stepCount ?? 1,
+        guides: setPiece.guides ?? {},
+        pitchView: setPiece.pitchView ?? "full",
+        setPiece: setPiece.setPiece,
+      };
+      return renderTacticPng(state);
+    } catch {
+      return null;
+    }
+    // 名簿・チーム名・キャプテンは board.state 由来のため依存に含める
+  }, [setPiece, board.state]);
+
+  return (
+    <div className="libdetail">
+      <div className="libpanehead">
+        <span className="libpanename">{setPiece.title}</span>
+        <span className="libpanetype">セットプレー</span>
+      </div>
+      <div className="libprev">
+        {pngUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={pngUrl} alt={setPiece.title} />
+        ) : (
+          <div className="libprevph">プレビューを表示できません</div>
+        )}
+      </div>
+      <dl className="libmeta">
+        <div>
+          <dt>種別</dt>
+          <dd>
+            {SP_KIND_LABEL[setPiece.setPiece.kind]} ・ {SP_SIDE_LABEL[setPiece.setPiece.side]}
+          </dd>
+        </div>
+        <div>
+          <dt>更新日時</dt>
+          <dd>{fmtDateTime(setPiece.updatedAt)}</dd>
+        </div>
+      </dl>
+      <div className="libacts">
+        <button className="bigbtn" onClick={() => board.loadSetPiece(setPiece.id)}>
+          ボードで開く
+        </button>
+        <button className="bigbtn ghost" onClick={() => board.duplicateSetPiece(setPiece.id)}>
+          複製
+        </button>
+        <button
+          className="bigbtn ghost"
+          onClick={() => {
+            const t = window.prompt("新しいタイトル", setPiece.title);
+            if (t != null) board.renameSetPiece(setPiece.id, t);
+          }}
+        >
+          名前を変更
+        </button>
+        <button
+          className="bigbtn ghost"
+          onClick={() => {
+            if (window.confirm(`「${setPiece.title}」を削除しますか？`)) onDelete(setPiece.id);
           }}
         >
           削除
@@ -757,6 +950,7 @@ function ArticleForm({
   );
   const [playPickerOpen, setPlayPickerOpen] = useState(false);
   const [drillPickerOpen, setDrillPickerOpen] = useState(false);
+  const [setPiecePickerOpen, setSetPiecePickerOpen] = useState(false);
   // 練習の読み込みはピッカーを開いたときだけ行う（LibraryScreenの練習タブと同方針）
   const [pickerDrills, setPickerDrills] = useState<SavedDrill[] | null>(null);
 
@@ -908,10 +1102,12 @@ function ArticleForm({
   };
   const togglePlayPicker = () => {
     setDrillPickerOpen(false);
+    setSetPiecePickerOpen(false);
     setPlayPickerOpen((v) => !v);
   };
   const toggleDrillPicker = () => {
     setPlayPickerOpen(false);
+    setSetPiecePickerOpen(false);
     setDrillPickerOpen((v) => {
       const next = !v;
       if (next) setPickerDrills(loadDrills());
@@ -925,6 +1121,19 @@ function ArticleForm({
         : [...list, { kind: "drill", title: d.title || "無題の練習", drill: d }]
     );
     setDrillPickerOpen(false);
+  };
+  const toggleSetPiecePicker = () => {
+    setPlayPickerOpen(false);
+    setDrillPickerOpen(false);
+    setSetPiecePickerOpen((v) => !v);
+  };
+  const addSetPieceAttachment = (p: SavedSetPiece) => {
+    setAttachments((list) =>
+      list.some((a) => a.kind === "setpiece" && a.setpiece?.id === p.id)
+        ? list
+        : [...list, { kind: "setpiece", title: p.title, setpiece: p }]
+    );
+    setSetPiecePickerOpen(false);
   };
   const removeAttachment = (i: number) => {
     setAttachments((list) => list.filter((_, idx) => idx !== i));
@@ -1061,7 +1270,9 @@ function ArticleForm({
         </label>
         {attachments.map((att, i) => (
           <div key={i} className="artattrow">
-            <span className="artattkind">{att.kind === "play" ? "戦術" : "練習"}</span>
+            <span className="artattkind">
+              {att.kind === "play" ? "戦術" : att.kind === "drill" ? "練習" : "セットプレー"}
+            </span>
             <span className="artatttitle">{att.title}</span>
             <button
               type="button"
@@ -1078,6 +1289,9 @@ function ArticleForm({
         </button>
         <button type="button" className="artaddbtn" onClick={toggleDrillPicker}>
           ＋ 保存した練習を添付
+        </button>
+        <button type="button" className="artaddbtn" onClick={toggleSetPiecePicker}>
+          ＋ 保存したセットプレーを添付
         </button>
         {playPickerOpen && (
           <div className="artpick">
@@ -1104,6 +1318,21 @@ function ArticleForm({
                 .map((d) => (
                   <button type="button" key={d.id} onClick={() => addDrillAttachment(d)}>
                     {d.title || "無題の練習"}
+                  </button>
+                ))
+            )}
+          </div>
+        )}
+        {setPiecePickerOpen && (
+          <div className="artpick">
+            {(board.library.setPieces ?? []).length === 0 ? (
+              <div className="artpickempty">保存されたセットプレーがありません。</div>
+            ) : (
+              [...(board.library.setPieces ?? [])]
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .map((p) => (
+                  <button type="button" key={p.id} onClick={() => addSetPieceAttachment(p)}>
+                    {p.title}
                   </button>
                 ))
             )}

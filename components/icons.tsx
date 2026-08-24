@@ -453,3 +453,26 @@ export function IconHalfPitch(p: SVGProps<SVGSVGElement>) {
     </Svg>
   );
 }
+
+/** セットプレーデザイン（コーナーフラッグ＋曲がるボール軌道。ConsoleShell/HomeMenuのレール・メニューで共用） */
+export function IconSetPiece(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M5 21V3" />
+      <path d="M5 4.2 12 8l-7 3.8" />
+      <path d="M6.5 15c5 2.6 11.5 1 15-5" strokeDasharray="2.2 2.4" />
+      <circle cx="20.5" cy="9" r="1.3" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}
+
+/** 左右反転（中央の軸線を挟んで内向きの矢印） */
+export function IconFlipH(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3v18" strokeDasharray="2.2 2.4" />
+      <path d="M8 8 4 12l4 4" />
+      <path d="M16 8l4 4-4 4" />
+    </Svg>
+  );
+}

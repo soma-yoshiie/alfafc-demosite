@@ -24,7 +24,12 @@ function usePc(): boolean {
 export default function Header() {
   const board = useBoard();
   const name = board.state.teamName;
-  const title = board.currentPlayTitle;
+  // セットプレー画面ではタイトル/保存先を第2文書スロット(setPieces)側から取る。
+  // 戦術ボードの currentPlayTitle 由来ロジックはそのまま(挙動を変えない)
+  const isSp = board.screen === "setpiece";
+  const spTitle =
+    board.library.setPieces?.find((p) => p.id === board.currentSetPieceId)?.title ?? null;
+  const title = isSp ? spTitle : board.currentPlayTitle;
   const coach = board.auth.role === "coach";
   // PCでは他画面(ライブラリ/チーム運営等)と同様に画面名をロゴに出す。
   // モバイルは従来どおりブランド名(ALFA FOOTBALL)のまま変更しない
@@ -34,7 +39,7 @@ export default function Header() {
     <header>
       <div className="brand">
         <div className="logo">
-          {pc ? "戦術ボード" : (<>ALFA<b> FOOTBALL</b></>)}
+          {pc ? (isSp ? "セットプレーデザイン" : "戦術ボード") : (<>ALFA<b> FOOTBALL</b></>)}
         </div>
         {coach ? (
           <button
@@ -59,7 +64,7 @@ export default function Header() {
       <div className="hbtn">
         {coach && (
         <>
-        <div className="icon" title="保存" onClick={board.saveCurrent}>
+        <div className="icon" title="保存" onClick={isSp ? board.saveCurrentSetPiece : board.saveCurrent}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
             <path d="M17 21v-8H7v8M7 3v5h8" />

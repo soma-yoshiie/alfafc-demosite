@@ -4,16 +4,20 @@ import { useMemo, useState } from "react";
 import type {
   AssignmentDeliver,
   AssignmentStatus,
+  BoardState,
   CoachDeliverable,
   DeliverKind,
   MeetingDeliver,
   PracticeMenuDeliver,
+  SavedSetPiece,
+  SetPieceDeliver,
 } from "@/lib/types";
 import {
   ASSIGNMENT_STATUS_LABEL,
   DELIVER_KIND_LABEL,
   deliverTargets,
 } from "@/lib/types";
+import { renderTacticPng } from "@/lib/exportImage";
 import { useBoard } from "./BoardProvider";
 import { E } from "./Emoji";
 
@@ -145,6 +149,11 @@ export function DeliverComposer({
   const [matchLabel, setMatchLabel] = useState((edit as MeetingDeliver)?.matchLabel ?? "");
   const [attack, setAttack] = useState<string[]>((edit as MeetingDeliver)?.attack ?? empty());
   const [defense, setDefense] = useState<string[]>((edit as MeetingDeliver)?.defense ?? empty());
+  // setpiece
+  const [spItem, setSpItem] = useState<SavedSetPiece | undefined>(
+    (edit as SetPieceDeliver)?.setpiece
+  );
+  const [spMemo, setSpMemo] = useState((edit as SetPieceDeliver)?.memo ?? "");
 
   const targetPlayerIds = targetMode === "one" && targetId ? [targetId] : undefined;
 
@@ -153,12 +162,23 @@ export function DeliverComposer({
       board.toast("タイトルを入力してください");
       return;
     }
+    if (kind === "setpiece" && !spItem) {
+      board.toast("セットプレーを選んでください");
+      return;
+    }
     const base = { title: title.trim(), targetPlayerIds, responses: edit?.responses ?? {} };
     let data: Omit<CoachDeliverable, "id" | "ts">;
     if (kind === "menu") {
       data = { kind, ...base, category: category.trim() || undefined, desc: desc.trim() || undefined } as Omit<PracticeMenuDeliver, "id" | "ts">;
     } else if (kind === "assignment") {
       data = { kind, ...base, detail: detail.trim() || undefined } as Omit<AssignmentDeliver, "id" | "ts">;
+    } else if (kind === "setpiece") {
+      data = {
+        kind,
+        ...base,
+        setpiece: spItem,
+        memo: spMemo.trim() || undefined,
+      } as Omit<SetPieceDeliver, "id" | "ts">;
     } else {
       data = {
         kind,
@@ -237,6 +257,34 @@ export function DeliverComposer({
         </>
       )}
 
+      {kind === "setpiece" && (
+        <>
+          <div className="formfield">
+            <label>セットプレー</label>
+            <select
+              value={spItem?.id ?? ""}
+              onChange={(e) => setSpItem(board.library.setPieces?.find((p) => p.id === e.target.value))}
+            >
+              <option value="">選択してください</option>
+              {[...(board.library.setPieces ?? [])]
+                .sort((a, b) => b.updatedAt - a.updatedAt)
+                .map((p) => (
+                  <option key={p.id} value={p.id}>{p.title}</option>
+                ))}
+            </select>
+            {(board.library.setPieces ?? []).length === 0 && (
+              <div className="planseote" style={{ margin: "6px 0 0" }}>
+                保存されたセットプレーがありません。セットプレーデザイン画面で保存してから配信してください。
+              </div>
+            )}
+          </div>
+          <div className="formfield">
+            <label>一言メモ（任意）</label>
+            <textarea value={spMemo} onChange={(e) => setSpMemo(e.target.value)} rows={3} placeholder="例）ニアで潰れて、逆サイドに合わせる" />
+          </div>
+        </>
+      )}
+
       <button className="bigbtn" onClick={submit}>
         {edit ? "更新する" : "配信する"}
       </button>
@@ -303,6 +351,7 @@ export function DeliverDetail({
       {d.kind === "menu" && <MenuBody d={d} isCoach={isCoach} />}
       {d.kind === "assignment" && <AssignmentBody d={d} isCoach={isCoach} />}
       {d.kind === "meeting" && <MeetingBody d={d} isCoach={isCoach} />}
+      {d.kind === "setpiece" && <SetPieceDeliverBody d={d} isCoach={isCoach} />}
 
       {d.kind === "menu" && !isCoach && (
         <button className="bigbtn ghost" style={{ marginTop: 12 }} onClick={() => onWritePractice?.(d.id)}>
@@ -436,6 +485,92 @@ function MeetingBody({ d, isCoach }: { d: MeetingDeliver; isCoach: boolean }) {
               </button>
             </>
           )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/* --- ④(応用) セットプレー配信: 静的PNG+メモ+既読/理解度回答（MenuBodyの回答UIを流用） --- */
+function SetPieceDeliverBody({ d, isCoach }: { d: SetPieceDeliver; isCoach: boolean }) {
+  const board = useBoard();
+  const me = board.auth.playerId ?? "";
+  const mine = d.responses[me];
+  const [understanding, setU] = useState(mine?.understanding ?? 3);
+  const [difficulty] = useState(mine?.difficulty ?? 3);
+  const [comment, setComment] = useState(mine?.comment ?? "");
+
+  // ライブラリのSetPiecePreview/チャット添付と同じ「SavedPlay(構造的に共通)からBoardState再構成」
+  // レシピ。名簿・チーム名・キャプテンは埋め込みに含まれないため現在のボード状態から補う
+  const pngUrl = useMemo(() => {
+    if (!d.setpiece) return null;
+    try {
+      const sp = d.setpiece;
+      const state: BoardState = {
+        ...board.state,
+        formation: sp.formation,
+        slots: sp.slots,
+        ball: sp.ball,
+        moves: sp.moves,
+        holder: sp.holder ?? null,
+        opponents: sp.opponents ?? [],
+        drawings: sp.drawings ?? [],
+        shapes: sp.shapes ?? [],
+        stepCount: sp.stepCount ?? 1,
+        guides: sp.guides ?? {},
+        pitchView: sp.pitchView ?? "full",
+        setPiece: sp.setPiece,
+      };
+      return renderTacticPng(state);
+    } catch {
+      return null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d.setpiece, board.state]);
+
+  return (
+    <>
+      {pngUrl ? (
+        <div className="shareprev">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={pngUrl} alt={d.setpiece?.title ?? d.title} />
+        </div>
+      ) : (
+        <div className="notesec">
+          <div className="notesec-b">セットプレーの図を表示できません</div>
+        </div>
+      )}
+      {d.memo && (
+        <div className="notesec">
+          <div className="notesec-h">メモ</div>
+          <div className="notesec-b">{d.memo}</div>
+        </div>
+      )}
+
+      {isCoach ? (
+        <ResultsList
+          d={d}
+          render={(r) => `理解度 ${r.understanding}/5${r.comment ? ` ・「${r.comment}」` : ""}`}
+        />
+      ) : (
+        <div className="notesec">
+          <div className="notesec-h">理解度</div>
+          <Stars value={understanding} onChange={setU} />
+          <textarea style={{ marginTop: 10 }} value={comment} onChange={(e) => setComment(e.target.value)} rows={2} placeholder="感想（任意）" />
+          <button
+            className="bigbtn"
+            style={{ marginTop: 8 }}
+            onClick={() =>
+              board.respondDeliverable(d.id, me, {
+                understanding,
+                difficulty,
+                comment: comment.trim() || undefined,
+                ts: Date.now(),
+              })
+            }
+          >
+            {mine ? "回答を更新" : "回答する"}
+          </button>
         </div>
       )}
     </>

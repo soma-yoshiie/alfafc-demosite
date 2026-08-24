@@ -14,6 +14,8 @@ import type {
   Position,
   SavedDrill,
   SavedPlay,
+  SavedSetPiece,
+  SetPieceKind,
 } from "@/lib/types";
 import { INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER } from "@/lib/types";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
@@ -70,6 +72,19 @@ const PITCH_LABEL: Record<PitchType, string> = {
   blank: "ブランク",
 };
 
+/** セットプレーの種別/攻守バッジ表示用ラベル（ConsoleScreens.tsx の SP_KIND_LABEL と同じ内容） */
+const SP_KIND_LABEL: Record<SetPieceKind, string> = {
+  ck: "CK",
+  fk: "FK",
+  gk: "ゴールキック",
+  throwin: "スローイン",
+  pk: "PK",
+};
+const SP_SIDE_LABEL: Record<"attack" | "defense", string> = {
+  attack: "攻撃",
+  defense: "守備",
+};
+
 function newId(p: string): string {
   return `${p}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e4)}`;
 }
@@ -102,6 +117,11 @@ const BOARD_PANEL_TYPES = new Set<string>([
   "share",
   "importShared",
 ]);
+
+/** PCのセットプレーデザイン画面(SetPieceBoard.tsx)で同様にパネル化する種別。
+ * 選手配置・枠メニュー・フォーメーション変更は対象外（SetPieceBoard.tsx の
+ * SpPanelHost が扱わないため、含めると右カラムに何も出せず消えてしまう） */
+const SETPIECE_PANEL_TYPES = new Set<string>(["save", "share"]);
 
 /* ---------------- Sheet shell ---------------- */
 function Sheet({
@@ -1273,35 +1293,51 @@ function ChatSheet({ to }: { to: string }) {
 
 export function SaveBody() {
   const board = useBoard();
-  const n = board.library.plays.length;
+  // 文書種別分岐: screen==="setpiece" のときはセットプレーとして保存・送信する
+  // （出力系はBoardState渡しのため無改造だが、保存/送信先のライブラリ・添付種別はここで切替）
+  const isSetPiece = board.screen === "setpiece";
+  const n = isSetPiece ? board.library.setPieces?.length ?? 0 : board.library.plays.length;
   const [title, setTitle] = useState(
-    board.currentPlayTitle ?? `戦術 ${n + 1}`
+    isSetPiece
+      ? board.currentSetPieceTitle ?? `セットプレー ${n + 1}`
+      : board.currentPlayTitle ?? `戦術 ${n + 1}`
   );
   const [folderId, setFolderId] = useState<string | null>(null);
   const [target, setTarget] = useState<SendTarget>({ mode: "none" });
   const threadKey = targetThreadKey(target);
 
-  const sendPlay = () => {
+  const sendAttachment = () => {
     if (!threadKey) return;
-    const play = board.snapshotPlay(title);
-    board.sendMessage({
-      to: threadKey,
-      from: "coach",
-      fromName: "スタッフ",
-      attachments: [{ kind: "play", title: play.title, play }],
-    });
+    if (isSetPiece) {
+      const item = board.snapshotSetPiece(title);
+      if (!item) return;
+      board.sendMessage({
+        to: threadKey,
+        from: "coach",
+        fromName: "スタッフ",
+        attachments: [{ kind: "setpiece", title: item.title, setpiece: item }],
+      });
+    } else {
+      const play = board.snapshotPlay(title);
+      board.sendMessage({
+        to: threadKey,
+        from: "coach",
+        fromName: "スタッフ",
+        attachments: [{ kind: "play", title: play.title, play }],
+      });
+    }
   };
 
   return (
     <>
       <h2>
-        戦術を保存・送信 <span>保存 {n}件</span>
+        {isSetPiece ? "セットプレーを保存・送信" : "戦術を保存・送信"} <span>保存 {n}件</span>
       </h2>
       <div className="formfield">
         <label>タイトル</label>
         <input value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />
       </div>
-      {board.library.folders.length > 0 && (
+      {!isSetPiece && board.library.folders.length > 0 && (
         <div className="formfield">
           <label>フォルダ</label>
           <select
@@ -1327,8 +1363,9 @@ export function SaveBody() {
       <button
         className="bigbtn"
         onClick={() => {
-          if (board.savePlay(title, folderId)) {
-            if (threadKey) sendPlay();
+          const ok = isSetPiece ? board.saveSetPiece(title, null) : board.savePlay(title, folderId);
+          if (ok) {
+            if (threadKey) sendAttachment();
             board.closeSheet();
           }
         }}
@@ -1341,7 +1378,7 @@ export function SaveBody() {
           className="bigbtn ghost"
           style={{ marginTop: 8 }}
           onClick={() => {
-            sendPlay();
+            sendAttachment();
             board.closeSheet();
           }}
         >
@@ -1443,18 +1480,67 @@ function DrillRow({ drill }: { drill: SavedDrill }) {
   );
 }
 
+function SetPieceRow({ setPiece }: { setPiece: SavedSetPiece }) {
+  const board = useBoard();
+  const date = new Date(setPiece.updatedAt).toLocaleString("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return (
+    <div className={`playrow${board.currentSetPieceId === setPiece.id ? " cur" : ""}`}>
+      <div className="playmain" onClick={() => board.loadSetPiece(setPiece.id)}>
+        <div className="playtitle">
+          <span className="spkindbadge">
+            {SP_KIND_LABEL[setPiece.setPiece.kind]}・{SP_SIDE_LABEL[setPiece.setPiece.side]}
+          </span>
+          {setPiece.title}
+        </div>
+        <div className="playsub">{date}</div>
+      </div>
+      <div className="playacts">
+        <button
+          title="名前を変更"
+          onClick={() => {
+            const t = window.prompt("新しいタイトル", setPiece.title);
+            if (t != null) board.renameSetPiece(setPiece.id, t);
+          }}
+        >
+          <E n="pencil" />
+        </button>
+        <button title="複製" onClick={() => board.duplicateSetPiece(setPiece.id)}>
+          <E n="copy" />
+        </button>
+        <button
+          title="削除"
+          onClick={() => {
+            if (window.confirm(`「${setPiece.title}」を削除しますか？`))
+              board.deleteSetPiece(setPiece.id);
+          }}
+        >
+          <E n="trash" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function LibraryBody({
   tab,
   onTabChange,
 }: {
-  tab: "plays" | "drills";
-  onTabChange: (t: "plays" | "drills") => void;
+  tab: "plays" | "drills" | "setpieces";
+  onTabChange: (t: "plays" | "drills" | "setpieces") => void;
 }) {
   const board = useBoard();
   const coach = true; // フォルダ機能は全プラン共通
   const setTab = onTabChange;
   const plays = [...board.library.plays].sort((a, b) => b.updatedAt - a.updatedAt);
   const unfiled = plays.filter((p) => !p.folderId || !coach);
+  const sortedSetPieces = [...(board.library.setPieces ?? [])].sort(
+    (a, b) => b.updatedAt - a.updatedAt
+  );
   // DrillProvider は DrillEditor 内部にマウントされておりグローバルシートからは
   // useDrill() が使えないため localStorage から直接読む。
   // 練習タブを開いたときだけ読む（PC専用タブなのでモバイルでは一度も走らない）
@@ -1474,6 +1560,12 @@ export function LibraryBody({
         </button>
         <button className={`libtab${tab === "drills" ? " on" : ""}`} onClick={() => setTab("drills")}>
           練習
+        </button>
+        <button
+          className={`libtab${tab === "setpieces" ? " on" : ""}`}
+          onClick={() => setTab("setpieces")}
+        >
+          セットプレー
         </button>
       </div>
       {tab === "plays" ? (
@@ -1536,7 +1628,7 @@ export function LibraryBody({
             )}
           </div>
         </>
-      ) : (
+      ) : tab === "drills" ? (
         <>
           <h2>
             保存した練習 <span>{sortedDrills.length}件</span>
@@ -1569,13 +1661,30 @@ export function LibraryBody({
             </button>
           </div>
         </>
+      ) : (
+        <>
+          <h2>
+            保存したセットプレー <span>{sortedSetPieces.length}件</span>
+          </h2>
+          <div className="list">
+            {sortedSetPieces.length === 0 ? (
+              <div className="empty-msg">
+                <b>保存されたセットプレーはありません</b>
+                <br />
+                セットプレーデザイン画面で作って保存・送信から追加できます
+              </div>
+            ) : (
+              sortedSetPieces.map((p) => <SetPieceRow key={p.id} setPiece={p} />)
+            )}
+          </div>
+        </>
       )}
     </>
   );
 }
 
 function LibrarySheet() {
-  const [tab, setTab] = useState<"plays" | "drills">("plays");
+  const [tab, setTab] = useState<"plays" | "drills" | "setpieces">("plays");
   return <LibraryBody tab={tab} onTabChange={setTab} />;
 }
 
@@ -1591,6 +1700,11 @@ function dateStamp(): string {
 
 export function ShareBody() {
   const board = useBoard();
+  // 文書種別分岐: screen==="setpiece" のときはセットプレーとして共有する。
+  // PNG/GIF/WebM/印刷はBoardState(board.state)をそのまま渡すだけなので無改造で通り、
+  // ここではタイトル文言・共有リンク(buildShareSnapshot側でsetPieceメタを付与)のみ切替
+  const isSetPiece = board.screen === "setpiece";
+  const currentTitle = isSetPiece ? board.currentSetPieceTitle : board.currentPlayTitle;
   const img = useMemo(() => {
     try {
       return renderTacticPng(board.state);
@@ -1600,14 +1714,14 @@ export function ShareBody() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const url = useMemo(() => buildShareUrl(board.buildShareSnapshot()), [board]);
-  const text = `${board.state.teamName ?? "マイチーム"} の戦術${
-    board.currentPlayTitle ? `「${board.currentPlayTitle}」` : ""
+  const text = `${board.state.teamName ?? "マイチーム"} の${isSetPiece ? "セットプレー" : "戦術"}${
+    currentTitle ? `「${currentTitle}」` : ""
   }`;
   // アニメ書き出しの進捗（null=待機中、0-1=書き出し中）
   const [gifBusy, setGifBusy] = useState<number | null>(null);
   const [webmBusy, setWebmBusy] = useState<number | null>(null);
 
-  const fileBase = board.currentPlayTitle ? board.currentPlayTitle : `戦術_${dateStamp()}`;
+  const fileBase = currentTitle ? currentTitle : `${isSetPiece ? "セットプレー" : "戦術"}_${dateStamp()}`;
 
   const copy = async () => {
     try {
@@ -1659,14 +1773,14 @@ export function ShareBody() {
   };
 
   const printOrPdf = () => {
-    if (!openPrintView(board.state, board.currentPlayTitle)) {
+    if (!openPrintView(board.state, currentTitle)) {
       board.toast("ポップアップを許可してください");
     }
   };
 
   return (
     <>
-      <h2>共有・出力</h2>
+      <h2>{isSetPiece ? "セットプレーの共有・出力" : "共有・出力"}</h2>
       {img && (
         <div className="shareprev">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -2031,6 +2145,25 @@ function ArticleAttachmentCard({ att }: { att: ArticleAttachment }) {
       if (att.kind === "drill" && att.drill) {
         return renderDrillPng(att.drill);
       }
+      if (att.kind === "setpiece" && att.setpiece) {
+        const sp = att.setpiece;
+        const state: BoardState = {
+          ...board.state,
+          formation: sp.formation,
+          slots: sp.slots,
+          ball: sp.ball,
+          moves: sp.moves,
+          holder: sp.holder ?? null,
+          opponents: sp.opponents ?? [],
+          drawings: sp.drawings ?? [],
+          shapes: sp.shapes ?? [],
+          stepCount: sp.stepCount ?? 1,
+          guides: sp.guides ?? {},
+          pitchView: sp.pitchView ?? "full",
+          setPiece: sp.setPiece,
+        };
+        return renderTacticPng(state);
+      }
       return null;
     } catch {
       return null;
@@ -2042,7 +2175,7 @@ function ArticleAttachmentCard({ att }: { att: ArticleAttachment }) {
     <div className="artatt">
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 13 }}>
         <span className="artcat" style={{ marginTop: 0 }}>
-          {att.kind === "play" ? "戦術" : "練習"}
+          {att.kind === "play" ? "戦術" : att.kind === "drill" ? "練習" : "セットプレー"}
         </span>
         {att.title}
       </div>
@@ -2059,6 +2192,7 @@ function ArticleAttachmentCard({ att }: { att: ArticleAttachment }) {
         onClick={() => {
           if (att.kind === "play" && att.play) board.loadPlayData(att.play);
           else if (att.kind === "drill" && att.drill) board.openDrillData(att.drill);
+          else if (att.kind === "setpiece" && att.setpiece) board.loadSetPieceData(att.setpiece);
         }}
       >
         開く
@@ -2077,21 +2211,26 @@ function ImportSheet() {
   const snap = board.pendingImport;
   if (!snap) return null;
   const placed = snap.slots.filter((s) => s.p).length;
+  // setPieceメタが載っている（＝セットプレー文書からの共有）場合は文言をセットプレー向けに切替。
+  // 取込先(文書スロット)自体はboard.applyImport側で判定・分岐する
+  const isSetPiece = !!snap.setPiece;
   return (
     <>
-      <h2>共有された戦術</h2>
+      <h2>{isSetPiece ? "共有されたセットプレー" : "共有された戦術"}</h2>
       <div className="importbox">
         <div className="impname">{snap.teamName ?? "共有チーム"}</div>
         <div className="impsub">
           {snap.title ? `「${snap.title}」 ・ ` : ""}
-          {snap.formation} ・ 配置 {placed}人
+          {isSetPiece ? `配置 ${placed}人` : `${snap.formation} ・ 配置 ${placed}人`}
         </div>
       </div>
       <p className="planseote" style={{ margin: "0 16px 8px" }}>
-        ※ 読み込むと、現在編集中のボードはこの共有内容に置き換わります（保存済みの戦術は残ります）。
+        {isSetPiece
+          ? "※ 読み込むと、現在編集中のセットプレーはこの共有内容に置き換わります（保存済みのセットプレーは残ります）。"
+          : "※ 読み込むと、現在編集中のボードはこの共有内容に置き換わります（保存済みの戦術は残ります）。"}
       </p>
       <button className="bigbtn" onClick={board.applyImport}>
-        この戦術を読み込む
+        {isSetPiece ? "このセットプレーを読み込む" : "この戦術を読み込む"}
       </button>
       <button className="bigbtn ghost" onClick={board.discardImport}>
         キャンセル
@@ -2105,9 +2244,13 @@ export default function SheetManager() {
   const board = useBoard();
   const { sheet, screen } = board;
   const pc = usePc();
-  // PCの戦術ボード画面では、右カラム(.boardside)のパネル／画面上部バナーに出すため
-  // シート自体は描画しない（scrimも出さない）。状態(board.sheet)自体は不変。
-  const onBoardPanel = pc && screen === "board" && !!sheet.type && BOARD_PANEL_TYPES.has(sheet.type);
+  // PCの戦術ボード/セットプレーデザイン画面では、右カラム(.boardside)のパネル／画面上部バナーに
+  // 出すため、シート自体は描画しない（scrimも出さない）。状態(board.sheet)自体は不変。
+  const onBoardPanel =
+    pc &&
+    !!sheet.type &&
+    ((screen === "board" && BOARD_PANEL_TYPES.has(sheet.type)) ||
+      (screen === "setpiece" && SETPIECE_PANEL_TYPES.has(sheet.type)));
   const open = sheet.type !== null && !onBoardPanel;
 
   let content: React.ReactNode = null;

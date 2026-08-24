@@ -231,6 +231,20 @@ export type ShapePatch = Partial<
 /** ピッチの表示モード。full=通常表示 / half=敵陣ハーフの拡大表示（データ座標は変えず表示だけ変換） */
 export type PitchViewMode = "full" | "half";
 
+/* ===== セットプレーデザイン ===== */
+
+/** セットプレーの種別。ck=コーナーキック / fk=フリーキック / gk=ゴールキック / throwin=スローイン / pk=PK */
+export type SetPieceKind = "ck" | "fk" | "gk" | "throwin" | "pk";
+
+/** セットプレー文書に付随するメタ情報。BoardState.setPiece に載せ、対象ドキュメントの種別を識別する */
+export interface SetPieceMeta {
+  kind: SetPieceKind;
+  side: "attack" | "defense";
+  /** 生成元プリセットID（lib/setPiecePresets.ts）。任意 */
+  presetId?: string;
+  memo?: string;
+}
+
 /** 永続化するボード全体の状態（作業中のボード） */
 export interface BoardState {
   teamName: string | null;
@@ -255,6 +269,12 @@ export interface BoardState {
   guides?: { lanes?: boolean; zones?: boolean; legend?: boolean };
   /** ピッチの表示モード。旧データは未定義＝full */
   pitchView?: PitchViewMode;
+  /**
+   * セットプレーデザイン文書のメタ情報。設定されている＝この BoardState はセットプレー用の
+   * 第2文書スロット（BoardProvider の spState）由来であることを示す。通常の戦術ボード
+   * （playState）では常に未定義。usePointerDrag/PlayerToken の挙動分岐にも使用する。
+   */
+  setPiece?: SetPieceMeta;
 }
 
 /* ===== 保存ライブラリ / フォルダ / プラン ===== */
@@ -285,9 +305,19 @@ export interface SavedPlay {
   pitchView?: PitchViewMode;
 }
 
+/**
+ * 名前付きで保存されたセットプレー。SavedPlay を構造的に拡張し（出力・複製・フォルダ移動などの
+ * 既存ロジックへ無改造で通せるようにする）、setPiece（種別・攻守・元プリセットID）を必須で追加する。
+ */
+export interface SavedSetPiece extends SavedPlay {
+  setPiece: SetPieceMeta;
+}
+
 export interface Library {
   plays: SavedPlay[];
   folders: Folder[];
+  /** 保存されたセットプレー。旧データは未定義＝storage.ts の loadLibrary() で [] に正規化 */
+  setPieces?: SavedSetPiece[];
 }
 
 /**
@@ -385,6 +415,8 @@ export interface ShareSnapshot {
   stepCount?: number;
   guides?: { lanes?: boolean; zones?: boolean; legend?: boolean };
   pitchView?: PitchViewMode;
+  /** セットプレー文書からの共有時のメタ情報。旧データ(v:1で未定義)との互換は維持（v は変えない） */
+  setPiece?: SetPieceMeta;
 }
 
 /* ===== 練習メニュー（ドリル図） ===== */
@@ -535,18 +567,20 @@ export interface Announcement {
 
 /* ===== チャット / メッセージ（戦術・トレーニング・画像・動画の送信） ===== */
 
-/** 添付の種類: 戦術 / トレーニング(ドリル図) / 画像 / 動画 */
-export type ChatAttachmentKind = "play" | "drill" | "image" | "video";
+/** 添付の種類: 戦術 / トレーニング(ドリル図) / セットプレー / 画像 / 動画 */
+export type ChatAttachmentKind = "play" | "drill" | "setpiece" | "image" | "video";
 
-/** メッセージに添付するもの。戦術/ドリルは埋め込みデータでライブラリ非依存に読込可能 */
+/** メッセージに添付するもの。戦術/ドリル/セットプレーは埋め込みデータでライブラリ非依存に読込可能 */
 export interface ChatAttachment {
   kind: ChatAttachmentKind;
-  /** 表示名（戦術/トレーニングのタイトル・ファイル名など） */
+  /** 表示名（戦術/トレーニング/セットプレーのタイトル・ファイル名など） */
   title?: string;
   /** play 添付の埋め込みデータ */
   play?: SavedPlay;
   /** drill 添付の埋め込みデータ */
   drill?: SavedDrill;
+  /** setpiece 添付の埋め込みデータ */
+  setpiece?: SavedSetPiece;
   /** image/video の data URL */
   dataUrl?: string;
 }
@@ -850,11 +884,12 @@ export type NotebookEntry = MatchNote | PracticeNote | SoloNote;
 
 /* ===== コーチからの配信物（③練習メニュー / ⑤個人課題 / ⑦試合前ミーティング） ===== */
 
-export type DeliverKind = "menu" | "assignment" | "meeting";
+export type DeliverKind = "menu" | "assignment" | "meeting" | "setpiece";
 export const DELIVER_KIND_LABEL: Record<DeliverKind, string> = {
   menu: "練習メニュー",
   assignment: "個人課題",
   meeting: "試合前ミーティング",
+  setpiece: "セットプレー",
 };
 
 interface DeliverBase {
@@ -914,10 +949,21 @@ export interface MeetingDeliver extends DeliverBase {
   responses: Record<string, MeetingResponse>;
 }
 
+/** ④(応用) セットプレー配信＋選手の既読/理解度回答（練習メニューの回答UIを流用） */
+export interface SetPieceDeliver extends DeliverBase {
+  kind: "setpiece";
+  /** 配信する保存済みセットプレーの埋め込みデータ（ライブラリ非依存で選手側が閲覧できるようにする） */
+  setpiece?: SavedSetPiece;
+  /** 一言メモ */
+  memo?: string;
+  responses: Record<string, MenuResponse>;
+}
+
 export type CoachDeliverable =
   | PracticeMenuDeliver
   | AssignmentDeliver
-  | MeetingDeliver;
+  | MeetingDeliver
+  | SetPieceDeliver;
 
 /** 配信物が対象選手に届くか */
 export function deliverTargets(d: CoachDeliverable, playerId: string): boolean {

@@ -1,4 +1,4 @@
-import type { SavedDrill, SavedPlay } from "./types";
+import type { SavedDrill, SavedPlay, SavedSetPiece } from "./types";
 
 export interface Article {
   id: string;
@@ -9,12 +9,13 @@ export interface Article {
   body: string[];
 }
 
-/** 記事に添付する戦術/練習（チャット添付と同じく埋め込みでライブラリ非依存） */
+/** 記事に添付する戦術/練習/セットプレー（チャット添付と同じく埋め込みでライブラリ非依存） */
 export interface ArticleAttachment {
-  kind: "play" | "drill";
+  kind: "play" | "drill" | "setpiece";
   title: string;
   play?: SavedPlay;
   drill?: SavedDrill;
+  setpiece?: SavedSetPiece;
 }
 
 /**

@@ -153,6 +153,8 @@ function CoachConversations({
           ? `戦術「${a.title ?? ""}」`
           : a.kind === "drill"
           ? `トレーニング「${a.title ?? ""}」`
+          : a.kind === "setpiece"
+          ? `セットプレー「${a.title ?? ""}」`
           : a.kind === "image"
           ? "画像"
           : "動画";

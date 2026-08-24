@@ -3303,6 +3303,25 @@ header {
   border-color: var(--lime);
 }
 
+/* ---------- セットプレーデザイン(SetPieceBar) ---------- */
+/* 上段の種別チップ列にある「攻守」の小ラベル（ボタンではなく区切りの目印） */
+.spbar-label {
+  flex: 0 0 auto;
+  align-self: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--mut);
+  padding: 0 1px;
+}
+/* 種別×攻守の組み合わせに該当プリセットが無いときの案内文 */
+.spbar-empty {
+  flex: 1 1 auto;
+  padding: 8px 4px;
+  font-size: 12.5px;
+  color: var(--mut);
+  white-space: nowrap;
+}
+
 /* ---------- 選手プロフィール詳細 ---------- */
 .profrow {
   display: flex;
@@ -3365,6 +3384,19 @@ header {
   border-radius: 999px;
   padding: 3px 9px;
   margin-top: 2px;
+}
+/* セットプレーの種別/攻守バッジ。ライブラリ一覧行のタイトル先頭に添える小チップ
+   （.dlvtag と同じ配色トークンを流用。モバイルのシート/PC画面どちらでも使うためBASEに置く） */
+.spkindbadge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--primary-dim);
+  background: var(--primary-container);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-right: 6px;
+  vertical-align: middle;
 }
 .artmeta { flex: 1; min-width: 0; }
 .arttitle { font-weight: 800; font-size: 15px; line-height: 1.4; }
@@ -5761,7 +5793,8 @@ header {
 }
 .noteapp .dlvtag.menu,
 .noteapp .dlvtag.assignment,
-.noteapp .dlvtag.meeting {
+.noteapp .dlvtag.meeting,
+.noteapp .dlvtag.setpiece {
   color: var(--primary-dim);
   background: var(--primary-container);
 }
@@ -8724,6 +8757,95 @@ header {
   }
   .bimportbtn.ghost:hover {
     color: var(--ink);
+  }
+
+  /* ---------------------------------------------------------
+     セットプレーデザイン(PC): 戦術ボード(.boardapp)と同じ「ピッチを大きく左、
+     操作パネルを右」の2カラム構成を、独立クラス(.spapp)でそのまま踏襲する。
+     .boardapp のセレクタ自体は一切変更せず、戦術ボードの挙動には触れない。
+     .bpanel/.bpanelhead/.bpanelback/.bpaneltitle/.bpanelbody や .boardside/
+     .pitchwrap/.pitch/.scrollcue は無スコープの共通クラスのため、
+     ここでは .boardapp スコープの結果と等価になるよう .spapp 側だけを補う。
+     --------------------------------------------------------- */
+  .app.spapp {
+    max-width: none;
+  }
+  .spapp:not(.fullplay) .scroll {
+    display: flex;
+    gap: 22px;
+    padding: 14px var(--sp-4) 0;
+    overflow: hidden;
+    max-width: min(1520px, 100%);
+    margin: 0 auto;
+    width: 100%;
+  }
+  .spapp:not(.fullplay) .pitchwrap {
+    flex: 1.5;
+    min-width: 0;
+    padding: 0;
+  }
+  .spapp:not(.fullplay) .pitch {
+    height: calc(100dvh - 158px);
+    max-height: 880px;
+    width: auto;
+    aspect-ratio: 68 / 105;
+    max-width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  /* 共有リンクの割り込みバナー(.bimport 高さ52px)表示中はその分だけ縮める。
+     .boardapp:has(.bimport) .pitch/.boardside(8618付近)と同じ文法 */
+  .spapp:has(.bimport) .pitch,
+  .spapp:has(.bimport) .boardside {
+    height: calc(100dvh - 158px - 52px);
+  }
+  .spapp header {
+    background: var(--surface-lowest);
+    padding: 10px 18px;
+  }
+  .spapp .logo {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    line-height: 1.05;
+  }
+  .spapp .tag.team {
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .spapp .icon {
+    border-radius: var(--r-md);
+  }
+  .spapp .icon:hover {
+    background: var(--surface-low);
+  }
+  /* 「共有・出力」のみ主要CTAとして緑を1つ立てる（.boardappと同じ扱い） */
+  .spapp .icon[title="共有・出力"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--on-primary);
+  }
+  .spapp .icon[title="共有・出力"]:hover {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+  }
+  .spapp .fbar {
+    background: var(--surface-lowest);
+    padding: 8px 18px 10px;
+  }
+  /* 上段(種別/攻守)と下段(プリセット/操作)の2段構成のため、罫線(ヘアライン)は
+     最終行の下段だけに引く（.boardappの.fbar:has(+.fbarpen)と同じ考え方） */
+  .spapp .spbar-kind {
+    border-bottom: 0;
+  }
+  .spapp .spbar-presets {
+    border-bottom: 1px solid var(--outline);
+  }
+  /* 名簿変更・共有取込で空き枠が生じた場合の目印。既存の.disc.empty(点線ディスク)を
+     セットプレー中だけ薄くして「要確認の空き枠」だと分かるようにする */
+  .spapp .disc.empty.spempty {
+    opacity: 0.55;
   }
 
   /* =========================================================
@@ -11924,6 +12046,7 @@ header {
   .teamapp,
   .homeapp,
   .boardapp,
+  .spapp,
   .libapp,
   .artapp,
   .setapp,
@@ -12226,6 +12349,7 @@ header {
   .teamapp .teamsumrow,
   .teamapp .attbarpct,
   .boardapp .logo,
+  .spapp .logo,
   .chatapp .logo,
   .chatapp .chatpanename,
   .hstat-n.ev,
@@ -12261,6 +12385,7 @@ header {
      (.noteapp .logo bは上方で既に600指定済み) */
   .teamapp .logo b,
   .boardapp .logo b,
+  .spapp .logo b,
   .chatapp .logo b,
   .libapp .logo b,
   .artapp .logo b,
@@ -12700,7 +12825,8 @@ header {
   .setapp header,
   .dx header,
   .teamapp header,
-  .boardapp header {
+  .boardapp header,
+  .spapp header {
     border-bottom: 0;
     box-shadow: 0 1px 0 var(--outline);
   }
@@ -13069,7 +13195,8 @@ header {
   }
   .noteapp .dlvtag.menu,
   .noteapp .dlvtag.assignment,
-  .noteapp .dlvtag.meeting {
+  .noteapp .dlvtag.meeting,
+  .noteapp .dlvtag.setpiece {
     color: var(--accent-strong);
     background: var(--accent-tint);
   }

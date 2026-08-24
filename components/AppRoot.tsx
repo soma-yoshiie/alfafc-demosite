@@ -3,6 +3,7 @@
 import { useBoard } from "./BoardProvider";
 import HomeMenu from "./HomeMenu";
 import TacticsBoard from "./TacticsBoard";
+import SetPieceBoard from "./SetPieceBoard";
 import DrillEditor from "./DrillEditor";
 import TeamHub from "./TeamHub";
 import ChatScreen from "./ChatScreen";
@@ -27,6 +28,8 @@ export default function AppRoot() {
           <NotebookScreen />
         ) : board.screen === "board" ? (
           <TacticsBoard />
+        ) : board.screen === "setpiece" ? (
+          <SetPieceBoard />
         ) : board.screen === "library" ? (
           <LibraryScreen />
         ) : board.screen === "articles" ? (

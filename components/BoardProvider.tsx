@@ -35,6 +35,7 @@ import type {
   Position,
   SavedDrill,
   SavedPlay,
+  SavedSetPiece,
   Session,
   ShareSnapshot,
   Shape,
@@ -63,6 +64,7 @@ import {
   loadLibrary,
   loadMessages,
   loadNotebook,
+  loadSetPieceWork,
   loadSettings,
   loadState,
   loadTeamLogo,
@@ -71,6 +73,7 @@ import {
   saveLibrary,
   saveMessages,
   saveNotebook,
+  saveSetPieceWork,
   saveSettings,
   saveState,
   saveTeamLogo,
@@ -82,6 +85,11 @@ import {
   snapshotToBoard,
 } from "@/lib/share";
 import { SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
+import {
+  buildSetPieceState,
+  DEFAULT_SETPIECE_PRESET_ID,
+  getSetPiecePreset,
+} from "@/lib/setPiecePresets";
 
 /* ------------------------------------------------------------------ */
 /* Reducer                                                            */
@@ -101,6 +109,9 @@ type Action =
   | { type: "UPDATE_PLAYER"; player: Player }
   | { type: "DELETE_PLAYER"; id: string }
   | { type: "SET_TEAM_NAME"; name: string }
+  /** playState（戦術ボード）側の名簿変更を第2文書スロット（spState）へ反映する。
+   * スロットのpidはそのまま：players配列とteamName/captainのみ差し替える */
+  | { type: "SYNC_ROSTER"; players: Player[]; teamName: string | null; captain: string | null }
   | { type: "RESET_POSITIONS" }
   | {
       type: "ADD_MOVE";
@@ -151,8 +162,12 @@ type Action =
       stepCount: number;
       guides: BoardState["guides"];
       pitchView: PitchViewMode;
+      /** セットプレー文書の読込時のみ指定。未指定＝既存呼び出しどおり setPiece は undefined になる */
+      setPiece?: BoardState["setPiece"];
     }
   | { type: "NEW_TACTIC"; formation: string }
+  /** 左右反転（セットプレーデザイン用）。slots/opponents/ball/moves/shapes の x座標を 100-x へ変換する */
+  | { type: "FLIP_X" }
   | {
       type: "IMPORT_SHARED";
       teamName: string | null;
@@ -169,6 +184,8 @@ type Action =
       stepCount: number;
       guides: BoardState["guides"];
       pitchView: PitchViewMode;
+      /** セットプレー文書への共有取込時のみ指定。未指定＝従来どおり setPiece は undefined になる */
+      setPiece?: BoardState["setPiece"];
     };
 
 function makeInitial(): BoardState {
@@ -343,6 +360,14 @@ function reducer(state: BoardState, action: Action): BoardState {
 
     case "SET_TEAM_NAME":
       return { ...state, teamName: action.name || null };
+
+    case "SYNC_ROSTER":
+      return {
+        ...state,
+        players: action.players,
+        teamName: action.teamName,
+        captain: action.captain,
+      };
 
     case "RESET_POSITIONS":
       return { ...state, slots: buildSlots(state.formation, state.slots) };
@@ -633,7 +658,28 @@ function reducer(state: BoardState, action: Action): BoardState {
         stepCount: action.stepCount,
         guides: action.guides ?? {},
         pitchView: action.pitchView ?? "full",
+        setPiece: action.setPiece,
       });
+
+    case "FLIP_X": {
+      const flipX = (p: Point): Point => ({ x: 100 - p.x, y: p.y });
+      const slots = state.slots.map((s) => ({ ...s, x: 100 - s.x }));
+      const opponents = (state.opponents ?? []).map((o) => ({ ...o, x: 100 - o.x }));
+      const ball = flipX(state.ball);
+      const moves = state.moves.map((m) => ({ ...m, path: m.path.map(flipX) }));
+      const shapes = (state.shapes ?? []).map((sh): Shape => {
+        if (sh.kind === "zoneEllipse" || sh.kind === "zoneRect" || sh.kind === "text") {
+          return { ...sh, x: 100 - sh.x };
+        }
+        if (sh.kind === "arrow") {
+          return { ...sh, p0: flipX(sh.p0), p1: flipX(sh.p1), c: flipX(sh.c) };
+        }
+        // link/hull: 座標は持たず選手/相手の参照（actors）のみのため反転不要
+        return sh;
+      });
+      const drawings = (state.drawings ?? []).map((d) => ({ ...d, path: d.path.map(flipX) }));
+      return { ...state, slots, opponents, ball, moves, shapes, drawings };
+    }
 
     case "NEW_TACTIC":
       return {
@@ -668,6 +714,7 @@ function reducer(state: BoardState, action: Action): BoardState {
         stepCount: action.stepCount,
         guides: action.guides ?? {},
         pitchView: action.pitchView ?? "full",
+        setPiece: action.setPiece,
       });
 
     default:
@@ -737,6 +784,7 @@ export interface SheetState {
 export type ScreenName =
   | "home"
   | "board"
+  | "setpiece"
   | "drill"
   | "team"
   | "chat"
@@ -938,6 +986,8 @@ interface BoardContextValue {
   snapshotPlay: (title: string) => SavedPlay;
   /** 埋め込みの戦術データを読み込んでボードに表示（ライブラリ非依存） */
   loadPlayData: (play: SavedPlay) => void;
+  /** 埋め込みのセットプレーデータを読み込んでセットプレー画面に表示（ライブラリ非依存） */
+  loadSetPieceData: (item: SavedSetPiece) => void;
   /** 受信した埋め込みドリル（DrillProvider が読み取って読込） */
   incomingDrill: SavedDrill | null;
   setIncomingDrill: (d: SavedDrill | null) => void;
@@ -974,6 +1024,27 @@ interface BoardContextValue {
   pendingImport: ShareSnapshot | null;
   applyImport: () => void;
   discardImport: () => void;
+  // セットプレーデザイン（第2文書スロット＝spState。screen==="setpiece"のときstate/dispatchが指す）
+  /** 現在読み込み中の保存セットプレーID（未保存なら null） */
+  currentSetPieceId: string | null;
+  /** 現在読み込み中の保存セットプレーのタイトル（未保存なら null） */
+  currentSetPieceTitle: string | null;
+  /** 新規タイトルで保存 */
+  saveSetPiece: (title: string, folderId: string | null) => boolean;
+  /** 読込済みのセットプレーへ上書き保存（未読込なら save シートを開く） */
+  saveCurrentSetPiece: () => void;
+  loadSetPiece: (id: string) => void;
+  deleteSetPiece: (id: string) => void;
+  duplicateSetPiece: (id: string) => void;
+  renameSetPiece: (id: string, title: string) => void;
+  /** 現在のボードを SavedSetPiece スナップショットにして返す（送信用。setPiece未設定なら null） */
+  snapshotSetPiece: (title: string) => SavedSetPiece | null;
+  /** 指定プリセットから新規セットプレーを作成し、setpiece画面へ遷移する */
+  newSetPiece: (presetId: string) => void;
+  /** 現在のセットプレー文書へ、別プリセットの初期配置を適用し直す（保存中IDは変えない） */
+  applySetPiecePreset: (presetId: string) => void;
+  /** セットプレー文書を左右反転する */
+  flipSetPieceX: () => void;
   // お役立ち記事（ユーザー投稿）
   userArticles: UserArticle[];
   /** 新規投稿を追加し、生成した記事IDを返す */
@@ -1318,15 +1389,65 @@ export function BoardProvider({
   children: React.ReactNode;
   session: Session;
 }) {
-  const [state, dispatch] = useReducer(reducer, undefined, makeInitial);
+  // ---- 画面（文書スロット切替の基準になるため最初に宣言する） ----
+  const [screen, setScreenState] = useState<ScreenName>("home");
+  // setpiece画面のときだけ、盤面レイヤーが読む state/dispatch/stateRef の指す先を
+  // セットプレー用の第2文書スロット（spState）へ切り替える。盤面レイヤーはすべて
+  // useBoard() 直結・props無しのため、この切替だけで無改造のまま別文書を描画できる
+  const sp = screen === "setpiece";
+
+  // ---- 文書スロット：戦術ボード用(playState) / セットプレーデザイン用(spState) ----
+  const [playState, playDispatch] = useReducer(reducer, undefined, makeInitial);
+  const [spState, spDispatch] = useReducer(
+    reducer,
+    undefined,
+    () =>
+      loadSetPieceWork()?.state ??
+      buildSetPieceState(
+        getSetPiecePreset(DEFAULT_SETPIECE_PRESET_ID)!,
+        playState.players,
+        playState.teamName,
+        playState.captain
+      )
+  );
+  const [currentSetPieceId, setCurrentSetPieceId] = useState<string | null>(
+    () => loadSetPieceWork()?.currentId ?? null
+  );
+
+  const state = sp ? spState : playState;
+  // dispatch自体は「常に同じ関数」として安定させ、実体の切替はref経由で行う。
+  // こうすることで、既存の useCallback（依存配列に dispatch を含まない49箇所）が
+  // screen切替をまたいでも常に「今アクティブな文書」へ正しくdispatchできる
+  const activeDispatchRef = useRef<React.Dispatch<Action>>(sp ? spDispatch : playDispatch);
+  activeDispatchRef.current = sp ? spDispatch : playDispatch;
+  const dispatch = useCallback((action: Action) => activeDispatchRef.current(action), []);
 
   // 最新stateをアニメーションループから読むためのミラー
   const stateRef = useRef<BoardState>(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+  // 最新playStateを読むためのミラー（newSetPiece等がsetpiece画面以外からでも
+  // 現行チーム名簿を参照できるようにする）
+  const playStateRef = useRef<BoardState>(playState);
+  useEffect(() => {
+    playStateRef.current = playState;
+  }, [playState]);
 
-  // ---- mount: localStorage 復元 / 変更時保存 ----
+  // ---- 名簿同期：playState（戦術ボード）側の名簿変更をセットプレー文書(spState)へ反映する。
+  // スロットのpid/配置はそのまま、players配列とteamName/captainだけを同期する
+  // （buildSetPieceStateはドキュメント新規作成時にしかplayStateを読まないため、
+  // 作成後の名簿編集を追随させるにはこの同期が別途必要）
+  useEffect(() => {
+    spDispatch({
+      type: "SYNC_ROSTER",
+      players: playState.players,
+      teamName: playState.teamName,
+      captain: playState.captain,
+    });
+  }, [playState.players, playState.teamName, playState.captain, spDispatch]);
+
+  // ---- mount: localStorage 復元 / 変更時保存（戦術ボード＝playState） ----
   const hydrated = useRef(false);
   useEffect(() => {
     const saved = loadState();
@@ -1339,14 +1460,21 @@ export function BoardProvider({
     if (!hydrated.current) return;
     // 毎キーストロークでの書き込みを避けるため300msデバウンス。次の変更でタイマーをクリアする
     const timer = setTimeout(() => {
-      saveState(state);
+      saveState(playState);
     }, 300);
     return () => clearTimeout(timer);
-  }, [state]);
+  }, [playState]);
+
+  // ---- セットプレー文書の永続化（デバウンス保存。lazy初期化済みのため起動時hydrateは不要） ----
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveSetPieceWork(spState, currentSetPieceId);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [spState, currentSetPieceId]);
 
   // ---- UI state ----
   const [mode, setMode] = useState<"edit" | "anim">("edit");
-  const [screen, setScreenState] = useState<ScreenName>("home");
   const [selActor, setSelActor] = useState<Actor | null>(null);
   // イベントハンドラ（usePointerDrag等）から最新値を読むためのミラー
   const selActorRef = useRef<Actor | null>(null);
@@ -1459,7 +1587,7 @@ export function BoardProvider({
   // 空配列で初期化して effect で hydrate すると、保存effectが先に走って
   // 保存済みライブラリを空で上書きし、StrictModeの二重マウントで消失が確定する
   const [library, setLibrary] = useState<Library>(
-    () => loadLibrary() ?? { plays: [], folders: [] }
+    () => loadLibrary() ?? { plays: [], folders: [], setPieces: [] }
   );
   // lazy初期化。effectでのhydrateだと初回ペイントが常に"starter"になり
   // レールのプラン表示がちらつくため、保存済み設定を直接読む
@@ -1574,12 +1702,14 @@ export function BoardProvider({
     saveLibrary(library);
   }, [library]);
   // 共有リンクで来たら確認シートを開く。PCの戦術ボードでは中央ダイアログではなく
-  // 画面上部のバナー(TacticsBoardのImportBanner)で出すため、シートは開かず盤面へ遷移する
+  // 画面上部のバナー(TacticsBoard/SetPieceBoardのImportBanner)で出すため、シートは開かず
+  // 盤面へ遷移する。スナップショットにsetPieceメタが載っている（＝セットプレー文書からの
+  // 共有）場合はセットプレー画面へ遷移し、以後の取込先(applyImport)もそちらへ向く
   useEffect(() => {
     if (!pendingImport) return;
     const pc = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
     if (pc) {
-      setScreen("board");
+      setScreen(pendingImport.setPiece ? "setpiece" : "board");
     } else {
       setSheet({ type: "importShared" });
     }
@@ -2237,6 +2367,54 @@ export function BoardProvider({
     [stopPlay, showToast]
   );
 
+  /** 埋め込みのセットプレーデータ（チャット添付・記事添付など）を第2文書スロットへ読み込んで表示する。
+   * loadPlayData と同じ「直接方式」だが、常に spDispatch を使いセットプレー画面へ遷移する */
+  const loadSetPieceData = useCallback(
+    (item: SavedSetPiece) => {
+      stopPlay();
+      setMode("edit");
+      setSelActor(null);
+      // SavedSetPiece は名簿(players)を含まない（チーム側で共有）ため、pid は現行の名簿を
+      // 前提に解決する。チャット/記事添付など別コンテキストで作られた文書は、現行名簿に
+      // 存在しないpidを参照しうるため、割当解除してtoastで1回だけ知らせる
+      const knownIds = new Set(playStateRef.current.players.map((p) => p.id));
+      let droppedAny = false;
+      const slots = item.slots.map((s) => {
+        if (s.pid != null && !knownIds.has(s.pid)) {
+          droppedAny = true;
+          return { ...s, pid: null };
+        }
+        return { ...s };
+      });
+      spDispatch({
+        type: "LOAD_TACTIC",
+        formation: item.formation,
+        slots,
+        ball: { ...item.ball },
+        moves: item.moves.map((m) => ({ ...m, path: m.path.map((p) => ({ ...p })) })),
+        holder: item.holder ?? null,
+        opponents: (item.opponents ?? []).map((o) => ({ ...o })),
+        drawings: (item.drawings ?? []).map((d) => ({ ...d, path: d.path.map((p) => ({ ...p })) })),
+        shapes: (item.shapes ?? []).map((sh) =>
+          sh.kind === "arrow"
+            ? { ...sh, p0: { ...sh.p0 }, p1: { ...sh.p1 }, c: { ...sh.c } }
+            : sh.kind === "link" || sh.kind === "hull"
+              ? { ...sh, actors: [...sh.actors] }
+              : { ...sh }
+        ),
+        stepCount: item.stepCount ?? 1,
+        guides: { ...(item.guides ?? {}) },
+        pitchView: item.pitchView ?? "full",
+        setPiece: item.setPiece,
+      });
+      setCurrentSetPieceId(null);
+      setSheet({ type: null });
+      setScreen("setpiece");
+      showToast(droppedAny ? "一部の選手を割当解除しました" : `「${item.title}」を表示しました`);
+    },
+    [stopPlay, showToast]
+  );
+
   const openDrillData = useCallback(
     (drill: SavedDrill) => {
       setIncomingDrill(drill);
@@ -2414,6 +2592,205 @@ export function BoardProvider({
     showToast("新しい戦術を作成しました");
   }, [stopPlay, showToast, persistSettings]);
 
+  // ---- セットプレーデザイン（第2文書スロット＝spState。保存先はライブラリのsetPieces） ----
+  const saveSetPiece = useCallback(
+    (title: string, folderId: string | null): boolean => {
+      const meta = stateRef.current.setPiece;
+      if (!meta) return false;
+      const item: SavedSetPiece = {
+        id: newPid(),
+        title: title.trim() || "無題のセットプレー",
+        folderId,
+        ...cloneTactic(),
+        updatedAt: Date.now(),
+        setPiece: meta,
+      };
+      setLibrary((lib) => ({ ...lib, setPieces: [item, ...(lib.setPieces ?? [])] }));
+      setCurrentSetPieceId(item.id);
+      showToast(`「${item.title}」を保存しました`);
+      return true;
+    },
+    [cloneTactic, showToast]
+  );
+
+  const saveCurrentSetPiece = useCallback(() => {
+    if (!currentSetPieceId) {
+      setSheet({ type: "save" });
+      return;
+    }
+    const meta = stateRef.current.setPiece;
+    if (!meta) return;
+    const t = cloneTactic();
+    setLibrary((lib) => ({
+      ...lib,
+      setPieces: (lib.setPieces ?? []).map((p) =>
+        p.id === currentSetPieceId ? { ...p, ...t, updatedAt: Date.now(), setPiece: meta } : p
+      ),
+    }));
+    showToast("上書き保存しました");
+  }, [currentSetPieceId, cloneTactic, showToast]);
+
+  const loadSetPiece = useCallback(
+    (id: string) => {
+      const item = stateLibRef.current.setPieces?.find((p) => p.id === id);
+      if (!item) return;
+      stopPlay();
+      setMode("edit");
+      setSelActor(null);
+      setSelMove(null);
+      // SavedSetPiece は名簿(players)を含まない（チーム側で共有）ため、pid は現行の名簿を
+      // 前提に解決する。以前の名簿状態で保存された文書は、現行名簿に存在しないpidを
+      // 参照しうるため、割当解除してtoastで1回だけ知らせる
+      const knownIds = new Set(playStateRef.current.players.map((p) => p.id));
+      let droppedAny = false;
+      const slots = item.slots.map((s) => {
+        if (s.pid != null && !knownIds.has(s.pid)) {
+          droppedAny = true;
+          return { ...s, pid: null };
+        }
+        return { ...s };
+      });
+      spDispatch({
+        type: "LOAD_TACTIC",
+        formation: item.formation,
+        slots,
+        ball: { ...item.ball },
+        moves: item.moves.map((m) => ({ ...m, path: m.path.map((p) => ({ ...p })) })),
+        holder: item.holder ?? null,
+        opponents: (item.opponents ?? []).map((o) => ({ ...o })),
+        drawings: (item.drawings ?? []).map((d) => ({ ...d, path: d.path.map((p) => ({ ...p })) })),
+        shapes: (item.shapes ?? []).map((sh) =>
+          sh.kind === "arrow"
+            ? { ...sh, p0: { ...sh.p0 }, p1: { ...sh.p1 }, c: { ...sh.c } }
+            : sh.kind === "link" || sh.kind === "hull"
+              ? { ...sh, actors: [...sh.actors] }
+              : { ...sh }
+        ),
+        stepCount: item.stepCount ?? 1,
+        guides: { ...(item.guides ?? {}) },
+        pitchView: item.pitchView ?? "full",
+        setPiece: item.setPiece,
+      });
+      setCurrentSetPieceId(id);
+      setSheet({ type: null });
+      setScreen("setpiece");
+      showToast(droppedAny ? "一部の選手を割当解除しました" : `「${item.title}」を読み込みました`);
+    },
+    [stopPlay, showToast]
+  );
+
+  const deleteSetPiece = useCallback(
+    (id: string) => {
+      setLibrary((lib) => ({
+        ...lib,
+        setPieces: (lib.setPieces ?? []).filter((p) => p.id !== id),
+      }));
+      setCurrentSetPieceId((cur) => (cur === id ? null : cur));
+      showToast("削除しました");
+    },
+    [showToast]
+  );
+
+  const duplicateSetPiece = useCallback(
+    (id: string) => {
+      const src = stateLibRef.current.setPieces?.find((p) => p.id === id);
+      if (!src) return;
+      const copy: SavedSetPiece = {
+        ...src,
+        id: newPid(),
+        title: src.title + "（コピー）",
+        slots: src.slots.map((s) => ({ ...s })),
+        ball: { ...src.ball },
+        moves: src.moves.map((m) => ({ ...m, path: m.path.map((p) => ({ ...p })) })),
+        updatedAt: Date.now(),
+      };
+      setLibrary((lib) => ({ ...lib, setPieces: [copy, ...(lib.setPieces ?? [])] }));
+      showToast("複製しました");
+    },
+    [showToast]
+  );
+
+  const renameSetPiece = useCallback((id: string, title: string) => {
+    setLibrary((lib) => ({
+      ...lib,
+      setPieces: (lib.setPieces ?? []).map((p) =>
+        p.id === id ? { ...p, title: title.trim() || p.title } : p
+      ),
+    }));
+  }, []);
+
+  /** 現在のセットプレー文書を SavedSetPiece スナップショットにして返す（保存せずに送信する用途）。
+   * setPiece メタが無い（＝セットプレー文書を開いていない）ときは null */
+  const snapshotSetPiece = useCallback(
+    (title: string): SavedSetPiece | null => {
+      const meta = stateRef.current.setPiece;
+      if (!meta) return null;
+      return {
+        id: newPid(),
+        title: title.trim() || "無題のセットプレー",
+        folderId: null,
+        ...cloneTactic(),
+        updatedAt: Date.now(),
+        setPiece: meta,
+      };
+    },
+    [cloneTactic]
+  );
+
+  const newSetPiece = useCallback(
+    (presetId: string) => {
+      const preset =
+        getSetPiecePreset(presetId) ?? getSetPiecePreset(DEFAULT_SETPIECE_PRESET_ID)!;
+      stopPlay();
+      setMode("edit");
+      setSelActor(null);
+      setSelMove(null);
+      setActiveStepState(0);
+      setPenMode(false);
+      spDispatch({
+        type: "HYDRATE",
+        state: buildSetPieceState(
+          preset,
+          playStateRef.current.players,
+          playStateRef.current.teamName,
+          playStateRef.current.captain
+        ),
+      });
+      setCurrentSetPieceId(null);
+      setSheet({ type: null });
+      // 新規化したら必ずセットプレー画面へ移動する（newPlayと同じ配慮）
+      setScreen("setpiece");
+      showToast(`「${preset.label}」を作成しました`);
+    },
+    [stopPlay, showToast]
+  );
+
+  /** 現在のセットプレー文書へ、別プリセットの初期配置を適用し直す（保存中IDは変えない＝上書き保存で反映） */
+  const applySetPiecePreset = useCallback(
+    (presetId: string) => {
+      const preset = getSetPiecePreset(presetId);
+      if (!preset) return;
+      stopPlay();
+      setSelActor(null);
+      setSelMove(null);
+      spDispatch({
+        type: "HYDRATE",
+        state: buildSetPieceState(
+          preset,
+          playStateRef.current.players,
+          playStateRef.current.teamName,
+          playStateRef.current.captain
+        ),
+      });
+      showToast(`「${preset.label}」を適用しました`);
+    },
+    [stopPlay, showToast]
+  );
+
+  const flipSetPieceX = useCallback(() => {
+    spDispatch({ type: "FLIP_X" });
+  }, []);
+
   const createFolder = useCallback(
     (name: string) => {
       const nm = name.trim();
@@ -2427,8 +2804,14 @@ export function BoardProvider({
 
   const deleteFolder = useCallback((id: string) => {
     setLibrary((lib) => ({
+      ...lib,
       folders: lib.folders.filter((f) => f.id !== id),
       plays: lib.plays.map((p) =>
+        p.folderId === id ? { ...p, folderId: null } : p
+      ),
+      // setPieces も同じフォルダを参照しうるため、他フィールドと同様に付け替える
+      // （...lib を使わず個別列挙のみだと setPieces が欠落・消失してしまうため明示的に処理する）
+      setPieces: (lib.setPieces ?? []).map((p) =>
         p.folderId === id ? { ...p, folderId: null } : p
       ),
     }));
@@ -2468,10 +2851,11 @@ export function BoardProvider({
   );
 
   const buildShareSnapshot = useCallback((): ShareSnapshot => {
-    const title =
-      stateLibRef.current.plays.find((p) => p.id === currentPlayId)?.title ?? null;
+    const title = sp
+      ? stateLibRef.current.setPieces?.find((p) => p.id === currentSetPieceId)?.title ?? null
+      : stateLibRef.current.plays.find((p) => p.id === currentPlayId)?.title ?? null;
     return buildSnapshot(stateRef.current, title);
-  }, [currentPlayId]);
+  }, [sp, currentPlayId, currentSetPieceId]);
 
   const applyImport = useCallback(() => {
     if (!pendingImport) return;
@@ -2479,8 +2863,9 @@ export function BoardProvider({
     stopPlay();
     setMode("edit");
     setSelActor(null);
-    dispatch({
-      type: "IMPORT_SHARED",
+    const toSetPiece = !!pendingImport.setPiece;
+    const importAction = {
+      type: "IMPORT_SHARED" as const,
       teamName: b.teamName,
       players: b.players,
       captain: b.captain,
@@ -2495,14 +2880,26 @@ export function BoardProvider({
       stepCount: b.stepCount,
       guides: b.guides,
       pitchView: b.pitchView,
-    });
-    setCurrentPlayId(null);
-    persistSettings({ currentPlayId: null });
+      setPiece: b.setPiece,
+    };
+    // セットプレー文書への取込は、現在の画面に関わらず必ずセットプレー用の第2文書スロット
+    // (spState)へ向ける。画面切替(setScreen)経由の汎用dispatchはレンダーを跨ぐまで
+    // 反映されない（同一イベント内では旧画面のまま）ため、loadSetPiece等と同じくここでも
+    // spDispatch を直接呼ぶ
+    if (toSetPiece) {
+      spDispatch(importAction);
+      setCurrentSetPieceId(null);
+      setScreen("setpiece");
+    } else {
+      dispatch(importAction);
+      setCurrentPlayId(null);
+      persistSettings({ currentPlayId: null });
+    }
     setPendingImport(null);
     if (typeof window !== "undefined")
       history.replaceState(null, "", window.location.pathname);
     setSheet({ type: null });
-    showToast("共有された戦術を読み込みました");
+    showToast(toSetPiece ? "共有されたセットプレーを読み込みました" : "共有された戦術を読み込みました");
   }, [pendingImport, stopPlay, showToast, persistSettings]);
 
   // 共有リンク読み込みの破棄。pendingImportを消してURLの#p=…も除去し、
@@ -2778,6 +3175,7 @@ export function BoardProvider({
       removeMessage,
       snapshotPlay,
       loadPlayData,
+      loadSetPieceData,
       incomingDrill,
       setIncomingDrill,
       openDrillData,
@@ -2810,6 +3208,19 @@ export function BoardProvider({
       pendingImport,
       applyImport,
       discardImport,
+      currentSetPieceId,
+      currentSetPieceTitle:
+        library.setPieces?.find((p) => p.id === currentSetPieceId)?.title ?? null,
+      saveSetPiece,
+      saveCurrentSetPiece,
+      loadSetPiece,
+      deleteSetPiece,
+      duplicateSetPiece,
+      renameSetPiece,
+      snapshotSetPiece,
+      newSetPiece,
+      applySetPiecePreset,
+      flipSetPieceX,
       userArticles,
       addUserArticle,
       updateUserArticle,
@@ -2889,6 +3300,7 @@ export function BoardProvider({
       removeMessage,
       snapshotPlay,
       loadPlayData,
+      loadSetPieceData,
       incomingDrill,
       openDrillData,
       notebook,
@@ -2917,6 +3329,17 @@ export function BoardProvider({
       pendingImport,
       applyImport,
       discardImport,
+      currentSetPieceId,
+      saveSetPiece,
+      saveCurrentSetPiece,
+      loadSetPiece,
+      deleteSetPiece,
+      duplicateSetPiece,
+      renameSetPiece,
+      snapshotSetPiece,
+      newSetPiece,
+      applySetPiecePreset,
+      flipSetPieceX,
       userArticles,
       addUserArticle,
       updateUserArticle,

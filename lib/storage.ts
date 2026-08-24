@@ -24,6 +24,7 @@ const LIB_KEY = "soccer_tactics_library_v1";
 const SETTINGS_KEY = "soccer_tactics_settings_v1";
 const DRILLS_KEY = "soccer_tactics_drills_v1";
 const DRILL_WORK_KEY = "soccer_tactics_drill_work_v1";
+const SETPIECE_WORK_KEY = "soccer_tactics_setpiece_work_v1";
 const TEAM_KEY = "soccer_tactics_team_v1";
 const VIEWER_KEY = "soccer_tactics_viewer_v1";
 const MESSAGES_KEY = "soccer_tactics_messages_v1";
@@ -127,6 +128,7 @@ export function loadLibrary(): Library | null {
     const data = JSON.parse(raw) as Library;
     if (!data || !Array.isArray(data.plays)) return null;
     if (!Array.isArray(data.folders)) data.folders = [];
+    if (!Array.isArray(data.setPieces)) data.setPieces = [];
     return data;
   } catch {
     return null;
@@ -224,6 +226,29 @@ export function saveDrillWork(doc: DrillDoc, currentId: string | null): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(DRILL_WORK_KEY, JSON.stringify({ doc, currentId }));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/* ---- セットプレーデザイン（作業中の第2文書スロット） ---- */
+export function loadSetPieceWork(): { state: BoardState; currentId: string | null } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(SETPIECE_WORK_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || !data.state || !Array.isArray(data.state.slots)) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSetPieceWork(state: BoardState, currentId: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SETPIECE_WORK_KEY, JSON.stringify({ state, currentId }));
   } catch {
     /* 無視 */
   }
@@ -375,7 +400,12 @@ export function loadDeliverables(): CoachDeliverable[] | null {
     if (!Array.isArray(data)) return null;
     // 廃止済みkind（過去に配信していた種別など）の過去データが残っていても安全に無視する互換ガード
     return (data as CoachDeliverable[]).filter(
-      (d) => d && (d.kind === "menu" || d.kind === "assignment" || d.kind === "meeting")
+      (d) =>
+        d &&
+        (d.kind === "menu" ||
+          d.kind === "assignment" ||
+          d.kind === "meeting" ||
+          d.kind === "setpiece")
     );
   } catch {
     return null;

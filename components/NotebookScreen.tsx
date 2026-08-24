@@ -401,7 +401,7 @@ export default function NotebookScreen() {
           <div className="notetools">
             <h2><E n="megaphone" /> 配信</h2>
             <DeliverBlock
-              kinds={["menu", "assignment", "meeting"]}
+              kinds={["menu", "assignment", "meeting", "setpiece"]}
               heading={null}
               onOpen={(id) => {
                 if (!isPcCoach()) {
@@ -858,7 +858,7 @@ function PlayerHome({
         )}
 
         <DeliverBlock
-          kinds={["menu", "assignment", "meeting"]}
+          kinds={["menu", "assignment", "meeting", "setpiece"]}
           onOpen={onOpenDeliver}
           onCreate={() => {}}
         />
