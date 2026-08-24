@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useBoard } from "./BoardProvider";
-import { DEFAULT_SETPIECE_PRESET_ID, SETPIECE_PRESETS } from "@/lib/setPiecePresets";
-import type { SetPieceKind } from "@/lib/types";
+import { DEFAULT_SETPIECE_PRESET_ID, SETPIECE_PRESETS, getSetPiecePreset } from "@/lib/setPiecePresets";
+import type { PitchViewMode, SetPieceKind } from "@/lib/types";
 import { IconFlipH, IconHalfPitch, IconPlusSquare, IconUndo } from "./icons";
 
 const KIND_ORDER: SetPieceKind[] = ["ck", "fk", "gk", "throwin", "pk"];
@@ -19,9 +19,9 @@ const KIND_LABEL: Record<SetPieceKind, string> = {
  * セットプレーデザイン画面の操作バー。FormationBar.tsx が雛形だが、フォーメーション選択の
  * 代わりに「種別(CK/FK/…)＋攻守」でプリセットを絞り込み、選んだプリセットを盤面へ適用する。
  * 上段=種別チップ＋攻守トグル（絞り込みのみ・盤面は変えない）、
- * 下段=絞り込み後のプリセットチップ（選択で即適用）＋左右反転／新規作成／ハーフ表示切替。
+ * 下段=絞り込み後のプリセットチップ（選択で即適用）＋左右反転／新規作成／ズーム(種目別)⇔フル表示切替。
  */
-export default function SetPieceBar() {
+export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = {}) {
   const board = useBoard();
   // 編集系コントロールはスタッフのみ（選手は共有セットプレーの閲覧のみ。FormationBarと同じ規約）
   const isCoach = board.auth.role === "coach";
@@ -62,6 +62,22 @@ export default function SetPieceBar() {
   const list = SETPIECE_PRESETS.filter((p) => p.kind === kind && p.side === side);
   const currentPresetId = meta?.presetId ?? null;
 
+  // 表示切替は「ズーム(種目別)/フル」の2択。ズーム先はプリセット定義(SETPIECE_PRESETS)の
+  // view を優先する（例:「スローイン：キープ」はside:attackだがview:boxdefのため、
+  // side基準で決めるとboxatkになり配置と矛盾して全トークンが盤外に消えてしまう）。
+  // プリセットが見つからない場合（プリセット未適用の手動編集等）のみ、従来どおり
+  // side基準（attack→boxatk・defense→boxdef）にフォールバックする。
+  // （ゴールキックは見取り図がピッチ全体に及ぶためズーム変種を持たない＝ズーム不可）。
+  const presetDef = currentPresetId ? getSetPiecePreset(currentPresetId) : undefined;
+  const zoomView: PitchViewMode | null =
+    meta && meta.kind !== "gk"
+      ? presetDef?.view ?? (meta.side === "defense" ? "boxdef" : "boxatk")
+      : null;
+  const view = board.state.pitchView;
+  // 旧仕様の pitchView:"half" が残った文書も「ズーム中」として扱い、表示を壊さず
+  // フルへ戻せるようにする（half自体はもう選択肢に出さない）
+  const isZoomed = view === "half" || view === "boxatk" || view === "boxdef";
+
   const applyPreset = (id: string) => {
     if (id === currentPresetId) return;
     setPrevPresetId(currentPresetId);
@@ -94,7 +110,13 @@ export default function SetPieceBar() {
           守備
         </button>
       </div>
-      <div className="fbar spbar-presets">
+      <div
+        className={`fbar spbar-presets${
+          view === "boxatk" ? " spview-box spview-boxatk" :
+          view === "boxdef" ? " spview-box spview-boxdef" :
+          ""
+        }`}
+      >
         {list.length === 0 ? (
           <div className="spbar-empty">このタイプのプリセットはまだありません</div>
         ) : (
@@ -145,18 +167,30 @@ export default function SetPieceBar() {
           <IconPlusSquare />
           <span>新規作成</span>
         </button>
-        <button
-          className={`fmini half${board.state.pitchView === "half" ? " on" : ""}`}
-          title="敵陣ハーフを拡大表示"
-          onClick={() => {
-            const next = board.state.pitchView === "half" ? "full" : "half";
-            board.setPitchView(next);
-            board.toast(next === "half" ? "ハーフコート表示" : "フルコート表示");
-          }}
-        >
-          <IconHalfPitch />
-          <span>ハーフ</span>
-        </button>
+        {(isZoomed || zoomView != null) && (
+          <button
+            className={`fmini zoom${isZoomed ? " on" : ""}`}
+            title={zoomView ? "該当エリアを拡大表示" : "フルコート表示に戻す"}
+            onClick={() => {
+              const next = isZoomed ? "full" : zoomView ?? "full";
+              board.setPitchView(next);
+              board.toast(next === "full" ? "フルコート表示" : "ズーム表示");
+            }}
+          >
+            <IconHalfPitch />
+            <span>ズーム</span>
+          </button>
+        )}
+        {onEnter3D && (
+          <button
+            type="button"
+            className="fmini sp3dtoggle"
+            title="配置を3Dで確認"
+            onClick={onEnter3D}
+          >
+            <span>3D</span>
+          </button>
+        )}
       </div>
     </>
   );

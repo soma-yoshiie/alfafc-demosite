@@ -27,9 +27,14 @@ export interface FrameOpts {
  * 用途別のキャンバスサイズを算出する。
  * width（キャンバス幅）を指定すると、ピッチ表示モードに応じた縦横比から
  * ヘッダー込みの高さを返す（full ≒ 480:640 / half ≒ 480:340 相当の比率）。
+ * boxatk/boxdef は y可視範囲が42（=100の42%）と半分以下のため、横長（画面のPNG/GIF書き出しも
+ * 同じ構図になるよう）に ≒ 480:300 相当の比率にする（PC表示側の横長クロップ演出と揃える）。
  */
 export function frameSize(view: PitchViewMode | undefined, width: number): { w: number; h: number } {
-  const ratio = view === "half" ? 340 / 480 : 640 / 480;
+  const ratio =
+    view === "half" ? 340 / 480 :
+    view === "boxatk" || view === "boxdef" ? 300 / 480 :
+    640 / 480;
   return { w: width, h: Math.round(HEADER_H + width * ratio) };
 }
 
@@ -110,6 +115,27 @@ export function renderFrame(
     ctx.beginPath();
     ctx.arc(px + pw / 2, py + ph - 4, pw * 0.16, Math.PI, Math.PI * 2);
     ctx.stroke();
+  } else if (view === "boxatk") {
+    // 敵陣ボックス周辺クロップ：開いた3辺＋ゴールエリア（下端はクロップ線＝ピッチの実在ラインでは
+    // ないため、half表示のハーフウェイライン/センターサークルに相当する装飾は描かない）
+    ctx.beginPath();
+    ctx.moveTo(px + 4, py + ph - 4);
+    ctx.lineTo(px + 4, py + 4);
+    ctx.lineTo(px + pw - 4, py + 4);
+    ctx.lineTo(px + pw - 4, py + ph - 4);
+    ctx.stroke();
+    ctx.strokeRect(px + (pw - boxW) / 2, py + 4, boxW, boxH);
+    ctx.strokeRect(px + (pw - gboxW) / 2, py + 4, gboxW, gboxH);
+  } else if (view === "boxdef") {
+    // 自陣ボックス周辺クロップ：開いた3辺（上端がクロップ線）＋ゴールエリア
+    ctx.beginPath();
+    ctx.moveTo(px + 4, py + 4);
+    ctx.lineTo(px + 4, py + ph - 4);
+    ctx.lineTo(px + pw - 4, py + ph - 4);
+    ctx.lineTo(px + pw - 4, py + 4);
+    ctx.stroke();
+    ctx.strokeRect(px + (pw - boxW) / 2, py + ph - 4 - boxH, boxW, boxH);
+    ctx.strokeRect(px + (pw - gboxW) / 2, py + ph - 4 - gboxH, gboxW, gboxH);
   } else {
     ctx.strokeRect(px + 4, py + 4, pw - 8, ph - 8);
     ctx.beginPath();
@@ -155,9 +181,14 @@ export function renderFrame(
       ctx.strokeStyle = "rgba(255,255,255,0.25)";
       ctx.lineWidth = Math.max(0.8, S(1.4));
       ctx.setLineDash([S(6), S(5)]);
-      // half表示（敵陣y50-100のみ表示）では自陣側にかかる境界線は画面（GuideLayer）に出ないため描かない
+      // half/boxatk/boxdef表示では可視範囲外にかかる境界線は画面（GuideLayer）に出ないため描かない
       [100 / 3, 200 / 3]
-        .filter((y) => view !== "half" || y > 50)
+        .filter((y) => {
+          if (view === "half") return y > 50;
+          if (view === "boxatk") return y > 58;
+          if (view === "boxdef") return y < 42;
+          return true;
+        })
         .forEach((y) => {
           ctx.beginPath();
           ctx.moveTo(px, mapY(y));
@@ -175,14 +206,23 @@ export function renderFrame(
       ctx.font = `700 ${Math.max(9, S(13))}px sans-serif`;
       ctx.textAlign = "left";
       ctx.textBaseline = "middle";
-      ctx.fillText("アタッキングサード", px + S(14), mapY((200 / 3 + 100) / 2));
-      ctx.fillText("ミドルサード", px + S(14), mapY((100 / 3 + 200 / 3) / 2));
-      // half表示では自陣側の「ディフェンディングサード」は画面に出ないため描かない
-      if (view !== "half") {
+      // 各見出しは、現在のビューで可視の範囲にあるものだけ描く
+      // （boxatk/boxdefはボックス周辺のみのクロップのため、該当するサード1つ以外は画面に出ない）
+      if (view !== "boxatk" && view !== "boxdef") {
+        ctx.fillText("アタッキングサード", px + S(14), mapY((200 / 3 + 100) / 2));
+        ctx.fillText("ミドルサード", px + S(14), mapY((100 / 3 + 200 / 3) / 2));
+      } else if (view === "boxatk") {
+        ctx.fillText("アタッキングサード", px + S(14), mapY((200 / 3 + 100) / 2));
+      }
+      // half/boxatk表示では自陣側の「ディフェンディングサード」は画面に出ないため描かない
+      if (view !== "half" && view !== "boxatk") {
         ctx.fillText("ディフェンディングサード", px + S(14), mapY((0 + 100 / 3) / 2));
       }
       ctx.textAlign = "center";
-      ctx.fillText("バイタルエリア", mapX(50), mapY(81));
+      // 「バイタルエリア」（y81）はboxdef（y0-42）では画面に出ないため描かない
+      if (view !== "boxdef") {
+        ctx.fillText("バイタルエリア", mapX(50), mapY(81));
+      }
       ctx.textAlign = "left";
       ctx.textBaseline = "alphabetic";
     }

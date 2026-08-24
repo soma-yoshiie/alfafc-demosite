@@ -43,7 +43,7 @@ const CK_NEAR_ATTACK: SetPiecePreset = {
   side: "attack",
   label: "CK：ニア狙い",
   desc: "近い ポストへ速いボールを送り込むU-12年代の定石。ニアで合わせて折り返しも狙う。",
-  view: "half",
+  view: "boxatk",
   ball: { x: 97, y: 97 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
@@ -53,7 +53,7 @@ const CK_NEAR_ATTACK: SetPiecePreset = {
     { role: "LW", x: 40, y: 93 }, // ファー
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 58 }, // 残り（自陣に残るGK。halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 63 }, // 残り（自陣に残るGK。boxatkビュー(y58-100)の可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -79,7 +79,7 @@ const CK_FAR_ATTACK: SetPiecePreset = {
   side: "attack",
   label: "CK：ファー狙い",
   desc: "ファーポストへ大きく蹴り、折り返しで押し込む。",
-  view: "half",
+  view: "boxatk",
   ball: { x: 97, y: 97 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
@@ -89,7 +89,7 @@ const CK_FAR_ATTACK: SetPiecePreset = {
     { role: "LW", x: 36, y: 90 }, // ファー2
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 63 }, // 残り（boxatkビュー(y58-100)の可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -114,7 +114,7 @@ const CK_SHORT_ATTACK: SetPiecePreset = {
   side: "attack",
   label: "CK：ショート",
   desc: "ショートコーナーで数的優位を作り、崩してから折り返す。",
-  view: "half",
+  view: "boxatk",
   ball: { x: 97, y: 97 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
@@ -124,7 +124,7 @@ const CK_SHORT_ATTACK: SetPiecePreset = {
     { role: "LW", x: 42, y: 93 }, // ファー
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 63 }, // 残り（boxatkビュー(y58-100)の可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -145,7 +145,7 @@ const CK_ZONE_DEFENSE: SetPiecePreset = {
   side: "defense",
   label: "CK対応：ゾーン",
   desc: "ゾーンでスペースを守る配置。ポスト番と6ヤード列でニア/ファーを固める。",
-  view: "full",
+  view: "boxdef",
   ball: { x: 97, y: 3 },
   slots: [
     { role: "CB", x: 58, y: 4 }, // ポスト番
@@ -165,7 +165,7 @@ const CK_ZONE_DEFENSE: SetPiecePreset = {
     { x: 40, y: 6 }, // 相手ファー
     { x: 50, y: 13 }, // 相手スポット
     { x: 50, y: 22 }, // 相手エッジ
-    { x: 50, y: 97 }, // 相手GK
+    { x: 50, y: 37 }, // 相手GK（boxdefビュー(y0-42)の可視域端に配置してクリップを防ぐ）
   ],
   shapes: [
     { id: "ckzd-six", kind: "zoneRect", x: 50, y: 6, w: 34, h: 10, color: "#81c784" },
@@ -182,7 +182,7 @@ const CK_MIX_DEFENSE: SetPiecePreset = {
   side: "defense",
   label: "CK対応：ミックス",
   desc: "ゾーン4＋マンマーク3の併用。核となる相手選手だけ人につく。",
-  view: "full",
+  view: "boxdef",
   ball: { x: 97, y: 3 },
   slots: [
     { role: "CB", x: 58, y: 4 }, // ゾーン1
@@ -202,7 +202,7 @@ const CK_MIX_DEFENSE: SetPiecePreset = {
     { x: 49, y: 11 }, // opp4: 相手スポット ← マーク3
     { x: 50, y: 20 }, // opp5: 相手エッジ
     { x: 70, y: 14 }, // opp6: 相手予備
-    { x: 50, y: 97 }, // opp7: 相手GK
+    { x: 50, y: 37 }, // opp7: 相手GK（boxdefビュー(y0-42)の可視域端に配置してクリップを防ぐ）
   ],
   shapes: [
     { id: "ckmd-zone", kind: "zoneRect", x: 50, y: 5, w: 30, h: 10, color: "#81c784" },
@@ -225,7 +225,7 @@ const FK_DIRECT_ATTACK: SetPiecePreset = {
   side: "attack",
   label: "FK：直接（壁越え）",
   desc: "壁の上を越すコースを作る。キッカー2枚でどちらが蹴るか迷わせる。",
-  view: "half",
+  view: "boxatk",
   ball: { x: 44, y: 76 },
   slots: [
     { role: "CM", x: 44, y: 76 }, // キッカー1
@@ -234,8 +234,8 @@ const FK_DIRECT_ATTACK: SetPiecePreset = {
     { role: "ST", x: 58, y: 95 }, // ニアポスト
     { role: "CF", x: 40, y: 95 }, // ファーポスト
     { role: "DM", x: 50, y: 70 }, // リバウンド
-    { role: "CB", x: 50, y: 60 }, // エッジカバー
-    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "CB", x: 50, y: 66 }, // エッジカバー
+    { role: "GK", x: 50, y: 63 }, // 残り（boxatkビュー(y58-100)の可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 }, // 相手GK
@@ -245,7 +245,7 @@ const FK_DIRECT_ATTACK: SetPiecePreset = {
     { x: 58, y: 93 }, // ニアポストマーク
     { x: 40, y: 93 }, // ファーポストマーク
     { x: 50, y: 73 }, // リバウンドケア
-    { x: 50, y: 60 }, // 予備カバー
+    { x: 50, y: 65 }, // 予備カバー（boxatkビューの可視域端に配置してクリップを防ぐ）
   ],
   memo: "壁の外側からニアサイドを叩く形。キッカー2枚で駆け引きを作る。",
 };
@@ -256,7 +256,7 @@ const FK_CROSS_ATTACK: SetPiecePreset = {
   side: "attack",
   label: "FK：クロス攻撃",
   desc: "サイドからのFKをクロスとして送り込む。CKに近い崩し方。",
-  view: "half",
+  view: "boxatk",
   ball: { x: 90, y: 72 },
   slots: [
     { role: "RM", x: 90, y: 72 }, // キッカー
@@ -266,7 +266,7 @@ const FK_CROSS_ATTACK: SetPiecePreset = {
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "CM", x: 80, y: 80 }, // ショート
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 63 }, // 残り（boxatkビュー(y58-100)の可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -287,7 +287,7 @@ const FK_WALL_DEFENSE: SetPiecePreset = {
   side: "defense",
   label: "FK対応：壁",
   desc: "壁3枚＋マンマークで直接コースと折返しの両方をケアする。",
-  view: "full",
+  view: "boxdef",
   ball: { x: 52, y: 22 },
   slots: [
     { role: "CB", x: 48, y: 16 }, // 壁1
@@ -307,7 +307,7 @@ const FK_WALL_DEFENSE: SetPiecePreset = {
     { x: 66, y: 18 }, // opp4: 相手ショート
     { x: 50, y: 30 }, // opp5: 相手エッジ
     { x: 34, y: 18 }, // opp6: 相手予備
-    { x: 50, y: 97 }, // opp7: 相手GK
+    { x: 50, y: 37 }, // opp7: 相手GK（boxdefビュー(y0-42)の可視域端に配置してクリップを防ぐ）
   ],
   shapes: [
     { id: "fkwd-wallline", kind: "link", actors: [0, 1, 2], color: "#90a4ae" },
@@ -400,29 +400,29 @@ const THROWIN_ADVANCE: SetPiecePreset = {
   side: "attack",
   label: "スローイン：前進",
   desc: "投げ手→第1の受け手→第2の動きで前進する。",
-  view: "full",
-  ball: { x: 3, y: 55 },
+  view: "boxatk",
+  ball: { x: 3, y: 72 },
   slots: [
-    { role: "LB", x: 3, y: 55 }, // 投げ手
-    { role: "CM", x: 14, y: 56 }, // 第1受け手
-    { role: "LW", x: 10, y: 68 }, // 第2の動き（裏へ）
-    { role: "DM", x: 25, y: 48 },
-    { role: "CB", x: 20, y: 30 },
-    { role: "RM", x: 70, y: 60 },
-    { role: "ST", x: 50, y: 75 },
-    { role: "GK", x: 50, y: 6 },
+    { role: "LB", x: 3, y: 72 }, // 投げ手
+    { role: "CM", x: 15, y: 73 }, // 第1受け手
+    { role: "LW", x: 9, y: 88 }, // 第2の動き（裏へ）
+    { role: "DM", x: 28, y: 66 },
+    { role: "CB", x: 22, y: 64 }, // boxatkビュー(y58-100)の可視域端に配置
+    { role: "RM", x: 72, y: 78 },
+    { role: "ST", x: 50, y: 92 },
+    { role: "GK", x: 50, y: 63 }, // 残り（boxatkビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
-    { x: 6, y: 52 },
-    { x: 16, y: 58 },
-    { x: 12, y: 66 },
-    { x: 26, y: 52 },
-    { x: 40, y: 45 },
-    { x: 55, y: 50 },
-    { x: 50, y: 28 },
-    { x: 50, y: 96 },
+    { x: 7, y: 69 },
+    { x: 17, y: 76 },
+    { x: 11, y: 85 },
+    { x: 30, y: 64 },
+    { x: 44, y: 64 },
+    { x: 58, y: 70 },
+    { x: 50, y: 65 },
+    { x: 50, y: 96 }, // 相手GK
   ],
-  memo: "第1受け手が壁になり、裏へ抜ける動きで前進する。",
+  memo: "第1受け手が壁になり、裏へ抜ける動きで前進する。タッチライン際なのでboxatkビューに収まる。",
 };
 
 const THROWIN_KEEP: SetPiecePreset = {
@@ -431,29 +431,29 @@ const THROWIN_KEEP: SetPiecePreset = {
   side: "attack",
   label: "スローイン：キープ",
   desc: "無理に前進せず、外→中でボールを失わない形を作る。",
-  view: "full",
-  ball: { x: 97, y: 45 },
+  view: "boxdef",
+  ball: { x: 97, y: 22 },
   slots: [
-    { role: "RB", x: 97, y: 45 }, // 投げ手
-    { role: "CM", x: 86, y: 46 }, // 近サポート1
-    { role: "DM", x: 88, y: 34 }, // 近サポート2
-    { role: "CB", x: 80, y: 26 },
-    { role: "CB", x: 60, y: 20 },
-    { role: "AM", x: 70, y: 56 },
-    { role: "LW", x: 20, y: 60 },
-    { role: "GK", x: 50, y: 6 },
+    { role: "RB", x: 97, y: 22 }, // 投げ手
+    { role: "CM", x: 86, y: 23 }, // 近サポート1
+    { role: "DM", x: 88, y: 14 }, // 近サポート2
+    { role: "CB", x: 80, y: 10 },
+    { role: "CB", x: 60, y: 8 },
+    { role: "AM", x: 70, y: 30 },
+    { role: "LW", x: 20, y: 34 },
+    { role: "GK", x: 50, y: 4 },
   ],
   opps: [
-    { x: 94, y: 42 },
-    { x: 84, y: 44 },
-    { x: 86, y: 32 },
-    { x: 76, y: 30 },
-    { x: 66, y: 24 },
-    { x: 68, y: 50 },
-    { x: 50, y: 22 },
-    { x: 50, y: 96 },
+    { x: 94, y: 19 },
+    { x: 84, y: 21 },
+    { x: 86, y: 12 },
+    { x: 76, y: 11 },
+    { x: 66, y: 8 },
+    { x: 68, y: 28 },
+    { x: 50, y: 9 },
+    { x: 50, y: 37 }, // 相手GK（boxdefビュー(y0-42)の可視域端に配置してクリップを防ぐ）
   ],
-  memo: "複数のサポート角度を作り、奪われない距離感を保つ。",
+  memo: "複数のサポート角度を作り、奪われない距離感を保つ。自陣タッチライン際なのでboxdefビューに収まる。",
 };
 
 /* ------------------------------------------------------------------ */
@@ -466,7 +466,7 @@ const PK_BASIC: SetPiecePreset = {
   side: "attack",
   label: "PK：基本形",
   desc: "キッカー以外はペナルティエリア外で待機し、リバウンドに備える。",
-  view: "half",
+  view: "boxatk",
   ball: { x: 50, y: 88 },
   slots: [
     { role: "ST", x: 50, y: 80 }, // キッカー（助走位置）
@@ -475,8 +475,8 @@ const PK_BASIC: SetPiecePreset = {
     { role: "CM", x: 38, y: 74 },
     { role: "CM", x: 62, y: 74 },
     { role: "DM", x: 50, y: 70 },
-    { role: "CB", x: 50, y: 62 },
-    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "CB", x: 50, y: 64 }, // boxatkビュー(y58-100)の可視域端に配置
+    { role: "GK", x: 50, y: 63 }, // 残り（boxatkビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 }, // 相手GK
@@ -486,7 +486,7 @@ const PK_BASIC: SetPiecePreset = {
     { x: 62, y: 76 },
     { x: 50, y: 72 },
     { x: 50, y: 64 },
-    { x: 50, y: 50 },
+    { x: 50, y: 66 }, // boxatkビューの可視域端に配置してクリップを防ぐ
   ],
   memo: "エリア外で待機し、こぼれ球を狙う。キッカー以外はライン上に並ぶ。",
 };

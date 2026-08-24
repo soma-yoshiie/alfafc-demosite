@@ -88,7 +88,11 @@ export function usePointerDrag(actor: Actor) {
     if (Math.abs(e.clientX - st.sx) > 5 || Math.abs(e.clientY - st.sy) > 5)
       st.moved = true;
     const nx = clamp(st.ox + ((e.clientX - st.sx) / st.rect.width) * 100, 3, 97);
-    const [yMin, yMax] = view === "half" ? [51, 97] : [3, 97];
+    const [yMin, yMax] =
+      view === "half" ? [51, 97] :
+      view === "boxatk" ? [59, 97] :
+      view === "boxdef" ? [3, 41] :
+      [3, 97];
     const ny = clamp(st.oy - ((e.clientY - st.sy) / st.rect.height) * ySpan(view), yMin, yMax);
     st.nx = nx;
     st.ny = ny;

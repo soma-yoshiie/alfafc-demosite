@@ -10,8 +10,21 @@ import { ySpan, yToTop } from "./pitchView";
  * 依存ライブラリなし・Canvasで直接描画。SNS共有/印刷用。
  */
 export function renderTacticPng(state: BoardState): string {
+  const view = state.pitchView;
+  // Phase0: 種目別ズーム(boxatk/boxdef)は可視域が42(データy)相当のみの横長クロップ表示
+  // （lib/renderFrame.ts の同分岐・app/globals.cssの.spapp aspect-ratio:68/44.1と同じ考え方）。
+  // full/half はisBoxが常にfalseになり、以下の値は元のリテラルと完全に一致するため
+  // 出力（PNGバイト列）はこれまでと不変。
+  const isBox = view === "boxatk" || view === "boxdef";
   const W = 750;
-  const H = 1040;
+  const px = 24;
+  const py = 104;
+  const pw = W - 48;
+  // ピッチ領域の高さ：full/halfは既存の812pxのまま。boxはCSS(.spapp aspect-ratio:68/44.1)と
+  // 同じ比率(44.1/68)で横長に詰める。
+  const ph = isBox ? Math.round(pw * (44.1 / 68)) : 812;
+  const FOOTER_H = 124; // 1040 - py(104) - ph(812) と同じフッター余白を確保する
+  const H = isBox ? py + ph + FOOTER_H : 1040;
   const scale = 2; // 高解像度
   const canvas = document.createElement("canvas");
   canvas.width = W * scale;
@@ -47,7 +60,6 @@ export function renderTacticPng(state: BoardState): string {
   }
 
   // ハーフコート表示中の小さな表記
-  const view = state.pitchView;
   if (view === "half") {
     ctx.fillStyle = "#7d9389";
     ctx.font = "700 12px sans-serif";
@@ -57,10 +69,6 @@ export function renderTacticPng(state: BoardState): string {
   }
 
   // ---- ピッチ ----
-  const px = 24;
-  const py = 104;
-  const pw = W - 48;
-  const ph = 812;
   const mapX = (x: number) => px + (x / 100) * pw;
   const mapY = (y: number) => py + (yToTop(y, view) / 100) * ph;
 
@@ -100,6 +108,29 @@ export function renderTacticPng(state: BoardState): string {
     ctx.beginPath();
     ctx.arc(px + pw / 2, py + ph - 4, pw * 0.16, Math.PI, Math.PI * 2);
     ctx.stroke();
+  } else if (view === "boxatk") {
+    // Phase0: 敵陣ボックス周辺クロップ（開いた3辺＋ゴールエリア）。下端はクロップ線＝
+    // ピッチの実在ラインではないため、half表示のハーフウェイライン/センターサークルに
+    // 相当する装飾は描かない（lib/renderFrame.ts の同分岐と同じ構図）。
+    ctx.beginPath();
+    ctx.moveTo(px + 4, py + ph - 4);
+    ctx.lineTo(px + 4, py + 4);
+    ctx.lineTo(px + pw - 4, py + 4);
+    ctx.lineTo(px + pw - 4, py + ph - 4);
+    ctx.stroke();
+    ctx.strokeRect(px + (pw - boxW) / 2, py + 4, boxW, boxH);
+    ctx.strokeRect(px + (pw - gboxW) / 2, py + 4, gboxW, gboxH);
+  } else if (view === "boxdef") {
+    // Phase0: 自陣ボックス周辺クロップ（開いた3辺＝上端がクロップ線＋ゴールエリア）
+    // （lib/renderFrame.ts の同分岐と同じ構図）。
+    ctx.beginPath();
+    ctx.moveTo(px + 4, py + 4);
+    ctx.lineTo(px + 4, py + ph - 4);
+    ctx.lineTo(px + pw - 4, py + ph - 4);
+    ctx.lineTo(px + pw - 4, py + 4);
+    ctx.stroke();
+    ctx.strokeRect(px + (pw - boxW) / 2, py + ph - 4 - boxH, boxW, boxH);
+    ctx.strokeRect(px + (pw - gboxW) / 2, py + ph - 4 - gboxH, gboxW, gboxH);
   } else {
     // 外枠
     ctx.strokeRect(px + 4, py + 4, pw - 8, ph - 8);

@@ -228,8 +228,12 @@ export type ShapePatch = Partial<
     Omit<HullShape, "kind">
 >;
 
-/** ピッチの表示モード。full=通常表示 / half=敵陣ハーフの拡大表示（データ座標は変えず表示だけ変換） */
-export type PitchViewMode = "full" | "half";
+/**
+ * ピッチの表示モード（データ座標は変えず表示だけ変換）。
+ * full=通常表示 / half=敵陣ハーフの拡大表示 /
+ * boxatk=敵陣ボックス周辺(y58-100)の横長クロップ表示 / boxdef=自陣ボックス周辺(y0-42)の横長クロップ表示
+ */
+export type PitchViewMode = "full" | "half" | "boxatk" | "boxdef";
 
 /* ===== セットプレーデザイン ===== */
 

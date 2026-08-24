@@ -543,6 +543,16 @@ header {
   box-shadow: 0 0 0 3px var(--lime), 0 3px 8px rgba(0, 0, 0, 0.55);
 }
 
+/* Phase0: セットプレーの種目別ズーム(boxatk/boxdef)は拡大構図のため、選手/相手/ボールの
+   表示サイズと当たり判定を1.15倍にして見やすさを揃える(.ball.dragと同じ倍率を流用)。
+   SetPieceBar側の状態marker(.spbar-presets.spview-box)を:has()で検知する
+   （トークン自体のJSX/コンポーネントは不可侵のためCSSのみで完結させる）。
+   half(旧仕様の残存文書)は対象外＝従来どおりのサイズのまま変えない。 */
+.spapp:has(.spbar-presets.spview-box) .tok,
+.spapp:has(.spbar-presets.spview-box) .ball {
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
 /* ---------- Path overlay ---------- */
 .pathsvg {
   position: absolute;
@@ -3320,6 +3330,54 @@ header {
   font-size: 12.5px;
   color: var(--mut);
   white-space: nowrap;
+}
+
+/* ---------- セットプレー3Dビューア ---------- */
+/* .pitchwrap/.pitch のクラスをそのまま共有し、既存のサイズ・角丸・overflow・touch-action等を
+   継承する（3D専用の新レイアウトは作らない）。ここでは3D固有の背景（薄グラデ空）と
+   ローディング表示・床ビルボードの見た目だけを追加する */
+.sp3dpitch {
+  background: linear-gradient(180deg, #bfe3ff 0%, #eaf6ff 44%, var(--grass-a) 44%, var(--grass-b) 100%);
+}
+.sp3dpitch canvas {
+  display: block;
+  touch-action: none;
+}
+.sp3dloading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+}
+/* 背番号・相手ラベルの床上ビルボード（drei Html。常にカメラへ正対する画面固定サイズのラベル） */
+.sp3d-num {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(10, 14, 12, 0.78);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* ゾーン内のテキスト図形の床ビルボード */
+.sp3d-zonetext {
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid;
+  background: rgba(10, 14, 12, 0.72);
+  white-space: nowrap;
+  font-weight: 700;
+  pointer-events: none;
+}
+/* SetPieceBarの3D切替チップ・カメラプリセットバーの「2Dに戻る」は既存の.fmini語彙をそのまま使う。
+   3D中はカメラプリセットバー(.sp3dbar)がSetPieceBarの代わりに表示される */
+.sp3dbar {
+  align-items: center;
 }
 
 /* ---------- 選手プロフィール詳細 ---------- */
@@ -8076,7 +8134,8 @@ header {
   background: rgba(255, 226, 122, 0.22);
   border-color: rgba(214, 158, 32, 0.6);
 }
-.fmini.half.on {
+.fmini.half.on,
+.fmini.zoom.on {
   background: rgba(79, 195, 247, 0.18);
   border-color: rgba(79, 195, 247, 0.55);
   color: var(--ink);
@@ -8547,6 +8606,41 @@ header {
   transform: translate(-50%, 0);
 }
 
+/* Phase0: 種目別ズーム(boxatk/boxdef)。.mk系のライン/ボックスはPitch.tsx側で
+   ビューモードに応じたCSS切替クラスを持たない（pitchView==="half"のときだけ
+   .halfview を付与）ため、SetPieceBar側の状態marker(.spbar-presets.spview-*)を
+   :has()で.spapp越しに検知して直接ライン/ボックスの表示を切り替える
+   （Pitch.tsx/JSXは不可侵のためCSSのみで完結させる）。
+   boxatk(敵陣ボックス周辺)＝センターサークル/自陣ゴールエリアは可視範囲外なので隠す。
+   boxdef(自陣ボックス周辺)＝センターサークル/敵陣ゴールエリアは可視範囲外なので隠す。 */
+.spapp:has(.spbar-presets.spview-boxatk) .pitch .mk.center-line,
+.spapp:has(.spbar-presets.spview-boxatk) .pitch .mk.center-circle,
+.spapp:has(.spbar-presets.spview-boxatk) .pitch .mk.spot,
+.spapp:has(.spbar-presets.spview-boxatk) .pitch .mk.box-bot,
+.spapp:has(.spbar-presets.spview-boxatk) .pitch .mk.box-bot-s,
+.spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.center-line,
+.spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.center-circle,
+.spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.spot,
+.spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.box-top,
+.spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.box-top-s {
+  display: none;
+}
+
+/* Phase0続き: .mk.box-top/box-bot(PA)・box-top-s/box-bot-s(GA)のheight%は
+   フルピッチ(データy 0-100)基準の固定値(14%/6%)のまま。boxビューは可視範囲がy42相当
+   だけを全高へ拡大表示するため、同じ%のままだと矩形が実寸より小さく見えて拡大率に
+   追従しない。可視幅42基準に換算(×100/42)し、拡大後も正しい比率で表示する。
+   （半分だけ表示のPA-s/GA-sも同様。戦術ボードのhalfビューは対象外＝スコープを.spappに
+   限定し、Pitch.tsx側の.mk定義自体は変更しない） */
+.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-top,
+.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-bot {
+  height: 33.3333%;
+}
+.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-top-s,
+.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-bot-s {
+  height: 14.2857%;
+}
+
 /* ============================================================
    PC (min-width: 1024px) レイアウト群
    ※ 同一詳細度の基底ルールに勝つため、ファイル末尾にまとめて配置
@@ -8792,6 +8886,31 @@ header {
     max-width: 100%;
     margin-left: auto;
     margin-right: auto;
+  }
+  /* 3Dビューアは見取り図(2D)と異なりカメラを回して見るため、縦長(68/105)よりワイドな
+     アスペクトの方が周囲まで見渡しやすい。直後に書いて.pitchの指定より後勝ちさせる。
+     .pitchのheight固定(height:calc(...))を引き継いだままaspect-ratioだけ変えると、
+     幅がmax-width:100%でクランプされた際に比率が無視されて縦に伸びてしまう
+     （高さが常に固定＝幅だけ縮む）ため、height:auto/width:100%にして幅基準で
+     アスペクトが効くようにし、max-heightで上限だけ残す。 */
+  .spapp:not(.fullplay) .sp3dpitch {
+    height: auto;
+    width: 100%;
+    max-height: calc(100dvh - 158px);
+    aspect-ratio: 16 / 10;
+  }
+  /* Phase0: 種目別ズーム(boxatk/boxdef)は y可視範囲が42(=100の42%)のみの横長クロップ表示。
+     ピッチ縦横比(68/105)のうち高さ側だけ42%相当(105*0.42=44.1)に詰め、横長(≒1.54:1)にする。
+     SetPieceBar側の状態はDOM上は兄弟(.spbar-presets.spview-box)なので:has()で.spapp越しに検知する
+     （Pitch.tsx自体は不可侵のためJSXへclassNameを追加できない・CSSのみで完結させる）。
+     half(旧仕様の残存文書)は対象外＝従来どおり68/105のまま変えない。
+     上の.sp3dpitchと同じ理由（height固定のままだと幅クランプ時に縦伸びする）で、
+     height:auto/width:100%にして幅基準でアスペクトを効かせる（max-heightで上限だけ残す）。 */
+  .spapp:has(.spbar-presets.spview-box) .pitch {
+    height: auto;
+    width: 100%;
+    max-height: calc(100dvh - 158px);
+    aspect-ratio: 68 / 44.1;
   }
   /* 共有リンクの割り込みバナー(.bimport 高さ52px)表示中はその分だけ縮める。
      .boardapp:has(.bimport) .pitch/.boardside(8618付近)と同じ文法 */
@@ -12727,7 +12846,8 @@ header {
      「tint背景+accent枠+accent文字」へ揃える(.fminiより詳細度が高いためソース順に依らず勝つ) */
   .fmini.pen.on,
   .fmini.shapes.on,
-  .fmini.half.on {
+  .fmini.half.on,
+  .fmini.zoom.on {
     background: var(--accent-tint);
     border-color: var(--accent);
     color: var(--accent);
