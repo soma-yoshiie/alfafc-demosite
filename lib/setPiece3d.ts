@@ -4,34 +4,113 @@
 // SetPieceBoard.tsx はカメラプリセットの「ラベル一覧」だけをここから読み、
 // 3D本体(SetPiece3D.tsx)は next/dynamic で遅延ロードする（バンドル分離のため）。
 
-import type { BoardState, Point } from "./types";
+import type { Actor, BallTrajectory, BoardState, Move, Point } from "./types";
+import { absStart, easeBy } from "./animation";
 
 /* ============================================================
-   JFA 8人制サッカー ピッチ寸法（メートル）
-   x（幅）: 50m / y（縦・ゴール間）: 68m。y=100が敵陣ゴールライン、y=0が自陣ゴールライン
-   （lib/pitchView.ts の yToTop/topToY と同じデータ座標の向き）。
-   ゴール 5m×2.15m。PA=ポスト内側から12m・奥行12m。GA=ポスト内側から4m・奥行4m。
-   PKマーク: ゴールラインから8m。センターサークル半径7m。コーナーアーク半径1m。
+   ピッチ寸法（メートル）。8人制(JFA)/11人制の2セットを持ち、format→寸法セットの
+   関数(getPitchDims)で切り替える。x（幅）/y（縦・ゴール間、y=100が敵陣ゴールライン・
+   y=0が自陣ゴールライン。lib/pitchView.ts の yToTop/topToY と同じデータ座標の向き）。
+   8人制: 幅50m×縦68m。ゴール5m×2.15m。PA=ポスト内側から12m・奥行12m。
+   GA=ポスト内側から4m・奥行4m。PKマーク8m。センターサークル半径7m。コーナーアーク半径1m。
+   11人制: 幅68m×縦105m。ゴール7.32m×2.44m。PA=16.5m(全幅40.32)。GA=5.5m(全幅18.32)。
+   PKマーク11m。センターサークル半径9.15m。コーナーアーク半径1m。
    （本タスクの仕様にペナルティアーク「D」の半径指定は無いため描画対象に含めない）
    ============================================================ */
-export const PITCH_WIDTH_M = 50;
-export const PITCH_LENGTH_M = 68;
-export const GOAL_WIDTH_M = 5;
-export const GOAL_HEIGHT_M = 2.15;
-export const GOAL_NET_DEPTH_M = 1.1;
-export const PA_FROM_POST_M = 12;
-export const PA_DEPTH_M = 12;
-export const GA_FROM_POST_M = 4;
-export const GA_DEPTH_M = 4;
-/** ペナルティエリア全幅（ポストの内側から12m×左右2 + ゴール幅） */
-export const PA_WIDTH_M = GOAL_WIDTH_M + PA_FROM_POST_M * 2;
-/** ゴールエリア全幅（ポストの内側から4m×左右2 + ゴール幅） */
-export const GA_WIDTH_M = GOAL_WIDTH_M + GA_FROM_POST_M * 2;
-export const PK_SPOT_M = 8;
-export const CENTER_CIRCLE_R_M = 7;
-export const CORNER_ARC_R_M = 1;
 
-/** データ座標(0-100)1%あたりのメートル数 */
+/** 何人制のピッチか */
+export type PitchFormat = 8 | 11;
+
+/** 1フォーマットぶんのピッチ寸法一式（メートル） */
+export interface PitchDims {
+  pitchWidthM: number;
+  pitchLengthM: number;
+  goalWidthM: number;
+  goalHeightM: number;
+  goalNetDepthM: number;
+  paFromPostM: number;
+  paDepthM: number;
+  gaFromPostM: number;
+  gaDepthM: number;
+  /** ペナルティエリア全幅（ポストの内側からpaFromPostM×左右2 + ゴール幅） */
+  paWidthM: number;
+  /** ゴールエリア全幅（ポストの内側からgaFromPostM×左右2 + ゴール幅） */
+  gaWidthM: number;
+  pkSpotM: number;
+  centerCircleRM: number;
+  cornerArcRM: number;
+}
+
+function makeDims(
+  base: Omit<PitchDims, "paWidthM" | "gaWidthM">
+): PitchDims {
+  return {
+    ...base,
+    paWidthM: base.goalWidthM + base.paFromPostM * 2,
+    gaWidthM: base.goalWidthM + base.gaFromPostM * 2,
+  };
+}
+
+const PITCH_DIMS_BY_FORMAT: Record<PitchFormat, PitchDims> = {
+  8: makeDims({
+    pitchWidthM: 50,
+    pitchLengthM: 68,
+    goalWidthM: 5,
+    goalHeightM: 2.15,
+    goalNetDepthM: 1.1,
+    paFromPostM: 12,
+    paDepthM: 12,
+    gaFromPostM: 4,
+    gaDepthM: 4,
+    pkSpotM: 8,
+    centerCircleRM: 7,
+    cornerArcRM: 1,
+  }),
+  11: makeDims({
+    pitchWidthM: 68,
+    pitchLengthM: 105,
+    goalWidthM: 7.32,
+    goalHeightM: 2.44,
+    goalNetDepthM: 1.1,
+    paFromPostM: 16.5,
+    paDepthM: 16.5,
+    gaFromPostM: 5.5,
+    gaDepthM: 5.5,
+    pkSpotM: 11,
+    centerCircleRM: 9.15,
+    cornerArcRM: 1,
+  }),
+};
+
+/** format(8|11、既定8)→寸法セット。SetPiece3D側はここからdimsを取り、以降は選ぶだけにする */
+export function getPitchDims(format: PitchFormat = 8): PitchDims {
+  return PITCH_DIMS_BY_FORMAT[format];
+}
+
+/** 8人制の寸法（既定値。以下の後方互換エイリアス群のベース） */
+const DEFAULT_DIMS = PITCH_DIMS_BY_FORMAT[8];
+
+/**
+ * 後方互換の8人制定数エイリアス。既存コード（components/SetPiece3D.tsx 等）が
+ * 直接importして使っているため値・意味とも変更しない。新規コードは getPitchDims(format)
+ * を使うこと。
+ */
+export const PITCH_WIDTH_M = DEFAULT_DIMS.pitchWidthM;
+export const PITCH_LENGTH_M = DEFAULT_DIMS.pitchLengthM;
+export const GOAL_WIDTH_M = DEFAULT_DIMS.goalWidthM;
+export const GOAL_HEIGHT_M = DEFAULT_DIMS.goalHeightM;
+export const GOAL_NET_DEPTH_M = DEFAULT_DIMS.goalNetDepthM;
+export const PA_FROM_POST_M = DEFAULT_DIMS.paFromPostM;
+export const PA_DEPTH_M = DEFAULT_DIMS.paDepthM;
+export const GA_FROM_POST_M = DEFAULT_DIMS.gaFromPostM;
+export const GA_DEPTH_M = DEFAULT_DIMS.gaDepthM;
+export const PA_WIDTH_M = DEFAULT_DIMS.paWidthM;
+export const GA_WIDTH_M = DEFAULT_DIMS.gaWidthM;
+export const PK_SPOT_M = DEFAULT_DIMS.pkSpotM;
+export const CENTER_CIRCLE_R_M = DEFAULT_DIMS.centerCircleRM;
+export const CORNER_ARC_R_M = DEFAULT_DIMS.cornerArcRM;
+
+/** データ座標(0-100)1%あたりのメートル数（8人制基準の後方互換エイリアス） */
 export const M_PER_PCT_X = PITCH_WIDTH_M / 100;
 export const M_PER_PCT_Y = PITCH_LENGTH_M / 100;
 
@@ -41,25 +120,26 @@ export interface WorldPoint2 {
   z: number;
 }
 
-/** データ x(0-100, 0=左/100=右) → ワールドx（メートル、中心0） */
-export function boardXToWorldX(x: number): number {
-  return (x / 100 - 0.5) * PITCH_WIDTH_M;
+/** データ x(0-100, 0=左/100=右) → ワールドx（メートル、中心0）。dims省略＝8人制（後方互換） */
+export function boardXToWorldX(x: number, dims: PitchDims = DEFAULT_DIMS): number {
+  return (x / 100 - 0.5) * dims.pitchWidthM;
 }
-/** データ y(0-100, 0=自陣ゴールライン/100=敵陣ゴールライン) → ワールドz（メートル、中心0。+z側が敵陣） */
-export function boardYToWorldZ(y: number): number {
-  return (y / 100 - 0.5) * PITCH_LENGTH_M;
+/** データ y(0-100, 0=自陣ゴールライン/100=敵陣ゴールライン) → ワールドz（メートル、中心0。
+ * +z側が敵陣）。dims省略＝8人制（後方互換） */
+export function boardYToWorldZ(y: number, dims: PitchDims = DEFAULT_DIMS): number {
+  return (y / 100 - 0.5) * dims.pitchLengthM;
 }
-/** データ座標(Point) → ワールドXZ（まとめて変換） */
-export function boardToWorld(p: Point): WorldPoint2 {
-  return { x: boardXToWorldX(p.x), z: boardYToWorldZ(p.y) };
+/** データ座標(Point) → ワールドXZ（まとめて変換）。dims省略＝8人制（後方互換） */
+export function boardToWorld(p: Point, dims: PitchDims = DEFAULT_DIMS): WorldPoint2 {
+  return { x: boardXToWorldX(p.x, dims), z: boardYToWorldZ(p.y, dims) };
 }
-/** ピッチ%単位の長さ（Shape.w等）→ メートル（x方向の長さ換算） */
-export function lenXToMeters(v: number): number {
-  return v * M_PER_PCT_X;
+/** ピッチ%単位の長さ（Shape.w等）→ メートル（x方向の長さ換算）。dims省略＝8人制（後方互換） */
+export function lenXToMeters(v: number, dims: PitchDims = DEFAULT_DIMS): number {
+  return (v * dims.pitchWidthM) / 100;
 }
-/** ピッチ%単位の長さ（Shape.h等）→ メートル（y/z方向の長さ換算） */
-export function lenYToMeters(v: number): number {
-  return v * M_PER_PCT_Y;
+/** ピッチ%単位の長さ（Shape.h等）→ メートル（y/z方向の長さ換算）。dims省略＝8人制（後方互換） */
+export function lenYToMeters(v: number, dims: PitchDims = DEFAULT_DIMS): number {
+  return (v * dims.pitchLengthM) / 100;
 }
 
 /* ============================================================
@@ -122,10 +202,13 @@ export interface PitchMarkings {
   spots: WorldPoint2[];
 }
 
-/** JFA8人制寸法のピッチマーキングをワールド座標で組み立てる（常にフルピッチ・両ゴール分） */
-export function buildPitchMarkings(): PitchMarkings {
-  const halfW = PITCH_WIDTH_M / 2;
-  const halfL = PITCH_LENGTH_M / 2;
+/**
+ * ピッチマーキングをワールド座標で組み立てる（常にフルピッチ・両ゴール分）。
+ * dims省略＝8人制（後方互換）。11人制で描くときは buildPitchMarkings(getPitchDims(11)) を渡す。
+ */
+export function buildPitchMarkings(dims: PitchDims = DEFAULT_DIMS): PitchMarkings {
+  const halfW = dims.pitchWidthM / 2;
+  const halfL = dims.pitchLengthM / 2;
   const lines: WorldPoint2[][] = [];
   const spots: WorldPoint2[] = [{ x: 0, z: 0 }];
 
@@ -134,17 +217,17 @@ export function buildPitchMarkings(): PitchMarkings {
     { x: -halfW, z: 0 },
     { x: halfW, z: 0 },
   ]);
-  lines.push(worldCircleOutline(0, 0, CENTER_CIRCLE_R_M));
+  lines.push(worldCircleOutline(0, 0, dims.centerCircleRM));
 
   for (const end of [-1, 1] as const) {
     const goalZ = end * halfL;
     // ゴールラインからフィールド中心へ向かう符号（PA/GA奥行・PKマークの向き）
     const inward = -end;
-    lines.push(worldRectOutline(-PA_WIDTH_M / 2, PA_WIDTH_M / 2, goalZ, goalZ + inward * PA_DEPTH_M));
-    lines.push(worldRectOutline(-GA_WIDTH_M / 2, GA_WIDTH_M / 2, goalZ, goalZ + inward * GA_DEPTH_M));
-    spots.push({ x: 0, z: goalZ + inward * PK_SPOT_M });
+    lines.push(worldRectOutline(-dims.paWidthM / 2, dims.paWidthM / 2, goalZ, goalZ + inward * dims.paDepthM));
+    lines.push(worldRectOutline(-dims.gaWidthM / 2, dims.gaWidthM / 2, goalZ, goalZ + inward * dims.gaDepthM));
+    spots.push({ x: 0, z: goalZ + inward * dims.pkSpotM });
     for (const side of [-1, 1] as const) {
-      lines.push(worldArcOutline(side * halfW, goalZ, CORNER_ARC_R_M, [-side, 0], [0, inward]));
+      lines.push(worldArcOutline(side * halfW, goalZ, dims.cornerArcRM, [-side, 0], [0, inward]));
     }
   }
 
@@ -154,15 +237,24 @@ export function buildPitchMarkings(): PitchMarkings {
 /* ============================================================
    カメラプリセット
    ============================================================ */
-export type CameraPresetId = "overhead" | "broadcast" | "kicker" | "gk";
+export type CameraPresetId = "overhead" | "broadcast" | "kicker" | "gk" | "ground" | "replay";
 
-export const CAMERA_PRESET_ORDER: CameraPresetId[] = ["overhead", "broadcast", "kicker", "gk"];
+export const CAMERA_PRESET_ORDER: CameraPresetId[] = [
+  "overhead",
+  "broadcast",
+  "kicker",
+  "gk",
+  "ground",
+  "replay",
+];
 
 export const CAMERA_PRESET_LABEL: Record<CameraPresetId, string> = {
   overhead: "俯瞰45°",
   broadcast: "放送カメラ",
   kicker: "キッカー目線",
   gk: "GK目線",
+  ground: "地上カメラ",
+  replay: "リプレイ",
 };
 
 /** カメラの位置・注視点（ワールド座標・メートル・Y-up） */
@@ -178,6 +270,20 @@ const EYE_HEIGHT_M = 1.7;
  * 収まりきらなかったため、後方距離を広げて引きを作る。
  */
 const KICKER_BACK_M = 4.5;
+/** ground: タッチライン外側からの離れ（m）。ライン際すれすれの臨場感を優先し浅めに取る */
+const GROUND_CAM_OFFSET_M = 1.0;
+/** ground: 目線の高さ（m、仕様どおり1.2m） */
+const GROUND_EYE_HEIGHT_M = 1.2;
+/** replay: 注視点からの初期水平距離・高さ（m）。実際の周回はSetPiece3D.tsx側のuseFrameが
+ * reduced-motionでない場合のみ角度を進める（ここでは開始姿勢だけを返す）。
+ * 高さはスタンド高(STADIUM_M.standHeightM=9m)を超える12mに設定し、オービット中にスタンドの
+ * シルエットが視界へ回り込んで塞がれないようにする。距離は基準値(15m)を、周回中心から
+ * タッチライン/ゴールラインまでの残り距離でクランプし（下のcomputeCameraPreset内）、
+ * ピッチ外（広告板・スタンド側）へ出ないようにする。 */
+const REPLAY_ORBIT_DIST_M = 15;
+const REPLAY_ORBIT_HEIGHT_M = 12;
+/** replay: 周回半径・注視点高さの下限（m）。ごく小さいピッチや端寄りの中心でも軌道が潰れないようにする */
+const REPLAY_ORBIT_MIN_RADIUS_M = 2;
 /** broadcast: SetPiece3D.tsx の Canvas camera={{fov:50,...}} と同じ値。
  * トークン群のバウンディング円がこの画角に収まる距離を逆算する簡易フィットに使う。 */
 const BROADCAST_FOV_DEG = 50;
@@ -194,15 +300,15 @@ function clamp(v: number, lo: number, hi: number): number {
 
 /** 現在配置されている全トークン（選手・相手・ボール）のワールドXZ座標一覧。
  * broadcastカメラの簡易フィット計算にのみ使う（描画自体は別途TokensLayer側が行う）。 */
-function collectTokenWorldPoints(state: BoardState): WorldPoint2[] {
+function collectTokenWorldPoints(state: BoardState, dims: PitchDims): WorldPoint2[] {
   const pts: WorldPoint2[] = [];
   const ball = state.ball ?? { x: 50, y: 50 };
-  pts.push(boardToWorld(ball));
+  pts.push(boardToWorld(ball, dims));
   for (const s of state.slots) {
-    if (s.pid != null) pts.push(boardToWorld(s));
+    if (s.pid != null) pts.push(boardToWorld(s, dims));
   }
   for (const o of state.opponents ?? []) {
-    pts.push(boardToWorld(o));
+    pts.push(boardToWorld(o, dims));
   }
   return pts;
 }
@@ -228,6 +334,9 @@ function boundingCircle(pts: WorldPoint2[]): { cx: number; cz: number; r: number
 /**
  * カメラプリセットの位置・注視点を算出する（純粋関数。現在の BoardState から一度だけ計算し、
  * 以降のトークン移動などには追従させない＝プリセット選択時にのみ視点を切り替える設計）。
+ * dims省略＝8人制（後方互換）。11人制ピッチで計算するときは
+ * computeCameraPreset(id, state, getPitchDims(11)) のように渡す（SetPiece3D側が
+ * state.setPiece.format から選んで渡すだけにする＝この関数自身はstateのformatを見ない）。
  * - overhead: ピッチ中心の真上・水平距離と高さが等しい45°俯瞰。
  * - broadcast: タッチライン外側の高所からピッチ中央方向を見る固定アングル。距離は
  *   現在配置されている全トークン（選手・相手・ボール）のバウンディング円から逆算し、
@@ -236,26 +345,34 @@ function boundingCircle(pts: WorldPoint2[]): { cx: number; cz: number; r: number
  *   それ以外はy100側ゴール。SetPieceBar の boxatk/boxdef 判定と同じ規約）へ向け、
  *   ボールの後方・目線の高さに立って狙う方向を見る。
  * - gk: 守備ゴール（データ座標は常にy0=自陣固定）の1.7m前に立ち、ボールを見る。
+ * - ground: ボールに近い側のタッチライン際に立つ目線1.2mの地上カメラ。ボールへ向けて水平に見る。
+ * - replay: ボールとピッチ中心の中間を見下ろす高所（スタンド高9mを超える12m）から、ゆっくり
+ *   自動オービットするための初期姿勢。半径はピッチ内に収まるようクランプ済み（周回そのものは
+ *   SetPiece3D.tsx側が担当。reduced-motion時は静止したこの初期姿勢のまま）。
  */
-export function computeCameraPreset(id: CameraPresetId, state: BoardState): CameraPose {
+export function computeCameraPreset(
+  id: CameraPresetId,
+  state: BoardState,
+  dims: PitchDims = DEFAULT_DIMS
+): CameraPose {
   const ball = state.ball ?? { x: 50, y: 50 };
-  const ballW = boardToWorld(ball);
+  const ballW = boardToWorld(ball, dims);
 
   if (id === "overhead") {
-    const d = PITCH_LENGTH_M * 1.15;
+    const d = dims.pitchLengthM * 1.15;
     return { position: [0, d, d], target: [0, 0, 0] };
   }
   if (id === "broadcast") {
     // 元のアングル（タッチライン外側・水平-X寄り、仰角約20°）は保ったまま、
     // トークン群のバウンディング円がCanvasのfov(50°)に収まる距離まで距離だけ拡縮する
     // （簡易フィット。全員が画角の外に出ないことを優先し、距離は片方向にのみ伸ばす）。
-    const { cx, cz, r } = boundingCircle(collectTokenWorldPoints(state));
+    const { cx, cz, r } = boundingCircle(collectTokenWorldPoints(state, dims));
     const fitR = r + BROADCAST_MARGIN_M;
     const halfVFov = (BROADCAST_FOV_DEG / 2) * (Math.PI / 180);
     const halfHFov = Math.atan(Math.tan(halfVFov) * BROADCAST_ASPECT);
     const limitHalfFov = Math.min(halfVFov, halfHFov);
-    const dist = clamp(fitR / Math.sin(limitHalfFov), PITCH_LENGTH_M * 0.5, 130);
-    const dirX = -(PITCH_WIDTH_M / 2 + 18);
+    const dist = clamp(fitR / Math.sin(limitHalfFov), dims.pitchLengthM * 0.5, 130);
+    const dirX = -(dims.pitchWidthM / 2 + 18);
     const dirY = 16 - 0.6;
     const dirLen = Math.hypot(dirX, dirY) || 1;
     return {
@@ -265,7 +382,7 @@ export function computeCameraPreset(id: CameraPresetId, state: BoardState): Came
   }
   if (id === "kicker") {
     const attackGoalY = state.setPiece?.side === "defense" ? 0 : 100;
-    const goalZ = boardYToWorldZ(attackGoalY);
+    const goalZ = boardYToWorldZ(attackGoalY, dims);
     const dir = Math.sign(goalZ - ballW.z) || (attackGoalY >= 50 ? 1 : -1);
     return {
       position: [ballW.x, EYE_HEIGHT_M, ballW.z - dir * KICKER_BACK_M],
@@ -274,10 +391,333 @@ export function computeCameraPreset(id: CameraPresetId, state: BoardState): Came
       target: [0, 1.2, goalZ],
     };
   }
+  if (id === "ground") {
+    // タッチライン際、ボールに近い側に立つ簡易ピッチサイドカメラ（目線1.2m）。
+    // 他プリセットと同じく、プリセット選択時に一度だけ計算する（ボールの以後の移動には追従しない）。
+    const side = ballW.x >= 0 ? 1 : -1;
+    const x = side * (dims.pitchWidthM / 2 + GROUND_CAM_OFFSET_M);
+    return {
+      position: [x, GROUND_EYE_HEIGHT_M, ballW.z],
+      target: [ballW.x, 0.5, ballW.z],
+    };
+  }
+  if (id === "replay") {
+    const angle0 = Math.PI / 5;
+    // 周回中心はボール単独ではなくボールとピッチ中心(0,0)の中間に寄せる（ボールがゴール際・
+    // タッチライン際にあるときも中心が外へ寄りすぎず、半径のクランプと合わせてピッチ内に収まる）
+    const cx = ballW.x / 2;
+    const cz = ballW.z / 2;
+    // 半径は基準値(REPLAY_ORBIT_DIST_M)を、中心からタッチライン/ゴールラインまでの残り距離で
+    // クランプする（ピッチ外の広告板・スタンド側へカメラが出ないようにする）
+    const maxRadiusX = Math.max(REPLAY_ORBIT_MIN_RADIUS_M, dims.pitchWidthM / 2 - Math.abs(cx));
+    const maxRadiusZ = Math.max(REPLAY_ORBIT_MIN_RADIUS_M, dims.pitchLengthM / 2 - Math.abs(cz));
+    const radius = clamp(REPLAY_ORBIT_DIST_M, REPLAY_ORBIT_MIN_RADIUS_M, Math.min(maxRadiusX, maxRadiusZ));
+    return {
+      position: [cx + radius * Math.cos(angle0), REPLAY_ORBIT_HEIGHT_M, cz + radius * Math.sin(angle0)],
+      target: [cx, 1.0, cz],
+    };
+  }
   // gk: 守備ゴール（常にy0=自陣）の1.7m前に立ち、ボールを見る
-  const goalZ = boardYToWorldZ(0);
+  const goalZ = boardYToWorldZ(0, dims);
   return {
     position: [0, EYE_HEIGHT_M, goalZ + 1.7],
     target: [ballW.x, 0.3, ballW.z],
   };
 }
+
+/* ============================================================
+   選手アバター: 色ユーティリティ・寸法・待機ポーズ角度
+   three.js には依存しない純粋な計算のみ（16進色の合成・関節角度の算出）。実際の
+   ジオメトリ/マテリアル生成とHTMLCanvasテクスチャ描画は components/SetPiece3D.tsx 側で行う
+   （このファイルの「three.js非依存」方針を保つ）。
+   ============================================================ */
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v));
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function rgbToHex(r: number, g: number, b: number): string {
+  const c = (v: number) => Math.round(clamp01(v / 255) * 255).toString(16).padStart(2, "0");
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+/** 2色をtで線形補間したhexを返す（t=0→a、t=1→b）。ユニフォーム配色の導出にのみ使う小道具 */
+export function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  const k = clamp01(t);
+  return rgbToHex(ar + (br - ar) * k, ag + (bg - ag) * k, ab + (bb - ab) * k);
+}
+
+/** ユニフォーム3配色（胴・袖=チームカラーそのもの、ショーツ・ソックス=チームカラーを
+ * 紺寄りに落とした同系トーン＝実際のキットでよくある「ジャージ1色＋ショーツ/ソックス共色」の
+ * 定番配色）。配色ロジックはこの1関数に閉じ、PlayerFigureはここから3色を受け取るだけにする。 */
+export interface KitColors {
+  jersey: string;
+  shorts: string;
+  socks: string;
+}
+const KIT_SHADE_BASE = "#16212c";
+export function getKitColors(jerseyHex: string): KitColors {
+  const shade = mixHex(jerseyHex, KIT_SHADE_BASE, 0.62);
+  return { jersey: jerseyHex, shorts: shade, socks: shade };
+}
+
+/** 肌トーン（2色を選手ごとの決定的な擬似乱数で振り分け、単調さを避ける） */
+export const SKIN_TONES: [string, string] = ["#e3b18c", "#c98f66"];
+/** シューズ色（全選手共通の濃色） */
+export const BOOT_COLOR = "#20242b";
+
+/** 0..1 の決定的な擬似乱数（GLSL定番のsin-fractハッシュ）。同じseedなら常に同じ値を返すため、
+ * 待機ポーズが再レンダーのたびにガタつかない（Math.randomは使わない＝フレーム間で安定）。 */
+function seededUnit(seed: number): number {
+  const x = Math.sin(seed * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+/** -0.5..0.5 の決定的な擬似乱数 */
+function seededSigned(seed: number): number {
+  return seededUnit(seed) - 0.5;
+}
+
+/**
+ * 待機ポーズの関節角度一式（ラジアン）。軸足側と遊脚側で角度の向き・大きさを変えることで
+ * 「左右非対称の自然な立ち姿」にする。PlayerFigure（SetPiece3D.tsx）の各関節groupの
+ * rotationへそのまま渡す想定＝キー名はPlayback3Dフェーズが再生アニメを付ける関節名
+ * （leftArm/rightThigh等）と対応させてある。
+ */
+export interface IdlePose {
+  hipL: number;
+  hipR: number;
+  kneeL: number;
+  kneeR: number;
+  shoulderL: number;
+  shoulderR: number;
+  elbowL: number;
+  elbowR: number;
+  headTilt: number;
+  headYaw: number;
+  spineLean: number;
+}
+export function computeIdlePose(seed: number): IdlePose {
+  const j = (i: number) => seededSigned(seed * 7.31 + i) * 0.06;
+  const weightRight = seededUnit(seed * 3.1) > 0.5;
+  return {
+    hipL: (weightRight ? -0.07 : 0.03) + j(1),
+    hipR: (weightRight ? 0.03 : -0.07) + j(2),
+    kneeL: (weightRight ? 0.03 : 0.14) + Math.abs(j(3)),
+    kneeR: (weightRight ? 0.14 : 0.03) + Math.abs(j(4)),
+    shoulderL: 0.14 + j(5),
+    shoulderR: -0.14 + j(6),
+    elbowL: 0.22 + Math.abs(j(7)),
+    elbowR: 0.26 + Math.abs(j(8)),
+    headTilt: j(9),
+    headYaw: j(10) * 1.4,
+    spineLean: j(11) * 0.4,
+  };
+}
+
+/**
+ * 選手アバターの寸法一式（m）。ジュニア想定で全高≈1.55m。各セグメント長はY方向に
+ * 積み上げるとPLAYER_HEIGHT_Mに一致する（ankle→knee→hip→waist→shoulder→head頂点）。
+ * components/SetPiece3D.tsx はこの数値だけを見て関節groupのpositionを決め、ジオメトリ自体は
+ * （three.js非依存を保つため）ここでは作らない。
+ */
+export const PLAYER_RIG_M = {
+  ankleY: 0.09,
+  shinLen: 0.34,
+  thighLen: 0.34,
+  pelvisH: 0.14,
+  pelvisW: 0.22,
+  pelvisD: 0.15,
+  torsoH: 0.4,
+  torsoW: 0.3,
+  torsoD: 0.17,
+  headR: 0.11,
+  neckGap: 0.02,
+  shoulderHalfW: 0.17,
+  hipHalfW: 0.1,
+  upperArmLen: 0.28,
+  upperArmR: 0.045,
+  forearmLen: 0.25,
+  forearmR: 0.037,
+  thighR: 0.062,
+  shinR: 0.046,
+  footR: 0.058,
+} as const;
+/** 全高（頭頂まで）。仕様「身長~1.55m」の検算用に算出値として残す */
+export const PLAYER_HEIGHT_M =
+  PLAYER_RIG_M.ankleY +
+  PLAYER_RIG_M.shinLen +
+  PLAYER_RIG_M.thighLen +
+  PLAYER_RIG_M.pelvisH +
+  PLAYER_RIG_M.torsoH +
+  PLAYER_RIG_M.neckGap +
+  PLAYER_RIG_M.headR * 2;
+
+/* ============================================================
+   スタジアム環境（観客席の帯・広告板）の寸法・配色。ジオメトリ自体はSetPiece3D.tsx側で作る
+   （UNIT_BOXをscaleして使う＝ここは数値のみ）。
+   ============================================================ */
+export const STADIUM_M = {
+  /** ピッチ外周(芝ラン込み)から広告板までの距離 */
+  adBoardMarginM: 2.2,
+  adBoardHeightM: 0.9,
+  adBoardThicknessM: 0.15,
+  /** 広告板からスタンド帯までの距離 */
+  standMarginM: 3.5,
+  standHeightM: 9,
+  standThicknessM: 1.2,
+} as const;
+/** 広告板の縞2色（無地・架空色。実在ブランドを想起させない中立トーンにする） */
+export const AD_BOARD_COLORS: [string, string] = ["#0b3d66", "#e8543c"];
+/** 観客席の帯のベース色・粒（座席）色（架空の中立トーン） */
+export const STAND_BASE_COLOR = "#333f4b";
+export const STAND_SEAT_TONES: [string, string, string, string] = ["#465360", "#57677a", "#3a4551", "#5c6b78"];
+
+/* ============================================================
+   Playback3D: 再生同期・走行モーション・ボール弾道のユーティリティ。
+   three.js には依存しない純粋な計算のみ（実際のObject3D refへの適用はcomponents/SetPiece3D.tsx側で
+   行う）。位置そのものの計算はlib/animation.tsのactorPos/absStart/easeByをそのまま再利用し
+   重複実装しない（同じmoves・同じtを渡せば2D再生と3D再生の到達位置は関数レベルで一致する）。
+   ============================================================ */
+
+/** 時刻tにおけるactorの「現在アクティブなmove」。lib/animation.ts の actorPos 内部と同じ
+ * filter→絶対開始時刻でsort→区間走査の判定を共有し、位置だけでなく「どのmoveの何%地点か
+ * (progress。move.easeを適用済み＝alongPathへ渡す値と同じ)」を追加で返す
+ * （ボール弾道の高さ計算・弾道種別の判定に使う。actorPosは位置しか返さないため必要）。
+ * 区間外（待機中・move間の隙間・保持者に追従中）はnull。 */
+export interface ActiveMoveInfo {
+  move: Move;
+  /** move の絶対開始秒 */
+  start: number;
+  /** 区間内の進捗（0-1、move.easeを適用済み） */
+  progress: number;
+}
+export function findActiveMove(actor: Actor, moves: Move[], t: number): ActiveMoveInfo | null {
+  const ms = moves
+    .filter((m) => m.actor === actor && m.path.length >= 1)
+    .map((m) => ({ m, s: absStart(moves, m) }))
+    .sort((a, b) => a.s - b.s);
+  for (const { m, s } of ms) {
+    if (t >= s && t < s + m.dur) {
+      return { move: m, start: s, progress: easeBy(m.ease, (t - s) / m.dur) };
+    }
+  }
+  return null;
+}
+
+/** ルート（ピッチ%座標の点列）のワールド長(m)。lib/animation.ts の pathLen は x/y(%) を
+ * 等価な距離として扱う簡易長さのため、x/y でメートル換算比が異なるピッチ寸法（dims）を
+ * 考慮したい弾道計算ではこちらを使う（boardToWorldで実座標へ写してから合算）。dims省略＝8人制 */
+export function worldPathLengthM(path: Point[], dims: PitchDims = DEFAULT_DIMS): number {
+  let L = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = boardToWorld(path[i - 1], dims);
+    const b = boardToWorld(path[i], dims);
+    L += Math.hypot(b.x - a.x, b.z - a.z);
+  }
+  return L;
+}
+
+/** 弾道ごとの最高点(m)。ground=0（転がり） / driven=距離によらずおよそ1.5m固定 /
+ * lofted=距離に比例し最大4mでクランプ（近距離のロブでもうっすら弧が見えるよう最低1mは確保） */
+export function trajectoryApexM(trajectory: BallTrajectory, distanceM: number): number {
+  if (trajectory === "ground") return 0;
+  if (trajectory === "driven") return 1.5;
+  return Math.min(4, 1 + distanceM * 0.12);
+}
+
+/** 弾道の進捗progress（0-1、findActiveMoveのeaseBy適用後の値）における追加の高さ(m)。
+ * 対称放物線（progress=0.5で最高点、0/1で地面）。ground・進捗0/1付近では常に0に近い */
+export function trajectoryHeightM(trajectory: BallTrajectory, progress: number, distanceM: number): number {
+  const apex = trajectoryApexM(trajectory, distanceM);
+  if (apex <= 0) return 0;
+  const p = clamp01(progress);
+  return apex * 4 * p * (1 - p);
+}
+
+/**
+ * 走行時の関節角度（脚・腕の振り、位相は左右逆のsin波）。IdlePose と同じキー名のうち
+ * 動かす関節のみを持つサブセット（PlayerFigureはidleとこのRunPoseをlerpLimbPoseで
+ * ブレンドし、脚・腕・脊柱の関節へ適用する。頭は対象外＝待機ポーズのまま）。
+ * phase は呼び出し側（SetPiece3D.tsx）が移動距離×RUN_CYCLES_PER_METER で進める
+ * （時間ベースでなく距離ベース＝速く動くほど自然に足の回転も速くなる）。
+ */
+export interface LimbPose {
+  hipL: number;
+  hipR: number;
+  kneeL: number;
+  kneeR: number;
+  shoulderL: number;
+  shoulderR: number;
+  elbowL: number;
+  elbowR: number;
+  spineLean: number;
+}
+export function computeRunPose(phase: number): LimbPose {
+  const legSwing = 0.62;
+  const armSwing = 0.5;
+  const kneeLift = 0.55;
+  return {
+    hipL: Math.sin(phase) * legSwing,
+    hipR: Math.sin(phase + Math.PI) * legSwing,
+    kneeL: Math.max(0, -Math.sin(phase)) * kneeLift + 0.08,
+    kneeR: Math.max(0, -Math.sin(phase + Math.PI)) * kneeLift + 0.08,
+    shoulderL: Math.sin(phase + Math.PI) * armSwing,
+    shoulderR: Math.sin(phase) * armSwing,
+    elbowL: 0.4 + Math.max(0, -Math.sin(phase + Math.PI)) * 0.35,
+    elbowR: 0.4 + Math.max(0, -Math.sin(phase)) * 0.35,
+    spineLean: 0.08,
+  };
+}
+/** 待機ポーズ(a)と走行ポーズ(b)をkで線形補間する（k=0→a、k=1→b）。IdlePoseはLimbPoseの
+ * 上位互換（同名キーを全て含む）なのでaにはそのままidleポーズを渡せる */
+export function lerpLimbPose(a: LimbPose, b: LimbPose, k: number): LimbPose {
+  const t = clamp01(k);
+  const m = (x: number, y: number) => x + (y - x) * t;
+  return {
+    hipL: m(a.hipL, b.hipL),
+    hipR: m(a.hipR, b.hipR),
+    kneeL: m(a.kneeL, b.kneeL),
+    kneeR: m(a.kneeR, b.kneeR),
+    shoulderL: m(a.shoulderL, b.shoulderL),
+    shoulderR: m(a.shoulderR, b.shoulderR),
+    elbowL: m(a.elbowL, b.elbowL),
+    elbowR: m(a.elbowR, b.elbowR),
+    spineLean: m(a.spineLean, b.spineLean),
+  };
+}
+
+/** 角度を -π..π へ正規化 */
+export function normalizeAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a));
+}
+/** 角度 current→target へ、最大 turnRate(rad/s) で最短方向に近づける（1フレーム分=delta秒）。
+ * 選手の進行方向(yaw)の滑らかな追従に使う純関数（three.jsのMathUtils.dampを使わないのは
+ * このファイルのthree.js非依存方針を保つため） */
+export function dampAngle(current: number, target: number, turnRate: number, delta: number): number {
+  const diff = normalizeAngle(target - current);
+  const maxStep = Math.max(0, turnRate) * Math.max(0, delta);
+  if (diff > maxStep) return current + maxStep;
+  if (diff < -maxStep) return current - maxStep;
+  return current + diff;
+}
+
+/** 走行ブレンド：この速度(m/s)で待機ポーズ→走行ポーズの補間が完了する（それ以上は頭打ち） */
+export const RUN_BLEND_SPEED_MPS = 3.0;
+/** 走行位相：1m進むごとに歩行サイクル（sin波1周）が何周するか */
+export const RUN_CYCLES_PER_METER = 0.9;
+/** 進行方向(yaw)の最大旋回速度(rad/s) */
+export const YAW_TURN_RATE_RAD_S = 12;
+/** トレイル（軌跡）の保持時間(秒) */
+export const TRAIL_SECONDS = 1.5;
+/** 1フレームでこれ以上ワールド座標が飛んだら「瞬間移動」（場面切替・シーク）とみなし、
+ * 速度・向き・走行位相の計算を1回だけリセットする（誤って全力疾走ポーズが一瞬出るのを防ぐ） */
+export const TELEPORT_GUARD_M = 2.5;

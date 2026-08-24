@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { animTotal, durFromPath, stepDur } from "@/lib/animation";
 import { sceneClient } from "@/lib/tacticsScene";
-import type { Actor, MoveKind } from "@/lib/types";
-import { isOppActor, moveKind, oppIndex } from "@/lib/types";
+import type { Actor, BallTrajectory, MoveKind } from "@/lib/types";
+import { isOppActor, moveKind, moveTrajectory, oppIndex } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import TacticsTimeline, { type TimelineHandle } from "./TacticsTimeline";
 import {
@@ -38,6 +38,14 @@ const EASE_LABEL: Record<"std" | "dash" | "linear", string> = {
   std: "なめらか",
   dash: "ダッシュ",
   linear: "等速",
+};
+
+/** 弾道チップの選択肢。セットプレー画面（state.setPieceあり）のパス/シュートにのみ表示する
+ * （3Dセットプレー再生専用の指定。2D表示はこの値を無視する＝戦術ボードのUIは不変） */
+const TRAJECTORY_LABEL: Record<BallTrajectory, string> = {
+  ground: "地上",
+  driven: "低い弾道",
+  lofted: "高い弾道",
 };
 
 export default function AnimationStudio() {
@@ -319,6 +327,21 @@ export default function AnimationStudio() {
                 {EASE_LABEL[k]}
               </button>
             ))}
+            {board.state.setPiece != null && (moveKind(sel) === "pass" || moveKind(sel) === "shot") && (
+              <>
+                <span className="chipsep" />
+                {(Object.keys(TRAJECTORY_LABEL) as BallTrajectory[]).map((k) => (
+                  <button
+                    key={k}
+                    className={`tlchip${moveTrajectory(sel) === k ? " on" : ""}`}
+                    title="3Dセットプレー再生でのボールの弾道"
+                    onClick={() => setSelPatch({ trajectory: k === "ground" ? undefined : k })}
+                  >
+                    {TRAJECTORY_LABEL[k]}
+                  </button>
+                ))}
+              </>
+            )}
             <button
               className="tlchip danger"
               onClick={() => {

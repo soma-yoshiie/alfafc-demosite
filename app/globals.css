@@ -3379,6 +3379,99 @@ header {
 .sp3dbar {
   align-items: center;
 }
+/* 3Dビューの品質トグル（標準/軽量）。CameraBar(.sp3dbar)はcomponents/SetPieceBoard.tsx側
+   （このタスクでは編集不可）が描画しているため差し込めず、代わりに3Dビュー自体(.sp3dpitch。
+   position:relative + overflow:hidden 済み)の右上に浮かせるオーバーレイとして実装する */
+.sp3dquality {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  background: rgba(10, 14, 12, 0.42);
+  border-radius: 999px;
+  padding: 3px;
+}
+.sp3dqbtn {
+  border: none;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.82);
+  background: transparent;
+  cursor: pointer;
+}
+.sp3dqbtn.on {
+  background: var(--lime);
+  color: #0a0e0c;
+}
+.sp3dqbtn:active {
+  transform: scale(0.94);
+}
+/* 3Dビューの再生コントロール（再生/停止・場面送り）。QualityToggle(.sp3dquality)と同じ理由で
+   親(.sp3dbar=CameraBar、components/SetPieceBoard.tsx側でこのタスクでは編集不可)へは
+   差し込めず、代わりに3Dビュー自体(.sp3dpitch)の下部中央に浮かせるオーバーレイにする */
+.sp3dplay {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(10, 14, 12, 0.42);
+  border-radius: 999px;
+  padding: 4px;
+}
+.sp3dpbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 999px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.86);
+  background: transparent;
+  cursor: pointer;
+}
+.sp3dpbtn svg {
+  width: 13px;
+  height: 13px;
+}
+.sp3dpbtn.main {
+  width: 32px;
+  height: 32px;
+  background: var(--lime);
+  color: #0a0e0c;
+}
+.sp3dpbtn.main.on {
+  background: #ff5d6c;
+  color: #ffffff;
+}
+.sp3dpbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.sp3dpbtn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+.sp3dpstep {
+  padding: 0 8px 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.86);
+  white-space: nowrap;
+}
 
 /* ---------- 選手プロフィール詳細 ---------- */
 .profrow {

@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useBoard } from "./BoardProvider";
-import { DEFAULT_SETPIECE_PRESET_ID, SETPIECE_PRESETS, getSetPiecePreset } from "@/lib/setPiecePresets";
+import {
+  DEFAULT_SETPIECE_PRESET_ID,
+  SETPIECE_PRESETS,
+  getSetPiecePreset,
+  pairPresetId,
+} from "@/lib/setPiecePresets";
 import type { PitchViewMode, SetPieceKind } from "@/lib/types";
 import { IconFlipH, IconHalfPitch, IconPlusSquare, IconUndo } from "./icons";
 
@@ -14,6 +19,9 @@ const KIND_LABEL: Record<SetPieceKind, string> = {
   throwin: "スローイン",
   pk: "PK",
 };
+
+const FORMAT_ORDER: (8 | 11)[] = [8, 11];
+const FORMAT_LABEL: Record<8 | 11, string> = { 8: "8人制", 11: "11人制" };
 
 /**
  * セットプレーデザイン画面の操作バー。FormationBar.tsx が雛形だが、フォーメーション選択の
@@ -29,12 +37,13 @@ export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = 
 
   const [kind, setKind] = useState<SetPieceKind>(meta?.kind ?? "ck");
   const [side, setSide] = useState<"attack" | "defense">(meta?.side ?? "attack");
+  const [format, setFormat] = useState<8 | 11>(meta?.format ?? 8);
   // プリセット適用の直前状態を1件だけ覚えておき、「元に戻す」で戻せるようにする
   // （HYDRATE置換にはreducer側の汎用履歴が無いため、バー側の最小限の安全策として持つ）
   const [prevPresetId, setPrevPresetId] = useState<string | null>(null);
 
   // 別のセットプレー文書を読み込んだとき(currentSetPieceIdが変わったとき)は、
-  // 絞り込みチップをその文書の種別/攻守へ合わせ、Undo履歴も持ち越さない
+  // 絞り込みチップをその文書の種別/攻守/人数へ合わせ、Undo履歴も持ち越さない
   // （レンダー中のstate調整。Reactの公式パターンに従いuseRefではなくuseStateで前回値を追跡する）
   const [syncedId, setSyncedId] = useState<string | null>(board.currentSetPieceId);
   if (syncedId !== board.currentSetPieceId) {
@@ -42,24 +51,26 @@ export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = 
     if (meta) {
       setKind(meta.kind);
       setSide(meta.side);
+      setFormat(meta.format ?? 8);
     }
     setPrevPresetId(null);
   }
 
   // プリセット適用(applySetPiecePreset)・共有取込(applyImport)はcurrentSetPieceIdを
-  // 変えないまま種別/攻守が変わりうるため、絞り込みチップをmeta(kind/side)自体の変化からも
-  // 同期する（syncedIdの分岐だけでは取りこぼす）
+  // 変えないまま種別/攻守/人数が変わりうるため、絞り込みチップをmeta(kind/side/format)自体の
+  // 変化からも同期する（syncedIdの分岐だけでは取りこぼす）
   useEffect(() => {
     if (!meta) return;
     setKind(meta.kind);
     setSide(meta.side);
-  }, [meta?.kind, meta?.side]);
+    setFormat(meta.format ?? 8);
+  }, [meta?.kind, meta?.side, meta?.format]);
 
   // アニメ編集中はプリセット差し替え(盤面を丸ごと置換=進行中のアニメも消える)を隠す。
   // 既存の戦術ボード(FormationBar)でも同じ理由でフォーメーション変更等をアニメ中は隠している
   if (!isCoach || board.mode === "anim") return null;
 
-  const list = SETPIECE_PRESETS.filter((p) => p.kind === kind && p.side === side);
+  const list = SETPIECE_PRESETS.filter((p) => p.kind === kind && p.side === side && p.format === format);
   const currentPresetId = meta?.presetId ?? null;
 
   // 表示切替は「ズーム(種目別)/フル」の2択。ズーム先はプリセット定義(SETPIECE_PRESETS)の
@@ -82,6 +93,34 @@ export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = 
     if (id === currentPresetId) return;
     setPrevPresetId(currentPresetId);
     board.applySetPiecePreset(id);
+  };
+
+  // 8人制⇔11人制トグル。現在のプリセットの相方format版（idの"-11"サフィックス規約）を
+  // 適用する。相方が無い、または現在プリセット未適用のときは、その種別/攻守×切替先formatの
+  // 先頭プリセットを使う（新規作成ボタンの list[0] と同じ考え方）。
+  const applyFormat = (target: 8 | 11) => {
+    if (target === format) return;
+    let nextId: string | undefined;
+    if (currentPresetId) {
+      const cur = getSetPiecePreset(currentPresetId);
+      const pair = getSetPiecePreset(pairPresetId(currentPresetId));
+      if (pair && pair.format === target) {
+        nextId = pair.id;
+      } else if (cur) {
+        nextId = SETPIECE_PRESETS.find(
+          (p) => p.kind === cur.kind && p.side === cur.side && p.format === target
+        )?.id;
+      }
+    }
+    if (!nextId) {
+      nextId = SETPIECE_PRESETS.find(
+        (p) => p.kind === kind && p.side === side && p.format === target
+      )?.id;
+    }
+    if (!nextId) return;
+    setPrevPresetId(currentPresetId);
+    setFormat(target);
+    board.applySetPiecePreset(nextId);
   };
 
   return (
@@ -109,6 +148,16 @@ export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = 
         >
           守備
         </button>
+        <span className="spbar-label">人数</span>
+        {FORMAT_ORDER.map((f) => (
+          <button
+            key={f}
+            className={`chip${format === f ? " on" : ""}`}
+            onClick={() => applyFormat(f)}
+          >
+            {FORMAT_LABEL[f]}
+          </button>
+        ))}
       </div>
       <div
         className={`fbar spbar-presets${

@@ -97,6 +97,13 @@ export function oppIndex(a: Actor): number {
 /** 動きの種類（戦術図の標準記法）: ラン=実線 / パス=破線 / ドリブル=波線 / シュート=R2で描画・生成予定（R1は型のみ） */
 export type MoveKind = "run" | "pass" | "dribble" | "shot";
 
+/**
+ * ボールの弾道（3Dセットプレー再生専用。2D表示は従来どおりこのフィールドを無視する）。
+ * ground=地上を転がる（既定） / driven=低い弧（最高点~1.5m） / lofted=高い弧（最高点~4m・距離比例）。
+ * パス/シュート系のmove（moveKind(m)==="pass"|"shot"）にのみ意味を持つ。
+ */
+export type BallTrajectory = "ground" | "driven" | "lofted";
+
 /** 1本の動きのルート（クリップ） */
 export interface Move {
   actor: Actor;
@@ -116,11 +123,18 @@ export interface Move {
    * 未定義＝従来どおり（こぼれ球・保持者なし）。R1 では型と再生解決（holderAt）のみ対応
    */
   to?: Actor | "goal";
+  /** ボールの弾道（3Dセットプレー再生専用）。未定義＝ground。パス/シュート以外では無視される */
+  trajectory?: BallTrajectory;
 }
 
 /** move の線種（未定義時のデフォルト補完） */
 export function moveKind(m: Move): MoveKind {
   return m.kind ?? (m.actor === "ball" ? "pass" : "run");
+}
+
+/** move の弾道（未定義時のデフォルト補完＝ground） */
+export function moveTrajectory(m: Move): BallTrajectory {
+  return m.trajectory ?? "ground";
 }
 
 /** 相手チームの簡易トークン（名簿なし・番号のみ） */
@@ -247,6 +261,8 @@ export interface SetPieceMeta {
   /** 生成元プリセットID（lib/setPiecePresets.ts）。任意 */
   presetId?: string;
   memo?: string;
+  /** 何人制のシナリオか（GK含む人数）。旧データ・未指定＝8（8人制） */
+  format?: 8 | 11;
 }
 
 /** 永続化するボード全体の状態（作業中のボード） */
