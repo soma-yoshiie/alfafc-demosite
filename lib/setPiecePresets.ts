@@ -53,7 +53,7 @@ const CK_NEAR_ATTACK: SetPiecePreset = {
     { role: "LW", x: 40, y: 93 }, // ファー
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 55 }, // 残り（自陣に残るGK。halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 58 }, // 残り（自陣に残るGK。halfビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -89,7 +89,7 @@ const CK_FAR_ATTACK: SetPiecePreset = {
     { role: "LW", x: 36, y: 90 }, // ファー2
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 55 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -124,7 +124,7 @@ const CK_SHORT_ATTACK: SetPiecePreset = {
     { role: "LW", x: 42, y: 93 }, // ファー
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 55 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -235,7 +235,7 @@ const FK_DIRECT_ATTACK: SetPiecePreset = {
     { role: "CF", x: 40, y: 95 }, // ファーポスト
     { role: "DM", x: 50, y: 70 }, // リバウンド
     { role: "CB", x: 50, y: 60 }, // エッジカバー
-    { role: "GK", x: 50, y: 55 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 }, // 相手GK
@@ -266,7 +266,7 @@ const FK_CROSS_ATTACK: SetPiecePreset = {
     { role: "AM", x: 50, y: 86 }, // スポット
     { role: "CM", x: 80, y: 80 }, // ショート
     { role: "DM", x: 50, y: 76 }, // エッジ回収
-    { role: "GK", x: 50, y: 55 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 },
@@ -476,7 +476,7 @@ const PK_BASIC: SetPiecePreset = {
     { role: "CM", x: 62, y: 74 },
     { role: "DM", x: 50, y: 70 },
     { role: "CB", x: 50, y: 62 },
-    { role: "GK", x: 50, y: 55 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
+    { role: "GK", x: 50, y: 58 }, // 残り（halfビューの可視域端に配置してクリップを防ぐ）
   ],
   opps: [
     { x: 50, y: 98 }, // 相手GK
