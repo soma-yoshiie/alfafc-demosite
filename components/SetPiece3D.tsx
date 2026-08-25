@@ -37,8 +37,8 @@ import { SkeletonUtils } from "three-stdlib";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useBoard } from "./BoardProvider";
 import { actorColor } from "@/lib/colors";
-import { actorPos, animTotal, stepAtTime, stepDur, stepStartTime } from "@/lib/animation";
-import type { Actor, Move, Shape, TextShape, ZoneShape } from "@/lib/types";
+import { actorPos, animTotal, simplify, stepAtTime, stepDur, stepStartTime, straightenIfLine } from "@/lib/animation";
+import type { Actor, BallTrajectory, Move, Point, Shape, TextShape, ZoneShape } from "@/lib/types";
 import { moveKind, moveTrajectory } from "@/lib/types";
 import { IconPause, IconPlay } from "./icons";
 import {
@@ -535,6 +535,52 @@ function Goal({ end, dims }: { end: 1 | -1; dims: PitchDims }) {
   );
 }
 
+/** コーナーフラッグ（実物どおり4隅にポール+三角旗）。ポール1.5m・旗は明黄 */
+const FLAG_POLE_MAT_KEY = "#f4f6fa";
+const FLAG_CLOTH = "#ffd23f";
+const FLAG_TRI_GEOM = (() => {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute(
+    "position",
+    new THREE.BufferAttribute(new Float32Array([0, 1.5, 0, 0.38, 1.41, 0, 0, 1.3, 0]), 3)
+  );
+  g.computeVertexNormals();
+  return g;
+})();
+let flagClothMat: THREE.MeshStandardMaterial | null = null;
+function getFlagClothMat(): THREE.MeshStandardMaterial {
+  if (!flagClothMat) {
+    flagClothMat = new THREE.MeshStandardMaterial({ color: FLAG_CLOTH, side: THREE.DoubleSide, roughness: 0.8 });
+  }
+  return flagClothMat;
+}
+function CornerFlags({ dims }: { dims: PitchDims }) {
+  const halfW = dims.pitchWidthM / 2;
+  const halfL = dims.pitchLengthM / 2;
+  const poleMat = getCachedMaterial(FLAG_POLE_MAT_KEY);
+  const corners: [number, number][] = [
+    [-halfW, -halfL],
+    [halfW, -halfL],
+    [-halfW, halfL],
+    [halfW, halfL],
+  ];
+  return (
+    <group>
+      {corners.map(([x, z], i) => (
+        <group key={i} position={[x, 0, z]} rotation-y={Math.atan2(-x, -z)}>
+          <mesh
+            geometry={UNIT_CYL}
+            material={poleMat}
+            scale={[0.02, 1.5, 0.02]}
+            position={[0, 0.75, 0]}
+          />
+          <mesh geometry={FLAG_TRI_GEOM} material={getFlagClothMat()} />
+        </group>
+      ))}
+    </group>
+  );
+}
+
 /* ============================================================
    スタジアム環境（広告板・観客席の帯）。ピッチ外周を低ポリの箱4枚（矩形リング）で囲うだけの
    簡易表現。UNIT_BOXを共有し、実寸は各面のscaleだけで決める。
@@ -873,11 +919,26 @@ function MoveLine3D({ move, color, dims }: { move: Move; color: string; dims: Pi
 function MovesFloor({ dims }: { dims: PitchDims }) {
   const board = useBoard();
   const moves = board.state.moves.filter((m) => (m.step ?? 0) === board.viewStep);
+  // 3Dドラッグで描いている途中のルート（tempDraw）もライブで床に描く
+  const temp = board.tempDrawRef.current;
   return (
     <group>
       {moves.map((m, i) => (
         <MoveLine3D key={i} move={m} color={actorColor(m.actor, board.state.slots)} dims={dims} />
       ))}
+      {temp && temp.pts.length > 1 && (
+        <Line
+          points={temp.pts.map((pt) => {
+            const w = boardToWorld(pt, dims);
+            return [w.x, 0.018, w.z] as [number, number, number];
+          })}
+          color="#ffe27a"
+          lineWidth={0.06}
+          worldUnits
+          transparent
+          opacity={0.9}
+        />
+      )}
     </group>
   );
 }
@@ -933,6 +994,7 @@ function PlayerFigure({
   quality,
   dims,
   events,
+  onDown,
 }: {
   actor: Actor;
   x: number;
@@ -945,6 +1007,7 @@ function PlayerFigure({
   quality: Sp3dQuality;
   dims: PitchDims;
   events: ActionEvent[];
+  onDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const idle = useMemo(() => computeIdlePose(seed), [seed]);
@@ -1070,7 +1133,12 @@ function PlayerFigure({
 
   return (
     <>
-      <group ref={rootRef} position={[x, 0, z]} rotation-y={initialYaw}>
+      <group
+        ref={rootRef}
+        position={[x, 0, z]}
+        rotation-y={initialYaw}
+        onPointerDown={onDown ? (e) => onDown(actor, e) : undefined}
+      >
       {/* castShadowは胴・大腿・下腿のみに絞る（頭・腕・骨盤・足はOFF）。影を落とす意味が薄い
           末端部位を間引き、shadow mapへの描画コストを下げる（性能予算） */}
       <group name="pelvis" position={[0, hipY, 0]}>
@@ -1246,9 +1314,15 @@ function getBallTexture(): THREE.CanvasTexture {
  * 決まるground/driven/lofted）で追加する。トレイルは品質に関わらず常に表示する
  * （仕様「軽量時はボールのみ」＝ボールは軽量品質でも表示対象）。
  */
-function Ball3D({ dims }: { dims: PitchDims }) {
+function Ball3D({
+  dims,
+  onActorDown,
+}: {
+  dims: PitchDims;
+  onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+}) {
   const board = useBoard();
-  const ref = useRef<THREE.Mesh | null>(null);
+  const ref = useRef<THREE.Group | null>(null);
   const prevWorld = useRef<{ x: number; y: number; z: number } | null>(null);
   const rollAxis = useRef(new THREE.Vector3(1, 0, 0));
   const trailSamples = useRef<{ x: number; y: number; z: number; t: number }[]>([]);
@@ -1304,10 +1378,20 @@ function Ball3D({ dims }: { dims: PitchDims }) {
 
   return (
     <>
-      <mesh ref={ref} castShadow>
-        <sphereGeometry args={[0.11, 20, 16]} />
-        <meshStandardMaterial map={getBallTexture()} roughness={0.4} />
-      </mesh>
+      <group ref={ref}>
+        <mesh castShadow>
+          <sphereGeometry args={[0.11, 20, 16]} />
+          <meshStandardMaterial map={getBallTexture()} roughness={0.4} />
+        </mesh>
+        {/* 当たり判定だけ大きい不可視球（盤端のボールでも掴みやすくする） */}
+        <mesh
+          visible={false}
+          onPointerDown={onActorDown ? (e) => onActorDown("ball", e) : undefined}
+        >
+          <sphereGeometry args={[0.34, 8, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      </group>
       {trailPts.length >= 2 && (
         <Line points={trailPts} color="#ffe27a" lineWidth={0.03} worldUnits transparent opacity={0.4} />
       )}
@@ -1339,8 +1423,48 @@ function findOppGkIndex(opponents: { x: number; y: number }[]): number {
    ボーン(UpperLeg.R等)のポスト・ミキサー上書きで表現する。
    ============================================================ */
 const MODEL_URL = "models/player.glb"; // 相対パス＝GitHub Pagesのサブパス配信でも解決できる
+/** 選手モデルの目標身長(m)。ターゲットは小〜大学生と幅広いため標準体格に合わせる
+ * （ジュニア特化のスケールはしない。8人制対応はピッチ寸法側で行う） */
+const MODEL_TARGET_HEIGHT_M = 1.78;
 /** モデルの正面補正。Blender系エクスポートの人型はthree.jsでは背面を向くことが多い */
 const MODEL_YAW_OFFSET = Math.PI;
+
+/** Pants(長ズボン1マテリアル)をサッカーキットに見せる4ゾーン材質。
+ * スキニング前のバインド空間位置(position属性、モデルはZ軸が身長方向・足元z=0)を
+ * 閾値で塗り分ける: 腰〜太もも上=ショーツ / 膝周り=素足 / すね=ソックス / 足首下=シューズ。
+ * 閾値はGLBのPantsプリミティブ実測(z 0.0015〜0.0265)から決めた定数。キットごとにキャッシュ。 */
+const PANTS_Z = { boots: 0.0035, socks: 0.0105, skin: 0.0175 } as const;
+const pantsMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
+function getPantsMaterial(shortsHex: string, socksHex: string, skinHex: string): THREE.MeshStandardMaterial {
+  const key = `${shortsHex}|${socksHex}|${skinHex}`;
+  const hit = pantsMaterialCache.get(key);
+  if (hit) return hit;
+  const m = new THREE.MeshStandardMaterial({ color: shortsHex, roughness: 0.7, metalness: 0.03 });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uSocks = { value: new THREE.Color(socksHex) };
+    shader.uniforms.uSkin = { value: new THREE.Color(skinHex) };
+    shader.uniforms.uBoots = { value: new THREE.Color(BOOT_COLOR) };
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying float vBindZ;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvBindZ = position.z;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nvarying float vBindZ;\nuniform vec3 uSocks;\nuniform vec3 uSkin;\nuniform vec3 uBoots;"
+      )
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        if (vBindZ < ${PANTS_Z.boots}) { diffuseColor.rgb = uBoots; }
+        else if (vBindZ < ${PANTS_Z.socks}) { diffuseColor.rgb = uSocks; }
+        else if (vBindZ < ${PANTS_Z.skin}) { diffuseColor.rgb = uSkin; }`
+      );
+  };
+  // onBeforeCompileの分岐キーを変えてシェーダキャッシュ衝突を防ぐ
+  m.customProgramCacheKey = () => `pants|${key}`;
+  pantsMaterialCache.set(key, m);
+  return m;
+}
 
 function findClip(anims: THREE.AnimationClip[], suffix: string): THREE.AnimationClip | null {
   return anims.find((a) => a.name.endsWith(suffix)) ?? null;
@@ -1360,6 +1484,7 @@ function GLBPlayer({
   facing,
   dims,
   events,
+  onDown,
 }: {
   gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] };
   actor: Actor;
@@ -1372,26 +1497,36 @@ function GLBPlayer({
   facing: 1 | -1;
   dims: PitchDims;
   events: ActionEvent[];
+  onDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const kit = useMemo(() => getKitColors(jersey, variant), [jersey, variant]);
-  const { clone, mixer, actions, bones, scale } = useMemo(() => {
+  const { clone, mixer, actions, bones, scale, footOffset } = useMemo(() => {
     const clone = SkeletonUtils.clone(gltf.scene);
-    // スキンメッシュはBox3が骨姿勢を反映せず身長を誤測するため、骨(Head/Foot)の
-    // ワールド座標差から実身長を測ってスケールを決める
+    // 身長測定: SkinnedMesh.computeBoundingBox()（three r151+はボーン変形込みで計算）の
+    // ローカルboxをmatrixWorldでワールドへ写し、その高さから目標身長へのスケールを決める。
+    // （骨2点方式・Box3.setFromObject方式はリグの軸/スケール構成次第で誤測するため廃止）
     clone.updateMatrixWorld(true);
-    const headB = clone.getObjectByName("Head_end") ?? clone.getObjectByName("Head");
-    const footB = clone.getObjectByName("Foot.L") ?? clone.getObjectByName("Foot.R");
-    let h = 1.87; // フォールバック(Quaternius Man の実測既定)
-    if (headB && footB) {
-      const hp = new THREE.Vector3();
-      const fp = new THREE.Vector3();
-      headB.getWorldPosition(hp);
-      footB.getWorldPosition(fp);
-      const measured = hp.y - fp.y + 0.12; // 頭頂までのマージン
-      if (measured > 0.5 && Number.isFinite(measured)) h = measured;
+    let skinned: THREE.SkinnedMesh | null = null;
+    clone.traverse((o) => {
+      if ((o as THREE.SkinnedMesh).isSkinnedMesh && !skinned) skinned = o as THREE.SkinnedMesh;
+    });
+    let h = 1.87; // フォールバック
+    let footY = 0;
+    if (skinned) {
+      const sk = skinned as THREE.SkinnedMesh;
+      sk.computeBoundingBox();
+      if (sk.boundingBox) {
+        const wb = new THREE.Box3().copy(sk.boundingBox).applyMatrix4(sk.matrixWorld);
+        const mh = wb.max.y - wb.min.y;
+        if (Number.isFinite(mh) && mh > 0.8 && mh < 500) {
+          h = mh;
+          footY = wb.min.y;
+        }
+      }
     }
-    const scale = PLAYER_HEIGHT_M / h;
+    const scale = MODEL_TARGET_HEIGHT_M / h;
+    const footOffset = -footY * scale; // 足裏を地面(y=0)へ
     const skinHex = SKIN_TONES[Math.abs(Math.round(seed)) % 2];
     clone.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -1403,8 +1538,9 @@ function GLBPlayer({
       const replaced = mats.map((mat) => {
         const name = (mat as THREE.Material).name;
         if (name === "Shirt") return getCachedMaterial(kit.jersey);
-        if (name === "Pants") return getCachedMaterial(kit.shorts);
-        if (name === "Details") return getCachedMaterial("#e8eaee");
+        if (name === "Pants") return getPantsMaterial(kit.shorts, kit.socks, skinHex);
+        // Details/Tie は私服の装飾（ベルト・ネクタイ等）のためジャージ色へ塗って消す
+        if (name === "Details" || name === "TieTexture") return getCachedMaterial(kit.jersey);
         if (name === "Skin") return getCachedMaterial(skinHex);
         return mat;
       });
@@ -1439,7 +1575,7 @@ function GLBPlayer({
       armR: clone.getObjectByName("UpperArm.R") ?? null,
       abdomen: clone.getObjectByName("Abdomen") ?? null,
     };
-    return { clone, mixer, actions, bones, scale };
+    return { clone, mixer, actions, bones, scale, footOffset };
   }, [gltf, kit, seed]);
   useEffect(() => {
     return () => {
@@ -1529,16 +1665,26 @@ function GLBPlayer({
 
   const numberMat = getNumberMaterial(kit.jersey, label);
   return (
-    <group ref={rootRef} position={[x, 0, z]} rotation-y={facing === -1 ? Math.PI : 0}>
-      <group rotation-y={MODEL_YAW_OFFSET} scale={[scale, scale, scale]}>
+    <group
+      ref={rootRef}
+      position={[x, 0, z]}
+      rotation-y={facing === -1 ? Math.PI : 0}
+      onPointerDown={onDown ? (e) => onDown(actor, e) : undefined}
+    >
+      <group rotation-y={MODEL_YAW_OFFSET} position={[0, footOffset, 0]} scale={[scale, scale, scale]}>
         <primitive object={clone} />
       </group>
       {/* 背中とやや小さめの胸の番号プレート（シャツのUVを持たないため薄板で表現） */}
-      <mesh geometry={NUMBER_PLATE_GEOM} material={numberMat} position={[0, 1.02, -0.145]} rotation-y={Math.PI} />
       <mesh
         geometry={NUMBER_PLATE_GEOM}
         material={numberMat}
-        position={[0, 1.0, 0.145]}
+        position={[0, MODEL_TARGET_HEIGHT_M * 0.62, -0.16]}
+        rotation-y={Math.PI}
+      />
+      <mesh
+        geometry={NUMBER_PLATE_GEOM}
+        material={numberMat}
+        position={[0, MODEL_TARGET_HEIGHT_M * 0.6, 0.16]}
         scale={[0.62, 0.62, 1]}
       />
     </group>
@@ -1555,10 +1701,12 @@ function ModelPlayers({
   quality,
   dims,
   actionMap,
+  onActorDown,
 }: {
   quality: Sp3dQuality;
   dims: PitchDims;
   actionMap: Map<string, ActionEvent[]>;
+  onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const { slots, players } = board.state;
@@ -1585,6 +1733,7 @@ function ModelPlayers({
             facing={1}
             dims={dims}
             events={actionEventsFor(actionMap, i)}
+            onDown={onActorDown}
           />
         );
       })}
@@ -1602,6 +1751,7 @@ function ModelPlayers({
           facing={-1}
           dims={dims}
           events={actionEventsFor(actionMap, `opp${i}` as Actor)}
+          onDown={onActorDown}
         />
       ))}
     </group>
@@ -1623,10 +1773,12 @@ function ProceduralPlayers({
   quality,
   dims,
   actionMap,
+  onActorDown,
 }: {
   quality: Sp3dQuality;
   dims: PitchDims;
   actionMap: Map<string, ActionEvent[]>;
+  onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const { slots, players } = board.state;
@@ -1651,6 +1803,7 @@ function ProceduralPlayers({
             quality={quality}
             dims={dims}
             events={actionEventsFor(actionMap, i)}
+            onDown={onActorDown}
           />
         );
       })}
@@ -1668,13 +1821,22 @@ function ProceduralPlayers({
           quality={quality}
           dims={dims}
           events={actionEventsFor(actionMap, `opp${i}` as Actor)}
+          onDown={onActorDown}
         />
       ))}
     </group>
   );
 }
 
-function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims }) {
+function TokensLayer({
+  quality,
+  dims,
+  onActorDown,
+}: {
+  quality: Sp3dQuality;
+  dims: PitchDims;
+  onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+}) {
   const board = useBoard();
   const { slots } = board.state;
   const opponents = board.state.opponents ?? [];
@@ -1686,20 +1848,22 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
     () => computeActionEvents(moves, slots, ball, opponents, holder, dims),
     [moves, slots, ball, opponents, holder, dims]
   );
-  const proc = <ProceduralPlayers quality={quality} dims={dims} actionMap={actionMap} />;
+  const proc = (
+    <ProceduralPlayers quality={quality} dims={dims} actionMap={actionMap} onActorDown={onActorDown} />
+  );
   return (
     <group>
       {quality === "standard" ? (
         // 標準=GLBモデル（読み込み中・失敗時はプロシージャル人型で表示を継続）
         <ModelBoundary fallback={proc}>
           <Suspense fallback={proc}>
-            <ModelPlayers quality={quality} dims={dims} actionMap={actionMap} />
+            <ModelPlayers quality={quality} dims={dims} actionMap={actionMap} onActorDown={onActorDown} />
           </Suspense>
         </ModelBoundary>
       ) : (
         proc
       )}
-      <Ball3D dims={dims} />
+      <Ball3D dims={dims} onActorDown={onActorDown} />
     </group>
   );
 }
@@ -1712,13 +1876,36 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
 const CLICK_PLANE_GEOM = new THREE.PlaneGeometry(400, 400);
 const CLICK_PLANE_MAT = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
 
-function GazeClickPlane({
+/** 3D直接操作の共有状態。SetPiece3D本体が生成し、選手/ボール/地面プレーンで共有する */
+export interface Drag3DState {
+  actor: Actor;
+  mode: "move" | "route";
+  pts: Point[];
+}
+
+function worldToBoardPct(x: number, z: number, dims: PitchDims): Point {
+  const bx = Math.min(99.5, Math.max(0.5, (x / dims.pitchWidthM + 0.5) * 100));
+  const by = Math.min(99.5, Math.max(0.5, (z / dims.pitchLengthM + 0.5) * 100));
+  return { x: bx, y: by };
+}
+
+/** ドラッグ・キック調整・ダブルクリック注視の受け皿になる透明な地面プレーン */
+function InteractionPlane({
   controlsRef,
   reducedMotion,
+  dims,
+  dragRef,
+  kickEdit,
+  onKickTarget,
 }: {
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
   reducedMotion: boolean;
+  dims: PitchDims;
+  dragRef: React.RefObject<Drag3DState | null>;
+  kickEdit: boolean;
+  onKickTarget: (p: Point) => void;
 }) {
+  const board = useBoard();
   const { invalidate } = useThree();
   const from = useRef(new THREE.Vector3());
   const to = useRef(new THREE.Vector3());
@@ -1737,6 +1924,7 @@ function GazeClickPlane({
   });
 
   const handleDoubleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (dragRef.current || kickEdit) return;
     e.stopPropagation();
     const controls = controlsRef.current;
     if (!controls) return;
@@ -1752,6 +1940,53 @@ function GazeClickPlane({
     invalidate();
   };
 
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!kickEdit) return;
+    e.stopPropagation();
+    onKickTarget(worldToBoardPct(e.point.x, e.point.z, dims));
+    invalidate();
+  };
+
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    e.stopPropagation();
+    const bp = worldToBoardPct(e.point.x, e.point.z, dims);
+    if (d.mode === "route") {
+      const last = d.pts[d.pts.length - 1];
+      if (Math.hypot(bp.x - last.x, bp.y - last.y) > 2.2) {
+        d.pts.push(bp);
+        board.setTempDraw({ actor: d.actor, pts: d.pts.slice() });
+      }
+    } else {
+      // 配置移動: 2Dドラッグと同じAPIでライブ反映
+      if (d.actor === "ball") {
+        board.setBall(bp.x, bp.y);
+      } else if (typeof d.actor === "number") {
+        const role = board.stateRef.current.slots[d.actor]?.role ?? "CM";
+        board.moveSlot(d.actor, bp.x, bp.y, role);
+      } else {
+        const idx = parseInt(String(d.actor).replace("opp", ""), 10);
+        if (Number.isFinite(idx)) board.moveOpponent(idx, bp.x, bp.y);
+      }
+    }
+    invalidate();
+  };
+
+  const endDrag = () => {
+    const d = dragRef.current;
+    if (!d) return;
+    if (d.mode === "route") {
+      const path = straightenIfLine(simplify(d.pts));
+      if (path.length >= 2) board.addMove(d.actor, path);
+      board.setTempDraw(null);
+    }
+    dragRef.current = null;
+    const controls = controlsRef.current;
+    if (controls) controls.enabled = true;
+    invalidate();
+  };
+
   return (
     <mesh
       geometry={CLICK_PLANE_GEOM}
@@ -1759,10 +1994,13 @@ function GazeClickPlane({
       position={[0, 0.001, 0]}
       rotation-x={-Math.PI / 2}
       onDoubleClick={handleDoubleClick}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={endDrag}
+      onPointerLeave={endDrag}
     />
   );
 }
-
 /* ============================================================
    カメラ制御（プリセット間をイージング移動。reduced-motionは即時ジャンプ）。
    replayプリセットは遷移完了後、reduced-motionでない間だけ注視点を中心にゆっくり自動オービットする
@@ -1869,6 +2107,56 @@ function CameraController({
   });
 
   return null;
+}
+
+/** キック調整: 始点→終点を「巻き」量で曲げた2次ベジェのサンプル列(9点)にする。
+ * bendは-60..60(%)で、経路長に比例した横オフセットに写す(正=進行方向右へ膨らむ) */
+function makeBentPath(start: Point, end: Point, bend: number): Point[] {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const off = (bend / 100) * len * 0.6;
+  const mx = (start.x + end.x) / 2 + nx * off;
+  const my = (start.y + end.y) / 2 + ny * off;
+  const pts: Point[] = [];
+  for (let i = 0; i <= 8; i++) {
+    const t = i / 8;
+    const a = (1 - t) * (1 - t);
+    const b = 2 * (1 - t) * t;
+    const c = t * t;
+    pts.push({ x: a * start.x + b * mx + c * end.x, y: a * start.y + b * my + c * end.y });
+  }
+  return pts;
+}
+
+/** 既存パスから「巻き」量を逆算(中間点の符号付き横オフセット→bend%換算) */
+function estimateBend(path: Point[]): number {
+  if (path.length < 3) return 0;
+  const s0 = path[0];
+  const e0 = path[path.length - 1];
+  const m = path[Math.floor(path.length / 2)];
+  const dx = e0.x - s0.x;
+  const dy = e0.y - s0.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const off = (m.x - (s0.x + e0.x) / 2) * nx + (m.y - (s0.y + e0.y) / 2) * ny;
+  return Math.max(-60, Math.min(60, Math.round((off / (len * 0.6)) * 100)));
+}
+
+/** キック調整中の着地点マーカー(地面のリング) */
+function KickTargetMarker({ path, dims }: { path: Point[]; dims: PitchDims }) {
+  const end = path[path.length - 1];
+  const x = boardXToWorldX(end.x, dims);
+  const z = boardYToWorldZ(end.y, dims);
+  return (
+    <mesh position={[x, 0.03, z]} rotation-x={-Math.PI / 2}>
+      <ringGeometry args={[0.45, 0.62, 32]} />
+      <meshBasicMaterial color="#ffd23f" transparent opacity={0.9} side={THREE.DoubleSide} depthWrite={false} />
+    </mesh>
+  );
 }
 
 /* ============================================================
@@ -2090,13 +2378,72 @@ function FollowBallController({
    本体
    ============================================================ */
 
-export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
+export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetId; onPreset?: (id: CameraPresetId) => void }) {
   const board = useBoard();
   const reducedMotion = usePrefersReducedMotion();
   const [quality, setQuality] = useSp3dQuality();
   // ボール追従カメラ(FC26リプレイ風)のON/OFF。PlaybackBar(トグルUI)とCanvas内の
   // FollowBallControllerで共有する
   const [follow, setFollow] = useState(false);
+  // 3D直接操作(ドラッグ移動/ルート描き)の共有状態
+  const dragRef = useRef<Drag3DState | null>(null);
+  // キック調整(TPS)モード
+  const [kickEdit, setKickEdit] = useState(false);
+  const [kickBend, setKickBend] = useState(0);
+  const isCoach = board.auth.role === "coach";
+
+  // 現在の場面のボールmove(パス/シュート)のindex。キック調整の編集対象
+  const ballMoveIdx = board.state.moves.findIndex(
+    (m) =>
+      m.actor === "ball" &&
+      (m.step ?? 0) === board.activeStep &&
+      (moveKind(m) === "pass" || moveKind(m) === "shot")
+  );
+  const ballMove = ballMoveIdx >= 0 ? board.state.moves[ballMoveIdx] : null;
+
+  const applyKickPath = (end: Point, bend: number) => {
+    if (ballMoveIdx < 0) return;
+    const start = board.state.moves[ballMoveIdx].path[0];
+    board.updateMove(ballMoveIdx, { path: makeBentPath(start, end, bend) });
+  };
+  const onKickTarget = (p: Point) => {
+    if (ballMoveIdx < 0) {
+      // ボールmoveがまだ無ければ、現在のボール位置→クリック地点のパスを新規作成
+      const start = { x: board.state.ball.x, y: board.state.ball.y };
+      board.addMove("ball", makeBentPath(start, p, kickBend));
+      return;
+    }
+    applyKickPath(p, kickBend);
+  };
+  const onKickBend = (b: number) => {
+    setKickBend(b);
+    if (ballMoveIdx >= 0) {
+      const path = board.state.moves[ballMoveIdx].path;
+      applyKickPath(path[path.length - 1], b);
+    }
+  };
+  const onKickTrajectory = (tr: BallTrajectory) => {
+    if (ballMoveIdx >= 0) board.updateMove(ballMoveIdx, { trajectory: tr });
+  };
+  const toggleKickEdit = () => {
+    const next = !kickEdit;
+    setKickEdit(next);
+    if (next) {
+      // キッカーTPS視点へ。既存moveがあれば曲がりの初期値を推定
+      onPreset?.("kicker");
+      if (ballMove) setKickBend(estimateBend(ballMove.path));
+    }
+  };
+
+  const beginActorDrag = (actor: Actor, e: { stopPropagation: () => void }) => {
+    if (!isCoach || kickEdit || board.isPlaying) return;
+    e.stopPropagation();
+    const st = board.stateRef.current;
+    const p0 = actorPos(actor, board.getTime(), st.moves, st.slots, st.ball, st.opponents, st.holder);
+    const route = board.mode === "anim" && board.animTool === "draw";
+    dragRef.current = { actor, mode: route ? "route" : "move", pts: [{ x: p0.x, y: p0.y }] };
+    if (controlsRef.current) controlsRef.current.enabled = false;
+  };
   // 何人制シナリオかに応じたピッチ寸法一式。getPitchDimsは固定テーブル参照を返すため
   // （format 8|11の2値しか無い）、format不変の間はレンダーをまたいで同一オブジェクト参照になる
   // ＝下流のuseMemo([dims])はformat切替時だけ再計算される。
@@ -2171,12 +2518,21 @@ export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
           <PitchLines dims={dims} />
           <Goal end={1} dims={dims} />
           <Goal end={-1} dims={dims} />
+          <CornerFlags dims={dims} />
           <AdBoardRing dims={dims} />
           {quality === "standard" && <StadiumStands dims={dims} />}
           <ShapesFloor dims={dims} />
           <MovesFloor dims={dims} />
-          <TokensLayer quality={quality} dims={dims} />
-          <GazeClickPlane controlsRef={controlsRef} reducedMotion={reducedMotion} />
+          <TokensLayer quality={quality} dims={dims} onActorDown={beginActorDrag} />
+          <InteractionPlane
+            controlsRef={controlsRef}
+            reducedMotion={reducedMotion}
+            dims={dims}
+            dragRef={dragRef}
+            kickEdit={kickEdit && isCoach}
+            onKickTarget={onKickTarget}
+          />
+          {kickEdit && ballMove && <KickTargetMarker path={ballMove.path} dims={dims} />}
           <FollowBallController on={follow} controlsRef={controlsRef} dims={dims} />
           <ThreeBridge invalidateRef={invalidateRef} />
           <OrbitControls
@@ -2196,6 +2552,39 @@ export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
           <CameraController preset={preset} reducedMotion={reducedMotion} controlsRef={controlsRef} dims={dims} />
         </Canvas>
         <QualityToggle quality={quality} onChange={setQuality} />
+        {isCoach && (
+          <div className="sp3dkick" role="group" aria-label="キック調整">
+            <button type="button" className={`sp3dqbtn${kickEdit ? " on" : ""}`} onClick={toggleKickEdit}>
+              キック調整
+            </button>
+            {kickEdit && (
+              <>
+                <span className="sp3dkick-hint">ピッチをクリック=着地点</span>
+                <label className="sp3dkick-bend">
+                  巻き
+                  <input
+                    type="range"
+                    min={-60}
+                    max={60}
+                    step={2}
+                    value={kickBend}
+                    onChange={(e) => onKickBend(parseInt(e.target.value, 10))}
+                  />
+                </label>
+                {(["ground", "driven", "lofted"] as BallTrajectory[]).map((tr) => (
+                  <button
+                    key={tr}
+                    type="button"
+                    className={`sp3dqbtn${(ballMove ? moveTrajectory(ballMove) : "ground") === tr ? " on" : ""}`}
+                    onClick={() => onKickTrajectory(tr)}
+                  >
+                    {tr === "ground" ? "グラウンダー" : tr === "driven" ? "ライナー" : "ふんわり"}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+        )}
         <PlaybackBar reducedMotion={reducedMotion} follow={follow} onToggleFollow={() => setFollow((v) => !v)} />
       </div>
     </div>

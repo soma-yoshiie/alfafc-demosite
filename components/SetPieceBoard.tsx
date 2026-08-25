@@ -181,7 +181,7 @@ export default function SetPieceBoard() {
         <CameraBar preset={preset} onPreset={setPreset} onExit3D={() => setView("2d")} />
       )}
       <div className="scroll">
-        {view === "2d" ? <Pitch /> : <SetPiece3D preset={preset} />}
+        {view === "2d" ? <Pitch /> : <SetPiece3D preset={preset} onPreset={setPreset} />}
         <div className="boardside">
           {spPanelType ? <SpPanelHost type={spPanelType} /> : <AnimationStudio />}
         </div>
