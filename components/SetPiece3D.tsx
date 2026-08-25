@@ -48,10 +48,19 @@ import {
   boardYToWorldZ,
   buildMarkingsGeometryData,
   computeCameraPreset,
+  actionEventsFor,
+  computeActionEvents,
+  computeHeaderPose,
   computeIdlePose,
+  computeKickPose,
   computeRunPose,
+  HEADER_DUR_S,
+  HEADER_PRE_S,
+  KICK_DUR_S,
+  KICK_PRE_S,
   dampAngle,
   findActiveMove,
+  type ActionEvent,
   getKitColors,
   type KitVariant,
   getPitchDims,
@@ -722,18 +731,23 @@ function StadiumStands({ dims }: { dims: PitchDims }) {
   const floodZ = frontZ + backOff + 4;
   return (
     <group>
-      {/* ゴール裏(±z)・メイン/バック(±x)の4面。StandSideはローカル-z方向へ上る形なので、
-          各面をピッチへ向けて回して配置する */}
-      <group position={[0, 0, -frontZ]} rotation-y={Math.PI}>
+      {/* ゴール裏(±z)・メイン/バック(±x)の4面。StandSideはローカル-z方向(=席の後方)へ上る形。
+          「後方」がワールドでピッチと反対側を向くように各面を回す:
+          R_y(θ)でローカル(0,0,-1)は (−sinθ, 0, −cosθ) へ写るため、
+          -z面(後方=世界-z)→θ=0 / +z面(後方=世界+z)→θ=π /
+          -x面(後方=世界-x)→θ=π/2 / +x面(後方=世界+x)→θ=-π/2。
+          （旧実装は4面とも逆で、観客席が外側を向き・ゴール裏の高い縁が
+          ピッチ側に来て「ゴール前の壁」に見えていた） */}
+      <group position={[0, 0, -frontZ]}>
         <StandSide length={lengthX} />
       </group>
-      <group position={[0, 0, frontZ]}>
+      <group position={[0, 0, frontZ]} rotation-y={Math.PI}>
         <StandSide length={lengthX} />
       </group>
-      <group position={[-frontX, 0, 0]} rotation-y={-Math.PI / 2}>
+      <group position={[-frontX, 0, 0]} rotation-y={Math.PI / 2}>
         <StandSide length={lengthZ} />
       </group>
-      <group position={[frontX, 0, 0]} rotation-y={Math.PI / 2}>
+      <group position={[frontX, 0, 0]} rotation-y={-Math.PI / 2}>
         <StandSide length={lengthZ} />
       </group>
       <Floodlight x={-floodX} z={-floodZ} />
@@ -898,6 +912,7 @@ function PlayerFigure({
   facing,
   quality,
   dims,
+  events,
 }: {
   actor: Actor;
   x: number;
@@ -909,6 +924,7 @@ function PlayerFigure({
   facing: 1 | -1;
   quality: Sp3dQuality;
   dims: PitchDims;
+  events: ActionEvent[];
 }) {
   const board = useBoard();
   const idle = useMemo(() => computeIdlePose(seed), [seed]);
@@ -940,6 +956,7 @@ function PlayerFigure({
   const yawRef = useRef(initialYaw);
   const phaseRef = useRef(0);
   const speedRef = useRef(0);
+  const liftRef = useRef(0);
 
   // トレイル（軌跡）：標準品質のときだけ選手にも表示する（軽量品質はボールのみ＝Ball3D側で対応）
   const showTrail = quality === "standard";
@@ -974,13 +991,38 @@ function PlayerFigure({
       phaseRef.current += dist * RUN_CYCLES_PER_METER * Math.PI * 2;
     }
     if (rootRef.current) {
-      rootRef.current.position.set(wx, 0, wz);
+      rootRef.current.position.set(wx, liftRef.current, wz);
       rootRef.current.rotation.y = yawRef.current;
     }
 
     // 速度に比例して待機ポーズ→走行ポーズへブレンド（停止中は待機ポーズのまま）
     const blend = Math.min(1, speedRef.current / RUN_BLEND_SPEED_MPS);
-    const pose = lerpLimbPose(idle, computeRunPose(phaseRef.current), blend);
+    let pose = lerpLimbPose(idle, computeRunPose(phaseRef.current), blend);
+    // キック/ヘディングのアクションモーション（該当時間窓ならベースポーズへ重ねる）
+    let lift = 0;
+    liftRef.current = 0;
+    for (const ev of events) {
+      if (ev.kind === "kick") {
+        const p = (t - (ev.t - KICK_PRE_S)) / KICK_DUR_S;
+        if (p > 0 && p < 1) {
+          const w = Math.sin(Math.PI * p);
+          pose = lerpLimbPose(pose, computeKickPose(p), Math.max(0, w));
+          yawRef.current = dampAngle(yawRef.current, ev.faceYaw, YAW_TURN_RATE_RAD_S * 2.5, delta);
+          break;
+        }
+      } else {
+        const p = (t - (ev.t - HEADER_PRE_S)) / HEADER_DUR_S;
+        if (p > 0 && p < 1) {
+          const hp = computeHeaderPose(p);
+          const w = Math.sin(Math.PI * p);
+          pose = lerpLimbPose(pose, hp.pose, Math.max(0, w));
+          lift = hp.lift;
+          liftRef.current = lift;
+          yawRef.current = dampAngle(yawRef.current, ev.faceYaw, YAW_TURN_RATE_RAD_S * 2.5, delta);
+          break;
+        }
+      }
+    }
     if (leftThighRef.current) leftThighRef.current.rotation.z = pose.hipL;
     if (rightThighRef.current) rightThighRef.current.rotation.z = pose.hipR;
     if (leftShinRef.current) leftShinRef.current.rotation.x = pose.kneeL;
@@ -1257,6 +1299,14 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
   const board = useBoard();
   const { slots, players } = board.state;
   const opponents = board.state.opponents ?? [];
+  const moves = board.state.moves;
+  const ball = board.state.ball;
+  const holder = board.state.holder;
+  // キック/ヘディングのイベント表。moves/配置が変わったときだけ再計算する
+  const actionMap = useMemo(
+    () => computeActionEvents(moves, slots, ball, opponents, holder, dims),
+    [moves, slots, ball, opponents, holder, dims]
+  );
   // 相手GKの推定: 相手にはrole情報が無いため、どちらかのゴールライン中央(50,0)/(50,100)へ
   // 十分近い(8%以内)相手トークンをGKユニフォーム(oppgk)にする（該当なしなら全員フィールド配色）
   const oppGkIndex = (() => {
@@ -1289,6 +1339,7 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
             facing={1}
             quality={quality}
             dims={dims}
+            events={actionEventsFor(actionMap, i)}
           />
         );
       })}
@@ -1305,6 +1356,7 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
           facing={-1}
           quality={quality}
           dims={dims}
+          events={actionEventsFor(actionMap, `opp${i}` as Actor)}
         />
       ))}
       <Ball3D dims={dims} />

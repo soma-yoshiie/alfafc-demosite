@@ -48,7 +48,7 @@ const CK_NEAR_ATTACK: SetPiecePreset = {
   label: "CK：ニア狙い",
   desc: "近い ポストへ速いボールを送り込むU-12年代の定石。ニアで合わせて折り返しも狙う。",
   view: "boxatk",
-  ball: { x: 97, y: 97 },
+  ball: { x: 99, y: 99 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
     { role: "CM", x: 85, y: 88 }, // ショート要員
@@ -85,7 +85,7 @@ const CK_FAR_ATTACK: SetPiecePreset = {
   label: "CK：ファー狙い",
   desc: "ファーポストへ大きく蹴り、折り返しで押し込む。",
   view: "boxatk",
-  ball: { x: 97, y: 97 },
+  ball: { x: 99, y: 99 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
     { role: "CM", x: 85, y: 88 }, // ショート要員
@@ -121,7 +121,7 @@ const CK_SHORT_ATTACK: SetPiecePreset = {
   label: "CK：ショート",
   desc: "ショートコーナーで数的優位を作り、崩してから折り返す。",
   view: "boxatk",
-  ball: { x: 97, y: 97 },
+  ball: { x: 99, y: 99 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
     { role: "CM", x: 88, y: 90 }, // ショート1
@@ -153,7 +153,7 @@ const CK_ZONE_DEFENSE: SetPiecePreset = {
   label: "CK対応：ゾーン",
   desc: "ゾーンでスペースを守る配置。ポスト番と6ヤード列でニア/ファーを固める。",
   view: "boxdef",
-  ball: { x: 97, y: 3 },
+  ball: { x: 99, y: 1 },
   slots: [
     { role: "CB", x: 58, y: 4 }, // ポスト番
     { role: "CB", x: 50, y: 6 }, // 6ヤード列1
@@ -191,7 +191,7 @@ const CK_MIX_DEFENSE: SetPiecePreset = {
   label: "CK対応：ミックス",
   desc: "ゾーン4＋マンマーク3の併用。核となる相手選手だけ人につく。",
   view: "boxdef",
-  ball: { x: 97, y: 3 },
+  ball: { x: 99, y: 1 },
   slots: [
     { role: "CB", x: 58, y: 4 }, // ゾーン1
     { role: "CB", x: 42, y: 4 }, // ゾーン2
@@ -415,7 +415,7 @@ const THROWIN_ADVANCE: SetPiecePreset = {
   label: "スローイン：前進",
   desc: "投げ手→第1の受け手→第2の動きで前進する。",
   view: "boxatk",
-  ball: { x: 3, y: 72 },
+  ball: { x: 0.5, y: 72 },
   slots: [
     { role: "LB", x: 3, y: 72 }, // 投げ手
     { role: "CM", x: 15, y: 73 }, // 第1受け手
@@ -447,7 +447,7 @@ const THROWIN_KEEP: SetPiecePreset = {
   label: "スローイン：キープ",
   desc: "無理に前進せず、外→中でボールを失わない形を作る。",
   view: "boxdef",
-  ball: { x: 97, y: 22 },
+  ball: { x: 99.5, y: 22 },
   slots: [
     { role: "RB", x: 97, y: 22 }, // 投げ手
     { role: "CM", x: 86, y: 23 }, // 近サポート1
@@ -524,7 +524,7 @@ const CK_NEAR_ATTACK_11: SetPiecePreset = {
   label: "CK：ニア狙い",
   desc: "近いポストへ速いボールを送り込む定石（11人制）。ニアで合わせて折り返しも狙う。",
   view: "boxatk",
-  ball: { x: 97, y: 97 },
+  ball: { x: 99, y: 99 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
     { role: "CM", x: 85, y: 89 }, // ショート要員1
@@ -567,7 +567,7 @@ const CK_FAR_ATTACK_11: SetPiecePreset = {
   label: "CK：ファー狙い",
   desc: "ファーポストへ大きく蹴り、折り返しで押し込む（11人制）。",
   view: "boxatk",
-  ball: { x: 97, y: 97 },
+  ball: { x: 99, y: 99 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
     { role: "CM", x: 85, y: 89 }, // ショート要員1
@@ -609,7 +609,7 @@ const CK_SHORT_ATTACK_11: SetPiecePreset = {
   label: "CK：ショート",
   desc: "ショートコーナーで数的優位を作り、崩してから折り返す（11人制）。",
   view: "boxatk",
-  ball: { x: 97, y: 97 },
+  ball: { x: 99, y: 99 },
   slots: [
     { role: "RW", x: 97, y: 96 }, // キッカー
     { role: "CM", x: 88, y: 90 }, // ショート1
@@ -647,7 +647,7 @@ const CK_ZONE_DEFENSE_11: SetPiecePreset = {
   label: "CK対応：ゾーン",
   desc: "ゾーン6＋マンマーク2＋ポスト番＋キッカー妨害＋GK（11人制）。面で守りつつ要注意の相手には人をつける。",
   view: "boxdef",
-  ball: { x: 97, y: 3 },
+  ball: { x: 99, y: 1 },
   slots: [
     { role: "CB", x: 58, y: 4 }, // ポスト番
     { role: "CB", x: 50, y: 6 }, // ゾーン1
@@ -693,7 +693,7 @@ const CK_MIX_DEFENSE_11: SetPiecePreset = {
   label: "CK対応：ミックス",
   desc: "ゾーン4＋マン4の併用＋ポスト番＋キッカー妨害＋GK（11人制）。核となる相手選手を厚く人につく。",
   view: "boxdef",
-  ball: { x: 97, y: 3 },
+  ball: { x: 99, y: 1 },
   slots: [
     { role: "CB", x: 58, y: 4 }, // ポスト番
     { role: "CB", x: 50, y: 6 }, // ゾーン1
@@ -949,7 +949,7 @@ const THROWIN_ADVANCE_11: SetPiecePreset = {
   label: "スローイン：前進",
   desc: "投げ手→第1の受け手→第2の動きで前進する（11人制）。",
   view: "boxatk",
-  ball: { x: 3, y: 72 },
+  ball: { x: 0.5, y: 72 },
   slots: [
     { role: "LB", x: 3, y: 72 }, // 投げ手
     { role: "CM", x: 15, y: 73 }, // 第1受け手
@@ -987,7 +987,7 @@ const THROWIN_KEEP_11: SetPiecePreset = {
   label: "スローイン：キープ",
   desc: "無理に前進せず、外→中でボールを失わない形を作る（11人制）。",
   view: "boxdef",
-  ball: { x: 97, y: 22 },
+  ball: { x: 99.5, y: 22 },
   slots: [
     { role: "RB", x: 97, y: 22 }, // 投げ手
     { role: "CM", x: 86, y: 23 }, // 近サポート1

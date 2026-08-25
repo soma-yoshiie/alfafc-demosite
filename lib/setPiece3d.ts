@@ -5,7 +5,8 @@
 // 3D本体(SetPiece3D.tsx)は next/dynamic で遅延ロードする（バンドル分離のため）。
 
 import type { Actor, BallTrajectory, BoardState, Move, Point } from "./types";
-import { absStart, easeBy } from "./animation";
+import { moveKind, moveTrajectory } from "./types";
+import { absStart, actorPos, easeBy } from "./animation";
 
 /* ============================================================
    ピッチ寸法（メートル）。8人制(JFA)/11人制の2セットを持ち、format→寸法セットの
@@ -801,3 +802,140 @@ export const TRAIL_SECONDS = 1.5;
 /** 1フレームでこれ以上ワールド座標が飛んだら「瞬間移動」（場面切替・シーク）とみなし、
  * 速度・向き・走行位相の計算を1回だけリセットする（誤って全力疾走ポーズが一瞬出るのを防ぐ） */
 export const TELEPORT_GUARD_M = 2.5;
+
+/* ============================================================
+   アクションモーション（キック・ヘディング）。ボールのパス/シュートmoveの開始・着地に
+   最も近い選手へ「蹴る」「跳んで合わせる」動作を割り当てる純計算。three.js非依存。
+   実際の関節適用はSetPiece3D.tsxのPlayerFigureがuseFrame内で行う。
+   ============================================================ */
+
+export interface ActionEvent {
+  /** アクションの基準時刻（キック=ボールmove開始、ヘディング=ボールmove終了） */
+  t: number;
+  kind: "kick" | "header";
+  /** アクション中に向くべきyaw（ワールド、Y-up。キック=蹴る方向 / ヘディング=ボールが来た方向） */
+  faceYaw: number;
+}
+
+/** キック動作: 基準時刻の何秒前から始まり、合計何秒続くか */
+export const KICK_PRE_S = 0.22;
+export const KICK_DUR_S = 0.55;
+export const HEADER_PRE_S = 0.35;
+export const HEADER_DUR_S = 0.75;
+/** 蹴る/合わせる選手の探索半径（盤面%単位） */
+const ACTION_NEAR_PCT = 8;
+
+function actorKeyOf(actor: Actor): string {
+  return typeof actor === "number" ? `s${actor}` : String(actor);
+}
+
+/**
+ * moves からアクションイベント表（actorキー→イベント一覧）を作る。
+ * ボールの pass/shot move ごとに:
+ *  - 開始点へ最も近い選手（開始0.05秒前の位置で判定）→ kick
+ *  - lofted(ふんわり)の終点へ最も近い選手 → header（跳んで合わせる）
+ * moves/配置が変わったときだけ呼び直す想定（TokensLayer の useMemo）。
+ */
+export function computeActionEvents(
+  moves: Move[],
+  slots: BoardState["slots"],
+  ball: BoardState["ball"],
+  opponents: BoardState["opponents"],
+  holder: BoardState["holder"],
+  dims: PitchDims = DEFAULT_DIMS
+): Map<string, ActionEvent[]> {
+  const out = new Map<string, ActionEvent[]>();
+  const push = (key: string, ev: ActionEvent) => {
+    const arr = out.get(key);
+    if (arr) arr.push(ev);
+    else out.set(key, [ev]);
+  };
+  const opps = opponents ?? [];
+  const actors: Actor[] = [
+    ...slots.map((_, i) => i as Actor),
+    ...opps.map((_, i) => `opp${i}` as Actor),
+  ];
+  const nearestTo = (pt: Point, t: number): Actor | null => {
+    let best: Actor | null = null;
+    let bestD = ACTION_NEAR_PCT;
+    for (const a of actors) {
+      const p = actorPos(a, t, moves, slots, ball, opps, holder);
+      const d = Math.hypot(p.x - pt.x, p.y - pt.y);
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+    return best;
+  };
+  const yawBetween = (from: Point, to: Point): number => {
+    const a = boardToWorld(from, dims);
+    const b = boardToWorld(to, dims);
+    return Math.atan2(b.x - a.x, b.z - a.z);
+  };
+  for (const m of moves) {
+    if (m.actor !== "ball" || m.path.length < 2) continue;
+    const kind = moveKind(m);
+    if (kind !== "pass" && kind !== "shot") continue;
+    const t0 = absStart(moves, m);
+    const tEnd = t0 + m.dur;
+    const start = m.path[0];
+    const second = m.path[Math.min(1, m.path.length - 1)];
+    const end = m.path[m.path.length - 1];
+    const kicker = nearestTo(start, Math.max(0, t0 - 0.05));
+    if (kicker != null) {
+      push(actorKeyOf(kicker), { t: t0, kind: "kick", faceYaw: yawBetween(start, second) });
+    }
+    if (moveTrajectory(m) === "lofted") {
+      const receiver = nearestTo(end, tEnd + 0.05);
+      if (receiver != null && receiver !== kicker) {
+        push(actorKeyOf(receiver), { t: tEnd, kind: "header", faceYaw: yawBetween(end, start) });
+      }
+    }
+  }
+  return out;
+}
+
+/** actor用のイベント取り出しキー（PlayerFigureから使う） */
+export function actionEventsFor(map: Map<string, ActionEvent[]>, actor: Actor): ActionEvent[] {
+  return map.get(actorKeyOf(actor)) ?? [];
+}
+
+/** キックモーション（右足インステップ）。phase 0=バックスイング開始→約0.4=インパクト→1=フォロー */
+export function computeKickPose(phase: number): LimbPose {
+  const p = clamp01(phase);
+  // バックスイング(-)→インパクト(+)→フォロースルー
+  const swing = p < 0.4 ? -Math.sin((p / 0.4) * Math.PI * 0.5) : Math.sin(((p - 0.4) / 0.6) * Math.PI);
+  return {
+    hipL: -0.18,
+    hipR: swing * 1.15,
+    kneeL: 0.22,
+    kneeR: Math.max(0, -swing) * 0.9 + 0.1,
+    shoulderL: swing * 0.55,
+    shoulderR: -swing * 0.4,
+    elbowL: 0.35,
+    elbowR: 0.45,
+    spineLean: 0.16 + Math.max(0, swing) * 0.08,
+  };
+}
+
+/** ヘディング（跳んで合わせる）。phase 0=踏み込み→0.5=最高点(のけぞり→当てる)→1=着地 */
+export function computeHeaderPose(phase: number): { pose: LimbPose; lift: number } {
+  const p = clamp01(phase);
+  const jump = Math.sin(p * Math.PI); // 0→1→0
+  const snap = p < 0.5 ? -(p / 0.5) : (p - 0.5) / 0.5; // のけぞり(-)→振り抜き(+)
+  return {
+    pose: {
+      hipL: -0.5 * jump,
+      hipR: -0.5 * jump,
+      kneeL: 0.9 * jump,
+      kneeR: 0.9 * jump,
+      shoulderL: 1.9 * jump,
+      shoulderR: -1.9 * jump,
+      elbowL: 0.5,
+      elbowR: 0.5,
+      spineLean: -0.22 * jump + snap * 0.3 * jump,
+    },
+    lift: 0.42 * jump,
+  };
+}
