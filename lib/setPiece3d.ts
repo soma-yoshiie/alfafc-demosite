@@ -660,6 +660,12 @@ export const STADIUM_M = {
 export const AD_BOARD_COLORS: [string, string] = ["#0b3d66", "#e8543c"];
 /** 観客席の帯のベース色・粒（座席）色（架空の中立トーン） */
 export const STAND_BASE_COLOR = "#333f4b";
+/** 味方フィールドプレイヤーの3D固定ユニフォーム色。2Dトークンはポジション別色(GK=金/FW=橙等)だが、
+ * 3Dでそのまま使うとFW橙・GK金と味方GK(蛍光黄)が被って見分けづらいため、3Dは
+ * 「味方=単一のチームジャージ色」に統一する(クラブカラーの深緑。白ショーツ+白背番号で芝と分離) */
+export const OWN_KIT_JERSEY = "#0c6e37";
+/** ピッチ外周〜スタンド下まで途切れなく敷く場外グラウンド(エプロン)の色 */
+export const APRON_COLOR = "#276b3d";
 export const STAND_SEAT_TONES: [string, string, string, string] = ["#465360", "#57677a", "#3a4551", "#5c6b78"];
 
 /* ============================================================

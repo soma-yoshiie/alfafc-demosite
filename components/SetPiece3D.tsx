@@ -29,10 +29,11 @@
 // 本ファイル側（.sp3dpitch内）に浮かせるオーバーレイとして実装している
 // （QualityToggle＝app/globals.cssの.sp3dquality、PlaybackBar＝同.sp3dplay）。
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { Html, Line, OrbitControls } from "@react-three/drei";
+import { Html, Line, OrbitControls, useGLTF } from "@react-three/drei";
+import { SkeletonUtils } from "three-stdlib";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useBoard } from "./BoardProvider";
 import { actorColor } from "@/lib/colors";
@@ -42,6 +43,7 @@ import { moveKind, moveTrajectory } from "@/lib/types";
 import { IconPause, IconPlay } from "./icons";
 import {
   AD_BOARD_COLORS,
+  APRON_COLOR,
   BOOT_COLOR,
   boardToWorld,
   boardXToWorldX,
@@ -67,6 +69,8 @@ import {
   lenXToMeters,
   lenYToMeters,
   lerpLimbPose,
+  OWN_KIT_JERSEY,
+  PLAYER_HEIGHT_M,
   PLAYER_RIG_M,
   RUN_BLEND_SPEED_MPS,
   RUN_CYCLES_PER_METER,
@@ -317,6 +321,22 @@ function getGrassTexture(quality: Sp3dQuality): THREE.CanvasTexture {
   tex.anisotropy = 4;
   grassTextureCache.set(quality, tex);
   return tex;
+}
+
+/** 場外グラウンド(エプロン): ピッチ〜スタンド外側まで途切れなく敷く1枚平面。
+ * 旧実装は芝プレーン(ピッチ+3m)の外が何も無く、ピッチと観客席の間に「透明な床」が
+ * 見えていた。全構造物の足元をこの1枚(2三角形)で覆う */
+const APRON_GEOM = new THREE.PlaneGeometry(320, 320);
+function ApronGround() {
+  return (
+    <mesh
+      geometry={APRON_GEOM}
+      rotation-x={-Math.PI / 2}
+      position={[0, -0.02, 0]}
+      material={getCachedMaterial(APRON_COLOR)}
+      receiveShadow
+    />
+  );
 }
 
 /** 芝: canvasテクスチャ1枚を貼った1平面（旧実装の縞メッシュ11枚から統合。draw call・
@@ -1295,32 +1315,323 @@ function Ball3D({ dims }: { dims: PitchDims }) {
   );
 }
 
-function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims }) {
+
+/** 相手GKの推定: 相手にはrole情報が無いため、どちらかのゴールライン中央(50,0)/(50,100)へ
+ * 十分近い(8%以内)相手トークンをGKユニフォーム(oppgk)にする（該当なしなら全員フィールド配色） */
+function findOppGkIndex(opponents: { x: number; y: number }[]): number {
+  let best = -1;
+  let bestD = 8;
+  opponents.forEach((o, i) => {
+    const d = Math.min(Math.hypot(o.x - 50, o.y - 0), Math.hypot(o.x - 50, o.y - 100));
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/* ============================================================
+   GLB選手モデル（Quaternius Animated Men Pack "Man"、CC0。public/models/player.glb）。
+   標準品質のときに使用し、軽量品質・読み込み失敗時は従来のプロシージャル人型へ
+   フォールバックする。マテリアル(Shirt/Pants/Details/Skin)をチームキットへ差し替え、
+   Idle/Runクリップを速度でクロスフェード、ヘディングはJumpクリップ、キックは
+   ボーン(UpperLeg.R等)のポスト・ミキサー上書きで表現する。
+   ============================================================ */
+const MODEL_URL = "models/player.glb"; // 相対パス＝GitHub Pagesのサブパス配信でも解決できる
+/** モデルの正面補正。Blender系エクスポートの人型はthree.jsでは背面を向くことが多い */
+const MODEL_YAW_OFFSET = Math.PI;
+
+function findClip(anims: THREE.AnimationClip[], suffix: string): THREE.AnimationClip | null {
+  return anims.find((a) => a.name.endsWith(suffix)) ?? null;
+}
+
+const NUMBER_PLATE_GEOM = new THREE.PlaneGeometry(0.26, 0.34);
+
+function GLBPlayer({
+  gltf,
+  actor,
+  x,
+  z,
+  jersey,
+  variant,
+  label,
+  seed,
+  facing,
+  dims,
+  events,
+}: {
+  gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] };
+  actor: Actor;
+  x: number;
+  z: number;
+  jersey: string;
+  variant: KitVariant;
+  label: string;
+  seed: number;
+  facing: 1 | -1;
+  dims: PitchDims;
+  events: ActionEvent[];
+}) {
+  const board = useBoard();
+  const kit = useMemo(() => getKitColors(jersey, variant), [jersey, variant]);
+  const { clone, mixer, actions, bones, scale } = useMemo(() => {
+    const clone = SkeletonUtils.clone(gltf.scene);
+    // スキンメッシュはBox3が骨姿勢を反映せず身長を誤測するため、骨(Head/Foot)の
+    // ワールド座標差から実身長を測ってスケールを決める
+    clone.updateMatrixWorld(true);
+    const headB = clone.getObjectByName("Head_end") ?? clone.getObjectByName("Head");
+    const footB = clone.getObjectByName("Foot.L") ?? clone.getObjectByName("Foot.R");
+    let h = 1.87; // フォールバック(Quaternius Man の実測既定)
+    if (headB && footB) {
+      const hp = new THREE.Vector3();
+      const fp = new THREE.Vector3();
+      headB.getWorldPosition(hp);
+      footB.getWorldPosition(fp);
+      const measured = hp.y - fp.y + 0.12; // 頭頂までのマージン
+      if (measured > 0.5 && Number.isFinite(measured)) h = measured;
+    }
+    const scale = PLAYER_HEIGHT_M / h;
+    const skinHex = SKIN_TONES[Math.abs(Math.round(seed)) % 2];
+    clone.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!(m as THREE.Mesh).isMesh) return;
+      m.castShadow = true;
+      m.receiveShadow = true;
+      m.frustumCulled = false; // スキンメッシュはバウンディングが骨姿勢とズレて誤カリングされやすい
+      const mats = Array.isArray(m.material) ? m.material : [m.material];
+      const replaced = mats.map((mat) => {
+        const name = (mat as THREE.Material).name;
+        if (name === "Shirt") return getCachedMaterial(kit.jersey);
+        if (name === "Pants") return getCachedMaterial(kit.shorts);
+        if (name === "Details") return getCachedMaterial("#e8eaee");
+        if (name === "Skin") return getCachedMaterial(skinHex);
+        return mat;
+      });
+      m.material = Array.isArray(m.material) ? replaced : replaced[0];
+    });
+    const mixer = new THREE.AnimationMixer(clone);
+    const idleClip = findClip(gltf.animations, "Man_Idle");
+    const runClip = findClip(gltf.animations, "Man_Run");
+    const jumpClip = findClip(gltf.animations, "Man_Jump");
+    const actions = {
+      idle: idleClip ? mixer.clipAction(idleClip) : null,
+      run: runClip ? mixer.clipAction(runClip) : null,
+      jump: jumpClip ? mixer.clipAction(jumpClip) : null,
+    };
+    if (actions.idle) {
+      actions.idle.play();
+      // 個体ごとに位相をずらし、全員が同じ呼吸で揺れる不自然さを避ける
+      actions.idle.time = seededOffset(seed) * (idleClip?.duration ?? 1);
+    }
+    if (actions.run) {
+      actions.run.play();
+      actions.run.setEffectiveWeight(0);
+    }
+    if (actions.jump) {
+      actions.jump.setLoop(THREE.LoopOnce, 1);
+      actions.jump.clampWhenFinished = false;
+    }
+    const bones = {
+      thighR: clone.getObjectByName("UpperLeg.R") ?? null,
+      shinR: clone.getObjectByName("LowerLeg.R") ?? null,
+      armL: clone.getObjectByName("UpperArm.L") ?? null,
+      armR: clone.getObjectByName("UpperArm.R") ?? null,
+      abdomen: clone.getObjectByName("Abdomen") ?? null,
+    };
+    return { clone, mixer, actions, bones, scale };
+  }, [gltf, kit, seed]);
+  useEffect(() => {
+    return () => {
+      mixer.stopAllAction();
+      mixer.uncacheRoot(clone);
+    };
+  }, [mixer, clone]);
+
+  const rootRef = useRef<THREE.Group | null>(null);
+  const prevWorld = useRef<{ x: number; z: number } | null>(null);
+  const yawRef = useRef(facing === -1 ? Math.PI : 0);
+  const speedRef = useRef(0);
+  const lastJumpEv = useRef<number | null>(null);
+
+  useFrame((_, delta) => {
+    const st = board.stateRef.current;
+    const t = board.getTime();
+    const p = actorPos(actor, t, st.moves, st.slots, st.ball, st.opponents, st.holder);
+    const wx = boardXToWorldX(p.x, dims);
+    const wz = boardYToWorldZ(p.y, dims);
+    let dist = 0;
+    let dx = 0;
+    let dz = 0;
+    if (prevWorld.current) {
+      dx = wx - prevWorld.current.x;
+      dz = wz - prevWorld.current.z;
+      dist = Math.hypot(dx, dz);
+    }
+    const teleport = dist > TELEPORT_GUARD_M;
+    prevWorld.current = { x: wx, z: wz };
+    const moving = !teleport && dist > 0.0025;
+    const speedNow = !teleport && delta > 0 ? dist / delta : 0;
+    speedRef.current += (speedNow - speedRef.current) * Math.min(1, delta * 8);
+    if (moving) {
+      yawRef.current = dampAngle(yawRef.current, Math.atan2(dx, dz), YAW_TURN_RATE_RAD_S, delta);
+    }
+
+    // アクション（キック/ヘディング）
+    let kicking = false;
+    let kickP = 0;
+    for (const ev of events) {
+      if (ev.kind === "kick") {
+        const kp = (t - (ev.t - KICK_PRE_S)) / KICK_DUR_S;
+        if (kp > 0 && kp < 1) {
+          kicking = true;
+          kickP = kp;
+          yawRef.current = dampAngle(yawRef.current, ev.faceYaw, YAW_TURN_RATE_RAD_S * 2.5, delta);
+          break;
+        }
+      } else {
+        const hp = (t - (ev.t - HEADER_PRE_S)) / HEADER_DUR_S;
+        if (hp > 0 && hp < 1) {
+          if (actions.jump && lastJumpEv.current !== ev.t) {
+            lastJumpEv.current = ev.t;
+            actions.jump.reset().play();
+          }
+          yawRef.current = dampAngle(yawRef.current, ev.faceYaw, YAW_TURN_RATE_RAD_S * 2.5, delta);
+          break;
+        }
+      }
+    }
+
+    if (rootRef.current) {
+      rootRef.current.position.set(wx, 0, wz);
+      rootRef.current.rotation.y = yawRef.current;
+    }
+
+    // ロコモーション: Idle⇔Run を速度でクロスフェードし、Runの再生速度も実速度へ追従
+    const blend = Math.min(1, speedRef.current / RUN_BLEND_SPEED_MPS);
+    actions.run?.setEffectiveWeight(blend);
+    actions.idle?.setEffectiveWeight(1 - blend * 0.85);
+    if (actions.run) actions.run.timeScale = 0.7 + Math.min(2.2, speedRef.current * 0.28);
+    mixer.update(delta);
+
+    // キック: ミキサー適用後にボーンを上書き（クリップが無いため手続き駆動）
+    if (kicking) {
+      const swing =
+        kickP < 0.4 ? -Math.sin((kickP / 0.4) * Math.PI * 0.5) : Math.sin(((kickP - 0.4) / 0.6) * Math.PI);
+      const w = Math.sin(Math.PI * kickP);
+      if (bones.thighR) bones.thighR.rotation.x += -swing * 1.1 * w;
+      if (bones.shinR) bones.shinR.rotation.x += Math.max(0, -swing) * 0.9 * w;
+      if (bones.armL) bones.armL.rotation.x += swing * 0.5 * w;
+      if (bones.armR) bones.armR.rotation.x += -swing * 0.35 * w;
+      if (bones.abdomen) bones.abdomen.rotation.x += 0.14 * w;
+    }
+  });
+
+  const numberMat = getNumberMaterial(kit.jersey, label);
+  return (
+    <group ref={rootRef} position={[x, 0, z]} rotation-y={facing === -1 ? Math.PI : 0}>
+      <group rotation-y={MODEL_YAW_OFFSET} scale={[scale, scale, scale]}>
+        <primitive object={clone} />
+      </group>
+      {/* 背中とやや小さめの胸の番号プレート（シャツのUVを持たないため薄板で表現） */}
+      <mesh geometry={NUMBER_PLATE_GEOM} material={numberMat} position={[0, 1.02, -0.145]} rotation-y={Math.PI} />
+      <mesh
+        geometry={NUMBER_PLATE_GEOM}
+        material={numberMat}
+        position={[0, 1.0, 0.145]}
+        scale={[0.62, 0.62, 1]}
+      />
+    </group>
+  );
+}
+
+/** 0..1の決定的オフセット（GLBPlayerのIdle位相ずらし用） */
+function seededOffset(seed: number): number {
+  const x = Math.sin(seed * 91.17) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function ModelPlayers({
+  quality,
+  dims,
+  actionMap,
+}: {
+  quality: Sp3dQuality;
+  dims: PitchDims;
+  actionMap: Map<string, ActionEvent[]>;
+}) {
   const board = useBoard();
   const { slots, players } = board.state;
   const opponents = board.state.opponents ?? [];
-  const moves = board.state.moves;
-  const ball = board.state.ball;
-  const holder = board.state.holder;
-  // キック/ヘディングのイベント表。moves/配置が変わったときだけ再計算する
-  const actionMap = useMemo(
-    () => computeActionEvents(moves, slots, ball, opponents, holder, dims),
-    [moves, slots, ball, opponents, holder, dims]
+  const gltf = useGLTF(MODEL_URL) as unknown as { scene: THREE.Group; animations: THREE.AnimationClip[] };
+  const oppGkIndex = findOppGkIndex(opponents);
+  void quality;
+  return (
+    <group>
+      {slots.map((s, i) => {
+        if (s.pid == null) return null;
+        const player = players.find((pp) => pp.id === s.pid) ?? null;
+        return (
+          <GLBPlayer
+            key={`p${i}`}
+            gltf={gltf}
+            actor={i}
+            x={boardXToWorldX(s.x, dims)}
+            z={boardYToWorldZ(s.y, dims)}
+            jersey={OWN_KIT_JERSEY}
+            variant={s.role === "GK" ? "gk" : "own"}
+            label={String(player?.number ?? "–")}
+            seed={i + 1}
+            facing={1}
+            dims={dims}
+            events={actionEventsFor(actionMap, i)}
+          />
+        );
+      })}
+      {opponents.map((o, i) => (
+        <GLBPlayer
+          key={`o${i}`}
+          gltf={gltf}
+          actor={`opp${i}` as Actor}
+          x={boardXToWorldX(o.x, dims)}
+          z={boardYToWorldZ(o.y, dims)}
+          jersey={actorColor(`opp${i}` as Actor, slots)}
+          variant={i === oppGkIndex ? "oppgk" : "opp"}
+          label={o.label}
+          seed={1000 + i}
+          facing={-1}
+          dims={dims}
+          events={actionEventsFor(actionMap, `opp${i}` as Actor)}
+        />
+      ))}
+    </group>
   );
-  // 相手GKの推定: 相手にはrole情報が無いため、どちらかのゴールライン中央(50,0)/(50,100)へ
-  // 十分近い(8%以内)相手トークンをGKユニフォーム(oppgk)にする（該当なしなら全員フィールド配色）
-  const oppGkIndex = (() => {
-    let best = -1;
-    let bestD = 8;
-    opponents.forEach((o, i) => {
-      const d = Math.min(Math.hypot(o.x - 50, o.y - 0), Math.hypot(o.x - 50, o.y - 100));
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    });
-    return best;
-  })();
+}
+
+/** GLB読み込み失敗時にプロシージャル人型へ落とすエラーバウンダリ */
+class ModelBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+function ProceduralPlayers({
+  quality,
+  dims,
+  actionMap,
+}: {
+  quality: Sp3dQuality;
+  dims: PitchDims;
+  actionMap: Map<string, ActionEvent[]>;
+}) {
+  const board = useBoard();
+  const { slots, players } = board.state;
+  const opponents = board.state.opponents ?? [];
+  const oppGkIndex = findOppGkIndex(opponents);
   return (
     <group>
       {slots.map((s, i) => {
@@ -1332,7 +1643,7 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
             actor={i}
             x={boardXToWorldX(s.x, dims)}
             z={boardYToWorldZ(s.y, dims)}
-            jersey={actorColor(i, slots)}
+            jersey={OWN_KIT_JERSEY}
             variant={s.role === "GK" ? "gk" : "own"}
             label={String(player?.number ?? "–")}
             seed={i + 1}
@@ -1359,6 +1670,35 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
           events={actionEventsFor(actionMap, `opp${i}` as Actor)}
         />
       ))}
+    </group>
+  );
+}
+
+function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims }) {
+  const board = useBoard();
+  const { slots } = board.state;
+  const opponents = board.state.opponents ?? [];
+  const moves = board.state.moves;
+  const ball = board.state.ball;
+  const holder = board.state.holder;
+  // キック/ヘディングのイベント表。moves/配置が変わったときだけ再計算する
+  const actionMap = useMemo(
+    () => computeActionEvents(moves, slots, ball, opponents, holder, dims),
+    [moves, slots, ball, opponents, holder, dims]
+  );
+  const proc = <ProceduralPlayers quality={quality} dims={dims} actionMap={actionMap} />;
+  return (
+    <group>
+      {quality === "standard" ? (
+        // 標準=GLBモデル（読み込み中・失敗時はプロシージャル人型で表示を継続）
+        <ModelBoundary fallback={proc}>
+          <Suspense fallback={proc}>
+            <ModelPlayers quality={quality} dims={dims} actionMap={actionMap} />
+          </Suspense>
+        </ModelBoundary>
+      ) : (
+        proc
+      )}
       <Ball3D dims={dims} />
     </group>
   );
@@ -1826,6 +2166,7 @@ export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
             shadow-camera-near={1}
             shadow-camera-far={80}
           />
+          <ApronGround />
           <PitchGround quality={quality} dims={dims} />
           <PitchLines dims={dims} />
           <Goal end={1} dims={dims} />
