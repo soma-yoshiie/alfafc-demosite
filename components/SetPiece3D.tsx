@@ -2491,6 +2491,8 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
           gl={{
             antialias: true,
             alpha: true,
+            // 3Dシーンのスクリーンショット取得(canvas.toDataURL)用。描画バッファを保持する
+            preserveDrawingBuffer: true,
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.08,
           }}
