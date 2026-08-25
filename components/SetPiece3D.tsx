@@ -36,7 +36,7 @@ import { Html, Line, OrbitControls } from "@react-three/drei";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useBoard } from "./BoardProvider";
 import { actorColor } from "@/lib/colors";
-import { actorPos, stepDur, stepStartTime } from "@/lib/animation";
+import { actorPos, animTotal, stepAtTime, stepDur, stepStartTime } from "@/lib/animation";
 import type { Actor, Move, Shape, TextShape, ZoneShape } from "@/lib/types";
 import { moveKind, moveTrajectory } from "@/lib/types";
 import { IconPause, IconPlay } from "./icons";
@@ -46,13 +46,14 @@ import {
   boardToWorld,
   boardXToWorldX,
   boardYToWorldZ,
-  buildPitchMarkings,
+  buildMarkingsGeometryData,
   computeCameraPreset,
   computeIdlePose,
   computeRunPose,
   dampAngle,
   findActiveMove,
   getKitColors,
+  type KitVariant,
   getPitchDims,
   lenXToMeters,
   lenYToMeters,
@@ -319,32 +320,43 @@ function PitchGround({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
   return <mesh geometry={geom} rotation-x={-Math.PI / 2} material={mat} receiveShadow />;
 }
 
-/** 外枠・ハーフウェイライン・センターサークル・PA/GA・PKマーク・コーナーアーク */
+/** ライン用マテリアル（全formatで共有）。polygonOffsetで芝との深度競合を避け、
+ * どの距離・角度からでもラインが消えない（drei Line時代の「ズームで消える」対策の本体） */
+let markingMaterialCache: THREE.MeshBasicMaterial | null = null;
+function getMarkingMaterial(): THREE.MeshBasicMaterial {
+  if (!markingMaterialCache) {
+    markingMaterialCache = new THREE.MeshBasicMaterial({
+      color: "#fdfdfd",
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+      side: THREE.DoubleSide,
+    });
+  }
+  return markingMaterialCache;
+}
+
+/** 外枠・ハーフウェイライン・センターサークル・PA/GA・PKマーク・コーナーアーク。
+ * 旧実装のdrei Line(worldUnits)はカメラを近づけると描画が破綻して「ラインが消える」ため、
+ * 実ジオメトリの帯を1つのBufferGeometryへマージした1メッシュ(draw call 1)に置き換えた */
+const markingsBufferCache = new Map<string, THREE.BufferGeometry>();
+function getMarkingsGeometry(dims: PitchDims): THREE.BufferGeometry {
+  const key = `${dims.pitchWidthM}x${dims.pitchLengthM}`;
+  let g = markingsBufferCache.get(key);
+  if (!g) {
+    g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(buildMarkingsGeometryData(dims), 3));
+    markingsBufferCache.set(key, g);
+  }
+  return g;
+}
+
 function PitchLines({ dims }: { dims: PitchDims }) {
-  // dimsは8人制/11人制の2値しか取らない固定オブジェクト参照（getPitchDims）なので、
-  // format切替時だけ作り直せば十分（boardの他の再レンダーでは再計算しない）
-  const markings = useMemo(() => buildPitchMarkings(dims), [dims]);
-  return (
-    <group>
-      {markings.lines.map((pts, i) => (
-        <Line
-          key={i}
-          points={pts.map((p) => [p.x, 0.012, p.z] as [number, number, number])}
-          color="#ffffff"
-          lineWidth={0.1}
-          worldUnits
-          transparent
-          opacity={0.85}
-        />
-      ))}
-      {markings.spots.map((p, i) => (
-        <mesh key={i} position={[p.x, 0.014, p.z]} rotation-x={-Math.PI / 2}>
-          <circleGeometry args={[0.09, 16]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.85} />
-        </mesh>
-      ))}
-    </group>
-  );
+  const geom = useMemo(() => getMarkingsGeometry(dims), [dims]);
+  return <mesh geometry={geom} material={getMarkingMaterial()} position={[0, 0.02, 0]} renderOrder={1} />;
 }
 
 /** ゴールネットの網目風alphaMap。1枚だけ生成しキャッシュ（両ゴールで共有） */
@@ -459,6 +471,30 @@ function Goal({ end, dims }: { end: 1 | -1; dims: PitchDims }) {
         material={postMat}
         castShadow
       />
+      {/* バックステー（クロスバー両端から後方地面へ斜めに降りる支柱）。ゴールに実物どおりの
+          奥行きを持たせる（「ゴールが薄すぎる」対策はネット深さdims.goalNetDepthMの拡大とセット） */}
+      {([-1, 1] as const).map((sideX) => {
+        const backLen = Math.hypot(dims.goalHeightM, dims.goalNetDepthM);
+        const tilt = Math.atan2(dims.goalNetDepthM, dims.goalHeightM);
+        return (
+          <mesh
+            key={sideX}
+            geometry={UNIT_CYL}
+            scale={[postR * 0.8, backLen, postR * 0.8]}
+            position={[sideX * halfGoal, dims.goalHeightM / 2, z + end * (dims.goalNetDepthM / 2)]}
+            rotation-x={-end * tilt}
+            material={postMat}
+          />
+        );
+      })}
+      {/* 後方下端のグラウンドバー */}
+      <mesh
+        geometry={UNIT_CYL}
+        scale={[postR * 0.7, dims.goalWidthM, postR * 0.7]}
+        position={[0, 0.04, z + end * dims.goalNetDepthM]}
+        rotation-z={Math.PI / 2}
+        material={postMat}
+      />
       {/* ゴールネット（網目風alphaMap入り）。ピッチ側の1面だけ透明にして開口させる（檻に見せない） */}
       <mesh
         geometry={UNIT_BOX}
@@ -514,8 +550,8 @@ function getAdBoardMaterial(): THREE.MeshStandardMaterial {
 const standTextureCache: { current: THREE.CanvasTexture | null } = { current: null };
 function getStandTexture(): THREE.CanvasTexture {
   if (standTextureCache.current) return standTextureCache.current;
-  const w = 96;
-  const h = 48;
+  const w = 192;
+  const h = 96;
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
@@ -523,18 +559,30 @@ function getStandTexture(): THREE.CanvasTexture {
   if (ctx) {
     ctx.fillStyle = STAND_BASE_COLOR;
     ctx.fillRect(0, 0, w, h);
-    for (let y = 4; y < h; y += 6) {
-      const offset = (y / 6) % 2 === 0 ? 2 : 5;
-      for (let x = offset; x < w; x += 6) {
-        ctx.fillStyle = STAND_SEAT_TONES[(x + y) % STAND_SEAT_TONES.length];
-        ctx.fillRect(x, y, 3, 4);
+    // 段差ライン（階段状の座席列）
+    ctx.fillStyle = "#2a333d";
+    for (let y = 0; y < h; y += 8) ctx.fillRect(0, y, w, 1);
+    // 観客の粒: 座席トーンに加えて時々カラフルな服・白シャツを混ぜ、遠景でも「満員の観客」に見せる
+    const crowdPop: string[] = ["#d64545", "#e8b93c", "#f2f2f2", "#4f86d6", "#58b06a"];
+    const rand = (x: number, y: number) => {
+      const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+      return v - Math.floor(v);
+    };
+    for (let y = 2; y < h; y += 4) {
+      for (let x = 1; x < w; x += 3) {
+        const r = rand(x, y);
+        ctx.fillStyle =
+          r > 0.82
+            ? crowdPop[Math.floor(r * 100) % crowdPop.length]
+            : STAND_SEAT_TONES[(x + y) % STAND_SEAT_TONES.length];
+        ctx.fillRect(x, y, 2, 2);
       }
     }
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(8, 1.4);
+  tex.repeat.set(10, 2);
   standTextureCache.current = tex;
   return tex;
 }
@@ -576,33 +624,122 @@ function AdBoardRing({ dims }: { dims: PitchDims }) {
   );
 }
 
-/** 観客席風の帯（遠景の低ポリシルエット）。標準品質のみ表示（軽量品質は「観客席帯OFF」） */
-function StadiumStands({ dims }: { dims: PitchDims }) {
-  const inner =
-    GRASS_MARGIN_M + STADIUM_M.adBoardMarginM + STADIUM_M.adBoardThicknessM + STADIUM_M.standMarginM;
-  const halfW = dims.pitchWidthM / 2 + inner;
-  const halfL = dims.pitchLengthM / 2 + inner;
-  const h = STADIUM_M.standHeightM;
-  const t = STADIUM_M.standThicknessM;
-  const mat = getStandMaterial();
+/** サッカー専用スタジアム風の傾斜スタンド一式（前面の低い壁+後方へ上る傾斜席+背面壁+屋根）。
+ * 旧実装の「ピッチ近くの垂直壁」はカメラアングルによって視界を塞いだため、
+ * 前面は1.1mの低壁だけにし、席は後方ほど高くなるラケ(約25°)へ変更（地上カメラでも視界が抜ける）。
+ * コーナーは開放し、4本の照明塔（サッカー専用スタの記号）を置く。標準品質のみ表示。 */
+const CONCRETE_COLOR = "#8b95a1";
+const ROOF_COLOR = "#c9d0d8";
+const FLOOD_MAST_COLOR = "#3a424c";
+
+function StandSide({ length }: { length: number }) {
+  const S = STADIUM_M;
+  const a = S.standRakeRad;
+  const D = S.standDepthM;
+  const topH = S.standFrontWallM + D * Math.sin(a);
+  const backZ = -(D * Math.cos(a));
+  const standMat = getStandMaterial();
+  const concreteMat = getCachedMaterial(CONCRETE_COLOR);
+  const roofMat = getCachedMaterial(ROOF_COLOR);
   return (
     <group>
-      <mesh geometry={UNIT_BOX} material={mat} position={[0, h / 2, -halfL]} scale={[halfW * 2 + t * 2, h, t]} />
-      <mesh geometry={UNIT_BOX} material={mat} position={[0, h / 2, halfL]} scale={[halfW * 2 + t * 2, h, t]} />
+      {/* 前面の低い壁（この高さまでしか視界を遮らない） */}
       <mesh
         geometry={UNIT_BOX}
-        material={mat}
-        position={[-halfW, h / 2, 0]}
-        rotation-y={Math.PI / 2}
-        scale={[halfL * 2, h, t]}
+        material={concreteMat}
+        position={[0, S.standFrontWallM / 2, -0.15]}
+        scale={[length, S.standFrontWallM, 0.3]}
+      />
+      {/* 傾斜席スラブ（観客テクスチャ） */}
+      <mesh
+        geometry={UNIT_BOX}
+        material={standMat}
+        position={[0, S.standFrontWallM + (D / 2) * Math.sin(a), backZ / 2]}
+        rotation-x={a}
+        scale={[length, S.standSlabThickM, D]}
+      />
+      {/* 背面壁 */}
+      <mesh
+        geometry={UNIT_BOX}
+        material={concreteMat}
+        position={[0, topH / 2, backZ - 0.2]}
+        scale={[length, topH, 0.4]}
+      />
+      {/* 屋根（後方上空に浮くキャノピー。前端をわずかに下げる実物風の傾き） */}
+      <mesh
+        geometry={UNIT_BOX}
+        material={roofMat}
+        position={[0, topH + S.roofClearM, backZ + S.roofDepthM / 2 - 0.6]}
+        rotation-x={-0.09}
+        scale={[length, S.roofThickM, S.roofDepthM]}
+      />
+    </group>
+  );
+}
+
+function Floodlight({ x, z }: { x: number; z: number }) {
+  const S = STADIUM_M;
+  const mastMat = getCachedMaterial(FLOOD_MAST_COLOR);
+  const headMat = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial({
+      color: "#eef4ff",
+      emissive: new THREE.Color("#dfe9ff"),
+      emissiveIntensity: 0.55,
+      roughness: 0.4,
+    });
+    return m;
+  }, []);
+  // ピッチ中心(0,0)の方を向ける
+  const yaw = Math.atan2(-x, -z);
+  return (
+    <group position={[x, 0, z]} rotation-y={yaw}>
+      <mesh
+        geometry={UNIT_CYL}
+        material={mastMat}
+        position={[0, S.floodMastM / 2, 0]}
+        scale={[0.28, S.floodMastM, 0.28]}
       />
       <mesh
         geometry={UNIT_BOX}
-        material={mat}
-        position={[halfW, h / 2, 0]}
-        rotation-y={Math.PI / 2}
-        scale={[halfL * 2, h, t]}
+        material={headMat}
+        position={[0, S.floodMastM + S.floodHeadH / 2 - 0.3, 0.5]}
+        rotation-x={0.55}
+        scale={[S.floodHeadW, S.floodHeadH, 0.45]}
       />
+    </group>
+  );
+}
+
+function StadiumStands({ dims }: { dims: PitchDims }) {
+  const S = STADIUM_M;
+  const inner = GRASS_MARGIN_M + S.adBoardMarginM + S.adBoardThicknessM + S.standMarginM;
+  const frontX = dims.pitchWidthM / 2 + inner; // 左右サイドスタンドの前面壁位置
+  const frontZ = dims.pitchLengthM / 2 + inner; // ゴール裏スタンドの前面壁位置
+  const lengthX = dims.pitchWidthM + inner * 1.4;
+  const lengthZ = dims.pitchLengthM + inner * 1.4;
+  const backOff = S.standDepthM * Math.cos(S.standRakeRad);
+  const floodX = frontX + backOff + 4;
+  const floodZ = frontZ + backOff + 4;
+  return (
+    <group>
+      {/* ゴール裏(±z)・メイン/バック(±x)の4面。StandSideはローカル-z方向へ上る形なので、
+          各面をピッチへ向けて回して配置する */}
+      <group position={[0, 0, -frontZ]} rotation-y={Math.PI}>
+        <StandSide length={lengthX} />
+      </group>
+      <group position={[0, 0, frontZ]}>
+        <StandSide length={lengthX} />
+      </group>
+      <group position={[-frontX, 0, 0]} rotation-y={-Math.PI / 2}>
+        <StandSide length={lengthZ} />
+      </group>
+      <group position={[frontX, 0, 0]} rotation-y={Math.PI / 2}>
+        <StandSide length={lengthZ} />
+      </group>
+      <Floodlight x={-floodX} z={-floodZ} />
+      <Floodlight x={floodX} z={-floodZ} />
+      <Floodlight x={-floodX} z={floodZ} />
+      <Floodlight x={floodX} z={floodZ} />
     </group>
   );
 }
@@ -725,20 +862,22 @@ function MovesFloor({ dims }: { dims: PitchDims }) {
      = 20+12+12+192+40 = 276tri／13 draw call。仕様の「300ポリ以下」を満たす。
    ============================================================ */
 
-function usePlayerMaterials(jerseyHex: string, isGK: boolean, skinTone: string, label: string) {
+function usePlayerMaterials(jerseyHex: string, variant: KitVariant, skinTone: string, label: string) {
   return useMemo(() => {
-    const kit = getKitColors(jerseyHex);
+    const kit = getKitColors(jerseyHex, variant);
+    const isGK = variant === "gk" || variant === "oppgk";
     const jerseyMat = getCachedMaterial(kit.jersey);
-    // ショーツ・ソックスは同色（getKitColorsが返す配色）なので同じhexキーで同一マテリアル参照になる
     const shortsMat = getCachedMaterial(kit.shorts);
+    const socksMat = getCachedMaterial(kit.socks);
     const skinMat = getCachedMaterial(skinTone);
     const bootMat = getCachedMaterial(BOOT_COLOR);
     // GK=長袖（袖も胴と同色）、それ以外=半袖（前腕は肌色）
     const sleeveMat = isGK ? jerseyMat : skinMat;
     const numberMat = getNumberMaterial(kit.jersey, label);
-    const torsoMaterials: THREE.Material[] = [jerseyMat, jerseyMat, jerseyMat, jerseyMat, jerseyMat, numberMat];
-    return { jerseyMat, shortsMat, skinMat, bootMat, sleeveMat, torsoMaterials };
-  }, [jerseyHex, isGK, skinTone, label]);
+    // 背番号は背面(nz)に加えて胸面(pz)にも出す＝正面からの視点でも番号で見分けられる
+    const torsoMaterials: THREE.Material[] = [jerseyMat, jerseyMat, jerseyMat, jerseyMat, numberMat, numberMat];
+    return { jerseyMat, shortsMat, socksMat, skinMat, bootMat, sleeveMat, torsoMaterials };
+  }, [jerseyHex, variant, skinTone, label]);
 }
 
 /**
@@ -753,7 +892,7 @@ function PlayerFigure({
   x,
   z,
   jersey,
-  isGK,
+  variant,
   label,
   seed,
   facing,
@@ -764,7 +903,7 @@ function PlayerFigure({
   x: number;
   z: number;
   jersey: string;
-  isGK: boolean;
+  variant: KitVariant;
   label: string;
   seed: number;
   facing: 1 | -1;
@@ -774,9 +913,9 @@ function PlayerFigure({
   const board = useBoard();
   const idle = useMemo(() => computeIdlePose(seed), [seed]);
   const skinTone = SKIN_TONES[Math.abs(Math.round(seed)) % 2];
-  const { shortsMat, skinMat, bootMat, sleeveMat, torsoMaterials } = usePlayerMaterials(
+  const { shortsMat, socksMat, skinMat, bootMat, sleeveMat, torsoMaterials } = usePlayerMaterials(
     jersey,
-    isGK,
+    variant,
     skinTone,
     label
   );
@@ -953,7 +1092,7 @@ function PlayerFigure({
               geometry={UNIT_CYL}
               scale={[R.shinR, R.shinLen, R.shinR]}
               position={[0, -R.shinLen / 2, 0]}
-              material={shortsMat}
+              material={socksMat}
               castShadow
               receiveShadow
             />
@@ -979,7 +1118,7 @@ function PlayerFigure({
               geometry={UNIT_CYL}
               scale={[R.shinR, R.shinLen, R.shinR]}
               position={[0, -R.shinLen / 2, 0]}
-              material={shortsMat}
+              material={socksMat}
               castShadow
               receiveShadow
             />
@@ -998,6 +1137,44 @@ function PlayerFigure({
       )}
     </>
   );
+}
+
+/** サッカーボール風の白地+黒パッチのテクスチャ（1枚生成してキャッシュ） */
+let ballTextureCache: THREE.CanvasTexture | null = null;
+function getBallTexture(): THREE.CanvasTexture {
+  if (ballTextureCache) return ballTextureCache;
+  const w = 128;
+  const h = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#f6f7f9";
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = "#20242b";
+    const spots: [number, number, number][] = [
+      [14, 18, 7], [46, 12, 6], [78, 20, 7], [110, 14, 6],
+      [30, 40, 7], [62, 44, 6], [94, 42, 7], [8, 50, 5], [120, 48, 5],
+    ];
+    for (const [x, y, r] of spots) {
+      ctx.beginPath();
+      // 五角形風パッチ
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const px = x + Math.cos(a) * r;
+        const py = y + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  ballTextureCache = tex;
+  return tex;
 }
 
 /**
@@ -1067,7 +1244,7 @@ function Ball3D({ dims }: { dims: PitchDims }) {
     <>
       <mesh ref={ref} castShadow>
         <sphereGeometry args={[0.11, 20, 16]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.45} />
+        <meshStandardMaterial map={getBallTexture()} roughness={0.4} />
       </mesh>
       {trailPts.length >= 2 && (
         <Line points={trailPts} color="#ffe27a" lineWidth={0.03} worldUnits transparent opacity={0.4} />
@@ -1080,6 +1257,20 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
   const board = useBoard();
   const { slots, players } = board.state;
   const opponents = board.state.opponents ?? [];
+  // 相手GKの推定: 相手にはrole情報が無いため、どちらかのゴールライン中央(50,0)/(50,100)へ
+  // 十分近い(8%以内)相手トークンをGKユニフォーム(oppgk)にする（該当なしなら全員フィールド配色）
+  const oppGkIndex = (() => {
+    let best = -1;
+    let bestD = 8;
+    opponents.forEach((o, i) => {
+      const d = Math.min(Math.hypot(o.x - 50, o.y - 0), Math.hypot(o.x - 50, o.y - 100));
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  })();
   return (
     <group>
       {slots.map((s, i) => {
@@ -1092,7 +1283,7 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
             x={boardXToWorldX(s.x, dims)}
             z={boardYToWorldZ(s.y, dims)}
             jersey={actorColor(i, slots)}
-            isGK={s.role === "GK"}
+            variant={s.role === "GK" ? "gk" : "own"}
             label={String(player?.number ?? "–")}
             seed={i + 1}
             facing={1}
@@ -1108,7 +1299,7 @@ function TokensLayer({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims 
           x={boardXToWorldX(o.x, dims)}
           z={boardYToWorldZ(o.y, dims)}
           jersey={actorColor(`opp${i}` as Actor, slots)}
-          isGK={false}
+          variant={i === oppGkIndex ? "oppgk" : "opp"}
           label={o.label}
           seed={1000 + i}
           facing={-1}
@@ -1319,11 +1510,41 @@ function ThreeBridge({ invalidateRef }: { invalidateRef: React.RefObject<(() => 
    （2Dの再生ボタン自体はBoardProvider.tsx側の実装のため対象外。ここは自前の3Dローカル
    ボタンにのみ適用する）。
    ============================================================ */
-function PlaybackBar({ reducedMotion }: { reducedMotion: boolean }) {
+function PlaybackBar({
+  reducedMotion,
+  follow,
+  onToggleFollow,
+}: {
+  reducedMotion: boolean;
+  follow: boolean;
+  onToggleFollow: () => void;
+}) {
   const board = useBoard();
   const moves = board.state.moves;
   const steps = board.stepCount;
   const step = board.activeStep;
+  const total = animTotal(moves, steps);
+
+  // スクラブ位置・時刻表示は毎フレーム変わるためReact stateにせず、rAFでDOMへ直接書く
+  // （このバーは3D表示中のみマウント＝ポーリングも3D中のみ。値が変わらない間は書き込まない）
+  const scrubRef = useRef<HTMLInputElement | null>(null);
+  const timeRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    let raf = 0;
+    let last = -1;
+    const loop = () => {
+      const t = board.getTime();
+      if (t !== last) {
+        last = t;
+        if (scrubRef.current) scrubRef.current.value = String(t);
+        if (timeRef.current) timeRef.current.textContent = `${t.toFixed(1)}s / ${total.toFixed(1)}s`;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
 
   const jumpToStepEnd = (s: number) => {
     const t0 = stepStartTime(moves, s);
@@ -1331,16 +1552,18 @@ function PlaybackBar({ reducedMotion }: { reducedMotion: boolean }) {
     board.setActiveStep(s);
     board.seek(t0 + d);
   };
-  const playCurrent = () => {
+  // FC26のリプレイ同様「全体をそのまま再生/一時停止」を主ボタンにする
+  // （場面単位の頭出しは‹ ›が担う）。reduced-motionはコマ送り＝最終状態へ即時ジャンプ
+  const playAll = () => {
     if (board.isPlaying) {
       board.stopPlay();
       return;
     }
     if (reducedMotion) {
-      jumpToStepEnd(step);
+      jumpToStepEnd(steps - 1);
       return;
     }
-    board.playStep(step);
+    board.startPlay();
   };
   const goStep = (dir: 1 | -1) => {
     const next = Math.min(steps - 1, Math.max(0, step + dir));
@@ -1353,6 +1576,16 @@ function PlaybackBar({ reducedMotion }: { reducedMotion: boolean }) {
       board.seek(stepStartTime(moves, next));
     }
   };
+  const onScrub = (v: number) => {
+    board.seek(v);
+    board.setActiveStep(stepAtTime(moves, v, steps));
+  };
+
+  const SPEEDS: [number, string][] = [
+    [0.25, "0.25x"],
+    [0.5, "0.5x"],
+    [1, "1x"],
+  ];
 
   return (
     <div className="sp3dplay" role="group" aria-label="3D再生コントロール">
@@ -1368,8 +1601,8 @@ function PlaybackBar({ reducedMotion }: { reducedMotion: boolean }) {
       <button
         type="button"
         className={`sp3dpbtn main${board.isPlaying ? " on" : ""}`}
-        title={board.isPlaying ? "停止" : "この場面を再生"}
-        onClick={playCurrent}
+        title={board.isPlaying ? "一時停止" : "最初から通しで再生"}
+        onClick={playAll}
       >
         {board.isPlaying ? <IconPause /> : <IconPlay />}
       </button>
@@ -1382,11 +1615,83 @@ function PlaybackBar({ reducedMotion }: { reducedMotion: boolean }) {
       >
         ›
       </button>
+      <input
+        ref={scrubRef}
+        className="sp3dscrub"
+        type="range"
+        min={0}
+        max={Math.max(0.01, total)}
+        step={0.02}
+        defaultValue={0}
+        aria-label="再生位置"
+        onInput={(e) => onScrub(parseFloat((e.target as HTMLInputElement).value))}
+      />
+      <span className="sp3dtime" ref={timeRef}>
+        0.0s / {total.toFixed(1)}s
+      </span>
+      <span className="sp3dspeed" role="group" aria-label="再生速度">
+        {SPEEDS.map(([v, label]) => (
+          <button
+            key={v}
+            type="button"
+            className={`sp3dpbtn spd${board.speed === v ? " on" : ""}`}
+            title={`再生速度 ${label}`}
+            onClick={() => board.setSpeed(v)}
+          >
+            {label}
+          </button>
+        ))}
+      </span>
+      <button
+        type="button"
+        className={`sp3dpbtn follow${follow ? " on" : ""}`}
+        title="カメラがボールを追いかける（FC26のリプレイ追従風）"
+        onClick={onToggleFollow}
+      >
+        ボール追従
+      </button>
       <span className="sp3dpstep">
         場面{step + 1}/{steps}
       </span>
     </div>
   );
+}
+
+/** ボール追従カメラ（FC26リプレイの追従モード風）。注視点をボールへ滑らかに寄せ、
+ * カメラ位置も同じ差分だけ平行移動して「見ている角度・距離」を保ったまま追いかける。
+ * OrbitControlsはそのまま使えるため、追従中でもドラッグで角度・ズームを変えられる。 */
+function FollowBallController({
+  on,
+  controlsRef,
+  dims,
+}: {
+  on: boolean;
+  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  dims: PitchDims;
+}) {
+  const board = useBoard();
+  const { camera, invalidate } = useThree();
+  useFrame((_, delta) => {
+    if (!on) return;
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const st = board.stateRef.current;
+    const t = board.getTime();
+    const p = actorPos("ball", t, st.moves, st.slots, st.ball, st.opponents, st.holder);
+    const wx = boardXToWorldX(p.x, dims);
+    const wz = boardYToWorldZ(p.y, dims);
+    const k = Math.min(1, delta * 6);
+    const dx = (wx - controls.target.x) * k;
+    const dz = (wz - controls.target.z) * k;
+    if (Math.abs(wx - controls.target.x) < 0.005 && Math.abs(wz - controls.target.z) < 0.005) return;
+    controls.target.x += dx;
+    controls.target.z += dz;
+    camera.position.x += dx;
+    camera.position.z += dz;
+    controls.update();
+    invalidate();
+  });
+  return null;
 }
 
 /* ============================================================
@@ -1397,6 +1702,9 @@ export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
   const board = useBoard();
   const reducedMotion = usePrefersReducedMotion();
   const [quality, setQuality] = useSp3dQuality();
+  // ボール追従カメラ(FC26リプレイ風)のON/OFF。PlaybackBar(トグルUI)とCanvas内の
+  // FollowBallControllerで共有する
+  const [follow, setFollow] = useState(false);
   // 何人制シナリオかに応じたピッチ寸法一式。getPitchDimsは固定テーブル参照を返すため
   // （format 8|11の2値しか無い）、format不変の間はレンダーをまたいで同一オブジェクト参照になる
   // ＝下流のuseMemo([dims])はformat切替時だけ再計算される。
@@ -1449,8 +1757,9 @@ export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
           }}
           camera={{ fov: 50, near: 0.1, far: 300, position: initialPose.position }}
         >
-          {/* デイゲーム風の色温度: 空側からの淡い青の環境光＋暖色寄りの平行光（太陽光） */}
-          <ambientLight intensity={0.68} color="#cfe3ff" />
+          {/* デイゲーム風: 空(淡青)/地面(芝の照り返し)の半球ライト＋暖色寄りの平行光（太陽光） */}
+          <hemisphereLight args={["#cfe3ff", "#3f7d4e", 0.75]} />
+          <ambientLight intensity={0.18} color="#ffffff" />
           <directionalLight
             position={[18, 26, 14]}
             intensity={1.2}
@@ -1475,6 +1784,7 @@ export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
           <MovesFloor dims={dims} />
           <TokensLayer quality={quality} dims={dims} />
           <GazeClickPlane controlsRef={controlsRef} reducedMotion={reducedMotion} />
+          <FollowBallController on={follow} controlsRef={controlsRef} dims={dims} />
           <ThreeBridge invalidateRef={invalidateRef} />
           <OrbitControls
             ref={controlsRef}
@@ -1493,7 +1803,7 @@ export default function SetPiece3D({ preset }: { preset: CameraPresetId }) {
           <CameraController preset={preset} reducedMotion={reducedMotion} controlsRef={controlsRef} dims={dims} />
         </Canvas>
         <QualityToggle quality={quality} onChange={setQuality} />
-        <PlaybackBar reducedMotion={reducedMotion} />
+        <PlaybackBar reducedMotion={reducedMotion} follow={follow} onToggleFollow={() => setFollow((v) => !v)} />
       </div>
     </div>
   );

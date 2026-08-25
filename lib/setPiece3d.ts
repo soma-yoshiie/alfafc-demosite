@@ -57,7 +57,7 @@ const PITCH_DIMS_BY_FORMAT: Record<PitchFormat, PitchDims> = {
     pitchLengthM: 68,
     goalWidthM: 5,
     goalHeightM: 2.15,
-    goalNetDepthM: 1.1,
+    goalNetDepthM: 1.7,
     paFromPostM: 12,
     paDepthM: 12,
     gaFromPostM: 4,
@@ -71,7 +71,7 @@ const PITCH_DIMS_BY_FORMAT: Record<PitchFormat, PitchDims> = {
     pitchLengthM: 105,
     goalWidthM: 7.32,
     goalHeightM: 2.44,
-    goalNetDepthM: 1.1,
+    goalNetDepthM: 2.0,
     paFromPostM: 16.5,
     paDepthM: 16.5,
     gaFromPostM: 5.5,
@@ -256,6 +256,54 @@ export const CAMERA_PRESET_LABEL: Record<CameraPresetId, string> = {
   ground: "地上カメラ",
   replay: "リプレイ",
 };
+
+/** ラインの帯幅（m）。実物の12cm線に合わせる */
+const MARKING_LINE_W_M = 0.12;
+/** PKマーク等スポットの一辺（m） */
+const MARKING_SPOT_M = 0.22;
+
+/**
+ * ピッチマーキングを「地面に貼る1枚のメッシュ」用の三角形頂点配列(XZ平面・y=0)へ展開する。
+ * 旧実装のdrei Line(worldUnits)はカメラを近づけた際の描画が不安定で「ズームするとラインが
+ * 消える」不具合があったため、実ジオメトリの帯(各セグメント=四角形2三角形)に置き換える。
+ * 全セグメントを1つの配列へマージする＝draw call 1回。formatごとにキャッシュする。
+ */
+const markingsGeomCache = new Map<string, Float32Array>();
+export function buildMarkingsGeometryData(dims: PitchDims = DEFAULT_DIMS): Float32Array {
+  const key = `${dims.pitchWidthM}x${dims.pitchLengthM}`;
+  const hit = markingsGeomCache.get(key);
+  if (hit) return hit;
+  const { lines, spots } = buildPitchMarkings(dims);
+  const out: number[] = [];
+  const half = MARKING_LINE_W_M / 2;
+  const pushQuad = (
+    ax: number, az: number, bx: number, bz: number,
+    cx: number, cz: number, dx: number, dz: number
+  ) => {
+    // (a,b,c) + (a,c,d)。y=0はメッシュ側のposition/polygonOffsetで浮かせる
+    out.push(ax, 0, az, bx, 0, bz, cx, 0, cz, ax, 0, az, cx, 0, cz, dx, 0, dz);
+  };
+  for (const poly of lines) {
+    for (let i = 0; i < poly.length - 1; i++) {
+      const p = poly[i];
+      const q = poly[i + 1];
+      const dx = q.x - p.x;
+      const dz = q.z - p.z;
+      const len = Math.hypot(dx, dz);
+      if (len < 1e-6) continue;
+      const nx = (-dz / len) * half;
+      const nz = (dx / len) * half;
+      pushQuad(p.x + nx, p.z + nz, p.x - nx, p.z - nz, q.x - nx, q.z - nz, q.x + nx, q.z + nz);
+    }
+  }
+  const s = MARKING_SPOT_M / 2;
+  for (const p of spots) {
+    pushQuad(p.x - s, p.z - s, p.x + s, p.z - s, p.x + s, p.z + s, p.x - s, p.z + s);
+  }
+  const arr = new Float32Array(out);
+  markingsGeomCache.set(key, arr);
+  return arr;
+}
 
 /** カメラの位置・注視点（ワールド座標・メートル・Y-up） */
 export interface CameraPose {
@@ -465,9 +513,27 @@ export interface KitColors {
   socks: string;
 }
 const KIT_SHADE_BASE = "#16212c";
-export function getKitColors(jerseyHex: string): KitColors {
-  const shade = mixHex(jerseyHex, KIT_SHADE_BASE, 0.62);
-  return { jersey: jerseyHex, shorts: shade, socks: shade };
+/** キットの種別。own=味方フィールド / opp=相手フィールド / gk=味方GK / oppgk=相手GK。
+ * 「味方・相手・GKの区別がつきづらい」対策として、色相を大きく離した固定配色にする:
+ *   味方   = チームカラーのジャージ＋白ショーツ（FA式: 濃色=攻撃側の慣習にも合う）
+ *   相手   = 白ジャージ＋濃紺ショーツ（審判・味方と混ざらない明度差）
+ *   味方GK = 蛍光イエロー上下
+ *   相手GK = 蛍光オレンジ上下
+ */
+export type KitVariant = "own" | "opp" | "gk" | "oppgk";
+export function getKitColors(jerseyHex: string, variant: KitVariant = "own"): KitColors {
+  switch (variant) {
+    case "gk":
+      return { jersey: "#ffd23f", shorts: "#20242b", socks: "#ffd23f" };
+    case "oppgk":
+      return { jersey: "#ff7a1a", shorts: "#20242b", socks: "#ff7a1a" };
+    case "opp":
+      return { jersey: "#f4f6f8", shorts: "#1c2733", socks: "#f4f6f8" };
+    default: {
+      const shade = mixHex(jerseyHex, KIT_SHADE_BASE, 0.62);
+      return { jersey: jerseyHex, shorts: "#eef1f5", socks: shade };
+    }
+  }
 }
 
 /** 肌トーン（2色を選手ごとの決定的な擬似乱数で振り分け、単調さを避ける） */
@@ -570,10 +636,24 @@ export const STADIUM_M = {
   adBoardMarginM: 2.2,
   adBoardHeightM: 0.9,
   adBoardThicknessM: 0.15,
-  /** 広告板からスタンド帯までの距離 */
-  standMarginM: 3.5,
+  /** 広告板からスタンド（前面壁）までの距離。「壁が近すぎてカメラが隠れる」対策で
+   * 旧3.5mから離し、さらにスタンド自体を垂直壁でなく後方へ上る傾斜段(ラケ)にする */
+  standMarginM: 5.5,
+  /** 旧・垂直壁時代の高さ（リプレイカメラの高度判定の互換用に残置） */
   standHeightM: 9,
   standThicknessM: 1.2,
+  /** サッカー専用スタジアム風の傾斜スタンド一式 */
+  standFrontWallM: 1.1, // ピッチ側の低い前面壁（この高さまでしか視界を遮らない）
+  standDepthM: 13, // 傾斜席の奥行き
+  standRakeRad: 0.44, // 傾斜角(約25°)。後方ほど高くなる
+  standSlabThickM: 0.5, // 傾斜スラブの厚み
+  roofDepthM: 6.5, // 屋根の奥行き（スタンド後方の上に浮く）
+  roofClearM: 2.6, // スタンド最上段から屋根下端までのクリアランス
+  roofThickM: 0.35,
+  /** コーナー照明塔（サッカー専用スタらしさの記号）。柱高さ・灯体サイズ */
+  floodMastM: 17,
+  floodHeadW: 3.2,
+  floodHeadH: 2.0,
 } as const;
 /** 広告板の縞2色（無地・架空色。実在ブランドを想起させない中立トーンにする） */
 export const AD_BOARD_COLORS: [string, string] = ["#0b3d66", "#e8543c"];

@@ -150,12 +150,17 @@ export default function SetPieceBoard() {
   // 切替ビューにすぎず、盤面データ(playState/spState)そのものは変えない
   const [view, setView] = useState<"2d" | "3d">("2d");
   const [preset, setPreset] = useState<CameraPresetId>("overhead");
+  // 味方/相手のドラッグ固定（密集での誤操作防止）。CSSクラス経由でpointer-eventsを遮断する
+  const [lockOwn, setLockOwn] = useState(false);
+  const [lockOpp, setLockOpp] = useState(false);
   const cls = [
     "app",
     "spapp",
     board.mode === "anim" ? "anim" : "",
     board.fullplay ? "fullplay" : "",
     board.mode === "anim" && !board.showPaths ? "nopaths" : "",
+    lockOwn ? "sp-lock-own" : "",
+    lockOpp ? "sp-lock-opp" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -165,7 +170,13 @@ export default function SetPieceBoard() {
       {showImportBanner && <ImportBanner />}
       <Header />
       {view === "2d" ? (
-        <SetPieceBar onEnter3D={() => setView("3d")} />
+        <SetPieceBar
+          onEnter3D={() => setView("3d")}
+          lockOwn={lockOwn}
+          lockOpp={lockOpp}
+          onToggleLockOwn={() => setLockOwn((v) => !v)}
+          onToggleLockOpp={() => setLockOpp((v) => !v)}
+        />
       ) : (
         <CameraBar preset={preset} onPreset={setPreset} onExit3D={() => setView("2d")} />
       )}

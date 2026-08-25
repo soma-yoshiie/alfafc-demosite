@@ -3472,6 +3472,56 @@ header {
   color: rgba(255, 255, 255, 0.86);
   white-space: nowrap;
 }
+/* FC26リプレイ風の拡張コントロール: シークバー・時刻・速度・ボール追従 */
+.sp3dscrub {
+  width: 150px;
+  margin: 0 4px;
+  accent-color: var(--accent);
+}
+.sp3dtime {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
+}
+.sp3dspeed {
+  display: flex;
+  gap: 2px;
+  margin-left: 4px;
+}
+.sp3dpbtn.spd,
+.sp3dpbtn.follow {
+  width: auto;
+  padding: 0 8px;
+  font-size: 10px;
+}
+.sp3dpbtn.spd.on,
+.sp3dpbtn.follow.on {
+  background: var(--accent);
+  color: #ffffff;
+}
+/* 味方/相手トークンの固定（誤操作防止）。SetPieceBoardがルートへ付ける
+   .sp-lock-own/.sp-lock-opp で該当トークンのポインタ操作を遮断し、見た目も薄くする */
+.spapp.sp-lock-own .tok:not(.opp) {
+  pointer-events: none;
+}
+.spapp.sp-lock-own .tok:not(.opp) .disc {
+  opacity: 0.55;
+  filter: saturate(0.55);
+}
+.spapp.sp-lock-opp .tok.opp {
+  pointer-events: none;
+}
+.spapp.sp-lock-opp .tok.opp .disc {
+  opacity: 0.55;
+  filter: saturate(0.55);
+}
+.fmini.splock.on {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* ---------- 選手プロフィール詳細 ---------- */
 .profrow {

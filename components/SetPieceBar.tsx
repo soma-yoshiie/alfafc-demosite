@@ -9,7 +9,19 @@ import {
   pairPresetId,
 } from "@/lib/setPiecePresets";
 import type { PitchViewMode, SetPieceKind } from "@/lib/types";
-import { IconFlipH, IconHalfPitch, IconPlusSquare, IconUndo } from "./icons";
+import PenControls from "./PenControls";
+import ShapesBar from "./ShapesBar";
+import {
+  IconFilm,
+  IconFlipH,
+  IconGhost,
+  IconHalfPitch,
+  IconPen,
+  IconPlusSquare,
+  IconRoute,
+  IconShapes,
+  IconUndo,
+} from "./icons";
 
 const KIND_ORDER: SetPieceKind[] = ["ck", "fk", "gk", "throwin", "pk"];
 const KIND_LABEL: Record<SetPieceKind, string> = {
@@ -29,7 +41,22 @@ const FORMAT_LABEL: Record<8 | 11, string> = { 8: "8人制", 11: "11人制" };
  * 上段=種別チップ＋攻守トグル（絞り込みのみ・盤面は変えない）、
  * 下段=絞り込み後のプリセットチップ（選択で即適用）＋左右反転／新規作成／ズーム(種目別)⇔フル表示切替。
  */
-export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = {}) {
+export interface SetPieceBarProps {
+  onEnter3D?: () => void;
+  /** 味方トークンのドラッグ固定（密集地帯での誤操作防止）。stateは親(SetPieceBoard)が持つ */
+  lockOwn?: boolean;
+  lockOpp?: boolean;
+  onToggleLockOwn?: () => void;
+  onToggleLockOpp?: () => void;
+}
+
+export default function SetPieceBar({
+  onEnter3D,
+  lockOwn = false,
+  lockOpp = false,
+  onToggleLockOwn,
+  onToggleLockOpp,
+}: SetPieceBarProps = {}) {
   const board = useBoard();
   // 編集系コントロールはスタッフのみ（選手は共有セットプレーの閲覧のみ。FormationBarと同じ規約）
   const isCoach = board.auth.role === "coach";
@@ -66,9 +93,122 @@ export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = 
     setFormat(meta.format ?? 8);
   }, [meta?.kind, meta?.side, meta?.format]);
 
-  // アニメ編集中はプリセット差し替え(盤面を丸ごと置換=進行中のアニメも消える)を隠す。
-  // 既存の戦術ボード(FormationBar)でも同じ理由でフォーメーション変更等をアニメ中は隠している
-  if (!isCoach || board.mode === "anim") return null;
+  if (!isCoach) return null;
+
+  // 味方/相手の固定トグル（密集での誤ドラッグ防止）。実際のpointer-events遮断は
+  // 親(SetPieceBoard)がルートへ付ける .sp-lock-own/.sp-lock-opp クラス+CSSで行う
+  const lockChips = (
+    <>
+      <span className="spbar-label">固定</span>
+      <button
+        className={`fmini splock${lockOwn ? " on" : ""}`}
+        title="味方トークンを固定して動かせなくする（密集地帯での誤操作防止）"
+        onClick={onToggleLockOwn}
+      >
+        <span>味方</span>
+      </button>
+      <button
+        className={`fmini splock${lockOpp ? " on" : ""}`}
+        title="相手トークンを固定して動かせなくする（密集地帯での誤操作防止）"
+        onClick={onToggleLockOpp}
+      >
+        <span>相手</span>
+      </button>
+    </>
+  );
+
+  // ペン・図形は編集/アニメ両モード共通（FormationBarと同じ文法・同じProvider state）
+  const penBtn = (
+    <button
+      className={`fmini pen${board.penMode ? " on" : ""}`}
+      title="ペンでピッチに描き込む"
+      onClick={() => board.setPenMode(!board.penMode)}
+    >
+      <IconPen />
+      <span>ペン</span>
+    </button>
+  );
+  const shapesBtn = (
+    <button
+      className={`fmini shapes${board.shapesOpen ? " on" : ""}`}
+      title="図形（ゾーン・矢印・テキスト等）をピッチに配置"
+      onClick={() => board.setShapesOpen(!board.shapesOpen)}
+    >
+      <IconShapes />
+      <span>図形</span>
+    </button>
+  );
+  const drawPanels = (
+    <>
+      {board.penMode && (
+        <div className="fbarpen">
+          <PenControls />
+        </div>
+      )}
+      {board.shapesOpen && (
+        <div className="fbarshapes">
+          <ShapesBar />
+        </div>
+      )}
+    </>
+  );
+
+  // アニメ編集中はプリセット差し替え(盤面を丸ごと置換=進行中のアニメも消える)を隠し、
+  // 代わりに戦術ボード(FormationBar)のアニメ中と同じ描画コントロール一式を出す
+  // （旧実装はここでバーごと消していたため「軌道を描く・図示するコマンドが無い」状態だった）
+  if (board.mode === "anim") {
+    return (
+      <>
+        <div className="fbar spbar-anim">
+          {penBtn}
+          {shapesBtn}
+          <button
+            className={`fmini${board.showPaths ? " on" : ""}`}
+            title="ルート矢印の表示/非表示"
+            onClick={() => board.setShowPaths(!board.showPaths)}
+          >
+            <IconRoute />
+            <span>ルート表示</span>
+          </button>
+          <button
+            className={`fmini${board.showDrawings ? " on" : ""}`}
+            title="ペン・図形の描き込みの表示/非表示"
+            onClick={() => {
+              const next = !board.showDrawings;
+              board.setShowDrawings(next);
+              if (!next) {
+                board.setSelShape(null);
+                board.setSelStroke(null);
+              }
+            }}
+          >
+            <IconShapes />
+            <span>描き込み</span>
+          </button>
+          <button
+            className={`fmini${board.showGhost ? " on" : ""}`}
+            title="残像（前の場面の開始位置）の表示/非表示"
+            onClick={() => board.setShowGhost(!board.showGhost)}
+          >
+            <IconGhost />
+            <span>残像</span>
+          </button>
+          {lockChips}
+          {onEnter3D && (
+            <button
+              type="button"
+              className="fmini sp3dtoggle"
+              title="アニメーションを3Dで再生"
+              onClick={onEnter3D}
+            >
+              <span>3D</span>
+            </button>
+          )}
+        </div>
+        {drawPanels}
+      </>
+    );
+  }
 
   const list = SETPIECE_PRESETS.filter((p) => p.kind === kind && p.side === side && p.format === format);
   const currentPresetId = meta?.presetId ?? null;
@@ -230,6 +370,21 @@ export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = 
             <span>ズーム</span>
           </button>
         )}
+        <button
+          className="fmini opp"
+          title="相手チームのトークンを配置"
+          onClick={() => board.addOpponent()}
+        >
+          <span className="oppdot" />
+          <span>＋相手</span>
+        </button>
+        {penBtn}
+        {shapesBtn}
+        <button className="fmini" title="動きのアニメーションを作成（トークンをドラッグして軌道を記録）" onClick={board.openStudio}>
+          <IconFilm />
+          <span>アニメ</span>
+        </button>
+        {lockChips}
         {onEnter3D && (
           <button
             type="button"
@@ -241,6 +396,7 @@ export default function SetPieceBar({ onEnter3D }: { onEnter3D?: () => void } = 
           </button>
         )}
       </div>
+      {drawPanels}
     </>
   );
 }
