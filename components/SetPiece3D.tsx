@@ -24,7 +24,7 @@
 // app/globals.cssで、components/SetPieceBoard.tsx（3D中のカメラプリセット行
 // .sp3dbar=CameraBarを描画している親）は編集できない。そのためカメラプリセットの追加
 // （ground/replay）はlib/setPiece3d.tsのCAMERA_PRESET_ORDER/LABELに載せるだけで
-// CameraBar側が自動的にボタンを増やす仕組みに乗せ、逆に「3Dバーに標準/軽量トグルを追加」や
+// CameraBar側が自動的にボタンを増やす仕組みに乗せ、逆に「3Dバーに品質トグル(高/中/軽)を追加」や
 // 「3Dバーに再生コントロールを追加」は親コンポーネントの.sp3dbarへ直接は差し込めないため、
 // 本ファイル側（.sp3dpitch内）に浮かせるオーバーレイとして実装している
 // （QualityToggle＝app/globals.cssの.sp3dquality、PlaybackBar＝同.sp3dplay）。
@@ -42,13 +42,18 @@ import type { Actor, BallTrajectory, Move, Point, Shape, TextShape, ZoneShape } 
 import { moveKind, moveTrajectory } from "@/lib/types";
 import { IconPause, IconPlay } from "./icons";
 import {
-  AD_BOARD_COLORS,
+  ACTIVE_SKY_PRESET,
+  anisotropyForQuality,
   APRON_COLOR,
+  BLOB_SHADOW_OPACITY_NO_REAL_SHADOW,
+  BLOB_SHADOW_OPACITY_WITH_REAL_SHADOW,
+  BLOB_SHADOW_RADIUS_M,
   BOOT_COLOR,
   boardToWorld,
   boardXToWorldX,
   boardYToWorldZ,
   buildMarkingsGeometryData,
+  computeBlobShadow,
   computeCameraPreset,
   actionEventsFor,
   computeActionEvents,
@@ -56,6 +61,8 @@ import {
   computeIdlePose,
   computeKickPose,
   computeRunPose,
+  GRASS_MARGIN_M,
+  HAIR_TONES,
   HEADER_DUR_S,
   HEADER_PRE_S,
   KICK_DUR_S,
@@ -64,6 +71,7 @@ import {
   findActiveMove,
   type ActionEvent,
   getKitColors,
+  type KitColors,
   type KitVariant,
   getPitchDims,
   lenXToMeters,
@@ -75,9 +83,8 @@ import {
   RUN_BLEND_SPEED_MPS,
   RUN_CYCLES_PER_METER,
   SKIN_TONES,
-  STADIUM_M,
-  STAND_BASE_COLOR,
-  STAND_SEAT_TONES,
+  SKY_PRESETS,
+  type Sp3dQuality,
   TELEPORT_GUARD_M,
   TRAIL_SECONDS,
   trajectoryHeightM,
@@ -86,6 +93,8 @@ import {
   type CameraPresetId,
   type PitchDims,
 } from "@/lib/setPiece3d";
+import { SkyFollow } from "./SetPiece3DEnv";
+import { getGrassPBR, StadiumBowl } from "./SetPiece3DStadium";
 
 const REDUCED_MOTION_MQ = "(prefers-reduced-motion: reduce)";
 
@@ -105,33 +114,39 @@ function usePrefersReducedMotion(): boolean {
 }
 
 /* ============================================================
-   品質トグル（標準/軽量）。localStorageに記憶し、影・観客席帯・dprを切り替える。
+   品質トグル（高/中/軽の3段）。localStorageに記憶し、観客Nearインスタンス・上層スタンド・
+   外壁シェル・芝解像度・選手モデル(GLB/プロシージャル)・実シャドウ・dprを切り替える。
    ============================================================ */
 
-type Sp3dQuality = "standard" | "light";
 const SP3D_QUALITY_KEY = "alfa_sp3d_quality";
 
-/** タッチデバイス（pointer:coarse）または幅<1024pxの端末は「軽量」を既定にする
+/** タッチデバイス（pointer:coarse）または幅<1024pxの端末は「軽量(mobile)」を既定にする
  * （localStorageに保存済みの明示選択が無いとき限定で使う判定。TeamHub.tsx usePc() 等と
- * 同じ1024pxブレークポイントに合わせている） */
+ * 同じ1024pxブレークポイントに合わせている）。それ以外（PC相当）は「高(high)」を既定にする。 */
 function detectDefaultQuality(): Sp3dQuality {
-  if (typeof window === "undefined") return "standard";
+  if (typeof window === "undefined") return "high";
   const isTouch = window.matchMedia("(pointer: coarse)").matches;
   const isNarrow = !window.matchMedia("(min-width: 1024px)").matches;
-  return isTouch || isNarrow ? "light" : "standard";
+  return isTouch || isNarrow ? "mobile" : "high";
 }
 
 function readStoredQuality(): Sp3dQuality {
-  if (typeof window === "undefined") return "standard";
+  if (typeof window === "undefined") return "high";
   try {
     const raw = window.localStorage.getItem(SP3D_QUALITY_KEY);
-    if (raw === "light" || raw === "standard") return raw;
+    if (raw === "high" || raw === "medium" || raw === "mobile") return raw;
+    // 旧2段階("standard"/"light")の保存値は新3段階へ移行する（high/mobileへの単純写像。
+    // "medium"は新規追加の中間段のため旧値からは絶対に出てこない＝移行漏れの心配は無い）。
+    // 移行後にsetQualityが呼ばれれば新値("high"/"medium"/"mobile")で上書き保存されるため、
+    // この分岐は「旧値が残っている間だけ」通る一時的なものでよい。
+    if (raw === "standard") return "high";
+    if (raw === "light") return "mobile";
     // 未設定（初回訪問）のときだけデバイス判定で既定を決める。ユーザーが一度でも切り替えれば
-    // 以後は明示的な値("light"/"standard")がstorageに残るため、この分岐には二度と入らない
+    // 以後は明示的な値がstorageに残るため、この分岐には二度と入らない
     // （＝ユーザー切替は従来どおり記憶される）
     return detectDefaultQuality();
   } catch {
-    return "standard";
+    return "high";
   }
 }
 
@@ -151,6 +166,8 @@ function useSp3dQuality(): [Sp3dQuality, (q: Sp3dQuality) => void] {
   return [quality, setQuality];
 }
 
+const QUALITY_LABEL: Record<Sp3dQuality, string> = { high: "高", medium: "中", mobile: "軽" };
+
 function QualityToggle({
   quality,
   onChange,
@@ -160,20 +177,16 @@ function QualityToggle({
 }) {
   return (
     <div className="sp3dquality" role="group" aria-label="3D表示品質">
-      <button
-        type="button"
-        className={`sp3dqbtn${quality === "standard" ? " on" : ""}`}
-        onClick={() => onChange("standard")}
-      >
-        標準
-      </button>
-      <button
-        type="button"
-        className={`sp3dqbtn${quality === "light" ? " on" : ""}`}
-        onClick={() => onChange("light")}
-      >
-        軽量
-      </button>
+      {(["high", "medium", "mobile"] as const).map((q) => (
+        <button
+          key={q}
+          type="button"
+          className={`sp3dqbtn${quality === q ? " on" : ""}`}
+          onClick={() => onChange(q)}
+        >
+          {QUALITY_LABEL[q]}
+        </button>
+      ))}
     </div>
   );
 }
@@ -193,11 +206,65 @@ const UNIT_ICO = new THREE.IcosahedronGeometry(1, 0);
 const UNIT_CYL = new THREE.CylinderGeometry(1, 1, 1, 6, 1, false);
 
 const materialCache = new Map<string, THREE.MeshStandardMaterial>();
-function getCachedMaterial(hex: string): THREE.MeshStandardMaterial {
-  let m = materialCache.get(hex);
+
+/** リムライト（縁光）の色・強度・フレネル指数。ジャージ・肌のマテリアルにだけ、空色寄りの
+ * 薄い加算フレネルを乗せて輪郭を浮かせる（逆光・横光でもシルエットが締まって見える）。
+ * 強度は仕様レンジ(0.10-0.14)内の中央値を採用。全リム材で同一値＝onBeforeCompileの中身も
+ * 完全に同じ文字列になるため、customProgramCacheKeyを1種類だけにしてプログラム共有できる。 */
+const RIM_LIGHT_COLOR = "#9db8e6";
+const RIM_LIGHT_STRENGTH = 0.12;
+const RIM_LIGHT_POW = 2.5;
+/** ↑を事前にリニアRGBのGLSLリテラルへ変換（uniform化せず定数埋め込みにして余計なuniform管理を
+ * 増やさない＝値が全リム材で共通のため定数化して問題ない）。THREE.Colorのhex→linear変換は
+ * MeshStandardMaterialのcolorプロパティと同じ変換なので見た目の色味が一致する。 */
+const RIM_LIGHT_GLSL_COLOR = (() => {
+  const c = new THREE.Color(RIM_LIGHT_COLOR);
+  return `vec3(${c.r.toFixed(4)}, ${c.g.toFixed(4)}, ${c.b.toFixed(4)})`;
+})();
+
+/** ジャージ・肌のマテリアルへ軽いフレネル加算(リムライト)を仕込むonBeforeCompile。
+ * vNormal/vViewPosition はMeshStandardMaterialの標準シェーダが既に用意しているvaryingを
+ * そのまま使う（getPantsMaterialのonBeforeCompileと同じ「#include直後にコード挿入」方式）。
+ * customProgramCacheKeyで通常マテリアル（リム無し）とのシェーダキャッシュ衝突を防ぐ。 */
+function applyRimLight(m: THREE.MeshStandardMaterial): void {
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <opaque_fragment>",
+      `float rimFresnel = pow(1.0 - max(dot(normalize(vNormal), normalize(vViewPosition)), 0.0), ${RIM_LIGHT_POW.toFixed(1)});
+      outgoingLight += ${RIM_LIGHT_GLSL_COLOR} * rimFresnel * ${RIM_LIGHT_STRENGTH.toFixed(2)};
+      #include <opaque_fragment>`
+    );
+  };
+  m.customProgramCacheKey = () => "rimlight";
+}
+
+/** 選手の部位別roughness/metalness（仕様値）。GLB差し替え（GLBPlayer）・プロシージャル人型
+ * （usePlayerMaterials）・結合ゾーンマテリアル（getPantsMaterialのショーツ/ソックス/肌/シューズ
+ * ゾーン分け）の3箇所すべてがここを参照し、質感の基準を1箇所にまとめる。 */
+const PART_MATERIAL = {
+  jersey: { roughness: 0.82, metalness: 0.04 },
+  shorts: { roughness: 0.8, metalness: 0.03 },
+  socks: { roughness: 0.85, metalness: 0.03 },
+  skin: { roughness: 0.55, metalness: 0.04 },
+  boots: { roughness: 0.32, metalness: 0.2 },
+} as const;
+
+/** hex×roughness×metalness×rim(リムライト有無)でキャッシュするマテリアル取得。
+ * 引数省略時は従来どおり(roughness 0.6/metalness 0.04/リム無し)のキーになるため、
+ * 既存の呼び出し（apron・旗竿等）は挙動互換のまま。GLB差し替え・プロシージャル選手の
+ * ジャージ/ショーツ/ソックス/肌/シューズは部位別のroughness/metalness・rim有無を指定して呼ぶ。 */
+function getCachedMaterial(
+  hex: string,
+  roughness = 0.6,
+  metalness = 0.04,
+  rim = false
+): THREE.MeshStandardMaterial {
+  const key = `${hex}|${roughness}|${metalness}|${rim ? 1 : 0}`;
+  let m = materialCache.get(key);
   if (!m) {
-    m = new THREE.MeshStandardMaterial({ color: hex, roughness: 0.6, metalness: 0.04 });
-    materialCache.set(hex, m);
+    m = new THREE.MeshStandardMaterial({ color: hex, roughness, metalness });
+    if (rim) applyRimLight(m);
+    materialCache.set(key, m);
   }
   return m;
 }
@@ -262,11 +329,166 @@ function getNumberMaterial(jerseyHex: string, label: string): THREE.MeshStandard
   return m;
 }
 
+/** GLB選手の番号プレート（NUMBER_PLATE_GEOM、薄板メッシュ）専用のテクスチャ。getNumberTexture
+ * （プロシージャル選手の胴体ボックス実面に使う・不透明のまま）と描画のベースは同じだが、
+ * 近景で見たときの「貼り紙」感を減らすため(a)薄い布目ノイズ、(b)プレート縁の透明フェードを
+ * 追加する。フェードはdestination-inで最後に合成するため、プロシージャル側の実面（フェードを
+ * 掛けると裏側の空洞が透けて見えてしまう）には適用できず、薄板前提のこちらだけ別関数にしている。 */
+const numberPlateTextureCache = new Map<string, THREE.CanvasTexture>();
+function getNumberPlateTexture(jerseyHex: string, label: string): THREE.CanvasTexture {
+  const key = `${jerseyHex}|${label}`;
+  const hit = numberPlateTextureCache.get(key);
+  if (hit) return hit;
+  const w = 96;
+  const h = 128;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = jerseyHex;
+    ctx.fillRect(0, 0, w, h);
+    // 布目ノイズ：1px単位の微小な明暗ドットを一様に散らす。テクスチャは(jerseyHex,label)キーで
+    // 一度だけ生成してキャッシュするため、Math.randomでも再レンダーごとに柄がガタつく心配はない。
+    ctx.fillStyle = hexLuma(jerseyHex) > 0.6 ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)";
+    for (let i = 0; i < 220; i++) {
+      ctx.fillRect(Math.random() * w, Math.random() * h, 1, 1);
+    }
+    ctx.fillStyle = hexLuma(jerseyHex) > 0.6 ? "#16212c" : "#ffffff";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    let size = 68;
+    ctx.font = `800 ${size}px system-ui, sans-serif`;
+    while (ctx.measureText(label).width > w * 0.84 && size > 24) {
+      size -= 4;
+      ctx.font = `800 ${size}px system-ui, sans-serif`;
+    }
+    ctx.fillText(label, w / 2, h / 2 + 3);
+    // プレート縁を透明フェード：destination-inで中心から縁へアルファを落とす円形グラデを
+    // 重ね、輪郭の直線的な「貼り紙」感を消す（縁の透明部分からは胴体本体のジャージ面が透けて見える）。
+    ctx.globalCompositeOperation = "destination-in";
+    const cx = w / 2;
+    const cy = h / 2;
+    const maxR = Math.hypot(cx, cy);
+    const fade = ctx.createRadialGradient(cx, cy, maxR * 0.55, cx, cy, maxR * 0.98);
+    fade.addColorStop(0, "rgba(0,0,0,1)");
+    fade.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = fade;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = "source-over";
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  numberPlateTextureCache.set(key, tex);
+  return tex;
+}
+
+const numberPlateMaterialCache = new Map<string, THREE.MeshStandardMaterial>();
+function getNumberPlateMaterial(jerseyHex: string, label: string): THREE.MeshStandardMaterial {
+  const key = `${jerseyHex}|${label}`;
+  let m = numberPlateMaterialCache.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      map: getNumberPlateTexture(jerseyHex, label),
+      roughness: 0.7,
+      metalness: 0.02,
+      transparent: true,
+      depthWrite: false,
+    });
+    numberPlateMaterialCache.set(key, m);
+  }
+  return m;
+}
+
+/* ============================================================
+   ブロブ影（接地感）: 放射状グラデ・multiplyブレンドの円板。選手root直下・ボール直下で共通に
+   使う。ジオメトリ・テクスチャはモジュールキャッシュを共有し、opacityだけ個体ごとに変わる
+   （ヘディングで浮いている間フェードする）ためマテリアル本体だけをメッシュごとに1個生成する。
+   MeshBasicMaterialはPBR計算・onBeforeCompileを持たず生成コストがごく小さいため、選手22体+
+   ボール分（最大23個）は性能予算上問題にならない（ジオメトリ・テクスチャ自体はクローンしない）。
+   ============================================================ */
+
+/** 白中心・アルファ1→縁でアルファ0の放射状グラデ（64px）。RGBは常に白のまま持たせ、実際の
+ * 色味・濃さはマテリアル側のcolor(暗色)×opacityで作る＝MultiplyBlending+premultipliedAlphaの
+ * 組み合わせで「中心が濃く、縁ほど何も乗算しない（芝の色そのまま）」正しい減光になる。 */
+let blobShadowTextureCache: THREE.CanvasTexture | null = null;
+function getBlobShadowTexture(): THREE.CanvasTexture {
+  if (blobShadowTextureCache) return blobShadowTextureCache;
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    const r = size / 2;
+    const g = ctx.createRadialGradient(r, r, 0, r, r, r);
+    g.addColorStop(0, "rgba(255,255,255,1)");
+    g.addColorStop(0.7, "rgba(255,255,255,0.55)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, size, size);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  blobShadowTextureCache = tex;
+  return tex;
+}
+
+/** 単位半径(r=1)の円板。実半径はmeshのscaleで決める（他のUNIT_*ジオメトリと同じ流儀） */
+const BLOB_SHADOW_GEOM = new THREE.CircleGeometry(1, 24);
+/** ブロブ影の乗算色（ほぼ黒。明るすぎると接地感が弱く、真っ黒だと不自然に沈むため僅かに青みを残す） */
+const BLOB_SHADOW_COLOR = "#0b1016";
+
+/**
+ * 接地感の円板1枚。meshRef/matRefを親のPlayerFigure/GLBPlayer/Ball3Dのuseframeへ渡し、
+ * 位置・半径・opacityは親側から毎フレーム直接refへ書き込む（このコンポーネント自身は
+ * 初回マウント時にマテリアルを1個作るだけで、以後は再レンダーもReact stateも持たない）。
+ */
+function BlobShadow({
+  baseOpacity,
+  radiusM = BLOB_SHADOW_RADIUS_M,
+  meshRef,
+  matRef,
+}: {
+  baseOpacity: number;
+  radiusM?: number;
+  meshRef: React.RefObject<THREE.Mesh | null>;
+  matRef: React.RefObject<THREE.MeshBasicMaterial | null>;
+}) {
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        map: getBlobShadowTexture(),
+        color: BLOB_SHADOW_COLOR,
+        transparent: true,
+        premultipliedAlpha: true,
+        blending: THREE.MultiplyBlending,
+        depthWrite: false,
+        opacity: baseOpacity,
+      }),
+    [baseOpacity]
+  );
+  useEffect(() => {
+    matRef.current = material;
+    return () => {
+      material.dispose();
+      matRef.current = null;
+    };
+  }, [material, matRef]);
+  return (
+    <mesh
+      ref={meshRef}
+      geometry={BLOB_SHADOW_GEOM}
+      material={material}
+      rotation-x={-Math.PI / 2}
+      scale={[radiusM, radiusM, 1]}
+    />
+  );
+}
+
 /* ============================================================
    ピッチ（地面・マーキング・ゴール）
    ============================================================ */
 
-const GRASS_MARGIN_M = 3;
 const STRIPE_COUNT = 11;
 /** 芝の平面ジオメトリは8人制/11人制の2種類しかないため、format(pitchWidthM×pitchLengthM)を
  * キーにモジュールスコープでキャッシュし、以後は同じdimsで呼ばれるたび使い回す（旧実装は
@@ -284,8 +506,8 @@ function getGrassPlaneGeom(dims: PitchDims): THREE.PlaneGeometry {
   return g;
 }
 
-/** 芝の縞＋刈り跡風の微パターンを焼き込んだcanvasテクスチャ。品質ごとに1枚だけ生成しキャッシュする
- * （軽量品質は微パターンを省いた単純な縞のみ＝「縞テクスチャ簡略」） */
+/** 芝の簡易縞を焼き込んだcanvasテクスチャ（mobile品質専用。high/mediumはPBR版
+ * getGrassPBR を使うためこちらは呼ばない＝「芝簡易縞」）。qualityはanisotropy決定にのみ使う。 */
 const grassTextureCache = new Map<Sp3dQuality, THREE.CanvasTexture>();
 function getGrassTexture(quality: Sp3dQuality): THREE.CanvasTexture {
   const hit = grassTextureCache.get(quality);
@@ -302,23 +524,10 @@ function getGrassTexture(quality: Sp3dQuality): THREE.CanvasTexture {
       ctx.fillStyle = i % 2 === 0 ? "#1f8c4f" : "#15803d";
       ctx.fillRect(0, i * stripeH, w, stripeH + 1);
     }
-    if (quality === "standard") {
-      // 刈り跡風の微パターン（縞と直交する薄い縦筋を重ねるだけの簡易表現）
-      ctx.globalAlpha = 0.05;
-      ctx.strokeStyle = "#ffffff";
-      ctx.lineWidth = 2;
-      for (let x = 3; x < w; x += 7) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, h);
-        ctx.stroke();
-      }
-      ctx.globalAlpha = 1;
-    }
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
+  tex.anisotropy = anisotropyForQuality(quality);
   grassTextureCache.set(quality, tex);
   return tex;
 }
@@ -341,23 +550,45 @@ function ApronGround() {
 
 /** 芝: canvasテクスチャ1枚を貼った1平面（旧実装の縞メッシュ11枚から統合。draw call・
  * 三角形数を大きく削減しつつ縞・刈り跡パターンは維持する）。ジオメトリはdims(8人制/11人制)
- * ごとにキャッシュされたものを使い回す（getGrassPlaneGeom参照） */
+ * ごとにキャッシュされたものを使い回す（getGrassPlaneGeom参照）。
+ * high/medium品質は lib/setPiece3d.ts の寸法情報を使って components/SetPiece3DStadium.tsx が
+ * 生成するPBRテクスチャ一式(baseColor high=1024/medium=512・normalMap/roughnessMapはその半分)を
+ * 使い、mobile品質は従来の簡易縞テクスチャ(getGrassTexture)へフォールバックする。フックは
+ * 常に同じ順序で呼ぶ必要があるため、quality分岐はマテリアル生成側(useMemo内)だけで行う。 */
 function PitchGround({ quality, dims }: { quality: Sp3dQuality; dims: PitchDims }) {
-  const tex = getGrassTexture(quality);
   const geom = useMemo(() => getGrassPlaneGeom(dims), [dims]);
-  const mat = useMemo(() => new THREE.MeshStandardMaterial({ map: tex, roughness: 0.96 }), [tex]);
+  const simpleTex = useMemo(() => getGrassTexture(quality), [quality]);
+  const pbr = useMemo(
+    () => (quality === "high" || quality === "medium" ? getGrassPBR(dims, quality) : null),
+    [quality, dims]
+  );
+  const mat = useMemo(() => {
+    if (pbr) {
+      return new THREE.MeshStandardMaterial({
+        map: pbr.map,
+        normalMap: pbr.normalMap,
+        normalScale: new THREE.Vector2(0.35, 0.35),
+        roughnessMap: pbr.roughnessMap,
+        roughness: 1,
+      });
+    }
+    return new THREE.MeshStandardMaterial({ map: simpleTex, roughness: 0.96 });
+  }, [pbr, simpleTex]);
   return <mesh geometry={geom} rotation-x={-Math.PI / 2} material={mat} receiveShadow />;
 }
 
-/** ライン用マテリアル（全formatで共有）。polygonOffsetで芝との深度競合を避け、
- * どの距離・角度からでもラインが消えない（drei Line時代の「ズームで消える」対策の本体） */
-let markingMaterialCache: THREE.MeshBasicMaterial | null = null;
-function getMarkingMaterial(): THREE.MeshBasicMaterial {
+/** ライン用マテリアル（全formatで共有）。白すぎを解消した#eef1ec・opacity 0.88にし、
+ * MeshStandardMaterial(roughness 0.9)へ変えて周囲の光(hemisphere/directional)に馴染ませる。
+ * polygonOffsetで芝との深度競合を避け、どの距離・角度からでもラインが消えない対策は維持する
+ * （drei Line時代の「ズームで消える」不具合の再発防止策そのものは変更しない）。 */
+let markingMaterialCache: THREE.MeshStandardMaterial | null = null;
+function getMarkingMaterial(): THREE.MeshStandardMaterial {
   if (!markingMaterialCache) {
-    markingMaterialCache = new THREE.MeshBasicMaterial({
-      color: "#fdfdfd",
+    markingMaterialCache = new THREE.MeshStandardMaterial({
+      color: "#eef1ec",
+      roughness: 0.9,
       transparent: true,
-      opacity: 0.92,
+      opacity: 0.88,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -2,
@@ -388,21 +619,23 @@ function PitchLines({ dims }: { dims: PitchDims }) {
   return <mesh geometry={geom} material={getMarkingMaterial()} position={[0, 0.02, 0]} renderOrder={1} />;
 }
 
-/** ゴールネットの網目風alphaMap。1枚だけ生成しキャッシュ（両ゴールで共有） */
+/** ゴールネットの網目風alphaMap。1枚だけ生成しキャッシュ（両ゴールで共有）。
+ * 128px化し、格子(縦横)に斜め線を重ねて六角風の編み目に見せる（旧64pxの単純格子より密で
+ * 「細線」寄りの見た目にする）。 */
 let netTextureCache: THREE.CanvasTexture | null = null;
 function getNetTexture(): THREE.CanvasTexture {
   if (netTextureCache) return netTextureCache;
-  const s = 64;
+  const s = 128;
   const canvas = document.createElement("canvas");
   canvas.width = s;
   canvas.height = s;
   const ctx = canvas.getContext("2d");
   if (ctx) {
-    ctx.strokeStyle = "rgba(255,255,255,0.95)";
-    ctx.lineWidth = 1.6;
-    const step = s / 6;
+    ctx.strokeStyle = "rgba(255,255,255,0.92)";
+    ctx.lineWidth = 1.1;
+    const step = s / 8;
     ctx.beginPath();
-    for (let i = 0; i <= 6; i++) {
+    for (let i = 0; i <= 8; i++) {
       const p = i * step;
       ctx.moveTo(p, 0);
       ctx.lineTo(p, s);
@@ -410,6 +643,20 @@ function getNetTexture(): THREE.CanvasTexture {
       ctx.lineTo(s, p);
     }
     ctx.stroke();
+    // 斜め線を重ねて六角風の網目に見せる（格子だけより編み目らしい密度になる）
+    ctx.beginPath();
+    ctx.lineWidth = 0.8;
+    ctx.globalAlpha = 0.55;
+    const diagStep = s / 6;
+    for (let i = -6; i <= 12; i++) {
+      const off = i * diagStep;
+      ctx.moveTo(off, 0);
+      ctx.lineTo(off + s, s);
+      ctx.moveTo(off, s);
+      ctx.lineTo(off + s, 0);
+    }
+    ctx.stroke();
+    ctx.globalAlpha = 1;
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -417,6 +664,27 @@ function getNetTexture(): THREE.CanvasTexture {
   netTextureCache = tex;
   return tex;
 }
+/** 背面ネットの「たるみ」表現用ジオメトリ（PlaneGeometryを軽く曲げた1枚）。
+ * ローカルy=+0.5(上端)は箱ネットの背面上端にフラットに接続、y=-0.5(下端/垂れ先)へ向かうほど
+ * ローカルz(=世界の外側方向。Goal側でscale.zの符号は常に正にし、end=-1側だけrotation-yで
+ * 180°回して向きを反転させる＝負スケールによる法線反転を避ける)へ膨らみつつ、
+ * 重力でたるむ雰囲気を出すためy方向にも少し余分に垂らす。両ゴールで同じジオメトリを共有する。 */
+const NET_SAG_SEGMENTS = 8;
+function buildNetSagGeometry(): THREE.BufferGeometry {
+  const g = new THREE.PlaneGeometry(1, 1, 1, NET_SAG_SEGMENTS);
+  const pos = g.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    const t = 0.5 - y; // 0(上端/取り付け側) → 1(下端/垂れ先)
+    const bulge = t * t;
+    pos.setZ(i, bulge);
+    pos.setY(i, y - bulge * 0.35);
+  }
+  pos.needsUpdate = true;
+  g.computeVertexNormals();
+  return g;
+}
+const NET_SAG_GEOM = buildNetSagGeometry();
 let netMaterialCache: THREE.MeshStandardMaterial | null = null;
 function getNetMaterial(): THREE.MeshStandardMaterial {
   if (!netMaterialCache) {
@@ -466,6 +734,16 @@ function getNetFaceMaterials(end: 1 | -1): THREE.Material[] {
   return arr;
 }
 
+/** ポスト・クロスバー用マテリアル（白#f8f9fa・roughness .35・metalness .15）。
+ * getCachedMaterial(roughness 0.6/metalness 0.04固定)とは異なる質感が要るため専用キャッシュにする。 */
+let postMaterialCache: THREE.MeshStandardMaterial | null = null;
+function getPostMaterial(): THREE.MeshStandardMaterial {
+  if (!postMaterialCache) {
+    postMaterialCache = new THREE.MeshStandardMaterial({ color: "#f8f9fa", roughness: 0.35, metalness: 0.15 });
+  }
+  return postMaterialCache;
+}
+
 /** ゴール（ポスト・クロスバー・網目テクスチャ入りネット）。end=1が敵陣(y100)側、-1が自陣(y0)側。
  * ポスト・クロスバーはUNIT_CYLをscaleして使い回す（性能予算: ジオメトリ共有）。dimsはformat
  * (8人制/11人制)に応じたゴール寸法・ピッチ長を渡す。 */
@@ -474,8 +752,9 @@ function Goal({ end, dims }: { end: 1 | -1; dims: PitchDims }) {
   const halfGoal = dims.goalWidthM / 2;
   const postR = 0.05;
   const netZ = z + end * (dims.goalNetDepthM / 2);
-  const postMat = getCachedMaterial("#f4f6fa");
+  const postMat = getPostMaterial();
   const netFaceMaterials = useMemo(() => getNetFaceMaterials(end), [end]);
+  const sagHeight = dims.goalHeightM * 0.62;
   return (
     <group>
       <mesh
@@ -492,6 +771,16 @@ function Goal({ end, dims }: { end: 1 | -1; dims: PitchDims }) {
         material={postMat}
         castShadow
       />
+      {/* ポスト上端の小球キャップ（丸めた端部の簡易表現） */}
+      {([-1, 1] as const).map((sideX) => (
+        <mesh
+          key={`cap${sideX}`}
+          geometry={UNIT_ICO}
+          scale={[postR * 1.3, postR * 1.3, postR * 1.3]}
+          position={[sideX * halfGoal, dims.goalHeightM, z]}
+          material={postMat}
+        />
+      ))}
       <mesh
         geometry={UNIT_CYL}
         scale={[postR, dims.goalWidthM, postR]}
@@ -530,6 +819,15 @@ function Goal({ end, dims }: { end: 1 | -1; dims: PitchDims }) {
         scale={[dims.goalWidthM, dims.goalHeightM, dims.goalNetDepthM]}
         position={[0, dims.goalHeightM / 2, netZ]}
         material={netFaceMaterials}
+      />
+      {/* 背面ネットの「たるみ」表現：箱ネットの背面上端から後方・下方へ緩やかに膨らむ追加プレーン。
+          end=-1側はrotation-y 180°で向きを反転させる（負スケールでの法線反転を避けるため） */}
+      <mesh
+        geometry={NET_SAG_GEOM}
+        material={getNetMaterial()}
+        position={[0, dims.goalHeightM - sagHeight / 2, z + end * dims.goalNetDepthM]}
+        rotation-y={end === -1 ? Math.PI : 0}
+        scale={[dims.goalWidthM * 0.96, sagHeight, dims.goalNetDepthM * 0.9]}
       />
     </group>
   );
@@ -582,247 +880,12 @@ function CornerFlags({ dims }: { dims: PitchDims }) {
 }
 
 /* ============================================================
-   スタジアム環境（広告板・観客席の帯）。ピッチ外周を低ポリの箱4枚（矩形リング）で囲うだけの
-   簡易表現。UNIT_BOXを共有し、実寸は各面のscaleだけで決める。
+   スタジアム環境（LED看板・角丸長方形ボウルのスタンド一式・外壁シェル）はPhase3で
+   components/SetPiece3DStadium.tsx の StadiumBowl へ移設した（旧・壁+斜面+屋根の4枚実装と
+   4本の照明塔は廃止）。空ドーム・雲はPhase5でさらに components/SetPiece3DEnv.tsx へ分離した。
+   ここでは import した StadiumBowl/SkyFollow を呼ぶだけにする（SkyFollowが
+   SkyDome・CloudLayerをカメラ追従groupの子としてまとめて描画する）。
    ============================================================ */
-
-const adBoardTextureCache: { current: THREE.CanvasTexture | null } = { current: null };
-function getAdBoardTexture(): THREE.CanvasTexture {
-  if (adBoardTextureCache.current) return adBoardTextureCache.current;
-  const w = 128;
-  const h = 32;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    const [c1, c2] = AD_BOARD_COLORS;
-    const seg = w / 8;
-    for (let i = 0; i < 8; i++) {
-      ctx.fillStyle = i % 2 === 0 ? c1 : c2;
-      ctx.fillRect(i * seg, 0, seg, h);
-    }
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(5, 1);
-  adBoardTextureCache.current = tex;
-  return tex;
-}
-let adBoardMaterialCache: THREE.MeshStandardMaterial | null = null;
-function getAdBoardMaterial(): THREE.MeshStandardMaterial {
-  if (!adBoardMaterialCache) {
-    adBoardMaterialCache = new THREE.MeshStandardMaterial({
-      map: getAdBoardTexture(),
-      roughness: 0.8,
-      metalness: 0.05,
-    });
-  }
-  return adBoardMaterialCache;
-}
-
-const standTextureCache: { current: THREE.CanvasTexture | null } = { current: null };
-function getStandTexture(): THREE.CanvasTexture {
-  if (standTextureCache.current) return standTextureCache.current;
-  const w = 192;
-  const h = 96;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  if (ctx) {
-    ctx.fillStyle = STAND_BASE_COLOR;
-    ctx.fillRect(0, 0, w, h);
-    // 段差ライン（階段状の座席列）
-    ctx.fillStyle = "#2a333d";
-    for (let y = 0; y < h; y += 8) ctx.fillRect(0, y, w, 1);
-    // 観客の粒: 座席トーンに加えて時々カラフルな服・白シャツを混ぜ、遠景でも「満員の観客」に見せる
-    const crowdPop: string[] = ["#d64545", "#e8b93c", "#f2f2f2", "#4f86d6", "#58b06a"];
-    const rand = (x: number, y: number) => {
-      const v = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-      return v - Math.floor(v);
-    };
-    for (let y = 2; y < h; y += 4) {
-      for (let x = 1; x < w; x += 3) {
-        const r = rand(x, y);
-        ctx.fillStyle =
-          r > 0.82
-            ? crowdPop[Math.floor(r * 100) % crowdPop.length]
-            : STAND_SEAT_TONES[(x + y) % STAND_SEAT_TONES.length];
-        ctx.fillRect(x, y, 2, 2);
-      }
-    }
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(10, 2);
-  standTextureCache.current = tex;
-  return tex;
-}
-let standMaterialCache: THREE.MeshStandardMaterial | null = null;
-function getStandMaterial(): THREE.MeshStandardMaterial {
-  if (!standMaterialCache) {
-    standMaterialCache = new THREE.MeshStandardMaterial({ map: getStandTexture(), roughness: 0.95 });
-  }
-  return standMaterialCache;
-}
-
-/** ピッチ外周・芝ランのすぐ外にある無地・架空色の広告板（常時表示。軽量品質でもOFFにしない＝
- * 仕様の「軽量: 影OFF・観客席帯OFF・dpr1固定」に広告板は含まれないため） */
-function AdBoardRing({ dims }: { dims: PitchDims }) {
-  const halfW = dims.pitchWidthM / 2 + GRASS_MARGIN_M + STADIUM_M.adBoardMarginM;
-  const halfL = dims.pitchLengthM / 2 + GRASS_MARGIN_M + STADIUM_M.adBoardMarginM;
-  const h = STADIUM_M.adBoardHeightM;
-  const t = STADIUM_M.adBoardThicknessM;
-  const mat = getAdBoardMaterial();
-  return (
-    <group>
-      <mesh geometry={UNIT_BOX} material={mat} position={[0, h / 2, -halfL]} scale={[halfW * 2, h, t]} />
-      <mesh geometry={UNIT_BOX} material={mat} position={[0, h / 2, halfL]} scale={[halfW * 2, h, t]} />
-      <mesh
-        geometry={UNIT_BOX}
-        material={mat}
-        position={[-halfW, h / 2, 0]}
-        rotation-y={Math.PI / 2}
-        scale={[halfL * 2, h, t]}
-      />
-      <mesh
-        geometry={UNIT_BOX}
-        material={mat}
-        position={[halfW, h / 2, 0]}
-        rotation-y={Math.PI / 2}
-        scale={[halfL * 2, h, t]}
-      />
-    </group>
-  );
-}
-
-/** サッカー専用スタジアム風の傾斜スタンド一式（前面の低い壁+後方へ上る傾斜席+背面壁+屋根）。
- * 旧実装の「ピッチ近くの垂直壁」はカメラアングルによって視界を塞いだため、
- * 前面は1.1mの低壁だけにし、席は後方ほど高くなるラケ(約25°)へ変更（地上カメラでも視界が抜ける）。
- * コーナーは開放し、4本の照明塔（サッカー専用スタの記号）を置く。標準品質のみ表示。 */
-const CONCRETE_COLOR = "#8b95a1";
-const ROOF_COLOR = "#c9d0d8";
-const FLOOD_MAST_COLOR = "#3a424c";
-
-function StandSide({ length }: { length: number }) {
-  const S = STADIUM_M;
-  const a = S.standRakeRad;
-  const D = S.standDepthM;
-  const topH = S.standFrontWallM + D * Math.sin(a);
-  const backZ = -(D * Math.cos(a));
-  const standMat = getStandMaterial();
-  const concreteMat = getCachedMaterial(CONCRETE_COLOR);
-  const roofMat = getCachedMaterial(ROOF_COLOR);
-  return (
-    <group>
-      {/* 前面の低い壁（この高さまでしか視界を遮らない） */}
-      <mesh
-        geometry={UNIT_BOX}
-        material={concreteMat}
-        position={[0, S.standFrontWallM / 2, -0.15]}
-        scale={[length, S.standFrontWallM, 0.3]}
-      />
-      {/* 傾斜席スラブ（観客テクスチャ） */}
-      <mesh
-        geometry={UNIT_BOX}
-        material={standMat}
-        position={[0, S.standFrontWallM + (D / 2) * Math.sin(a), backZ / 2]}
-        rotation-x={a}
-        scale={[length, S.standSlabThickM, D]}
-      />
-      {/* 背面壁 */}
-      <mesh
-        geometry={UNIT_BOX}
-        material={concreteMat}
-        position={[0, topH / 2, backZ - 0.2]}
-        scale={[length, topH, 0.4]}
-      />
-      {/* 屋根（後方上空に浮くキャノピー。前端をわずかに下げる実物風の傾き） */}
-      <mesh
-        geometry={UNIT_BOX}
-        material={roofMat}
-        position={[0, topH + S.roofClearM, backZ + S.roofDepthM / 2 - 0.6]}
-        rotation-x={-0.09}
-        scale={[length, S.roofThickM, S.roofDepthM]}
-      />
-    </group>
-  );
-}
-
-function Floodlight({ x, z }: { x: number; z: number }) {
-  const S = STADIUM_M;
-  const mastMat = getCachedMaterial(FLOOD_MAST_COLOR);
-  const headMat = useMemo(() => {
-    const m = new THREE.MeshStandardMaterial({
-      color: "#eef4ff",
-      emissive: new THREE.Color("#dfe9ff"),
-      emissiveIntensity: 0.55,
-      roughness: 0.4,
-    });
-    return m;
-  }, []);
-  // ピッチ中心(0,0)の方を向ける
-  const yaw = Math.atan2(-x, -z);
-  return (
-    <group position={[x, 0, z]} rotation-y={yaw}>
-      <mesh
-        geometry={UNIT_CYL}
-        material={mastMat}
-        position={[0, S.floodMastM / 2, 0]}
-        scale={[0.28, S.floodMastM, 0.28]}
-      />
-      <mesh
-        geometry={UNIT_BOX}
-        material={headMat}
-        position={[0, S.floodMastM + S.floodHeadH / 2 - 0.3, 0.5]}
-        rotation-x={0.55}
-        scale={[S.floodHeadW, S.floodHeadH, 0.45]}
-      />
-    </group>
-  );
-}
-
-function StadiumStands({ dims }: { dims: PitchDims }) {
-  const S = STADIUM_M;
-  const inner = GRASS_MARGIN_M + S.adBoardMarginM + S.adBoardThicknessM + S.standMarginM;
-  const frontX = dims.pitchWidthM / 2 + inner; // 左右サイドスタンドの前面壁位置
-  const frontZ = dims.pitchLengthM / 2 + inner; // ゴール裏スタンドの前面壁位置
-  const lengthX = dims.pitchWidthM + inner * 1.4;
-  const lengthZ = dims.pitchLengthM + inner * 1.4;
-  const backOff = S.standDepthM * Math.cos(S.standRakeRad);
-  const floodX = frontX + backOff + 4;
-  const floodZ = frontZ + backOff + 4;
-  return (
-    <group>
-      {/* ゴール裏(±z)・メイン/バック(±x)の4面。StandSideはローカル-z方向(=席の後方)へ上る形。
-          「後方」がワールドでピッチと反対側を向くように各面を回す:
-          R_y(θ)でローカル(0,0,-1)は (−sinθ, 0, −cosθ) へ写るため、
-          -z面(後方=世界-z)→θ=0 / +z面(後方=世界+z)→θ=π /
-          -x面(後方=世界-x)→θ=π/2 / +x面(後方=世界+x)→θ=-π/2。
-          （旧実装は4面とも逆で、観客席が外側を向き・ゴール裏の高い縁が
-          ピッチ側に来て「ゴール前の壁」に見えていた） */}
-      <group position={[0, 0, -frontZ]}>
-        <StandSide length={lengthX} />
-      </group>
-      <group position={[0, 0, frontZ]} rotation-y={Math.PI}>
-        <StandSide length={lengthX} />
-      </group>
-      <group position={[-frontX, 0, 0]} rotation-y={Math.PI / 2}>
-        <StandSide length={lengthZ} />
-      </group>
-      <group position={[frontX, 0, 0]} rotation-y={-Math.PI / 2}>
-        <StandSide length={lengthZ} />
-      </group>
-      <Floodlight x={-floodX} z={-floodZ} />
-      <Floodlight x={floodX} z={-floodZ} />
-      <Floodlight x={-floodX} z={floodZ} />
-      <Floodlight x={floodX} z={floodZ} />
-    </group>
-  );
-}
 
 /* ============================================================
    ゾーン図形・テキスト図形（床面投影）
@@ -961,11 +1024,11 @@ function usePlayerMaterials(jerseyHex: string, variant: KitVariant, skinTone: st
   return useMemo(() => {
     const kit = getKitColors(jerseyHex, variant);
     const isGK = variant === "gk" || variant === "oppgk";
-    const jerseyMat = getCachedMaterial(kit.jersey);
-    const shortsMat = getCachedMaterial(kit.shorts);
-    const socksMat = getCachedMaterial(kit.socks);
-    const skinMat = getCachedMaterial(skinTone);
-    const bootMat = getCachedMaterial(BOOT_COLOR);
+    const jerseyMat = getCachedMaterial(kit.jersey, PART_MATERIAL.jersey.roughness, PART_MATERIAL.jersey.metalness, true);
+    const shortsMat = getCachedMaterial(kit.shorts, PART_MATERIAL.shorts.roughness, PART_MATERIAL.shorts.metalness);
+    const socksMat = getCachedMaterial(kit.socks, PART_MATERIAL.socks.roughness, PART_MATERIAL.socks.metalness);
+    const skinMat = getCachedMaterial(skinTone, PART_MATERIAL.skin.roughness, PART_MATERIAL.skin.metalness, true);
+    const bootMat = getCachedMaterial(BOOT_COLOR, PART_MATERIAL.boots.roughness, PART_MATERIAL.boots.metalness);
     // GK=長袖（袖も胴と同色）、それ以外=半袖（前腕は肌色）
     const sleeveMat = isGK ? jerseyMat : skinMat;
     const numberMat = getNumberMaterial(kit.jersey, label);
@@ -1041,8 +1104,15 @@ function PlayerFigure({
   const speedRef = useRef(0);
   const liftRef = useRef(0);
 
-  // トレイル（軌跡）：標準品質のときだけ選手にも表示する（軽量品質はボールのみ＝Ball3D側で対応）
-  const showTrail = quality === "standard";
+  // ブロブ影（接地感）：実シャドウが有効なhigh/medium品質は薄め、mobile品質（実シャドウ無し）は
+  // 濃いめの基準不透明度にする（quality自体は再生中に変わらないためuseMemo不要、定数として算出）
+  const blobBaseOpacity = quality !== "mobile" ? BLOB_SHADOW_OPACITY_WITH_REAL_SHADOW : BLOB_SHADOW_OPACITY_NO_REAL_SHADOW;
+  const blobMeshRef = useRef<THREE.Mesh | null>(null);
+  const blobMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
+
+  // トレイル（軌跡）：high/medium品質のときだけ選手にも表示する（mobile品質はボールのみ＝
+  // Ball3D側で対応）
+  const showTrail = quality !== "mobile";
   const trailSamples = useRef<{ x: number; z: number; t: number }[]>([]);
   const [trailPts, setTrailPts] = useState<[number, number, number][]>([]);
   const trailTick = useRef(0);
@@ -1106,6 +1176,15 @@ function PlayerFigure({
         }
       }
     }
+    // ブロブ影：root(体)はliftRef.currentぶん浮くが、影自体は接地面(y=0.015)に固定したまま
+    // x/zだけ追従させ、半径・不透明度をliftから求める（liftが増えるほど広がって薄くなる＝浮遊感）
+    if (blobMeshRef.current) {
+      const bs = computeBlobShadow(lift, blobBaseOpacity);
+      blobMeshRef.current.position.set(wx, 0.015, wz);
+      blobMeshRef.current.scale.set(bs.radiusM, bs.radiusM, 1);
+      if (blobMatRef.current) blobMatRef.current.opacity = bs.opacity;
+    }
+
     if (leftThighRef.current) leftThighRef.current.rotation.z = pose.hipL;
     if (rightThighRef.current) rightThighRef.current.rotation.z = pose.hipR;
     if (leftShinRef.current) leftShinRef.current.rotation.x = pose.kneeL;
@@ -1262,6 +1341,7 @@ function PlayerFigure({
         </group>
       </group>
       </group>
+      <BlobShadow baseOpacity={blobBaseOpacity} meshRef={blobMeshRef} matRef={blobMatRef} />
       {showTrail && trailPts.length >= 2 && (
         <Line points={trailPts} color={jersey} lineWidth={0.035} worldUnits transparent opacity={0.3} />
       )}
@@ -1269,12 +1349,14 @@ function PlayerFigure({
   );
 }
 
-/** サッカーボール風の白地+黒パッチのテクスチャ（1枚生成してキャッシュ） */
+/** サッカーボール風の白地+黒パッチのテクスチャ（1枚生成してキャッシュ）。256×128に高精細化し、
+ * 五角形パッチを3段のグリッドへ整列させた古典的なパターンにした上で、球面の丸みをうっすら
+ * 感じさせる縦グラデの陰影を薄く重ねる。 */
 let ballTextureCache: THREE.CanvasTexture | null = null;
 function getBallTexture(): THREE.CanvasTexture {
   if (ballTextureCache) return ballTextureCache;
-  const w = 128;
-  const h = 64;
+  const w = 256;
+  const h = 128;
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
@@ -1283,23 +1365,36 @@ function getBallTexture(): THREE.CanvasTexture {
     ctx.fillStyle = "#f6f7f9";
     ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = "#20242b";
-    const spots: [number, number, number][] = [
-      [14, 18, 7], [46, 12, 6], [78, 20, 7], [110, 14, 6],
-      [30, 40, 7], [62, 44, 6], [94, 42, 7], [8, 50, 5], [120, 48, 5],
+    // 3段のグリッドに整列させた五角形パッチ（各段でx方向に半ピッチずつオフセット）
+    const rows: { y: number; r: number; xs: number[] }[] = [
+      { y: h * 0.18, r: h * 0.11, xs: [0.14, 0.38, 0.62, 0.86] },
+      { y: h * 0.5, r: h * 0.12, xs: [0.02, 0.26, 0.5, 0.74, 0.98] },
+      { y: h * 0.82, r: h * 0.11, xs: [0.14, 0.38, 0.62, 0.86] },
     ];
-    for (const [x, y, r] of spots) {
-      ctx.beginPath();
-      // 五角形風パッチ
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
-        const px = x + Math.cos(a) * r;
-        const py = y + Math.sin(a) * r;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+    for (const row of rows) {
+      for (const xf of row.xs) {
+        const x = xf * w;
+        const y = row.y;
+        const r = row.r;
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 - Math.PI / 2;
+          const px = x + Math.cos(a) * r;
+          const py = y + Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
       }
-      ctx.closePath();
-      ctx.fill();
     }
+    // うっすら陰影（球の丸みを軽く感じさせる縦方向グラデ）
+    const shade = ctx.createLinearGradient(0, 0, 0, h);
+    shade.addColorStop(0, "rgba(0,0,0,0.10)");
+    shade.addColorStop(0.5, "rgba(0,0,0,0)");
+    shade.addColorStop(1, "rgba(0,0,0,0.16)");
+    ctx.fillStyle = shade;
+    ctx.fillRect(0, 0, w, h);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -1312,13 +1407,15 @@ function getBallTexture(): THREE.CanvasTexture {
  * 水平位置(x/z)はPlayerFigureと同じくactorPos("ball",...)を再利用して2D再生と一致させ、
  * 高さだけをlib/setPiece3d.tsのtrajectoryHeightM（パス/シュートmoveのtrajectoryフィールドから
  * 決まるground/driven/lofted）で追加する。トレイルは品質に関わらず常に表示する
- * （仕様「軽量時はボールのみ」＝ボールは軽量品質でも表示対象）。
+ * （仕様「mobile品質はボールのみ」＝ボールはmobile品質でも表示対象）。
  */
 function Ball3D({
   dims,
+  quality,
   onActorDown,
 }: {
   dims: PitchDims;
+  quality: Sp3dQuality;
   onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
@@ -1328,6 +1425,11 @@ function Ball3D({
   const trailSamples = useRef<{ x: number; y: number; z: number; t: number }[]>([]);
   const [trailPts, setTrailPts] = useState<[number, number, number][]>([]);
   const trailTick = useRef(0);
+  // ブロブ影：ボールは選手のヘディングのような明示的な「lift」概念を持たないため半径固定・
+  // 常に基準の不透明度（品質=実シャドウ有無で2値）のまま、x/zだけ毎フレーム追従させる
+  const blobBaseOpacity = quality !== "mobile" ? BLOB_SHADOW_OPACITY_WITH_REAL_SHADOW : BLOB_SHADOW_OPACITY_NO_REAL_SHADOW;
+  const blobMeshRef = useRef<THREE.Mesh | null>(null);
+  const blobMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
 
   useFrame((state, delta) => {
     const st = board.stateRef.current;
@@ -1365,6 +1467,8 @@ function Ball3D({
         ref.current.rotateOnWorldAxis(rollAxis.current, dist / 0.11);
       }
     }
+    // ブロブ影は弾道の高さに関わらず接地面(y=0.015)でボール直下のx/zだけ追従する
+    if (blobMeshRef.current) blobMeshRef.current.position.set(wx, 0.015, wz);
 
     const now = state.clock.elapsedTime;
     if (moving) trailSamples.current.push({ x: wx, y: wy, z: wz, t: now });
@@ -1380,8 +1484,8 @@ function Ball3D({
     <>
       <group ref={ref}>
         <mesh castShadow>
-          <sphereGeometry args={[0.11, 20, 16]} />
-          <meshStandardMaterial map={getBallTexture()} roughness={0.4} />
+          <sphereGeometry args={[0.11, 24, 18]} />
+          <meshStandardMaterial map={getBallTexture()} roughness={0.35} />
         </mesh>
         {/* 当たり判定だけ大きい不可視球（盤端のボールでも掴みやすくする） */}
         <mesh
@@ -1392,6 +1496,7 @@ function Ball3D({
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
         </mesh>
       </group>
+      <BlobShadow baseOpacity={blobBaseOpacity} meshRef={blobMeshRef} matRef={blobMatRef} />
       {trailPts.length >= 2 && (
         <Line points={trailPts} color="#ffe27a" lineWidth={0.03} worldUnits transparent opacity={0.4} />
       )}
@@ -1417,12 +1522,16 @@ function findOppGkIndex(opponents: { x: number; y: number }[]): number {
 
 /* ============================================================
    GLB選手モデル（Quaternius Animated Men Pack "Man"、CC0。public/models/player.glb）。
-   標準品質のときに使用し、軽量品質・読み込み失敗時は従来のプロシージャル人型へ
+   high/medium品質のときに使用し、mobile品質・読み込み失敗時は従来のプロシージャル人型へ
    フォールバックする。マテリアル(Shirt/Pants/Details/Skin)をチームキットへ差し替え、
    Idle/Runクリップを速度でクロスフェード、ヘディングはJumpクリップ、キックは
    ボーン(UpperLeg.R等)のポスト・ミキサー上書きで表現する。
    ============================================================ */
 const MODEL_URL = "models/player.glb"; // 相対パス＝GitHub Pagesのサブパス配信でも解決できる
+/** ボーン取得nullをdev時に1回だけ警告するための既警告名セット（プレイヤー数ぶん重複しないよう
+ * モジュールスコープに置く。取得失敗はモデル自体の骨格構成の問題＝全個体で同じ結果になるため
+ * 個体ごとに出す必要はない） */
+const warnedMissingBones = new Set<string>();
 /** 選手モデルの目標身長(m)。ターゲットは小〜大学生と幅広いため標準体格に合わせる
  * （ジュニア特化のスケールはしない。8人制対応はピッチ寸法側で行う） */
 const MODEL_TARGET_HEIGHT_M = 1.78;
@@ -1439,7 +1548,11 @@ function getPantsMaterial(shortsHex: string, socksHex: string, skinHex: string):
   const key = `${shortsHex}|${socksHex}|${skinHex}`;
   const hit = pantsMaterialCache.get(key);
   if (hit) return hit;
-  const m = new THREE.MeshStandardMaterial({ color: shortsHex, roughness: 0.7, metalness: 0.03 });
+  const m = new THREE.MeshStandardMaterial({
+    color: shortsHex,
+    roughness: PART_MATERIAL.shorts.roughness,
+    metalness: PART_MATERIAL.shorts.metalness,
+  });
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uSocks = { value: new THREE.Color(socksHex) };
     shader.uniforms.uSkin = { value: new THREE.Color(skinHex) };
@@ -1458,6 +1571,21 @@ function getPantsMaterial(shortsHex: string, socksHex: string, skinHex: string):
         if (vBindZ < ${PANTS_Z.boots}) { diffuseColor.rgb = uBoots; }
         else if (vBindZ < ${PANTS_Z.socks}) { diffuseColor.rgb = uSocks; }
         else if (vBindZ < ${PANTS_Z.skin}) { diffuseColor.rgb = uSkin; }`
+      )
+      // ショーツ/ソックス/肌/シューズの部位別roughness/metalness（PART_MATERIAL、仕様値）を
+      // 同じvBindZ帯でも上書きする（色の塗り分けと同じ閾値・同じ考え方）
+      .replace(
+        "#include <roughnessmap_fragment>",
+        `#include <roughnessmap_fragment>
+        if (vBindZ < ${PANTS_Z.boots}) { roughnessFactor = ${PART_MATERIAL.boots.roughness.toFixed(2)}; }
+        else if (vBindZ < ${PANTS_Z.socks}) { roughnessFactor = ${PART_MATERIAL.socks.roughness.toFixed(2)}; }
+        else if (vBindZ < ${PANTS_Z.skin}) { roughnessFactor = ${PART_MATERIAL.skin.roughness.toFixed(2)}; }
+        else { roughnessFactor = ${PART_MATERIAL.shorts.roughness.toFixed(2)}; }`
+      )
+      .replace(
+        "#include <metalnessmap_fragment>",
+        `#include <metalnessmap_fragment>
+        if (vBindZ < ${PANTS_Z.boots}) { metalnessFactor = ${PART_MATERIAL.boots.metalness.toFixed(2)}; }`
       );
   };
   // onBeforeCompileの分岐キーを変えてシェーダキャッシュ衝突を防ぐ
@@ -1470,7 +1598,42 @@ function findClip(anims: THREE.AnimationClip[], suffix: string): THREE.Animation
   return anims.find((a) => a.name.endsWith(suffix)) ?? null;
 }
 
+/**
+ * GLBモデルの共通素体マテリアル一式（Shirt/Pants/Details/TieTexture/Skin/Hair）をチーム
+ * キット・肌・髪色へ差し替え、あわせてshadow/frustumCulledのメッシュ設定も行う。ジャージ・肌は
+ * getCachedMaterialのroughness/metalness/rim引数（PART_MATERIAL、仕様の部位別質感＋リムライト）で
+ * 一括指定する。将来モデルを差し替える際もこの1関数の中身だけ直せば済む構造にする
+ * （Playerコンポーネント整理：マテリアル差し替えロジックを1箇所へ分離）。
+ */
+function applyGlbKitMaterials(clone: THREE.Object3D, kit: KitColors, skinHex: string, hairHex: string): void {
+  clone.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!(m as THREE.Mesh).isMesh) return;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    m.frustumCulled = false; // スキンメッシュはバウンディングが骨姿勢とズレて誤カリングされやすい
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    const replaced = mats.map((mat) => {
+      const name = (mat as THREE.Material).name;
+      if (name === "Shirt") {
+        return getCachedMaterial(kit.jersey, PART_MATERIAL.jersey.roughness, PART_MATERIAL.jersey.metalness, true);
+      }
+      if (name === "Pants") return getPantsMaterial(kit.shorts, kit.socks, skinHex);
+      // Details/Tie は私服の装飾（ベルト・ネクタイ等）のためジャージ色へ塗って消す
+      if (name === "Details" || name === "TieTexture") {
+        return getCachedMaterial(kit.jersey, PART_MATERIAL.jersey.roughness, PART_MATERIAL.jersey.metalness, true);
+      }
+      if (name === "Skin") return getCachedMaterial(skinHex, PART_MATERIAL.skin.roughness, PART_MATERIAL.skin.metalness, true);
+      if (name === "Hair") return getCachedMaterial(hairHex);
+      return mat;
+    });
+    m.material = Array.isArray(m.material) ? replaced : replaced[0];
+  });
+}
+
 const NUMBER_PLATE_GEOM = new THREE.PlaneGeometry(0.26, 0.34);
+/** 番号プレートのわずかな傾き（胴に沿わせて「貼り紙」の平坦さを軽減する。ラジアン） */
+const NUMBER_PLATE_TILT_RAD = 0.06;
 
 function GLBPlayer({
   gltf,
@@ -1501,51 +1664,43 @@ function GLBPlayer({
 }) {
   const board = useBoard();
   const kit = useMemo(() => getKitColors(jersey, variant), [jersey, variant]);
-  const { clone, mixer, actions, bones, scale, footOffset } = useMemo(() => {
+  const { clone, mixer, actions, bones, boneBase, scale, footOffset } = useMemo(() => {
     const clone = SkeletonUtils.clone(gltf.scene);
     // 身長測定: SkinnedMesh.computeBoundingBox()（three r151+はボーン変形込みで計算）の
     // ローカルboxをmatrixWorldでワールドへ写し、その高さから目標身長へのスケールを決める。
     // （骨2点方式・Box3.setFromObject方式はリグの軸/スケール構成次第で誤測するため廃止）
+    // GLBモデルは複数のSkinnedMesh（Shirt/Pants/Skin/Hair等、部位ごとに分かれたメッシュ）で
+    // 構成されており、最初に見つかった1つ（多くの場合Shirt=上半身のみ）のboxだけを使うと
+    // 実際の全身高さより大幅に低いboxを身長として誤測し、スケールが過大（巨人化）・
+    // 足裏オフセットが過小（脚が地中に埋まる）になる。全SkinnedMeshのboxをワールドへ
+    // 変換してTHREE.Box3.unionし、必ず全身を覆う合成boxから身長・接地Yを算出する。
     clone.updateMatrixWorld(true);
-    let skinned: THREE.SkinnedMesh | null = null;
+    let unionBox: THREE.Box3 | null = null;
     clone.traverse((o) => {
-      if ((o as THREE.SkinnedMesh).isSkinnedMesh && !skinned) skinned = o as THREE.SkinnedMesh;
+      const sk = o as THREE.SkinnedMesh;
+      if (!sk.isSkinnedMesh) return;
+      sk.computeBoundingBox();
+      if (!sk.boundingBox) return;
+      const wb = new THREE.Box3().copy(sk.boundingBox).applyMatrix4(sk.matrixWorld);
+      if (unionBox) unionBox.union(wb);
+      else unionBox = wb.clone();
     });
     let h = 1.87; // フォールバック
     let footY = 0;
-    if (skinned) {
-      const sk = skinned as THREE.SkinnedMesh;
-      sk.computeBoundingBox();
-      if (sk.boundingBox) {
-        const wb = new THREE.Box3().copy(sk.boundingBox).applyMatrix4(sk.matrixWorld);
-        const mh = wb.max.y - wb.min.y;
-        if (Number.isFinite(mh) && mh > 0.8 && mh < 500) {
-          h = mh;
-          footY = wb.min.y;
-        }
+    if (unionBox) {
+      const ub = unionBox as THREE.Box3;
+      const mh = ub.max.y - ub.min.y;
+      if (Number.isFinite(mh) && mh > 0.8 && mh < 5) {
+        h = mh;
+        footY = ub.min.y;
       }
     }
     const scale = MODEL_TARGET_HEIGHT_M / h;
     const footOffset = -footY * scale; // 足裏を地面(y=0)へ
     const skinHex = SKIN_TONES[Math.abs(Math.round(seed)) % 2];
-    clone.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!(m as THREE.Mesh).isMesh) return;
-      m.castShadow = true;
-      m.receiveShadow = true;
-      m.frustumCulled = false; // スキンメッシュはバウンディングが骨姿勢とズレて誤カリングされやすい
-      const mats = Array.isArray(m.material) ? m.material : [m.material];
-      const replaced = mats.map((mat) => {
-        const name = (mat as THREE.Material).name;
-        if (name === "Shirt") return getCachedMaterial(kit.jersey);
-        if (name === "Pants") return getPantsMaterial(kit.shorts, kit.socks, skinHex);
-        // Details/Tie は私服の装飾（ベルト・ネクタイ等）のためジャージ色へ塗って消す
-        if (name === "Details" || name === "TieTexture") return getCachedMaterial(kit.jersey);
-        if (name === "Skin") return getCachedMaterial(skinHex);
-        return mat;
-      });
-      m.material = Array.isArray(m.material) ? replaced : replaced[0];
-    });
+    // 髪色は肌トーンと違うseed変換で選び、機械的に相関しないようにする（仕様「seed分散」）
+    const hairHex = HAIR_TONES[Math.abs(Math.round(seed * 2.7 + 5)) % 2];
+    applyGlbKitMaterials(clone, kit, skinHex, hairHex);
     const mixer = new THREE.AnimationMixer(clone);
     const idleClip = findClip(gltf.animations, "Man_Idle");
     const runClip = findClip(gltf.animations, "Man_Run");
@@ -1555,40 +1710,85 @@ function GLBPlayer({
       run: runClip ? mixer.clipAction(runClip) : null,
       jump: jumpClip ? mixer.clipAction(jumpClip) : null,
     };
+    // play()呼び出し・Idleの位相ずらしはここでは行わない（下のuseEffectのセットアップ側で
+    // cleanup(mixer.stopAllAction())と対称に行う。useMemoはクローン/actions生成のみ）。
+    if (actions.jump) {
+      actions.jump.setLoop(THREE.LoopOnce, 1);
+      actions.jump.clampWhenFinished = false;
+    }
+    // GLTFLoaderはノード名の"."をサニフィックス除去でサニタイズするため、実名は
+    // ドット無し("UpperLegR"等、実測確認済み)。"UpperLeg.R"のようなドット付きでは常にnullになる。
+    const bones = {
+      thighR: clone.getObjectByName("UpperLegR") ?? null,
+      shinR: clone.getObjectByName("LowerLegR") ?? null,
+      armL: clone.getObjectByName("UpperArmL") ?? null,
+      armR: clone.getObjectByName("UpperArmR") ?? null,
+      abdomen: clone.getObjectByName("Abdomen") ?? null,
+    };
+    if (process.env.NODE_ENV !== "production") {
+      for (const [name, b] of Object.entries(bones)) {
+        if (!b && !warnedMissingBones.has(name)) {
+          warnedMissingBones.add(name);
+          // eslint-disable-next-line no-console
+          console.warn(`[SetPiece3D] GLBPlayer: ボーン "${name}" がモデル内に見つかりません`);
+        }
+      }
+    }
+    // キック/ヘディングで手続き的に触る全ボーンのバインド時rotation.xを保存する。
+    // Idle/Runクリップがキーしないボーン（Abdomen等）はmixer.update()で書き戻されないため、
+    // ここを基準に「絶対代入」する（積算(+=)だと窓をまたぐたびに角度が蓄積し続けてしまう）。
+    const boneBase = {
+      thighR: bones.thighR?.rotation.x ?? 0,
+      shinR: bones.shinR?.rotation.x ?? 0,
+      armL: bones.armL?.rotation.x ?? 0,
+      armR: bones.armR?.rotation.x ?? 0,
+      abdomen: bones.abdomen?.rotation.x ?? 0,
+    };
+    return { clone, mixer, actions, bones, boneBase, scale, footOffset };
+  }, [gltf, kit, seed]);
+  useEffect(() => {
+    // 再生開始(play()・Idleの位相ずらし)をセットアップ側で行い、下のcleanup
+    // (mixer.stopAllAction())と対称にする。Fast Refresh(dev)で「cleanup→setup」だけが
+    // 再実行される場合でも、setup側で必ずplay()し直すため全クリップ(Idle/Run/Jump)が
+    // 恒久停止することはない（旧実装はplay()がuseMemo内のみにあり、useMemoが再実行されない
+    // 再セットアップだと再生されないままだった＝実測で発生済み）。
+    // ※R3Fは内部レコンサイラルートをStrictMode非適用で生成するため、next.configの
+    // reactStrictMode:trueはCanvas配下のeffectを二重実行しない（実測: マウント時uncache 0回・
+    // play 44回=22体×2クリップ）。この対称化は実質Fast Refresh対策である。
     if (actions.idle) {
       actions.idle.play();
       // 個体ごとに位相をずらし、全員が同じ呼吸で揺れる不自然さを避ける
-      actions.idle.time = seededOffset(seed) * (idleClip?.duration ?? 1);
+      actions.idle.time = seededOffset(seed) * (actions.idle.getClip()?.duration ?? 1);
     }
     if (actions.run) {
       actions.run.play();
       actions.run.setEffectiveWeight(0);
     }
-    if (actions.jump) {
-      actions.jump.setLoop(THREE.LoopOnce, 1);
-      actions.jump.clampWhenFinished = false;
-    }
-    const bones = {
-      thighR: clone.getObjectByName("UpperLeg.R") ?? null,
-      shinR: clone.getObjectByName("LowerLeg.R") ?? null,
-      armL: clone.getObjectByName("UpperArm.L") ?? null,
-      armR: clone.getObjectByName("UpperArm.R") ?? null,
-      abdomen: clone.getObjectByName("Abdomen") ?? null,
-    };
-    return { clone, mixer, actions, bones, scale, footOffset };
-  }, [gltf, kit, seed]);
-  useEffect(() => {
     return () => {
+      // uncacheRoot(clone)は呼ばない: mixerとcloneは同じuseMemoで一緒に破棄されるため
+      // バインディング解放は不要で、Fast Refreshを跨いだページでは_removeInactiveActionの
+      // 「_cacheIndex of undefined」例外（→ModelBoundary捕捉でGLB選手が黙って
+      // プロシージャルへ降格）の原因になっていた（実測22件）。
       mixer.stopAllAction();
-      mixer.uncacheRoot(clone);
     };
-  }, [mixer, clone]);
+    // clone・seedはmixer/actions(同一useMemo呼び出しで一緒に再生成される)経由の依存で
+    // 十分カバーされる（seedが変わればuseMemoが再実行されmixer/actionsの参照も変わるため、
+    // このeffectは常に最新のseed/cloneを閉じ込めた状態で再実行される）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mixer, actions]);
 
   const rootRef = useRef<THREE.Group | null>(null);
   const prevWorld = useRef<{ x: number; z: number } | null>(null);
   const yawRef = useRef(facing === -1 ? Math.PI : 0);
   const speedRef = useRef(0);
   const lastJumpEv = useRef<number | null>(null);
+  // ブロブ影：GLBPlayerはquality!=="mobile"(high/medium)のときにしか描画されない
+  // （TokensLayer参照）ため実シャドウは常に有効＝基準不透明度は薄め固定でよい。
+  // GLBはルート自体を浮かせず(常にy=0)
+  // Jumpクリップ内部でモデルだけを持ち上げる作りのため、ブロブの半径・不透明度は
+  // computeHeaderPoseの同じlift値をヘディング窓の間だけ手続き的に再計算して使う。
+  const blobMeshRef = useRef<THREE.Mesh | null>(null);
+  const blobMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
 
   useFrame((_, delta) => {
     const st = board.stateRef.current;
@@ -1616,6 +1816,13 @@ function GLBPlayer({
     // アクション（キック/ヘディング）
     let kicking = false;
     let kickP = 0;
+    // ヘディングの浮き上がり高さ（ブロブ影の半径・不透明度の算出用。ジャンプクリップがモデルを
+    // 実際に持ち上げる量とは別に、プロシージャル側と同じcomputeHeaderPoseの式で近似する）
+    let lift = 0;
+    // 現在時刻がいずれかのheader窓の内側にあるか。窓の外に出た（順再生で通過／巻き戻しシークで
+    // 手前へ戻った、どちらも該当）ら lastJumpEv をリセットし、次にこの窓へ入り直したときも
+    // ジャンプクリップを再生できるようにする（リセットしないと2回目以降ジャンプしなくなるバグ）
+    let headerActive = false;
     for (const ev of events) {
       if (ev.kind === "kick") {
         const kp = (t - (ev.t - KICK_PRE_S)) / KICK_DUR_S;
@@ -1628,19 +1835,28 @@ function GLBPlayer({
       } else {
         const hp = (t - (ev.t - HEADER_PRE_S)) / HEADER_DUR_S;
         if (hp > 0 && hp < 1) {
+          headerActive = true;
           if (actions.jump && lastJumpEv.current !== ev.t) {
             lastJumpEv.current = ev.t;
             actions.jump.reset().play();
           }
+          lift = computeHeaderPose(hp).lift;
           yawRef.current = dampAngle(yawRef.current, ev.faceYaw, YAW_TURN_RATE_RAD_S * 2.5, delta);
           break;
         }
       }
     }
+    if (!headerActive) lastJumpEv.current = null;
 
     if (rootRef.current) {
       rootRef.current.position.set(wx, 0, wz);
       rootRef.current.rotation.y = yawRef.current;
+    }
+    if (blobMeshRef.current) {
+      const bs = computeBlobShadow(lift, BLOB_SHADOW_OPACITY_WITH_REAL_SHADOW);
+      blobMeshRef.current.position.set(wx, 0.015, wz);
+      blobMeshRef.current.scale.set(bs.radiusM, bs.radiusM, 1);
+      if (blobMatRef.current) blobMatRef.current.opacity = bs.opacity;
     }
 
     // ロコモーション: Idle⇔Run を速度でクロスフェードし、Runの再生速度も実速度へ追従
@@ -1650,44 +1866,69 @@ function GLBPlayer({
     if (actions.run) actions.run.timeScale = 0.7 + Math.min(2.2, speedRef.current * 0.28);
     mixer.update(delta);
 
-    // キック: ミキサー適用後にボーンを上書き（クリップが無いため手続き駆動）
+    // キック: ミキサー適用後にボーンを上書き（クリップが無いため手続き駆動）。
+    // Idle/RunクリップはAbdomen等をキーしないためmixer.update()では書き戻されず、
+    // 旧実装の「+=」だと毎フレーム加算され続けて蹴った選手が恒久的に折れ曲がったまま
+    // 固まるバグがあった。バインド時rotation.x(boneBase)を基準にした絶対代入へ変更し、
+    // 窓の外では明示的にboneBaseへ復元する（脚・腕はIdle/Runがキーするため復元は無害、
+    // Abdomenはどのクリップもキーしないためこの復元が無いと直前のキック角のまま残り続ける）。
     if (kicking) {
       const swing =
         kickP < 0.4 ? -Math.sin((kickP / 0.4) * Math.PI * 0.5) : Math.sin(((kickP - 0.4) / 0.6) * Math.PI);
       const w = Math.sin(Math.PI * kickP);
-      if (bones.thighR) bones.thighR.rotation.x += -swing * 1.1 * w;
-      if (bones.shinR) bones.shinR.rotation.x += Math.max(0, -swing) * 0.9 * w;
-      if (bones.armL) bones.armL.rotation.x += swing * 0.5 * w;
-      if (bones.armR) bones.armR.rotation.x += -swing * 0.35 * w;
-      if (bones.abdomen) bones.abdomen.rotation.x += 0.14 * w;
+      if (bones.thighR) bones.thighR.rotation.x = boneBase.thighR + -swing * 1.1 * w;
+      if (bones.shinR) bones.shinR.rotation.x = boneBase.shinR + Math.max(0, -swing) * 0.9 * w;
+      if (bones.armL) bones.armL.rotation.x = boneBase.armL + swing * 0.5 * w;
+      if (bones.armR) bones.armR.rotation.x = boneBase.armR + -swing * 0.35 * w;
+      if (bones.abdomen) bones.abdomen.rotation.x = boneBase.abdomen + 0.14 * w;
+    } else {
+      if (bones.thighR) bones.thighR.rotation.x = boneBase.thighR;
+      if (bones.shinR) bones.shinR.rotation.x = boneBase.shinR;
+      if (bones.armL) bones.armL.rotation.x = boneBase.armL;
+      if (bones.armR) bones.armR.rotation.x = boneBase.armR;
+      if (bones.abdomen) bones.abdomen.rotation.x = boneBase.abdomen;
     }
   });
 
-  const numberMat = getNumberMaterial(kit.jersey, label);
+  // 番号プレートは布目ノイズ+縁の透明フェードを持つGLB専用テクスチャ（getNumberPlateMaterial）を
+  // 使う（プロシージャル選手の胴体実面はgetNumberMaterialのまま＝別関数、詳細は定義側コメント）
+  const numberMat = getNumberPlateMaterial(kit.jersey, label);
   return (
-    <group
-      ref={rootRef}
-      position={[x, 0, z]}
-      rotation-y={facing === -1 ? Math.PI : 0}
-      onPointerDown={onDown ? (e) => onDown(actor, e) : undefined}
-    >
-      <group rotation-y={MODEL_YAW_OFFSET} position={[0, footOffset, 0]} scale={[scale, scale, scale]}>
-        <primitive object={clone} />
+    <>
+      <group
+        ref={rootRef}
+        position={[x, 0, z]}
+        rotation-y={facing === -1 ? Math.PI : 0}
+        onPointerDown={onDown ? (e) => onDown(actor, e) : undefined}
+      >
+        <group rotation-y={MODEL_YAW_OFFSET} position={[0, footOffset, 0]} scale={[scale, scale, scale]}>
+          <primitive object={clone} />
+        </group>
+        {/* 背中とやや小さめの胸の番号プレート（シャツのUVを持たないため薄板で表現。胴の丸みに
+            沿うようわずかに傾け、縁の透明フェードとあわせて「貼り紙」感を軽減する）。
+            この2枚は内側の[scale,scale,scale]グループの外（=footOffset/scaleの影響を受けない
+            ルートgroup直下）に置かれており、position.yはMODEL_TARGET_HEIGHT_M(=1.78m、
+            全GLBの統一目標身長)に対する比率で直接ワールドメートル指定している。全身バウンディング
+            box(前述のunion修正後)を使う限りGLBは常にちょうど1.78m(足y=0〜頭y=1.78)に正規化される
+            ため、この比率(背0.62・胸0.6)とz奥行き(±0.16m、成人の胴半厚みの目安)は身長測定バグの
+            有無に関わらず変わらず正しい値＝バグ修正後の座標再調整は不要（体表に正しく乗ることを
+            確認済み）。 */}
+        <mesh
+          geometry={NUMBER_PLATE_GEOM}
+          material={numberMat}
+          position={[0, MODEL_TARGET_HEIGHT_M * 0.62, -0.16]}
+          rotation={[NUMBER_PLATE_TILT_RAD, Math.PI, 0]}
+        />
+        <mesh
+          geometry={NUMBER_PLATE_GEOM}
+          material={numberMat}
+          position={[0, MODEL_TARGET_HEIGHT_M * 0.6, 0.16]}
+          scale={[0.62, 0.62, 1]}
+          rotation-x={-NUMBER_PLATE_TILT_RAD}
+        />
       </group>
-      {/* 背中とやや小さめの胸の番号プレート（シャツのUVを持たないため薄板で表現） */}
-      <mesh
-        geometry={NUMBER_PLATE_GEOM}
-        material={numberMat}
-        position={[0, MODEL_TARGET_HEIGHT_M * 0.62, -0.16]}
-        rotation-y={Math.PI}
-      />
-      <mesh
-        geometry={NUMBER_PLATE_GEOM}
-        material={numberMat}
-        position={[0, MODEL_TARGET_HEIGHT_M * 0.6, 0.16]}
-        scale={[0.62, 0.62, 1]}
-      />
-    </group>
+      <BlobShadow baseOpacity={BLOB_SHADOW_OPACITY_WITH_REAL_SHADOW} meshRef={blobMeshRef} matRef={blobMatRef} />
+    </>
   );
 }
 
@@ -1853,8 +2094,8 @@ function TokensLayer({
   );
   return (
     <group>
-      {quality === "standard" ? (
-        // 標準=GLBモデル（読み込み中・失敗時はプロシージャル人型で表示を継続）
+      {quality !== "mobile" ? (
+        // high/medium=GLBモデル（読み込み中・失敗時はプロシージャル人型で表示を継続）
         <ModelBoundary fallback={proc}>
           <Suspense fallback={proc}>
             <ModelPlayers quality={quality} dims={dims} actionMap={actionMap} onActorDown={onActorDown} />
@@ -1863,7 +2104,7 @@ function TokensLayer({
       ) : (
         proc
       )}
-      <Ball3D dims={dims} onActorDown={onActorDown} />
+      <Ball3D dims={dims} quality={quality} onActorDown={onActorDown} />
     </group>
   );
 }
@@ -2022,15 +2263,24 @@ function CameraController({
   dims: PitchDims;
 }) {
   const board = useBoard();
-  const { camera, invalidate } = useThree();
+  const { camera, invalidate, size } = useThree();
   // 遷移開始時点の最新state("s"を読むためだけ。依存配列には入れず、preset変更時にのみ読む)
   const stateRef = useRef(board.state);
   stateRef.current = board.state;
+  // 実際のCanvas実寸（px）。broadcastのfovフィットに使う実アスペクト比の元。sizeは
+  // useThree()のstore経由でリサイズのたびに新しい値になるが、下の遷移用useEffectの
+  // 依存配列には入れない（プリセット切替時にのみ再計算したいため）のでrefで最新値を保持する。
+  const sizeRef = useRef(size);
+  sizeRef.current = size;
 
   const fromPos = useRef(new THREE.Vector3());
   const fromTarget = useRef(new THREE.Vector3());
   const toPos = useRef(new THREE.Vector3());
   const toTarget = useRef(new THREE.Vector3());
+  // プリセットごとのFOV遷移（three.jsのCamera型はPerspective/Orthographicの合併型のため、
+  // このCanvasは常にPerspectiveCameraで構成している前提でキャストする）
+  const fromFov = useRef(50);
+  const toFov = useRef(50);
   const t = useRef(1);
   const mounted = useRef(false);
 
@@ -2041,19 +2291,26 @@ function CameraController({
   const replayAngle = useRef(0);
 
   useEffect(() => {
-    const pose = computeCameraPreset(preset, stateRef.current, dims);
+    // 実アスペクト比（Canvas実寸から）。broadcast以外は無視されるため、他プリセットの
+    // 遷移には影響しない。高さ0（マウント直後でResizeObserverが未発火等）はundefined扱いにし
+    // computeCameraPreset側のデフォルト(BROADCAST_ASSUMED_ASPECT)へフォールバックさせる。
+    const aspect = sizeRef.current.height > 0 ? sizeRef.current.width / sizeRef.current.height : undefined;
+    const pose = computeCameraPreset(preset, stateRef.current, dims, aspect);
     const controls = controlsRef.current;
     const dx = pose.position[0] - pose.target[0];
     const dz = pose.position[2] - pose.target[2];
     replayRadius.current = Math.hypot(dx, dz);
     replayHeight.current = pose.position[1] - pose.target[1];
     replayAngle.current = Math.atan2(dz, dx);
+    const pcam = camera as THREE.PerspectiveCamera;
     if (!mounted.current) {
-      // 初回マウント：Canvasの初期カメラ位置と揃えるだけなので遷移させない
+      // 初回マウント：Canvasの初期カメラ位置・画角と揃えるだけなので遷移させない
       mounted.current = true;
       camera.position.set(...pose.position);
       controls?.target.set(...pose.target);
       controls?.update();
+      pcam.fov = pose.fov;
+      pcam.updateProjectionMatrix();
       t.current = 1;
       invalidate();
       return;
@@ -2062,6 +2319,8 @@ function CameraController({
       camera.position.set(...pose.position);
       controls?.target.set(...pose.target);
       controls?.update();
+      pcam.fov = pose.fov;
+      pcam.updateProjectionMatrix();
       t.current = 1;
       invalidate();
       return;
@@ -2070,6 +2329,8 @@ function CameraController({
     fromTarget.current.copy(controls?.target ?? fromPos.current);
     toPos.current.set(...pose.position);
     toTarget.current.set(...pose.target);
+    fromFov.current = pcam.fov;
+    toFov.current = pose.fov;
     t.current = 0;
     invalidate();
     // preset切替の瞬間・dims(format)切替の瞬間のみ再計算する（board.state の他の変化には
@@ -2077,6 +2338,32 @@ function CameraController({
     // getPitchDimsが固定テーブルを返すため、通常のboard.state更新では再発火しない）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preset, reducedMotion, camera, controlsRef, invalidate, dims]);
+
+  // Canvas実寸が変化した時（スマホ回転・ウィンドウリサイズ等）、broadcastプリセット中なら
+  // 実アスペクト比でfov/位置を再フィットする（他プリセットはaspectを使わないため対象外）。
+  // 初回マウント時はこの直前の遷移用useEffectが同じ内容を既に反映済みのため、初回の
+  // 発火はスキップして二重適用を避ける。遷移(t)は使わず即時スナップ（リサイズは連続動作の
+  // 途中ではないため、イージングさせる必要が無い）。
+  const sizeInitialized = useRef(false);
+  useEffect(() => {
+    if (!sizeInitialized.current) {
+      sizeInitialized.current = true;
+      return;
+    }
+    if (preset !== "broadcast") return;
+    const aspect = size.height > 0 ? size.width / size.height : undefined;
+    const pose = computeCameraPreset("broadcast", stateRef.current, dims, aspect);
+    const controls = controlsRef.current;
+    const pcam = camera as THREE.PerspectiveCamera;
+    camera.position.set(...pose.position);
+    controls?.target.set(...pose.target);
+    controls?.update();
+    pcam.fov = pose.fov;
+    pcam.updateProjectionMatrix();
+    t.current = 1;
+    invalidate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [size.width, size.height, preset, dims, camera, controlsRef, invalidate]);
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
@@ -2088,6 +2375,9 @@ function CameraController({
         controls.target.lerpVectors(fromTarget.current, toTarget.current, e);
         controls.update();
       }
+      const pcam = camera as THREE.PerspectiveCamera;
+      pcam.fov = fromFov.current + (toFov.current - fromFov.current) * e;
+      pcam.updateProjectionMatrix();
       invalidate();
       return;
     }
@@ -2168,6 +2458,23 @@ function KickTargetMarker({ path, dims }: { path: Point[]; dims: PitchDims }) {
    BoardProvider.onTickは2DのAnimationStudioが専有する単一スロットのため
    （本タスクでBoardProvider.tsxは編集不可）使わず、getTime()の値そのものをポーリングする。
    ============================================================ */
+/* ============================================================
+   初回フレームゲート（F項）: Canvas自体はマウント直後から.sp3dpitchの背景(CSSグラデ)の上に
+   乗るが、シーングラフの構築・テクスチャ生成が終わり実際に最初の1フレームがGPUへ描画される
+   までは（frameloop="demand"下でも通常マウント直後に1回invalidateされ描画される）
+   数秒〜十数秒その背景だけが見え続け「壊れている」ように見える。useFrameは実際に描画される
+   フレームでのみ呼ばれるため、その最初の1回をここで検知して親へ伝え、オーバーレイ（下の
+   SetPiece3D本体、.sp3dboot）を消させる。 */
+function FirstFrameGate({ onFirstFrame }: { onFirstFrame: () => void }) {
+  const firedRef = useRef(false);
+  useFrame(() => {
+    if (firedRef.current) return;
+    firedRef.current = true;
+    onFirstFrame();
+  });
+  return null;
+}
+
 function ThreeBridge({ invalidateRef }: { invalidateRef: React.RefObject<(() => void) | null> }) {
   const { invalidate } = useThree();
   useEffect(() => {
@@ -2257,8 +2564,12 @@ function PlaybackBar({
     }
   };
   const onScrub = (v: number) => {
-    board.seek(v);
+    // setActiveStepは内部で「その場面の先頭時刻」へseekし直すため、先にseek(v)してしまうと
+    // 直後のsetActiveStepがそのseekを上書きし、シークバーをどこへドラッグしても常に場面の
+    // 先頭へ戻ってしまう（＝スクラブが実質動かない）不具合があった。setActiveStepを先に
+    // 呼んでその場面内へ切り替えたうえで、board.seek(v)を最後に呼んで実際の位置を確定させる。
     board.setActiveStep(stepAtTime(moves, v, steps));
+    board.seek(v);
   };
 
   const SPEEDS: [number, string][] = [
@@ -2390,6 +2701,9 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
   // キック調整(TPS)モード
   const [kickEdit, setKickEdit] = useState(false);
   const [kickBend, setKickBend] = useState(0);
+  // 初回フレーム描画までの「準備中」オーバーレイ（F項）。FirstFrameGateがCanvas内の
+  // 最初のuseFrameでtrueにする＝以後は再レンダーされない（不要な再計算を避ける）
+  const [booted, setBooted] = useState(false);
   const isCoach = board.auth.role === "coach";
 
   // 現在の場面のボールmove(パス/シュート)のindex。キック調整の編集対象
@@ -2448,7 +2762,9 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
   // （format 8|11の2値しか無い）、format不変の間はレンダーをまたいで同一オブジェクト参照になる
   // ＝下流のuseMemo([dims])はformat切替時だけ再計算される。
   const dims = getPitchDims(board.state.setPiece?.format ?? 8);
-  // 初回マウント時のカメラ位置のみに使う（以後はCameraControllerが管理）
+  // 環境（空・光・霧）プリセット。現時点は切替UIが無くduskのみを使う（構造だけ用意）
+  const sky = SKY_PRESETS[ACTIVE_SKY_PRESET];
+  // 初回マウント時のカメラ位置・画角のみに使う（以後はCameraControllerが管理）
   const [initialPose] = useState(() => computeCameraPreset(preset, board.state, dims));
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
@@ -2480,9 +2796,10 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
         <Canvas
           // three r185で shadows="soft" 文字列指定が非推奨のため、同じ挙動(PCFSoftShadowMap)の
           // 真偽値指定へ変更（@react-three/fiberは shadows={true} も文字列"soft"と同じ
-          // gl.shadowMap.type=PCFSoftShadowMapになる。挙動は変わらない）。軽量品質は影自体を切る。
-          shadows={quality === "standard"}
-          dpr={quality === "light" ? 1 : [1, 1.5]}
+          // gl.shadowMap.type=PCFSoftShadowMapになる。挙動は変わらない）。mobile品質は影自体を切る。
+          shadows={quality !== "mobile"}
+          // dpr上限: high=1.5 / medium=1.25 / mobile=1固定（性能予算どおり上限1.5を超えない）
+          dpr={quality === "high" ? [1, 1.5] : quality === "medium" ? [1, 1.25] : 1}
           // 静止時は再描画しない（性能予算）。カメラ操作(OrbitControls)は変更イベントのたびに
           // 自前でinvalidate()するため引き続き滑らかに動く。プリセット遷移・ダブルクリック注視点
           // 移動・replayオービットはCameraController/GazeClickPlaneが動いている間だけ
@@ -2496,16 +2813,19 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.08,
           }}
-          camera={{ fov: 50, near: 0.1, far: 300, position: initialPose.position }}
+          camera={{ fov: initialPose.fov, near: 0.1, far: 300, position: initialPose.position }}
         >
-          {/* デイゲーム風: 空(淡青)/地面(芝の照り返し)の半球ライト＋暖色寄りの平行光（太陽光） */}
-          <hemisphereLight args={["#cfe3ff", "#3f7d4e", 0.75]} />
-          <ambientLight intensity={0.18} color="#ffffff" />
+          {/* 夕暮れ+照明点灯(DUSK)。色/強度はlib/setPiece3d.tsのSKY_PRESETS[ACTIVE_SKY_PRESET]に
+              集約し、ここでは参照するだけ（day/nightへの切替は将来、この参照先を変えるだけで済む）。
+              ambientは0.05以下・hemisphere/directionalの太陽・反対側からの影なしフィルの4灯構成。
+              影を落とすのは太陽(directional)1灯のみ（フィルはcastShadow無し＝性能予算どおり）。 */}
+          <hemisphereLight args={[sky.hemiSky, sky.hemiGround, sky.hemiIntensity]} />
+          <ambientLight intensity={sky.ambientIntensity} color="#ffffff" />
           <directionalLight
-            position={[18, 26, 14]}
-            intensity={1.2}
-            color="#fff3df"
-            castShadow={quality === "standard"}
+            position={sky.sunPosition}
+            intensity={sky.sunIntensity}
+            color={sky.sunColor}
+            castShadow={quality !== "mobile"}
             shadow-mapSize={[1024, 1024]}
             shadow-radius={5}
             shadow-camera-left={-40}
@@ -2515,14 +2835,18 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             shadow-camera-near={1}
             shadow-camera-far={80}
           />
+          <directionalLight position={sky.fillPosition} intensity={sky.fillIntensity} color={sky.fillColor} />
+          {/* 地平線色のFog(near90/far300)。スカイドーム自体はmaterial.fog=falseで対象外にする
+              （SkyDome側で設定済み）。低空の雲は霧の影響を受けたままにし、地平線付近で自然に溶け込ませる */}
+          <fog attach="fog" args={[sky.fogColor, 90, 300]} />
+          <SkyFollow preset={sky} cloudTint={sky.cloud} />
           <ApronGround />
           <PitchGround quality={quality} dims={dims} />
           <PitchLines dims={dims} />
           <Goal end={1} dims={dims} />
           <Goal end={-1} dims={dims} />
           <CornerFlags dims={dims} />
-          <AdBoardRing dims={dims} />
-          {quality === "standard" && <StadiumStands dims={dims} />}
+          <StadiumBowl dims={dims} quality={quality} />
           <ShapesFloor dims={dims} />
           <MovesFloor dims={dims} />
           <TokensLayer quality={quality} dims={dims} onActorDown={beginActorDrag} />
@@ -2552,7 +2876,13 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             maxPolarAngle={Math.PI / 2 - 0.02}
           />
           <CameraController preset={preset} reducedMotion={reducedMotion} controlsRef={controlsRef} dims={dims} />
+          {!booted && <FirstFrameGate onFirstFrame={() => setBooted(true)} />}
         </Canvas>
+        {!booted && (
+          <div className="sp3dboot" aria-hidden="true">
+            3Dを準備中…
+          </div>
+        )}
         <QualityToggle quality={quality} onChange={setQuality} />
         {isCoach && (
           <div className="sp3dkick" role="group" aria-label="キック調整">
@@ -2594,11 +2924,22 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
 }
 
 /* ============================================================
-   draw call・三角形数（11人制フルピッチ・自チーム11+相手11想定。ブラウザのWebGL統計での実測値）
-   - 標準品質: draw call 836 / tri 14,630
-   - 軽量品質: draw call 429 / tri 7,766（影OFF・観客席帯OFF・dpr1固定に加え、選手のcastShadow
-     を胴・大腿・下腿のみに絞ったことでshadow pass側のdraw callも軽量側にとどまらず標準側でも
-     削減されている）
-   dpr上限1.5（軽量は1固定）・平行光1枚（shadowMapSize 1024）・frameloop="demand"
-   （静止時は再描画自体しない）と合わせ、PC60fps/中位スマホ30fps以上の性能予算に収まる設計とした。
+   draw call・三角形数（11人制フルピッチ・自チーム11+相手11想定。ブラウザのWebGL統計での実測値。
+   下記は品質2段階(標準/軽量)時点・環境(空/芝PBR/ゴール改修)を追加する前の参考値で、
+   3段階化(Phase5)後は再計測していない）
+   - 旧「標準」相当（≒現high品質からNear観客LOD・外壁シェルを除いた素の値）: draw call 836 / tri 14,630
+   - 旧「軽量」相当（≒現mobile品質）: draw call 429 / tri 7,766（影OFF・観客席帯OFF・dpr1固定に加え、
+     選手のcastShadowを胴・大腿・下腿のみに絞ったことでshadow pass側のdraw callも軽量側にとどまらず
+     標準側でも削減されている）
+   Phase5で追加したmedium品質はhigh相当からNear観客InstancedMesh(1 draw call、ただし~1200体ぶんの
+   頂点・fragment処理を丸ごと省く)だけを除いた構成のため、draw call数はhighとほぼ同数のまま
+   GPU負荷（fill rate・頂点処理）だけを下げる設計。外壁シェル(フィン+ガラス帯、high/mediumのみ)は
+   固定+2 draw call。空ドーム・雲・ネットのたるみ・ポスト上端キャップは、品質に関わらず常時
+   +10 draw call程度（sky dome 1・cloud 3・net sag 2・post cap 4）の固定増分に収まる設計
+   （選手22体分のような人数依存の増加はしない）。芝PBR(high/medium品質のみ、high=1024²/
+   medium=512²のcanvasテクスチャ。normalMap/roughnessMapはその半分)はジオメトリ・draw call自体は
+   従来の芝プレーン1枚のまま増えない。
+   dpr上限 high=1.5/medium=1.25/mobile=1固定・実シャドウ(平行光1枚・shadowMapSize 1024以下)は
+   high/mediumのみ・frameloop="demand"（静止時は再描画自体しない）と合わせ、PC60fps/中位スマホ
+   30fps以上の性能予算に収まる設計とした。
    ============================================================ */

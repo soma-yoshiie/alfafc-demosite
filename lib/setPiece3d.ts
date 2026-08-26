@@ -22,6 +22,26 @@ import { absStart, actorPos, easeBy } from "./animation";
 /** 何人制のピッチか */
 export type PitchFormat = 8 | 11;
 
+/* ============================================================
+   3D表示品質（3段階）。components/SetPiece3D.tsx（UIトグル・localStorage永続化）・
+   components/SetPiece3DStadium.tsx（StadiumBowl・芝PBR）・components/SetPiece3DEnv.tsx
+   の3ファイルすべてがこの型を参照するため、循環importを避けられるthree.js非依存の
+   このファイルに置く（SetPiece3DStadium.tsxがSetPiece3D.tsxをimportすることはできない）。
+   high=フル(観客Nearインスタンス・上層スタンド・芝PBR1024・GLB選手・dpr上限1.5) /
+   medium=Near観客なし(芝PBR512・GLB選手・dpr上限1.25、それ以外はhighと同じ構成) /
+   mobile=上層スタンド・手すり・投光器・vomitoryグロー・Near観客・外壁シェルなし
+   (芝は簡易縞・プロシージャル選手・dpr1固定)。 */
+export type Sp3dQuality = "high" | "medium" | "mobile";
+
+/** テクスチャのanisotropy(異方性フィルタリング)をquality(=dprの段)に連動させる。
+ * dpr上限が高いほど斜め視点でのテクスチャのボケが目立つため段階的に強めるが、上限8で
+ * GPU負荷の増加を抑える（性能予算：dpr上限1.5と対で決めた値）。 */
+export function anisotropyForQuality(quality: Sp3dQuality): number {
+  if (quality === "high") return 8;
+  if (quality === "medium") return 6;
+  return 4;
+}
+
 /** 1フォーマットぶんのピッチ寸法一式（メートル） */
 export interface PitchDims {
   pitchWidthM: number;
@@ -114,6 +134,11 @@ export const CORNER_ARC_R_M = DEFAULT_DIMS.cornerArcRM;
 /** データ座標(0-100)1%あたりのメートル数（8人制基準の後方互換エイリアス） */
 export const M_PER_PCT_X = PITCH_WIDTH_M / 100;
 export const M_PER_PCT_Y = PITCH_LENGTH_M / 100;
+
+/** 芝プレーン・観客席リング等が共有する「ピッチ外周からのマージン」（m）。
+ * components/SetPiece3D.tsx と components/SetPiece3DStadium.tsx の双方が使うため、
+ * どちらか一方の重複定義にしない（数値のズレを防ぐ）目的でここに置く。 */
+export const GRASS_MARGIN_M = 3;
 
 /** ワールドXZ平面上の点（three.js: Y-up。x=幅方向 / z=縦方向） */
 export interface WorldPoint2 {
@@ -310,7 +335,21 @@ export function buildMarkingsGeometryData(dims: PitchDims = DEFAULT_DIMS): Float
 export interface CameraPose {
   position: [number, number, number];
   target: [number, number, number];
+  /** プリセットごとの画角(度)。CameraController(SetPiece3D.tsx)がcamera.fovへ遷移補間する */
+  fov: number;
 }
+
+/** プリセットごとのカメラ画角(度)。overhead/kicker/gk/ground/replayは素直な値、
+ * broadcastだけ「望遠」の狭画角にする（実際のCanvasカメラfovと一致させ、下のbroadcast分岐の
+ * 距離フィット計算もこの値を使う＝見た目と自動フィットがずれない） */
+export const CAMERA_PRESET_FOV: Record<CameraPresetId, number> = {
+  overhead: 46,
+  broadcast: 30,
+  kicker: 38,
+  gk: 42,
+  ground: 44,
+  replay: 40,
+};
 
 const EYE_HEIGHT_M = 1.7;
 /**
@@ -333,15 +372,13 @@ const REPLAY_ORBIT_DIST_M = 15;
 const REPLAY_ORBIT_HEIGHT_M = 12;
 /** replay: 周回半径・注視点高さの下限（m）。ごく小さいピッチや端寄りの中心でも軌道が潰れないようにする */
 const REPLAY_ORBIT_MIN_RADIUS_M = 2;
-/** broadcast: SetPiece3D.tsx の Canvas camera={{fov:50,...}} と同じ値。
- * トークン群のバウンディング円がこの画角に収まる距離を逆算する簡易フィットに使う。 */
-const BROADCAST_FOV_DEG = 50;
-/** broadcast: .sp3dpitch の aspect-ratio(16/10)に合わせた想定横縦比。
- * 実際のcanvas比率はコンテナサイズ依存でこの純粋関数からは分からないため、
- * CSSで規定した基準値を近似として使う。 */
-const BROADCAST_ASPECT = 16 / 10;
-/** broadcast: トークンの半径・番号ラベル分の余白（m） */
-const BROADCAST_MARGIN_M = 3;
+/** broadcast: fovフィット計算(下のbroadcastRequiredHalfAngles)が前提とする画面アスペクト比
+ * （横/縦）。実際のCanvasの実アスペクトとは一致しないことがあるが、水平画角を垂直画角
+ * （three.jsのPerspectiveCamera.fovは垂直画角）へ換算するための固定値として使う。 */
+const BROADCAST_ASSUMED_ASPECT = 1.55;
+/** broadcast: fovフィットへ掛ける余白係数（必要画角ちょうどだと選手・ボールが画面端ぎりぎりに
+ * なるため、一回り広げてから18〜40度にクランプする） */
+const BROADCAST_FOV_MARGIN = 1.12;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));
@@ -381,15 +418,96 @@ function boundingCircle(pts: WorldPoint2[]): { cx: number; cz: number; r: number
 }
 
 /**
+ * broadcastのfovフィット計算（C-2項）。旧実装は「水平バウンディング円半径 ÷ カメラ→中心の
+ * 3D距離」のatanを画面全体の必要半画角として扱っていたが、これは実質「対角方向の半画角」を
+ * 「水平半画角」として過大評価するもので、常に上限40度へクランプされ選手が小さく写りすぎて
+ * いた。正しくは、各トークン位置をカメラのローカル空間（forward=注視点方向、right/upは
+ * world-upから作った正規直交基底）へ個別に投影し、水平方向・垂直方向それぞれで実際に必要な
+ * 半画角の最大値を別々に求める。three.jsのPerspectiveCamera.fovは垂直画角のため、水平側の
+ * 必要半画角はBROADCAST_ASSUMED_ASPECT(想定アスペクト比)で垂直画角相当へ換算してから
+ * 垂直側と比較する。トークンは接地点(y=0)として扱う（選手モデルの身長ぶんの見込み角は
+ * BROADCAST_FOV_MARGINの余白で吸収する）。 */
+function broadcastRequiredHalfAngles(
+  points: WorldPoint2[],
+  cam: { x: number; y: number; z: number },
+  target: { x: number; y: number; z: number }
+): { hHalf: number; vHalf: number } {
+  const fx = target.x - cam.x;
+  const fy = target.y - cam.y;
+  const fz = target.z - cam.z;
+  const flen = Math.hypot(fx, fy, fz) || 1;
+  const fwd = { x: fx / flen, y: fy / flen, z: fz / flen };
+  // world up(0,1,0)からright/upの正規直交基底を作る（broadcastのカメラ位置関係上、forwardが
+  // ほぼ真上/真下を向くことは無く、この外積が退化することは無い）
+  const crossX = fwd.y * 0 - fwd.z * 1;
+  const crossY = fwd.z * 0 - fwd.x * 0;
+  const crossZ = fwd.x * 1 - fwd.y * 0;
+  const rlen = Math.hypot(crossX, crossY, crossZ) || 1;
+  const right = { x: crossX / rlen, y: crossY / rlen, z: crossZ / rlen };
+  const up = {
+    x: right.y * fwd.z - right.z * fwd.y,
+    y: right.z * fwd.x - right.x * fwd.z,
+    z: right.x * fwd.y - right.y * fwd.x,
+  };
+  let hHalf = 0;
+  let vHalf = 0;
+  for (const p of points) {
+    const dx = p.x - cam.x;
+    const dy = 0 - cam.y; // トークンは接地点(y=0)として扱う
+    const dz = p.z - cam.z;
+    const xc = dx * right.x + dy * right.y + dz * right.z;
+    const yc = dx * up.x + dy * up.y + dz * up.z;
+    const depth = Math.max(1e-3, dx * fwd.x + dy * fwd.y + dz * fwd.z); // カメラ前方向の深度
+    hHalf = Math.max(hHalf, Math.abs(Math.atan(xc / depth)));
+    vHalf = Math.max(vHalf, Math.abs(Math.atan(yc / depth)));
+  }
+  return { hHalf, vHalf };
+}
+
+/** broadcastRequiredHalfAnglesの水平/垂直半画角から、垂直fov(度)を求める（余白倍率込み・
+ * 18〜40度クランプ前の「本当に必要なfov」）。aspect省略時はBROADCAST_ASSUMED_ASPECTを使う。 */
+function rawBroadcastFovDeg(
+  points: WorldPoint2[],
+  cam: { x: number; y: number; z: number },
+  target: { x: number; y: number; z: number },
+  aspect: number = BROADCAST_ASSUMED_ASPECT
+): number {
+  const { hHalf, vHalf } = broadcastRequiredHalfAngles(points, cam, target);
+  const vFull = vHalf * 2;
+  const hFullAsVertical = 2 * Math.atan(Math.tan(hHalf) / aspect);
+  const fovRad = Math.max(vFull, hFullAsVertical) * BROADCAST_FOV_MARGIN;
+  return fovRad * (180 / Math.PI);
+}
+
+/** broadcastのカメラ後退フォールバック（C-2-b項）が、後退後のカメラ|x|をクランプする境界。
+ * スタジアムのボウル内周（背面壁の内側面、STADIUM_M各層の水平投影を積み上げて算出）から
+ * さらに2m内側を安全マージンとして取る＝これ以上後退させるとスタンド外へ出てしまう限界。
+ * 8人制(pitchWidthM=50)で≈50.9m、11人制(pitchWidthM=68)で≈59.9m（Node計算で実測確認）。
+ * pitchWidthM以外はフォーマット非依存の定数のみで決まる。 */
+function broadcastBowlInnerBoundaryXM(dims: PitchDims): number {
+  const bowlHalfX =
+    dims.pitchWidthM / 2 + GRASS_MARGIN_M + STADIUM_M.ledMarginM + STADIUM_M.ledThicknessM + STADIUM_M.standMarginM;
+  const backWallR =
+    STADIUM_M.lowerDepthM * Math.cos(STADIUM_M.lowerRakeRad) + STADIUM_M.upperDepthM * Math.cos(STADIUM_M.upperRakeRad);
+  return bowlHalfX + backWallR - 2;
+}
+
+/**
  * カメラプリセットの位置・注視点を算出する（純粋関数。現在の BoardState から一度だけ計算し、
  * 以降のトークン移動などには追従させない＝プリセット選択時にのみ視点を切り替える設計）。
  * dims省略＝8人制（後方互換）。11人制ピッチで計算するときは
  * computeCameraPreset(id, state, getPitchDims(11)) のように渡す（SetPiece3D側が
  * state.setPiece.format から選んで渡すだけにする＝この関数自身はstateのformatを見ない）。
  * - overhead: ピッチ中心の真上・水平距離と高さが等しい45°俯瞰。
- * - broadcast: タッチライン外側の高所からピッチ中央方向を見る固定アングル。距離は
- *   現在配置されている全トークン（選手・相手・ボール）のバウンディング円から逆算し、
- *   誰も画角の外にこぼれないよう簡易フィットする。
+ * - broadcast: 実際のテレビ中継と同じ「メインスタンド中腹に固定設置されたカメラ」。
+ *   X側は被写体フィット中心と逆サイドへ回り込む「逆アングル方式」（C-1項）で選ぶため、
+ *   距離自体は伸縮させないまま常に被写体との間に十分な距離を確保する（片側固定だと
+ *   手前側のCK/FKでカメラのすぐ近くに被写体が来てフレーム外に出ていたバグの対策）。
+ *   画角(fov)は現在配置されている全トークン（選手・相手・ボール）をカメラ空間へ投影した
+ *   実際の必要半画角から求める「ズーム」（C-2項、rawBroadcastFovDeg）。アンカーが常に
+ *   ボウル内側（外壁より内）に収まるため、引きすぎてスタジアム外へ出ることがない。実測では
+ *   フレーム下端は芝の内側に着弾する＝手前スタンド上空・ボウル内側から見下ろす画になり、
+ *   手前スタンド自体が画面に写り込むことはない（カメラがそこに設置されているため）。
  * - kicker: セットプレーの攻撃対象ゴール中心（setPiece.side==="defense"ならy0側ゴール／
  *   それ以外はy100側ゴール。SetPieceBar の boxatk/boxdef 判定と同じ規約）へ向け、
  *   ボールの後方・目線の高さに立って狙う方向を見る。
@@ -398,35 +516,112 @@ function boundingCircle(pts: WorldPoint2[]): { cx: number; cz: number; r: number
  * - replay: ボールとピッチ中心の中間を見下ろす高所（スタンド高9mを超える12m）から、ゆっくり
  *   自動オービットするための初期姿勢。半径はピッチ内に収まるようクランプ済み（周回そのものは
  *   SetPiece3D.tsx側が担当。reduced-motion時は静止したこの初期姿勢のまま）。
+ * @param aspect broadcastのfovフィットに使う実際の画面アスペクト比(横/縦)。省略時は
+ *   BROADCAST_ASSUMED_ASPECT（従来の固定値）。broadcast以外のプリセットは無視する。
  */
 export function computeCameraPreset(
   id: CameraPresetId,
   state: BoardState,
-  dims: PitchDims = DEFAULT_DIMS
+  dims: PitchDims = DEFAULT_DIMS,
+  aspect?: number
 ): CameraPose {
   const ball = state.ball ?? { x: 50, y: 50 };
   const ballW = boardToWorld(ball, dims);
 
   if (id === "overhead") {
     const d = dims.pitchLengthM * 1.15;
-    return { position: [0, d, d], target: [0, 0, 0] };
+    return { position: [0, d, d], target: [0, 0, 0], fov: CAMERA_PRESET_FOV.overhead };
   }
   if (id === "broadcast") {
-    // 元のアングル（タッチライン外側・水平-X寄り、仰角約20°）は保ったまま、
-    // トークン群のバウンディング円がCanvasのfov(50°)に収まる距離まで距離だけ拡縮する
-    // （簡易フィット。全員が画角の外に出ないことを優先し、距離は片方向にのみ伸ばす）。
-    const { cx, cz, r } = boundingCircle(collectTokenWorldPoints(state, dims));
-    const fitR = r + BROADCAST_MARGIN_M;
-    const halfVFov = (BROADCAST_FOV_DEG / 2) * (Math.PI / 180);
-    const halfHFov = Math.atan(Math.tan(halfVFov) * BROADCAST_ASPECT);
-    const limitHalfFov = Math.min(halfVFov, halfHFov);
-    const dist = clamp(fitR / Math.sin(limitHalfFov), dims.pitchLengthM * 0.5, 130);
-    const dirX = -(dims.pitchWidthM / 2 + 18);
-    const dirY = 16 - 0.6;
-    const dirLen = Math.hypot(dirX, dirY) || 1;
+    // 実中継方式: カメラ位置はメインスタンド上の固定アンカー（トークン配置やフィット半径に
+    // 応じて距離を伸縮させない＝実物の中継カメラが台座から動かないのと同じ）。
+    //  - rxMag: ピッチ外周（芝ラン込みGRASS_MARGIN_M）→LED看板の外側(standMarginM)を挟んで、
+    //    下層スタンド(lowerDepthM)を55%だけ奥へ踏み込んだ水平位置（原点からの距離）。
+    //  - ry: 前面壁(frontWallM)の上端から、rxMagと同じ55%まで下層スタンドの傾斜(lowerRakeRad)を
+    //    登った高さ＋観客の頭上に出る3.2m＝「下層スタンド中腹の観客席上空」。
+    // rxMag・ryはピッチ寸法(pitchWidthM)にほぼ依存しない（rxMagのみ半分だけ影響）ため、
+    // 8人制・11人制どちらでも同じ式で常にボウル内側（下層スタンドの中腹）に収まる。
+    //   8人制 (pitchWidthM=50):  rxMag=25+3+2+14*0.55=37.7m, ry=1.1+sin24°*7.7+3.2≈7.43m
+    //     外壁(STADIUM_M各層の水平投影合計、backWallTop.r≈21.36m＋bowlHalfX≈31.52m)|x|≈52.9m
+    //     → rxMag=37.7mは十分内側。
+    //   11人制(pitchWidthM=68):  rxMag=34+3+2+14*0.55=46.7m, ry≈7.43m（pitchWidthM非依存）
+    //     外壁|x|≈61.9m(bowlHalfX≈40.52m+backWallTop.r≈21.36m) → rxMag=46.7mは十分内側。
+    // どちらの人数制でも rxMag は外壁までまだ 15m 前後の余裕を残す＝スタジアム内に収まる。
+    const rxMag =
+      dims.pitchWidthM / 2 + GRASS_MARGIN_M + STADIUM_M.standMarginM + STADIUM_M.lowerDepthM * 0.55;
+    const ry =
+      STADIUM_M.frontWallM +
+      Math.sin(STADIUM_M.lowerRakeRad) * STADIUM_M.lowerDepthM * 0.55 +
+      3.2;
+    const { cx, cz } = boundingCircle(collectTokenWorldPoints(state, dims));
+    // 逆アングル方式（C-1項）: アンカーのX側を被写体フィット中心cxと逆サイドに選ぶ。
+    // 旧実装は常にX<0側（rx=-rxMag）固定だったため、被写体もたまたまX<0側（cx<=0、カメラと
+    // 同じ側＝手前側）に寄るCK/FKでは距離が十分に取れず（ピッチ幅ぶんしか離れられない）、
+    // 必要画角が18〜40度の上限を超えてフレーム外に出ていた（下のrawBroadcastFovDegを
+    // 精密化しても、そもそも上限40では足りない距離だった）。cx<=0(手前側)ならX>0側へ回り込み、
+    // cx>0(奥側。旧実装のX<0固定でも距離は元々十分だった)ならX<0側のまま＝どちらの場合も
+    // アンカーは被写体と逆サイドになり、ピッチ幅+スタンド奥行ぶんの距離が常に確保される。
+    const rx = (cx <= 0 ? 1 : -1) * rxMag;
+    const halfLen = dims.pitchLengthM / 2;
+    // カメラz位置＝被写体フィット中心のz。ゴールライン際の被写体でもアンカーがゴール裏へ
+    // 回り込みすぎないよう、ハーフウェイからの残り距離を8m残してクランプする。
+    const rz = clamp(cz, -(halfLen - 8), halfLen - 8);
+    const target: [number, number, number] = [cx, 0.6, cz];
+    const points = collectTokenWorldPoints(state, dims);
+    const fitAspect = aspect ?? BROADCAST_ASSUMED_ASPECT;
+    // 画角(fov)をズームとして使う（C-2項）: 全トークン位置をカメラ空間へ投影し、実際に必要な
+    // 水平/垂直半画角からfovを求める（rawBroadcastFovDeg。旧実装の「水平バウンディング円半径
+    // ÷3D距離」のatanは対角方向の半画角を水平半画角として過大評価しており、常に上限40へ
+    // クランプされ選手が小さく写りすぎていた）。aspectは実際のCanvasアスペクト比
+    // （SetPiece3D.tsx側から渡す。省略時はBROADCAST_ASSUMED_ASPECT）で、水平→垂直画角換算に使う。
+    let camX = rx;
+    let camY = ry;
+    let camZ = rz;
+    // 境界律速（後退がボウル内周で頭打ちになった）かどうか。trueのときだけfov上限を40度から
+    // 必要値まで開放する（下記）。
+    let boundaryLimited = false;
+    const rawFovDeg = rawBroadcastFovDeg(points, { x: camX, y: camY, z: camZ }, { x: target[0], y: target[1], z: target[2] }, fitAspect);
+    if (rawFovDeg > 40) {
+      // C-2-bフォールバック: スマホ縦長など実アスペクトが想定より狭いと、必要fovが上限40を
+      // 超えてトークンがフレーム外に出る。target→アンカー方向へカメラを後退させ距離を伸ばし、
+      // 必要半画角そのものを縮める（後退倍率=tan(必要fov/2)/tan(40°/2)）。
+      // 後退しすぎてスタジアムのボウル外（背面壁より外）へ出ないよう、倍率そのものを
+      // 「|camX|がボウル内周（背面壁内側-2m相当。broadcastBowlInnerBoundaryXM参照）に達する
+      // 倍率」で頭打ちにしてから x/y/z へ一括適用する。camXだけを事後クランプすると
+      // target→カメラの直線から外れて俯角が急変するため、必ず倍率側を制限する。
+      let factor = Math.tan((rawFovDeg * Math.PI / 180) / 2) / Math.tan((40 * Math.PI / 180) / 2);
+      const xBoundary = broadcastBowlInnerBoundaryXM(dims);
+      const dx = rx - target[0];
+      if (dx !== 0) {
+        const fMax = (Math.sign(dx) * xBoundary - target[0]) / dx;
+        if (factor > fMax) {
+          factor = Math.max(1, fMax);
+          boundaryLimited = true;
+        }
+      }
+      camX = target[0] + dx * factor;
+      camY = target[1] + (ry - target[1]) * factor;
+      camZ = target[2] + (rz - target[2]) * factor;
+    }
+    // 後退後の実際のカメラ位置で最終fovを求め直す。通常は18〜40度クランプだが、
+    // 後退が境界律速で距離を伸ばしきれなかったケースに限り、フレームアウトさせないことを
+    // 優先して上限を必要値（最大66度）まで開放する（広角の歪みより選手が写らないことの
+    // ほうが致命的）。実UIのCanvasはヘッダー/バー込みでアスペクト比≳0.6となり、
+    // 0.6で必要fov≈63のため66で実機の全ケースを収容できる（Node計算で確認）。
+    // それ未満の合成的な極端縦長は66度で妥協する。
+    const finalRawFov = rawBroadcastFovDeg(
+      points,
+      { x: camX, y: camY, z: camZ },
+      { x: target[0], y: target[1], z: target[2] },
+      fitAspect
+    );
+    const fovDeg = boundaryLimited
+      ? clamp(finalRawFov, 18, 66)
+      : clamp(finalRawFov, 18, 40);
     return {
-      position: [cx + (dirX / dirLen) * dist, 0.6 + (dirY / dirLen) * dist, cz],
-      target: [cx, 0.6, cz],
+      position: [camX, camY, camZ],
+      target,
+      fov: fovDeg,
     };
   }
   if (id === "kicker") {
@@ -438,6 +633,7 @@ export function computeCameraPreset(
       // 注視点はゴール中心(x=0)固定。旧実装はballW.xのままだったため、CKのように
       // ボールがサイドへ寄っていると視線がゴール中心からズレていた。
       target: [0, 1.2, goalZ],
+      fov: CAMERA_PRESET_FOV.kicker,
     };
   }
   if (id === "ground") {
@@ -448,6 +644,7 @@ export function computeCameraPreset(
     return {
       position: [x, GROUND_EYE_HEIGHT_M, ballW.z],
       target: [ballW.x, 0.5, ballW.z],
+      fov: CAMERA_PRESET_FOV.ground,
     };
   }
   if (id === "replay") {
@@ -464,6 +661,7 @@ export function computeCameraPreset(
     return {
       position: [cx + radius * Math.cos(angle0), REPLAY_ORBIT_HEIGHT_M, cz + radius * Math.sin(angle0)],
       target: [cx, 1.0, cz],
+      fov: CAMERA_PRESET_FOV.replay,
     };
   }
   // gk: 守備ゴール（常にy0=自陣）の1.7m前に立ち、ボールを見る
@@ -471,6 +669,7 @@ export function computeCameraPreset(
   return {
     position: [0, EYE_HEIGHT_M, goalZ + 1.7],
     target: [ballW.x, 0.3, ballW.z],
+    fov: CAMERA_PRESET_FOV.gk,
   };
 }
 
@@ -539,6 +738,10 @@ export function getKitColors(jerseyHex: string, variant: KitVariant = "own"): Ki
 
 /** 肌トーン（2色を選手ごとの決定的な擬似乱数で振り分け、単調さを避ける） */
 export const SKIN_TONES: [string, string] = ["#e3b18c", "#c98f66"];
+/** 頭髪トーン（黒/焦茶の2色。SKIN_TONESとは異なるseed変換で選ぶため、肌トーンと機械的に
+ * 相関しない＝GLB選手モデルのHairマテリアルにのみ使う。プロシージャル人型は頭が肌色の
+ * 単一球のみで髪メッシュを持たないため対象外） */
+export const HAIR_TONES: [string, string] = ["#1c1712", "#3c2415"];
 /** シューズ色（全選手共通の濃色） */
 export const BOOT_COLOR = "#20242b";
 
@@ -629,44 +832,205 @@ export const PLAYER_HEIGHT_M =
   PLAYER_RIG_M.headR * 2;
 
 /* ============================================================
-   スタジアム環境（観客席の帯・広告板）の寸法・配色。ジオメトリ自体はSetPiece3D.tsx側で作る
-   （UNIT_BOXをscaleして使う＝ここは数値のみ）。
+   環境プリセット（空ドーム・光・霧の色/強度セット）。three.jsには依存しない数値・色文字列のみ。
+   実際のCanvasTexture生成・Light/Fogのインスタンス化はcomponents/SetPiece3DStadium.tsx・
+   components/SetPiece3D.tsx側が行う（このファイルの「three.js非依存」方針を保つ）。
+   現時点はduskのみ使用し、時間帯切替UIは無い（ACTIVE_SKY_PRESETを直接参照するだけ）。
+   day/nightは将来の切替に備えた構造だけを用意した推定値（仕様上の厳密な色指定は無い）。
    ============================================================ */
+export interface SkyPreset {
+  /** 空ドームの天頂色（canvasグラデ最上部＝ワールドの真上方向） */
+  zenith: string;
+  /** 地平線近くの暖色帯（サンセット/夕焼け寄りの帯） */
+  horizonWarm: string;
+  /** 地平線ライン直下（ドームの赤道＝ワールドy=0付近）の淡い色 */
+  horizonPale: string;
+  /** 低空に浮かべる雲スプライトの基調色（白地の雲テクスチャへ乗算で合成） */
+  cloud: string;
+  /** シーンFogの色。ドームのhorizonPaleとは別値（仕様どおり#aebfdaをduskに設定） */
+  fogColor: string;
+  /** hemisphereLightの空側/地側の色・強度 */
+  hemiSky: string;
+  hemiGround: string;
+  hemiIntensity: number;
+  /** ambientLightの強度（色は常に白固定） */
+  ambientIntensity: number;
+  /** 太陽=directionalLightの色・強度・位置（低いほど斜光＝夕方寄りの角度になる） */
+  sunColor: string;
+  sunIntensity: number;
+  sunPosition: [number, number, number];
+  /** 反対側から当てる、影を落とさないフィルライト（directionalLight）の色・強度・位置 */
+  fillColor: string;
+  fillIntensity: number;
+  fillPosition: [number, number, number];
+}
+
+export type SkyPresetId = "day" | "dusk" | "night";
+
+export const SKY_PRESETS: Record<SkyPresetId, SkyPreset> = {
+  day: {
+    zenith: "#3d78c9",
+    horizonWarm: "#bcdcf5",
+    horizonPale: "#eef6ff",
+    cloud: "#ffffff",
+    fogColor: "#cfe3f5",
+    hemiSky: "#cfe3ff",
+    hemiGround: "#3f7d4e",
+    hemiIntensity: 0.7,
+    ambientIntensity: 0.22,
+    sunColor: "#fff6e6",
+    sunIntensity: 1.3,
+    sunPosition: [24, 34, 18],
+    fillColor: "#bcd0e8",
+    fillIntensity: 0.3,
+    fillPosition: [-24, 20, -18],
+  },
+  dusk: {
+    zenith: "#1b2c52",
+    horizonWarm: "#e8b47e",
+    horizonPale: "#c9d8ee",
+    cloud: "#f2d9c0",
+    fogColor: "#aebfda",
+    hemiSky: "#a9bce0",
+    hemiGround: "#33684a",
+    hemiIntensity: 0.75,
+    ambientIntensity: 0.12,
+    // 夕暮れの実試合は「空は夕焼け・ピッチは照明で明るい」が正しい見え方（参考画像準拠）。
+    // 影付きメインライトは低角の夕日ではなく高角のスタジアム照明（白色寄り）として設計し、
+    // 夕日の暖色は影なしフィル側の低角斜光で補う。低角光をメインにするとピッチへの入射が
+    // sin(13.5°)≈0.23まで落ち、実測でピッチ輝度35/255の暗黒画面になっていた。
+    sunColor: "#fff0d8",
+    sunIntensity: 1.9,
+    sunPosition: [26, 42, 14],
+    fillColor: "#ffd9a8",
+    fillIntensity: 0.45,
+    fillPosition: [-34, 12, -16],
+  },
+  night: {
+    zenith: "#050912",
+    horizonWarm: "#1c2740",
+    horizonPale: "#283a5c",
+    cloud: "#2a3550",
+    fogColor: "#0d1424",
+    hemiSky: "#33456e",
+    hemiGround: "#101a14",
+    hemiIntensity: 0.32,
+    ambientIntensity: 0.05,
+    sunColor: "#aebfe6",
+    sunIntensity: 0.5,
+    sunPosition: [20, 30, 12],
+    fillColor: "#3c4d78",
+    fillIntensity: 0.22,
+    fillPosition: [-20, 16, -12],
+  },
+};
+
+/** 現在アクティブな環境プリセット。切替UIは無く、常にduskを指す（統括決定：夕暮れ+照明点灯を既定にする） */
+export const ACTIVE_SKY_PRESET: SkyPresetId = "dusk";
+
+/* ============================================================
+   スタジアム環境（Phase3: 角丸長方形プランの連続ボウル）の寸法・配色。
+   実際のジオメトリ（角丸リング断面の押し出し）・InstancedMesh・canvasテクスチャ生成は
+   すべてcomponents/SetPiece3DStadium.tsx側が行う（このファイルは数値・色のみを持つ）。
+   すべて「ピッチ外周からの基準リング」を中心に、各層のr(外向きオフセットm)・h(高さm)を
+   下から順に積み上げる設計。8人制/11人制のプラン差(ボウル内周サイズ)はdims(pitchWidthM/
+   pitchLengthM)側で吸収し、ここの相対寸法(壁の高さ・スタンドの奥行/傾斜等)は共通。 */
 export const STADIUM_M = {
-  /** ピッチ外周(芝ラン込み)から広告板までの距離 */
-  adBoardMarginM: 2.2,
-  adBoardHeightM: 0.9,
-  adBoardThicknessM: 0.15,
-  /** 広告板からスタンド（前面壁）までの距離。「壁が近すぎてカメラが隠れる」対策で
-   * 旧3.5mから離し、さらにスタンド自体を垂直壁でなく後方へ上る傾斜段(ラケ)にする */
-  standMarginM: 5.5,
-  /** 旧・垂直壁時代の高さ（リプレイカメラの高度判定の互換用に残置） */
-  standHeightM: 9,
-  standThicknessM: 1.2,
-  /** サッカー専用スタジアム風の傾斜スタンド一式 */
-  standFrontWallM: 1.1, // ピッチ側の低い前面壁（この高さまでしか視界を遮らない）
-  standDepthM: 13, // 傾斜席の奥行き
-  standRakeRad: 0.44, // 傾斜角(約25°)。後方ほど高くなる
-  standSlabThickM: 0.5, // 傾斜スラブの厚み
-  roofDepthM: 6.5, // 屋根の奥行き（スタンド後方の上に浮く）
-  roofClearM: 2.6, // スタンド最上段から屋根下端までのクリアランス
-  roofThickM: 0.35,
-  /** コーナー照明塔（サッカー専用スタらしさの記号）。柱高さ・灯体サイズ */
-  floodMastM: 17,
-  floodHeadW: 3.2,
-  floodHeadH: 2.0,
+  /** LED看板: ピッチ外周(芝ラン込み)からの距離・高さ・厚み・コーナー丸め半径 */
+  ledMarginM: 1.4,
+  ledHeightM: 0.9,
+  ledThicknessM: 0.12,
+  ledCornerRadiusM: 1.5,
+  /** LED看板からスタンド前面壁までの距離 */
+  standMarginM: 2.0,
+  /** 前面壁（コンクリ・低め=視界を遮らない） */
+  frontWallM: 1.1,
+  /** 下層スタンド: 奥行(スロープ長)・傾斜角(ラジアン、約24°) */
+  lowerDepthM: 14,
+  lowerRakeRad: (24 * Math.PI) / 180,
+  /** 中間コンコース帯: 高さ（暗色の帯。中に出入口グローを等間隔配置） */
+  concourseHeightM: 1.6,
+  /** 上層スタンド: 奥行(スロープ長)・傾斜角(ラジアン、約31°) */
+  upperDepthM: 10,
+  upperRakeRad: (31 * Math.PI) / 180,
+  /** 背面壁 */
+  backWallM: 2.4,
+  /** 軽量品質時: コンコース/上層を省き、下層スタンドの上に直接この高さの壁を立てて
+   * 屋根を掛ける（下層+屋根+LEDのみの簡易ボウルでも、屋根の高さ・クリアランス感が
+   * 標準品質と大きくズレないようにするための簡易背面壁） */
+  lightBackWallM: 3.2,
+  /** 片持ち屋根: 内側への張り出し量・厚み・先端の下がり量・先端エッジラインの太さ */
+  roofSpanM: 8,
+  roofThickM: 0.4,
+  roofDropM: 1.0,
+  roofEdgeH: 0.12,
+  /** ボウル角丸長方形プランのコーナー半径・分割数 */
+  cornerRadiusM: 9,
+  cornerSegs: 8,
+  /** 手すり（各層最前列の細いチューブ状リング） */
+  railHeightM: 0.9,
+  railThickM: 0.07,
+  /** コンコース帯のvomitory(出入口グロー)の配置間隔・サイズ */
+  vomPitchM: 12,
+  vomWidthM: 1.6,
+  vomHeightM: 1.0,
+  /** 屋根内縁の投光器列（InstancedMesh）の配置間隔・板サイズ */
+  floodPitchM: 6,
+  floodPlateWM: 0.55,
+  floodPlateHM: 0.3,
+  /** Near LOD観客ビルボード（InstancedMesh、下層ピッチ側2列ぶん）の総数・板サイズ */
+  crowdNearCount: 1200,
+  crowdBillW: 0.55,
+  crowdBillH: 0.85,
+  /** Near観客インスタンスの自動非表示しきい値（m、カメラ→ワールド原点の距離）。
+   * hideを超えたら非表示、showを下回ったら再表示（ヒステリシス。しきい値付近での
+   * 毎フレームON/OFF点滅を防ぐ）。high品質のみ描画対象（Near観客自体がhigh限定のため）。 */
+  crowdNearHideDistM: 60,
+  crowdNearShowDistM: 52,
+  /** 外壁シェル（角丸リング外周の垂直フィン+コンコース階の温白ガラス帯）。高/中品質のみ、
+   * 背面壁のさらに外側に立てる「建築物に見える最低限」の薄い外殻。フィンはoffsetM分
+   * 外側、高さ0〜背面壁上端まで。ガラス帯はコンコース帯と同じ高さ区間・同じ半径に重ねる。 */
+  exteriorShellOffsetM: 1.2,
+  exteriorFinTileM: 2.4,
 } as const;
-/** 広告板の縞2色（無地・架空色。実在ブランドを想起させない中立トーンにする） */
-export const AD_BOARD_COLORS: [string, string] = ["#0b3d66", "#e8543c"];
-/** 観客席の帯のベース色・粒（座席）色（架空の中立トーン） */
-export const STAND_BASE_COLOR = "#333f4b";
+/** LED看板: 白文字・紺地（自ブランドの架空文言。実在ブランド想起なし） */
+export const LED_TEXT = "ALFA FOOTBALL   ◇   TACTICAL STUDIO   ◇   PLAY SMARTER   ◇   ";
+export const LED_BG_COLOR = "#0d2f6b";
+export const LED_TEXT_COLOR = "#ffffff";
+/** コンクリ躯体（前面壁・背面壁）・コンコース帯・屋根上面/下面の配色（架空・中立トーン） */
+export const STADIUM_CONCRETE_COLOR = "#9aa3ad";
+export const STADIUM_CONCOURSE_COLOR = "#20242b";
+export const STADIUM_ROOF_TOP_COLOR = "#dfe4ea";
+export const STADIUM_ROOF_UNDER_COLOR = "#3a4149";
+export const STADIUM_VOMITORY_GLOW_COLOR = "#f4d9a8";
+export const STADIUM_FLOODLIGHT_COLOR = "#eef4ff";
+/** 座席の2トーン（紺系）。観客ドット色は下のSTADIUM_CROWD_COLORSへ別途持つ */
+export const STADIUM_SEAT_TONES: [string, string] = ["#1e3a6e", "#17305c"];
+/** 観客ドットの服色分布（紺60%/濃紺20%/白8%/その他ランダム12%）。配列の並びを
+ * 累積比率のテーブルとして使う（他のseeded-hash抽選と同じ「0..1の一様乱数を閾値で区切る」方式）。 */
+export const STADIUM_CROWD_COLORS: { color: string; upTo: number }[] = [
+  { color: "#1b3a63", upTo: 0.6 }, // 紺 60%
+  { color: "#12233f", upTo: 0.8 }, // 濃紺 20% (累積80%)
+  { color: "#e9edf2", upTo: 0.88 }, // 白 8% (累積88%)
+  { color: "#c0453f", upTo: 0.91 }, // その他(ランダム) 12%のうち内訳を4色均等に割る
+  { color: "#d9a441", upTo: 0.94 },
+  { color: "#3f8f6b", upTo: 0.97 },
+  { color: "#6b4fa0", upTo: 1.0 },
+];
+/** 外壁シェルの配色（架空・中立トーン）。フィンは中立グレーの明暗2トーン、
+ * ガラス帯はコンコース照明が透けて見える想定の温白色をemissiveで軽く光らせる。 */
+export const STADIUM_EXTERIOR_FIN_LIGHT = "#aab0b8";
+export const STADIUM_EXTERIOR_FIN_DARK = "#7a828c";
+export const STADIUM_EXTERIOR_GLASS_COLOR = "#fbe6c0";
 /** 味方フィールドプレイヤーの3D固定ユニフォーム色。2Dトークンはポジション別色(GK=金/FW=橙等)だが、
  * 3Dでそのまま使うとFW橙・GK金と味方GK(蛍光黄)が被って見分けづらいため、3Dは
  * 「味方=単一のチームジャージ色」に統一する(クラブカラーの深緑。白ショーツ+白背番号で芝と分離) */
 export const OWN_KIT_JERSEY = "#0c6e37";
 /** ピッチ外周〜スタンド下まで途切れなく敷く場外グラウンド(エプロン)の色 */
 export const APRON_COLOR = "#276b3d";
-export const STAND_SEAT_TONES: [string, string, string, string] = ["#465360", "#57677a", "#3a4551", "#5c6b78"];
+/** スコアボード（両ゴール裏）: 自陣側/相手側のチームカラー矩形（架空・中立トーン） */
+export const SCOREBOARD_HOME_COLOR = OWN_KIT_JERSEY;
+export const SCOREBOARD_AWAY_COLOR = "#8a3a3a";
 
 /* ============================================================
    Playback3D: 再生同期・走行モーション・ボール弾道のユーティリティ。
@@ -943,5 +1307,36 @@ export function computeHeaderPose(phase: number): { pose: LimbPose; lift: number
       spineLean: -0.22 * jump + snap * 0.3 * jump,
     },
     lift: 0.42 * jump,
+  };
+}
+
+/* ============================================================
+   ブロブ影（接地感）: 選手・ボールの浮き高さ(lift)から円板の半径・不透明度を求める純粋計算。
+   three.js非依存（実際のcanvasテクスチャ・Mesh/Material生成はcomponents/SetPiece3D.tsx側）。
+   ============================================================ */
+
+/** ブロブ影の基準半径(m、lift=0=接地のとき)。仕様どおり0.42m */
+export const BLOB_SHADOW_RADIUS_M = 0.42;
+/** 実シャドウ(directional castShadow)が有効な標準品質のときの基準不透明度（影と役割が
+ * 重なるため薄める＝仕様どおり0.22）。軽量品質（実シャドウ無し）は接地感の主役になるため
+ * 濃いめの0.4を使う。 */
+export const BLOB_SHADOW_OPACITY_WITH_REAL_SHADOW = 0.22;
+export const BLOB_SHADOW_OPACITY_NO_REAL_SHADOW = 0.4;
+
+export interface BlobShadowState {
+  radiusM: number;
+  opacity: number;
+}
+/**
+ * ヘディングのジャンプ中の浮き上がり高さlift(m、computeHeaderPoseの戻り値。接地時0)から
+ * ブロブ影の半径・不透明度を求める（liftが増えるほど半径を広げ不透明度を下げる＝浮遊感。
+ * lift=0のときは常に radiusM=BLOB_SHADOW_RADIUS_M・opacity=baseOpacityで、既存の接地時の
+ * 見た目から変わらない）。
+ */
+export function computeBlobShadow(lift: number, baseOpacity: number): BlobShadowState {
+  const l = Math.max(0, lift);
+  return {
+    radiusM: BLOB_SHADOW_RADIUS_M * (1 + l * 1.1),
+    opacity: baseOpacity * clamp01(1 - l * 0.9),
   };
 }

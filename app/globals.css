@@ -3351,6 +3351,21 @@ header {
   font-size: 13px;
   font-weight: 700;
 }
+/* 初回フレーム描画までの「準備中」オーバーレイ（F項）。SetPiece3D本体マウント後、Canvasの
+   最初の1フレームがGPUへ描画されるまでは.sp3dpitchの背景グラデだけが見え壊れて見えるため、
+   .sp3dloadingと同じ見た目(色・字形)をCanvas全面に重ねて示す。FirstFrameGateが消す */
+.sp3dboot {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+}
 /* 背番号・相手ラベルの床上ビルボード（drei Html。常にカメラへ正対する画面固定サイズのラベル） */
 .sp3d-num {
   min-width: 20px;
@@ -3379,9 +3394,11 @@ header {
 .sp3dbar {
   align-items: center;
 }
-/* 3Dビューの品質トグル（標準/軽量）。CameraBar(.sp3dbar)はcomponents/SetPieceBoard.tsx側
+/* 3Dビューの品質トグル（高/中/軽の3段）。CameraBar(.sp3dbar)はcomponents/SetPieceBoard.tsx側
    （このタスクでは編集不可）が描画しているため差し込めず、代わりに3Dビュー自体(.sp3dpitch。
-   position:relative + overflow:hidden 済み)の右上に浮かせるオーバーレイとして実装する */
+   position:relative + overflow:hidden 済み)の右上に浮かせるオーバーレイとして実装する。
+   ボタンは3つに増えたが、1文字ラベル(高/中/軽)×同じpadding/gapのため既存レイアウトのまま
+   横幅に収まる（新規CSSは追加していない）。 */
 .sp3dquality {
   position: absolute;
   top: 10px;
