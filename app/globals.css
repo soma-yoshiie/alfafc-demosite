@@ -3351,20 +3351,107 @@ header {
   font-size: 13px;
   font-weight: 700;
 }
-/* 初回フレーム描画までの「準備中」オーバーレイ（F項）。SetPiece3D本体マウント後、Canvasの
-   最初の1フレームがGPUへ描画されるまでは.sp3dpitchの背景グラデだけが見え壊れて見えるため、
-   .sp3dloadingと同じ見た目(色・字形)をCanvas全面に重ねて示す。FirstFrameGateが消す */
+/* 初回フレーム描画までの起動オーバーレイ。SetPiece3D本体マウント後、Canvasの最初の
+   1フレームがGPUへ描画されるまで、夕暮れスタジアムの世界観（紺のナイター空＋ピッチ照明の
+   下からのグロー）に合わせたローディング画面を全面に重ねる。FirstFrameGateが消す */
 .sp3dboot {
   position: absolute;
   inset: 0;
   z-index: 4;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--mut);
-  font-size: 13px;
-  font-weight: 700;
+  gap: 9px;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 85% at 50% 118%, rgba(23, 122, 71, 0.55) 0%, rgba(23, 122, 71, 0) 58%),
+    linear-gradient(180deg, #0b1430 0%, #142348 62%, #0e2038 100%);
+  color: #eaf2ff;
   pointer-events: none;
+}
+/* センターサークル風のリング（rotateXの遠近付き）。::beforeの発光アークが面内を周回し、
+   レーダー走査のように見せる。::afterはセンタースポット */
+.sp3dboot-ring {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  margin-bottom: 2px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 50%;
+  transform: rotateX(56deg);
+}
+.sp3dboot-ring::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid transparent;
+  border-top-color: #57e389;
+  border-right-color: rgba(87, 227, 137, 0.35);
+  border-radius: 50%;
+  animation: sp3dboot-spin 1.15s linear infinite;
+}
+.sp3dboot-ring::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 12px 2px rgba(255, 255, 255, 0.55);
+}
+@keyframes sp3dboot-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.sp3dboot-brand {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  color: #8fb0e8;
+}
+.sp3dboot-title {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-indent: 0.14em;
+  color: #f4f8ff;
+  text-shadow: 0 0 22px rgba(87, 227, 137, 0.35);
+}
+/* 不定長プログレス（LED看板風の光が左→右へ走査するシマー） */
+.sp3dboot-bar {
+  position: relative;
+  width: 150px;
+  height: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.13);
+}
+.sp3dboot-bar::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -40%;
+  width: 40%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(87, 227, 137, 0) 0%, #57e389 50%, rgba(87, 227, 137, 0) 100%);
+  animation: sp3dboot-sweep 1.4s ease-in-out infinite;
+}
+@keyframes sp3dboot-sweep {
+  to {
+    left: 100%;
+  }
+}
+.sp3dboot-sub {
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(214, 228, 250, 0.72);
 }
 /* 背番号・相手ラベルの床上ビルボード（drei Html。常にカメラへ正対する画面固定サイズのラベル） */
 .sp3d-num {

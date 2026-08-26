@@ -212,8 +212,10 @@ export function worldArcOutline(
   const angleB = Math.atan2(dirB[1], dirB[0]);
   const twoPi = Math.PI * 2;
   const fwd = ((angleB - angleA) % twoPi + twoPi) % twoPi;
-  const [start, end] = fwd > Math.PI ? [angleB, angleA + twoPi] : [angleA, angleB];
-  const total = end - start;
+  // 短い方の弧: A→B反時計回りがπ以下ならそのまま、π超ならB→A反時計回り(2π-fwd)を描く。
+  // start+total*t の形で必ず「開始角＋掃引量」で表す（angleA/angleBを終端に直接使うと、
+  // atan2の±π境界をまたぐ組み合わせで270°〜450°の長弧が描かれるバグがあった）。
+  const [start, total] = fwd > Math.PI ? [angleB, twoPi - fwd] : [angleA, fwd];
   const pts: WorldPoint2[] = [];
   for (let i = 0; i <= segments; i++) {
     const a = start + (total * i) / segments;

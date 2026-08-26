@@ -2880,7 +2880,11 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
         </Canvas>
         {!booted && (
           <div className="sp3dboot" aria-hidden="true">
-            3Dを準備中…
+            <div className="sp3dboot-ring" />
+            <div className="sp3dboot-brand">ALFA FOOTBALL</div>
+            <div className="sp3dboot-title">3D STADIUM</div>
+            <div className="sp3dboot-bar" />
+            <div className="sp3dboot-sub">スタジアムを準備しています…</div>
           </div>
         )}
         <QualityToggle quality={quality} onChange={setQuality} />
