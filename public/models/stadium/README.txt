@@ -1,9 +1,12 @@
-ALFA_Stadium_V5_2.glb
-- 出所: 自社制作(Blender 4.x / ALFA_Stadium_V5_2_1_GLTF_READY.py で生成、glTF Y-up出力)
+ALFA_Stadium_V5_3.glb
+- 出所: 自社制作(Blender 4.x / ALFA_Stadium生成スクリプト、glTF Y-up出力)
 - ライセンス: 自社アセット(社内制作物、商用利用可)
 - スケール: 1 unit = 1m、ピッチ105×68m、原点=ピッチ中心、芝表面 y=0.32
 - 軸: 長辺105mがX軸(ゴールライン x=±52.5)、タッチライン z=±34
 - 動的スクリーン: AD_TOUCHLINE_NORTH/SOUTH_VIDEO_SURFACE, AD_GOALLINE_EAST/WEST_VIDEO_SURFACE,
-  Scoreboard_Screen_1 / Scoreboard_Screen_-1 (全面0..1 UV、VideoTexture/CanvasTexture割当可)
-- アンカー: ANCHOR_BROADCAST / ANCHOR_PLAYER_TUNNEL_HOME / ANCHOR_PLAYER_TUNNEL_AWAY
-- 実測: 81.7MB / 876メッシュ / 1,460,240三角形(座席2メッシュで約133万) / 35マテリアル / テクスチャなし
+  Scoreboard_Screen_1 / Scoreboard_Screen_-1 (V5.3で単一クアッド0..1 UV・屋根縁 x=±92.5へ修正済み)
+- アンカー: ANCHOR_BROADCAST=(-7,40.5,90)(V5.3で屋根下ガントリーへ修正) / ANCHOR_PLAYER_TUNNEL_HOME/AWAY
+- 同梱ボール: BALL_ROOT(直径0.22m。アプリ側Ball3Dが正のため実行時は非表示化)
+- V5.3の修正: スコアボード単一クアッド化+可視位置化 / 放送アンカー修正 / コーナー・ペナルティ
+  アーク追加 / 全マテリアルへPBR定数ベイク(白化解消) / マッチボール追加
+- 実測: 81.8MB / 892メッシュ / 1,462,944三角形 / 37マテリアル / テクスチャなし

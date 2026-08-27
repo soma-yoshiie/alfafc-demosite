@@ -42,7 +42,7 @@ import { useGLTF } from "@react-three/drei";
 
 /** GLB配置パス（相対パス。components/SetPiece3D.tsx の MODEL_URL="models/player.glb" と
  * 同じ方式＝GitHub Pagesのサブパス配信・next.config.mjsのoutput:"export"どちらでも解決できる）。 */
-const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_2.glb";
+const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_3.glb";
 
 // 注意: useGLTF.preload(STADIUM_GLB_URL) はあえて呼ばない。
 // 81.7MBという重量級アセットを、11人制以外（8人制・軽品質）のユーザーも含めて全員に
@@ -50,19 +50,10 @@ const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_2.glb";
 // 従来のprocedural一式のままGLBを一切参照しない＝そのユーザーには存在しないファイルの
 // はずなので、なおさら先読みすべきではない）。<Suspense>によるオンデマンド読み込みのみに任せる。
 
-/** 芝: baseColor未設定で白くなるマテリアルへの色（+一部roughness）補正。共有インスタンスを
- * 直接書き換える対象（クローンしない）。ロード対象のGLBは1本しかないため、同名マテリアルは
- * 実質すべて同一インスタンスだが、念のため名前一致のたびに同じ値を再代入しても副作用はない
- * （冪等な操作のみのため）。 */
-const SOLID_COLOR_FIXUPS: Record<string, { color: string; roughness?: number }> = {
-  ALFA_M_Grass: { color: "#2c7042", roughness: 0.9 },
-  ALFA_M_Grass_Stripe: { color: "#358750" },
-  ALFA_M_Grass_Wear: { color: "#6f7d4c" },
-  ALFA_M_Concrete: { color: "#8f959d" },
-  ALFA_M_Concrete_Dark: { color: "#4a505a" },
-  ALFA_M_Aisle: { color: "#b3b8bf" },
-  ALFA_M_Suite_Floor: { color: "#43484f" },
-};
+/* V5.2で必要だった「baseColor未設定→白化」7マテリアルへの色補正(SOLID_COLOR_FIXUPS)は撤廃。
+ * V5.3はエクスポート直前にプロシージャルをPrincipled PBR定数へ変換して出力するようになり、
+ * 全37マテリアルにbaseColorFactorが入っていることをGLBのJSONチャンクで実測確認済み
+ * （例: ALFA_M_Grass=[0.055,0.34,0.10] 緑）。Blender側の色設計をそのまま使う。 */
 
 /** ガラス系(KHR_transmission)の置換先マテリアルopacity。透過(transmission)パスは
  * ドローコール・ソートコストが高いため、単純な半透明(MeshStandardMaterial+opacity)へ落とす。 */
@@ -93,15 +84,8 @@ function getGlassReplacement(orig: THREE.MeshStandardMaterial, opacity: number):
   return replacement;
 }
 
-/** 1マテリアルぶんの名前ベース補正（色設定 or ガラス置換）。該当しない28種はそのまま返す。 */
+/** 1マテリアルぶんの名前ベース補正（現在はガラス置換のみ）。該当しないマテリアルはそのまま返す。 */
 function fixupMaterial(mat: THREE.Material): THREE.Material {
-  const fix = SOLID_COLOR_FIXUPS[mat.name];
-  if (fix) {
-    const std = mat as THREE.MeshStandardMaterial;
-    if (std.color) std.color.set(fix.color);
-    if (fix.roughness != null) std.roughness = fix.roughness;
-    return mat;
-  }
   const glassOpacity = GLASS_OPACITY[mat.name];
   if (glassOpacity != null) {
     return getGlassReplacement(mat as THREE.MeshStandardMaterial, glassOpacity);
@@ -253,14 +237,33 @@ function makeAdPlaceholderCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
-/* スコアボード2面（Scoreboard_Screen_1 / Scoreboard_Screen_-1）へのプレースホルダー適用は
- * 現時点では行わない（getStadiumScreenでの取得は可能なまま維持）。理由（実機検証で判明）:
- *  (1) この2面は「全面0..1 UV」ではなくBlenderのキューブ十字UVを持つボックスのため、
- *      CanvasTextureを貼ると文字が繰り返し潰れて表示される。
- *  (2) 現状の設置位置（z=±108.1・y=28.4〜32.6）は上層スタンドの座席ボリュームに埋もれており、
- *      どのカメラプリセットからも視認できない。
- * → GLB側で「表示面を単一クアッド（0..1 UV）＋見通しの効く位置」へ修正されたら、広告4面と
- *   同じ経路（applyAdToNode + CanvasTexture）で動的表示を有効化する。 */
+/** スコアボードプレースホルダー: スコア「0-0」+時計「00:00」+ALFA FOOTBALLロゴ風文字
+ * （将来の動的化＝試合中の実スコア/時計連動を見据えた実証用の静的表示）。
+ * V5.2ではキューブ十字UVのボックス+座席に埋もれた位置のため保留していたが、V5.3で
+ * 「単一クアッド(4頂点)・全面0..1 UV・屋根縁の可視位置(z=±92.5、y38.2〜42.3)」へ
+ * 修正されたことをGLB実測で確認し、広告4面と同じ経路(applyAdToNode)で有効化した。 */
+function makeScoreboardPlaceholderCanvas(): HTMLCanvasElement {
+  const w = 512;
+  const h = 288;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (ctx) {
+    ctx.fillStyle = "#0a1a33";
+    ctx.fillRect(0, 0, w, h);
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "800 30px system-ui, sans-serif";
+    ctx.fillText("ALFA FOOTBALL", w / 2, 54);
+    ctx.font = "800 84px system-ui, sans-serif";
+    ctx.fillText("0 - 0", w / 2, h / 2 + 20);
+    ctx.fillStyle = "#ffe27a";
+    ctx.font = "700 38px system-ui, sans-serif";
+    ctx.fillText("00:00", w / 2, h - 40);
+  }
+  return canvas;
+}
 
 /* ============================================================
    本体
@@ -278,6 +281,12 @@ export function AlfaStadium() {
     // 返るため、フラグはページ生存中ずっと有効）。以後、毎フレームのtraverseは行わない。
     if (!scene.userData.__alfaProcessed) {
       scene.userData.__alfaProcessed = true;
+      // V5.3同梱のマッチボール(BALL_ROOT: ピッチ中央・直径0.22m)は非表示にする。
+      // ボールの見た目・位置・アニメはアプリ側のBall3D(SetPiece3D.tsx)が唯一の正であり、
+      // GLB側のボールを出すと「ボールが2つ」になるため（仕様の"only one visible football"）。
+      // 将来Ball3Dの見た目をこのモデルへ差し替える場合はここからcloneして使う。
+      const glbBall = scene.getObjectByName("BALL_ROOT");
+      if (glbBall) glbBall.visible = false;
       scene.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (!mesh.isMesh) return;
@@ -316,9 +325,11 @@ export function AlfaStadium() {
       applyAdToNode(nodeName, pending ?? makeAdPlaceholderCanvas());
       touchedNodeNames.push(nodeName);
     }
-    // スコアボード2面はGLB側のUV/設置位置の課題が解決するまでプレースホルダーを当てない
-    // （上のmakeScoreboardPlaceholderCanvas撤去コメント参照）。登録(screenRegistry)は済んで
-    // いるので、getStadiumScreen("Scoreboard_Screen_1")等での取得・将来の動的化は可能なまま。
+    for (const nodeName of SCOREBOARD_NODE_NAMES) {
+      if (!screenRegistry.has(nodeName)) continue;
+      applyAdToNode(nodeName, makeScoreboardPlaceholderCanvas());
+      touchedNodeNames.push(nodeName);
+    }
 
     return () => {
       // アンマウント時に全dispose（このマウントで適用した自作テクスチャ/マテリアルのみ）。

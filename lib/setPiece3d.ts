@@ -503,12 +503,11 @@ function broadcastBowlInnerBoundaryXM(dims: PitchDims): number {
  * 方向、dims.pitchLengthM⇔Z軸＝ゴールライン方向）とGLBの軸（幅=Z、長さ=X）が一致することの
  * 確認にもなっている。8人制・プロシージャル時はこの定数を一切参照しない。
  *
- * yはGLBのANCHOR_BROADCAST実測(28m)ではなく40mを使う: 上層スタンドの座席は|x|65.5〜90.9m・
- * y20.6〜39.1mを占め、(x=-86, y=28)は座席ボリュームの内部＝ピッチが座席で完全に遮蔽される
- * （実測で画面の86%が暗色になった）。y=40は座席上端(39.1m)を超えて観客の頭越しにピッチを
- * 見通せる実測確認済みの高さ（屋根はさらに上）。GLB側のANCHOR_BROADCASTが見通しの効く位置へ
- * 修正されたら、この補正は撤廃してGLB実測値へ戻してよい。 */
-const GLB_BROADCAST_ANCHOR = { x: -86, y: 40, z: -7 } as const;
+ * V5.3でGLB側のANCHOR_BROADCASTが屋根下ガントリー位置(GLBローカル(-7, 40.5, 90))へ修正された
+ * ため、V5.2時代のアプリ側y=40暫定補正は撤廃し、GLB実測値をそのまま変換した値を使う
+ * （worldX=-90, worldY=40.5, worldZ=-7。y40.5は上層スタンド座席上端39.1mを超えており、
+ * V5.2で確認した「座席内部からの遮蔽」は構造的に起きない）。 */
+const GLB_BROADCAST_ANCHOR = { x: -90, y: 40.5, z: -7 } as const;
 /** GLBスタジアム時の後退フォールバック用のカメラ|x|境界。GLBの上層スタンド外端は|x|≈114m・
  * ファサード/プラザは±195mまであるため、アンカー(|x|=86)からさらに14m後退できる100mを境界に
  * する（プロシージャル用のbroadcastBowlInnerBoundaryXMはGLB寸法と無関係のため使わない）。 */
