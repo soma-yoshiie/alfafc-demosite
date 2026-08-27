@@ -494,6 +494,26 @@ function broadcastBowlInnerBoundaryXM(dims: PitchDims): number {
   return bowlHalfX + backWallR - 2;
 }
 
+/** GLBスタジアム統合時のbroadcastカメラアンカー（components/AlfaStadium.tsxのGLB実測値由来）。
+ * GLB内のANCHOR_BROADCASTはGLBローカル座標で(x=-7, y=28, z=86)（GLBはX軸=105m長辺=ゴールライン
+ * 方向、Z軸=68m幅=タッチライン方向）。AlfaStadium.tsxのルート変換 rotation=[0,-Math.PI/2,0] は
+ * 「アプリworldX = -GLBローカルz」「アプリworldZ = GLBローカルx」に相当する（Y軸-90°回転の
+ * 行列そのもの）ため、変換後は worldX=-86, worldZ=-7, worldY≈28（ルートのposition.y=-0.32は
+ * 誤差として無視できる）。この対応は、アプリの既存座標規約（dims.pitchWidthM⇔X軸＝タッチライン
+ * 方向、dims.pitchLengthM⇔Z軸＝ゴールライン方向）とGLBの軸（幅=Z、長さ=X）が一致することの
+ * 確認にもなっている。8人制・プロシージャル時はこの定数を一切参照しない。
+ *
+ * yはGLBのANCHOR_BROADCAST実測(28m)ではなく40mを使う: 上層スタンドの座席は|x|65.5〜90.9m・
+ * y20.6〜39.1mを占め、(x=-86, y=28)は座席ボリュームの内部＝ピッチが座席で完全に遮蔽される
+ * （実測で画面の86%が暗色になった）。y=40は座席上端(39.1m)を超えて観客の頭越しにピッチを
+ * 見通せる実測確認済みの高さ（屋根はさらに上）。GLB側のANCHOR_BROADCASTが見通しの効く位置へ
+ * 修正されたら、この補正は撤廃してGLB実測値へ戻してよい。 */
+const GLB_BROADCAST_ANCHOR = { x: -86, y: 40, z: -7 } as const;
+/** GLBスタジアム時の後退フォールバック用のカメラ|x|境界。GLBの上層スタンド外端は|x|≈114m・
+ * ファサード/プラザは±195mまであるため、アンカー(|x|=86)からさらに14m後退できる100mを境界に
+ * する（プロシージャル用のbroadcastBowlInnerBoundaryXMはGLB寸法と無関係のため使わない）。 */
+const GLB_BROADCAST_BOUNDARY_X_M = 100;
+
 /**
  * カメラプリセットの位置・注視点を算出する（純粋関数。現在の BoardState から一度だけ計算し、
  * 以降のトークン移動などには追従させない＝プリセット選択時にのみ視点を切り替える設計）。
@@ -520,12 +540,18 @@ function broadcastBowlInnerBoundaryXM(dims: PitchDims): number {
  *   SetPiece3D.tsx側が担当。reduced-motion時は静止したこの初期姿勢のまま）。
  * @param aspect broadcastのfovフィットに使う実際の画面アスペクト比(横/縦)。省略時は
  *   BROADCAST_ASSUMED_ASPECT（従来の固定値）。broadcast以外のプリセットは無視する。
+ * @param opts.glbStadium true時、broadcastのカメラアンカーをGLB_BROADCAST_ANCHOR
+ *   （GLBスタジアム統合時の実測アンカー）へ差し替える。距離が十分遠いため必要fovは通常の
+ *   18-40度クランプ内に収まり、fovフィット・後退フォールバックのロジック自体は8人制/
+ *   プロシージャル時と完全に共有する（ここで分岐するのはアンカー座標(rx/ry/rz)のみ）。
+ *   8人制・プロシージャル時は省略でよい（従来どおりの計算になる）。
  */
 export function computeCameraPreset(
   id: CameraPresetId,
   state: BoardState,
   dims: PitchDims = DEFAULT_DIMS,
-  aspect?: number
+  aspect?: number,
+  opts?: { glbStadium?: boolean }
 ): CameraPose {
   const ball = state.ball ?? { x: 50, y: 50 };
   const ballW = boardToWorld(ball, dims);
@@ -549,12 +575,15 @@ export function computeCameraPreset(
     //   11人制(pitchWidthM=68):  rxMag=34+3+2+14*0.55=46.7m, ry≈7.43m（pitchWidthM非依存）
     //     外壁|x|≈61.9m(bowlHalfX≈40.52m+backWallTop.r≈21.36m) → rxMag=46.7mは十分内側。
     // どちらの人数制でも rxMag は外壁までまだ 15m 前後の余裕を残す＝スタジアム内に収まる。
-    const rxMag =
-      dims.pitchWidthM / 2 + GRASS_MARGIN_M + STADIUM_M.standMarginM + STADIUM_M.lowerDepthM * 0.55;
-    const ry =
-      STADIUM_M.frontWallM +
-      Math.sin(STADIUM_M.lowerRakeRad) * STADIUM_M.lowerDepthM * 0.55 +
-      3.2;
+    // GLBスタジアム統合時（opts.glbStadium）はrxMag/ryをGLB_BROADCAST_ANCHOR（実測の放送カメラ
+    // アンカーをアプリ座標へ変換した固定値）へ差し替える。プロシージャル時の可変式（ピッチ幅・
+    // スタンド寸法から逆算する値）はGLBの実スタジアム寸法とは対応しないため使わない。
+    const rxMag = opts?.glbStadium
+      ? Math.abs(GLB_BROADCAST_ANCHOR.x)
+      : dims.pitchWidthM / 2 + GRASS_MARGIN_M + STADIUM_M.standMarginM + STADIUM_M.lowerDepthM * 0.55;
+    const ry = opts?.glbStadium
+      ? GLB_BROADCAST_ANCHOR.y
+      : STADIUM_M.frontWallM + Math.sin(STADIUM_M.lowerRakeRad) * STADIUM_M.lowerDepthM * 0.55 + 3.2;
     const { cx, cz } = boundingCircle(collectTokenWorldPoints(state, dims));
     // 逆アングル方式（C-1項）: アンカーのX側を被写体フィット中心cxと逆サイドに選ぶ。
     // 旧実装は常にX<0側（rx=-rxMag）固定だったため、被写体もたまたまX<0側（cx<=0、カメラと
@@ -567,7 +596,9 @@ export function computeCameraPreset(
     const halfLen = dims.pitchLengthM / 2;
     // カメラz位置＝被写体フィット中心のz。ゴールライン際の被写体でもアンカーがゴール裏へ
     // 回り込みすぎないよう、ハーフウェイからの残り距離を8m残してクランプする。
-    const rz = clamp(cz, -(halfLen - 8), halfLen - 8);
+    // GLBスタジアム統合時は被写体フィット中心へ寄せず、実TVガントリーの固定z位置
+    // （GLB_BROADCAST_ANCHOR.z）をそのまま使う。
+    const rz = opts?.glbStadium ? GLB_BROADCAST_ANCHOR.z : clamp(cz, -(halfLen - 8), halfLen - 8);
     const target: [number, number, number] = [cx, 0.6, cz];
     const points = collectTokenWorldPoints(state, dims);
     const fitAspect = aspect ?? BROADCAST_ASSUMED_ASPECT;
@@ -592,7 +623,11 @@ export function computeCameraPreset(
       // 倍率」で頭打ちにしてから x/y/z へ一括適用する。camXだけを事後クランプすると
       // target→カメラの直線から外れて俯角が急変するため、必ず倍率側を制限する。
       let factor = Math.tan((rawFovDeg * Math.PI / 180) / 2) / Math.tan((40 * Math.PI / 180) / 2);
-      const xBoundary = broadcastBowlInnerBoundaryXM(dims);
+      // 境界はスタジアム実装ごとに異なる: プロシージャルはボウル内周の逆算値、GLBは
+      // GLB_BROADCAST_BOUNDARY_X_M（アンカー|x|=86mより外へまだ後退余地がある実寸境界。
+      // プロシージャル境界(11人制≈61.9m)を使うとアンカーが最初から境界外→後退量ゼロで
+      // 「境界律速」扱いになり、fovだけが黙って66度側へ開くという誤動作になる）。
+      const xBoundary = opts?.glbStadium ? GLB_BROADCAST_BOUNDARY_X_M : broadcastBowlInnerBoundaryXM(dims);
       const dx = rx - target[0];
       if (dx !== 0) {
         const fMax = (Math.sign(dx) * xBoundary - target[0]) / dx;

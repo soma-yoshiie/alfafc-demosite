@@ -95,6 +95,7 @@ import {
 } from "@/lib/setPiece3d";
 import { SkyFollow } from "./SetPiece3DEnv";
 import { getGrassPBR, StadiumBowl } from "./SetPiece3DStadium";
+import { AlfaStadium } from "./AlfaStadium";
 
 const REDUCED_MOTION_MQ = "(prefers-reduced-motion: reduce)";
 
@@ -2010,6 +2011,28 @@ class ModelBoundary extends Component<{ fallback: ReactNode; children: ReactNode
   }
 }
 
+/** GLBスタジアム(components/AlfaStadium.tsx)の読み込み失敗時に、既存のprocedural
+ * スタジアム一式（StadiumBowl/PitchGround/PitchLines/Goal×2/CornerFlags/ApronGround）へ
+ * 落とすエラーバウンダリ。ModelBoundary（GLB選手用）と全く同じパターンだが、GLB失敗を
+ * console.errorで報告する点だけ異なる（スタジアムはページの主要な視覚要素のため、
+ * 選手モデルよりも失敗を診断しやすくしておきたい）。 */
+class GlbStadiumBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  componentDidCatch(error: unknown) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[SetPiece3D] AlfaStadium(GLBスタジアム)の読み込みに失敗しました。プロシージャルスタジアムへフォールバックします。",
+      error
+    );
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
 function ProceduralPlayers({
   quality,
   dims,
@@ -2256,11 +2279,13 @@ function CameraController({
   reducedMotion,
   controlsRef,
   dims,
+  glbStadium,
 }: {
   preset: CameraPresetId;
   reducedMotion: boolean;
   controlsRef: React.RefObject<OrbitControlsImpl | null>;
   dims: PitchDims;
+  glbStadium: boolean;
 }) {
   const board = useBoard();
   const { camera, invalidate, size } = useThree();
@@ -2295,7 +2320,7 @@ function CameraController({
     // 遷移には影響しない。高さ0（マウント直後でResizeObserverが未発火等）はundefined扱いにし
     // computeCameraPreset側のデフォルト(BROADCAST_ASSUMED_ASPECT)へフォールバックさせる。
     const aspect = sizeRef.current.height > 0 ? sizeRef.current.width / sizeRef.current.height : undefined;
-    const pose = computeCameraPreset(preset, stateRef.current, dims, aspect);
+    const pose = computeCameraPreset(preset, stateRef.current, dims, aspect, { glbStadium });
     const controls = controlsRef.current;
     const dx = pose.position[0] - pose.target[0];
     const dz = pose.position[2] - pose.target[2];
@@ -2337,7 +2362,21 @@ function CameraController({
     // 追従させない設計。dimsはformatが変わらない限り同一オブジェクト参照のまま＝
     // getPitchDimsが固定テーブルを返すため、通常のboard.state更新では再発火しない）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset, reducedMotion, camera, controlsRef, invalidate, dims]);
+  }, [preset, reducedMotion, camera, controlsRef, invalidate, dims, glbStadium]);
+
+  // camera.farの切替反映。<Canvas camera={{far:...}}>はCanvas生成時にしか適用されない
+  // （R3Fは既存カメラのユーザー設定を上書きしない）ため、3Dを開いたまま品質を切り替えて
+  // glbStadiumが変化したケースでは、ここで明示的にfarを代入して反映する
+  // （GLBスタジアムは±195mまであるためfar=450、プロシージャルは従来どおり300）。
+  useEffect(() => {
+    const pcam = camera as THREE.PerspectiveCamera;
+    const far = glbStadium ? 450 : 300;
+    if (pcam.far !== far) {
+      pcam.far = far;
+      pcam.updateProjectionMatrix();
+      invalidate();
+    }
+  }, [glbStadium, camera, invalidate]);
 
   // Canvas実寸が変化した時（スマホ回転・ウィンドウリサイズ等）、broadcastプリセット中なら
   // 実アスペクト比でfov/位置を再フィットする（他プリセットはaspectを使わないため対象外）。
@@ -2352,7 +2391,7 @@ function CameraController({
     }
     if (preset !== "broadcast") return;
     const aspect = size.height > 0 ? size.width / size.height : undefined;
-    const pose = computeCameraPreset("broadcast", stateRef.current, dims, aspect);
+    const pose = computeCameraPreset("broadcast", stateRef.current, dims, aspect, { glbStadium });
     const controls = controlsRef.current;
     const pcam = camera as THREE.PerspectiveCamera;
     camera.position.set(...pose.position);
@@ -2363,7 +2402,7 @@ function CameraController({
     t.current = 1;
     invalidate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size.width, size.height, preset, dims, camera, controlsRef, invalidate]);
+  }, [size.width, size.height, preset, dims, camera, controlsRef, invalidate, glbStadium]);
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
@@ -2761,11 +2800,18 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
   // 何人制シナリオかに応じたピッチ寸法一式。getPitchDimsは固定テーブル参照を返すため
   // （format 8|11の2値しか無い）、format不変の間はレンダーをまたいで同一オブジェクト参照になる
   // ＝下流のuseMemo([dims])はformat切替時だけ再計算される。
-  const dims = getPitchDims(board.state.setPiece?.format ?? 8);
+  const format = board.state.setPiece?.format ?? 8;
+  const dims = getPitchDims(format);
+  // GLBスタジアム(components/AlfaStadium.tsx)を使うかどうか。11人制かつ高/中品質のときだけ true。
+  // - 8人制は不使用: GLBのピッチ実測は105×68m(11人制)固定のため、8人制(50×68m)の寸法とは
+  //   一致しない。8人制は従来どおりprocedural一式（フォーマットに応じて寸法を作り直せる）を使う。
+  // - 軽(mobile)品質は不使用: GLBは1,460,240trisと軽品質のtris予算を大きく超えるため、
+  //   軽量端末向けにはprocedural一式(軽量ジオメトリ)を使い続ける。
+  const glbStadium = format === 11 && quality !== "mobile";
   // 環境（空・光・霧）プリセット。現時点は切替UIが無くduskのみを使う（構造だけ用意）
   const sky = SKY_PRESETS[ACTIVE_SKY_PRESET];
   // 初回マウント時のカメラ位置・画角のみに使う（以後はCameraControllerが管理）
-  const [initialPose] = useState(() => computeCameraPreset(preset, board.state, dims));
+  const [initialPose] = useState(() => computeCameraPreset(preset, board.state, dims, undefined, { glbStadium }));
   const controlsRef = useRef<OrbitControlsImpl | null>(null);
 
   // 再生駆動：Canvas外の軽量rAFで board.getTime() をポーリングし、変化した瞬間だけ
@@ -2790,6 +2836,21 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // procedural スタジアム一式（StadiumBowl/PitchGround/PitchLines/Goal×2/CornerFlags/
+  // ApronGround）。glbStadium=falseの通常描画と、glbStadium=true時のGlbStadiumBoundary/
+  // Suspenseのfallback（ロード中・失敗時に見せる画）の両方から参照するため変数化して重複を避ける。
+  const proceduralStadium = (
+    <>
+      <ApronGround />
+      <PitchGround quality={quality} dims={dims} />
+      <PitchLines dims={dims} />
+      <Goal end={1} dims={dims} />
+      <Goal end={-1} dims={dims} />
+      <CornerFlags dims={dims} />
+      <StadiumBowl dims={dims} quality={quality} />
+    </>
+  );
+
   return (
     <div className="pitchwrap sp3dwrap">
       <div className="pitch sp3dpitch">
@@ -2813,7 +2874,10 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.08,
           }}
-          camera={{ fov: initialPose.fov, near: 0.1, far: 300, position: initialPose.position }}
+          // GLBスタジアムは全体bbox±195×±168・高さ55.5まであり、procedural一式の想定範囲
+          // （far=300で足りていた）を超えて見える箇所があるため、glbStadium時だけfar/fogを
+          // 300→450・(90,300)→(110,420)へ広げる（procedural・8人制時は従来どおり）。
+          camera={{ fov: initialPose.fov, near: 0.1, far: glbStadium ? 450 : 300, position: initialPose.position }}
         >
           {/* 夕暮れ+照明点灯(DUSK)。色/強度はlib/setPiece3d.tsのSKY_PRESETS[ACTIVE_SKY_PRESET]に
               集約し、ここでは参照するだけ（day/nightへの切替は将来、この参照先を変えるだけで済む）。
@@ -2836,17 +2900,25 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             shadow-camera-far={80}
           />
           <directionalLight position={sky.fillPosition} intensity={sky.fillIntensity} color={sky.fillColor} />
-          {/* 地平線色のFog(near90/far300)。スカイドーム自体はmaterial.fog=falseで対象外にする
-              （SkyDome側で設定済み）。低空の雲は霧の影響を受けたままにし、地平線付近で自然に溶け込ませる */}
-          <fog attach="fog" args={[sky.fogColor, 90, 300]} />
+          {/* 地平線色のFog(near90/far300、glbStadium時はnear110/far420)。スカイドーム自体は
+              material.fog=falseで対象外にする（SkyDome側で設定済み）。低空の雲は霧の影響を
+              受けたままにし、地平線付近で自然に溶け込ませる */}
+          <fog attach="fog" args={glbStadium ? [sky.fogColor, 110, 420] : [sky.fogColor, 90, 300]} />
           <SkyFollow preset={sky} cloudTint={sky.cloud} />
-          <ApronGround />
-          <PitchGround quality={quality} dims={dims} />
-          <PitchLines dims={dims} />
-          <Goal end={1} dims={dims} />
-          <Goal end={-1} dims={dims} />
-          <CornerFlags dims={dims} />
-          <StadiumBowl dims={dims} quality={quality} />
+          {glbStadium ? (
+            // 11人制・高/中品質: Blender製GLBスタジアムを描画する。procedural一式
+            // （StadiumBowl/PitchGround/PitchLines/Goal×2/CornerFlags/ApronGround）は
+            // レンダーしない（二重ピッチ/二重ゴールを避けるため）が、コード自体は残し、
+            // ロード中(Suspense)・失敗時(GlbStadiumBoundary)のフォールバックとして使う。
+            <GlbStadiumBoundary fallback={proceduralStadium}>
+              <Suspense fallback={proceduralStadium}>
+                <AlfaStadium />
+              </Suspense>
+            </GlbStadiumBoundary>
+          ) : (
+            // 8人制、または軽(mobile)品質: 従来どおりprocedural一式をそのまま描画する。
+            proceduralStadium
+          )}
           <ShapesFloor dims={dims} />
           <MovesFloor dims={dims} />
           <TokensLayer quality={quality} dims={dims} onActorDown={beginActorDrag} />
@@ -2875,7 +2947,13 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             minPolarAngle={Math.PI / 36}
             maxPolarAngle={Math.PI / 2 - 0.02}
           />
-          <CameraController preset={preset} reducedMotion={reducedMotion} controlsRef={controlsRef} dims={dims} />
+          <CameraController
+            preset={preset}
+            reducedMotion={reducedMotion}
+            controlsRef={controlsRef}
+            dims={dims}
+            glbStadium={glbStadium}
+          />
           {!booted && <FirstFrameGate onFirstFrame={() => setBooted(true)} />}
         </Canvas>
         {!booted && (
