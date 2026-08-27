@@ -1,7 +1,7 @@
 "use client";
 
-// Blender製スタジアムGLB(ALFA_Stadium_V5_2.glb / 81.7MB・876メッシュ・1,460,240tris・
-// 35マテリアル共有・テクスチャ0・単一ルートALFA_EXPORT_ROOT)を読み込み、11人制・高/中品質の
+// Blender製スタジアムGLB(ALFA_Stadium_V5_4.glb / 81.7MB・892メッシュ・約146万tris・
+// 37マテリアル共有・テクスチャ0・単一ルートALFA_EXPORT_ROOT)を読み込み、11人制・高/中品質の
 // ときだけ components/SetPiece3D.tsx から描画される（8人制はピッチ寸法がGLBの105×68mと
 // 一致しない・軽品質はtris予算超過のため、どちらも従来のprocedural一式を使い続ける。
 // 判断はSetPiece3D.tsx側の glbStadium 変数で行う）。
@@ -21,13 +21,11 @@
 //   この1つのgroup変換だけで済ませ、子メッシュへ個別の回転・スケールは一切当てない。
 //
 // 【マテリアル補正（初回ロード後に1回だけ・useEffect内でscene.traverse）】
-//   GLBはテクスチャを持たずbaseColorのみで構成されるため、一部マテリアルはbaseColor未設定で
-//   白く見える。名前一致する7種にだけ色（グラス系は加えてroughness）を設定し、共有インスタンスを
-//   直接書き換える（クローンしない＝同じ名前のマテリアルを参照する全メッシュに一括反映される）。
-//   KHR_transmission系の2種（ガラス）は透過パスのレンダリングコストが高いため、
+//   V5.3以降は全マテリアルにPBR定数がベイクされているため色補正は不要。
+//   KHR_transmission系の2種（ガラス）だけは透過パスのレンダリングコストが高いため、
 //   MeshStandardMaterial(color維持・transparent・roughness/metalness固定)へ差し替える
 //   （置換後マテリアルはモジュールスコープでキャッシュし、同じ元マテリアルに対して1つだけ生成する）。
-//   他28マテリアルはエクスポートされたままで問題ないため無加工。
+//   他のマテリアルはエクスポートされたままで問題ないため無加工。
 //
 // 【広告/スクリーンAPI】
 //   setStadiumAd(slot, source) で4面の広告サーフェスへ静止画/動画/canvasを適用できる。
@@ -42,7 +40,7 @@ import { useGLTF } from "@react-three/drei";
 
 /** GLB配置パス（相対パス。components/SetPiece3D.tsx の MODEL_URL="models/player.glb" と
  * 同じ方式＝GitHub Pagesのサブパス配信・next.config.mjsのoutput:"export"どちらでも解決できる）。 */
-const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_3.glb";
+const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_4.glb";
 
 // 注意: useGLTF.preload(STADIUM_GLB_URL) はあえて呼ばない。
 // 81.7MBという重量級アセットを、11人制以外（8人制・軽品質）のユーザーも含めて全員に
