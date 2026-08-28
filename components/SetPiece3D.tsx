@@ -13,28 +13,31 @@
 // AnimationStudioが専有する単一スロットのため（本タスクでBoardProvider.tsxは編集不可）、
 // 3D側は自前でCanvas外の軽量rAFポーリングにより board.getTime() の変化を検知し、
 // 変化があったときだけ useThree().invalidate() を呼ぶ（frameloop="demand"のまま、
-// CameraController/GazeClickPlaneと同じ「動いている間だけinvalidate()し続ける」流儀を
+// CameraController/InteractionPlaneと同じ「動いている間だけinvalidate()し続ける」流儀を
 // 再生駆動にも適用している＝静止時は本当に無描画のまま）。
 // 選手の走行モーション（進行方向のyaw追従・速度に応じた脚腕の振り→待機ポーズへのブレンド）と
 // ボール弾道（ground/driven/lofted）の純粋計算はlib/setPiece3d.tsに集約し、本ファイルは
 // それをuseFrame内でObject3D refへ書き込む（Reactの再レンダーを介さない）だけにしている。
 //
-// 【編集範囲の制約】このタスクで編集可能なファイルは本ファイル・lib/setPiece3d.ts・
-// lib/types.ts（moves弾道フィールドのみ）・components/AnimationStudio.tsx（弾道セレクタのみ）・
-// app/globals.cssで、components/SetPieceBoard.tsx（3D中のカメラプリセット行
+// 【編集範囲の制約（Playback3Dフェーズ時点の記録）】このタスクで編集可能なファイルは本ファイル・
+// lib/setPiece3d.ts・lib/types.ts（moves弾道フィールドのみ）・components/AnimationStudio.tsx
+// （弾道セレクタのみ）・app/globals.cssで、components/SetPieceBoard.tsx（3D中のカメラプリセット行
 // .sp3dbar=CameraBarを描画している親）は編集できない。そのためカメラプリセットの追加
 // （ground/replay）はlib/setPiece3d.tsのCAMERA_PRESET_ORDER/LABELに載せるだけで
 // CameraBar側が自動的にボタンを増やす仕組みに乗せ、逆に「3Dバーに品質トグル(高/中/軽)を追加」や
 // 「3Dバーに再生コントロールを追加」は親コンポーネントの.sp3dbarへ直接は差し込めないため、
 // 本ファイル側（.sp3dpitch内）に浮かせるオーバーレイとして実装している
 // （QualityToggle＝app/globals.cssの.sp3dquality、PlaybackBar＝同.sp3dplay）。
+// ※後続のCamera UX Overhaulタスクではcomponents/SetPieceBoard.tsxも編集範囲に含まれ、
+// CameraBarへ「リセット」ボタンを追加した（resetNonce propで再適用をトリガーする方式。
+// SetPiece3D側のCameraController参照）。上記の「編集できない」はPlayback3D時点の制約であり、
+// 現在も有効なのは「CAMERA_PRESET_ORDER/LABELに載せるだけでボタンが増える」自動連動の仕組みの部分。
 
 import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
-import { Html, Line, OrbitControls, useGLTF } from "@react-three/drei";
+import { CameraControls, CameraControlsImpl, Html, Line, useGLTF } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
-import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { useBoard } from "./BoardProvider";
 import { actorColor } from "@/lib/colors";
 import { actorPos, animTotal, simplify, stepAtTime, stepDur, stepStartTime, straightenIfLine } from "@/lib/animation";
@@ -53,8 +56,11 @@ import {
   boardXToWorldX,
   boardYToWorldZ,
   buildMarkingsGeometryData,
+  CAMERA_TUNING,
+  classifyWheelGesture,
   computeBlobShadow,
   computeCameraPreset,
+  exteriorFitDistanceM,
   actionEventsFor,
   computeActionEvents,
   computeHeaderPose,
@@ -95,7 +101,7 @@ import {
 } from "@/lib/setPiece3d";
 import { SkyFollow } from "./SetPiece3DEnv";
 import { getGrassPBR, StadiumBowl } from "./SetPiece3DStadium";
-import { AlfaStadium } from "./AlfaStadium";
+import { AlfaStadium, getStadiumBoundsSummary, subscribeStadiumBounds, type StadiumBoundsSummary } from "./AlfaStadium";
 
 const REDUCED_MOTION_MQ = "(prefers-reduced-motion: reduce)";
 
@@ -1040,6 +1046,7 @@ function PlayerFigure({
   dims,
   events,
   onDown,
+  onFocus,
 }: {
   actor: Actor;
   x: number;
@@ -1053,6 +1060,7 @@ function PlayerFigure({
   dims: PitchDims;
   events: ActionEvent[];
   onDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+  onFocus?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const idle = useMemo(() => computeIdlePose(seed), [seed]);
@@ -1199,6 +1207,7 @@ function PlayerFigure({
         position={[x, 0, z]}
         rotation-y={initialYaw}
         onPointerDown={onDown ? (e) => onDown(actor, e) : undefined}
+        onDoubleClick={onFocus ? (e) => onFocus(actor, e) : undefined}
       >
       {/* castShadowは胴・大腿・下腿のみに絞る（頭・腕・骨盤・足はOFF）。影を落とす意味が薄い
           末端部位を間引き、shadow mapへの描画コストを下げる（性能予算） */}
@@ -1395,10 +1404,12 @@ function Ball3D({
   dims,
   quality,
   onActorDown,
+  onActorFocus,
 }: {
   dims: PitchDims;
   quality: Sp3dQuality;
   onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+  onActorFocus?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const ref = useRef<THREE.Group | null>(null);
@@ -1473,6 +1484,7 @@ function Ball3D({
         <mesh
           visible={false}
           onPointerDown={onActorDown ? (e) => onActorDown("ball", e) : undefined}
+          onDoubleClick={onActorFocus ? (e) => onActorFocus("ball", e) : undefined}
         >
           <sphereGeometry args={[0.34, 8, 8]} />
           <meshBasicMaterial transparent opacity={0} depthWrite={false} />
@@ -1630,6 +1642,7 @@ function GLBPlayer({
   dims,
   events,
   onDown,
+  onFocus,
 }: {
   gltf: { scene: THREE.Group; animations: THREE.AnimationClip[] };
   actor: Actor;
@@ -1643,6 +1656,7 @@ function GLBPlayer({
   dims: PitchDims;
   events: ActionEvent[];
   onDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+  onFocus?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const kit = useMemo(() => getKitColors(jersey, variant), [jersey, variant]);
@@ -1882,6 +1896,7 @@ function GLBPlayer({
         position={[x, 0, z]}
         rotation-y={facing === -1 ? Math.PI : 0}
         onPointerDown={onDown ? (e) => onDown(actor, e) : undefined}
+        onDoubleClick={onFocus ? (e) => onFocus(actor, e) : undefined}
       >
         <group rotation-y={MODEL_YAW_OFFSET} position={[0, footOffset, 0]} scale={[scale, scale, scale]}>
           <primitive object={clone} />
@@ -1925,11 +1940,13 @@ function ModelPlayers({
   dims,
   actionMap,
   onActorDown,
+  onActorFocus,
 }: {
   quality: Sp3dQuality;
   dims: PitchDims;
   actionMap: Map<string, ActionEvent[]>;
   onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+  onActorFocus?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const { slots, players } = board.state;
@@ -1957,6 +1974,7 @@ function ModelPlayers({
             dims={dims}
             events={actionEventsFor(actionMap, i)}
             onDown={onActorDown}
+            onFocus={onActorFocus}
           />
         );
       })}
@@ -1975,6 +1993,7 @@ function ModelPlayers({
           dims={dims}
           events={actionEventsFor(actionMap, `opp${i}` as Actor)}
           onDown={onActorDown}
+          onFocus={onActorFocus}
         />
       ))}
     </group>
@@ -2019,11 +2038,13 @@ function ProceduralPlayers({
   dims,
   actionMap,
   onActorDown,
+  onActorFocus,
 }: {
   quality: Sp3dQuality;
   dims: PitchDims;
   actionMap: Map<string, ActionEvent[]>;
   onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+  onActorFocus?: (actor: Actor, e: { stopPropagation: () => void }) => void;
 }) {
   const board = useBoard();
   const { slots, players } = board.state;
@@ -2049,6 +2070,7 @@ function ProceduralPlayers({
             dims={dims}
             events={actionEventsFor(actionMap, i)}
             onDown={onActorDown}
+            onFocus={onActorFocus}
           />
         );
       })}
@@ -2067,20 +2089,69 @@ function ProceduralPlayers({
           dims={dims}
           events={actionEventsFor(actionMap, `opp${i}` as Actor)}
           onDown={onActorDown}
+          onFocus={onActorFocus}
         />
       ))}
     </group>
   );
 }
 
+/** 選手/ボールトークンのダブルクリック注視移動（6項）。target=トークン位置(y≈1.0)、
+ * 現在距離(controls.distance)がCAMERA_TUNING.focusMaxDistanceMを超えていればそこまで
+ * 寄せる（下回っていればそのまま維持＝無用な寄せ直しをしない）。方向は現在のカメラ位置→
+ * 注視点ベクトルを維持する（getPosition/getTarget から算出しsetLookAtの滑らか版へ渡す）。
+ * minDistance尊重（モデル内部へ入らない）。useThree()を使うためCanvas内の（TokensLayerのような）
+ * コンポーネントの中で組み立てる必要がある。 */
+function useTokenFocusHandler(
+  controlsRef: React.RefObject<CameraControlsImpl | null>,
+  dims: PitchDims,
+  reducedMotion: boolean
+): (actor: Actor, e: { stopPropagation: () => void }) => void {
+  const board = useBoard();
+  const { invalidate } = useThree();
+  return (actor: Actor, e: { stopPropagation: () => void }) => {
+    e.stopPropagation();
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const st = board.stateRef.current;
+    const p = actorPos(actor, board.getTime(), st.moves, st.slots, st.ball, st.opponents, st.holder);
+    const tx = boardXToWorldX(p.x, dims);
+    const tz = boardYToWorldZ(p.y, dims);
+    const ty = 1.0;
+    const camPos = new THREE.Vector3();
+    const oldTarget = new THREE.Vector3();
+    controls.getPosition(camPos);
+    controls.getTarget(oldTarget);
+    const dir = camPos.sub(oldTarget);
+    const curDist = dir.length();
+    if (curDist < 1e-6) return;
+    dir.divideScalar(curDist);
+    const nextDist = Math.max(controls.minDistance, Math.min(curDist, CAMERA_TUNING.focusMaxDistanceM));
+    void controls.setLookAt(
+      tx + dir.x * nextDist,
+      ty + dir.y * nextDist,
+      tz + dir.z * nextDist,
+      tx,
+      ty,
+      tz,
+      !reducedMotion
+    );
+    invalidate();
+  };
+}
+
 function TokensLayer({
   quality,
   dims,
   onActorDown,
+  controlsRef,
+  reducedMotion,
 }: {
   quality: Sp3dQuality;
   dims: PitchDims;
   onActorDown?: (actor: Actor, e: { stopPropagation: () => void }) => void;
+  controlsRef: React.RefObject<CameraControlsImpl | null>;
+  reducedMotion: boolean;
 }) {
   const board = useBoard();
   const { slots } = board.state;
@@ -2088,13 +2159,20 @@ function TokensLayer({
   const moves = board.state.moves;
   const ball = board.state.ball;
   const holder = board.state.holder;
+  const onActorFocus = useTokenFocusHandler(controlsRef, dims, reducedMotion);
   // キック/ヘディングのイベント表。moves/配置が変わったときだけ再計算する
   const actionMap = useMemo(
     () => computeActionEvents(moves, slots, ball, opponents, holder, dims),
     [moves, slots, ball, opponents, holder, dims]
   );
   const proc = (
-    <ProceduralPlayers quality={quality} dims={dims} actionMap={actionMap} onActorDown={onActorDown} />
+    <ProceduralPlayers
+      quality={quality}
+      dims={dims}
+      actionMap={actionMap}
+      onActorDown={onActorDown}
+      onActorFocus={onActorFocus}
+    />
   );
   return (
     <group>
@@ -2102,20 +2180,27 @@ function TokensLayer({
         // high/medium=GLBモデル（読み込み中・失敗時はプロシージャル人型で表示を継続）
         <ModelBoundary fallback={proc}>
           <Suspense fallback={proc}>
-            <ModelPlayers quality={quality} dims={dims} actionMap={actionMap} onActorDown={onActorDown} />
+            <ModelPlayers
+              quality={quality}
+              dims={dims}
+              actionMap={actionMap}
+              onActorDown={onActorDown}
+              onActorFocus={onActorFocus}
+            />
           </Suspense>
         </ModelBoundary>
       ) : (
         proc
       )}
-      <Ball3D dims={dims} quality={quality} onActorDown={onActorDown} />
+      <Ball3D dims={dims} quality={quality} onActorDown={onActorDown} onActorFocus={onActorFocus} />
     </group>
   );
 }
 
 /* ============================================================
    ダブルクリックで注視点を移動する透明な地面プレーン。カメラ位置自体は動かさず、
-   OrbitControlsのtargetだけをイージングで移動する（reduced-motionは即時ジャンプ）。
+   CameraControls.setTarget(...)のsmoothTime内蔵イージングで注視点だけを移動する
+   （reduced-motionはenableTransition=falseで即時ジャンプ。自前のlerpループは持たない）。
    ============================================================ */
 
 const CLICK_PLANE_GEOM = new THREE.PlaneGeometry(400, 400);
@@ -2143,7 +2228,7 @@ function InteractionPlane({
   kickEdit,
   onKickTarget,
 }: {
-  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  controlsRef: React.RefObject<CameraControlsImpl | null>;
   reducedMotion: boolean;
   dims: PitchDims;
   dragRef: React.RefObject<Drag3DState | null>;
@@ -2152,36 +2237,13 @@ function InteractionPlane({
 }) {
   const board = useBoard();
   const { invalidate } = useThree();
-  const from = useRef(new THREE.Vector3());
-  const to = useRef(new THREE.Vector3());
-  const t = useRef(1);
-
-  useFrame((_, delta) => {
-    if (t.current >= 1) return;
-    t.current = Math.min(1, t.current + delta / 0.45);
-    const e = 1 - Math.pow(1 - t.current, 3);
-    const controls = controlsRef.current;
-    if (controls) {
-      controls.target.lerpVectors(from.current, to.current, e);
-      controls.update();
-    }
-    invalidate();
-  });
 
   const handleDoubleClick = (e: ThreeEvent<MouseEvent>) => {
     if (dragRef.current || kickEdit) return;
     e.stopPropagation();
     const controls = controlsRef.current;
     if (!controls) return;
-    from.current.copy(controls.target);
-    to.current.set(e.point.x, Math.max(0.3, e.point.y + 0.3), e.point.z);
-    if (reducedMotion) {
-      controls.target.copy(to.current);
-      controls.update();
-      t.current = 1;
-    } else {
-      t.current = 0;
-    }
+    void controls.setTarget(e.point.x, Math.max(0.3, e.point.y + 0.3), e.point.z, !reducedMotion);
     invalidate();
   };
 
@@ -2247,12 +2309,18 @@ function InteractionPlane({
   );
 }
 /* ============================================================
-   カメラ制御（プリセット間をイージング移動。reduced-motionは即時ジャンプ）。
-   replayプリセットは遷移完了後、reduced-motionでない間だけ注視点を中心にゆっくり自動オービットする
-   （reduced-motionでは仕様どおり無効＝この分岐に入らず開始姿勢のまま静止する）。
-   frameloop="demand"下では毎フレームinvalidate()を呼び続けない限り再描画が止まるため、
-   遷移中・オービット中は明示的にinvalidate()する（Playback3Dが再生時にも同じ考え方で
-   invalidate()を呼び続ける想定＝「静止時demand、動いている間だけ連続描画」の共通パターン）。
+   カメラ制御（プリセット間をdrei CameraControls.setLookAt(...)のsmoothTime内蔵イージングで
+   移動。reduced-motionはenableTransition=falseで即時ジャンプ）。位置/注視点の遷移自体は
+   CameraControls側の毎フレームupdate()に任せるため、ここでは「遷移先を1回セットするだけ」
+   （自前のlerpループは持たない）。fovだけはcamera-controlsが扱わないため、既存どおり短い
+   cubicイージングをuseFrameで維持する。
+   replayプリセットは遷移完了後、reduced-motionでない間だけ毎フレーム controls.rotate(...) で
+   注視点まわりに自動オービットする（reduced-motionでは仕様どおり無効＝開始姿勢のまま静止）。
+   drei CameraControlsは内部でupdate/wake/control系イベントを自動購読してinvalidate()する
+   （node_modules/@react-three/drei/core/CameraControls.js実装で確認済み）ため、遷移中・
+   オービット中の継続invalidateはdrei任せでよい。ここでの明示invalidate()は「遷移を開始した
+   最初の1フレーム」を確実に描画させるためのキック役（frameloop="demand"は最初のinvalidate()
+   が無いと何も始まらない）。
    ============================================================ */
 
 function CameraController({
@@ -2261,12 +2329,22 @@ function CameraController({
   controlsRef,
   dims,
   glbStadium,
+  far,
+  stadiumBounds,
+  resetNonce,
 }: {
   preset: CameraPresetId;
   reducedMotion: boolean;
-  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  controlsRef: React.RefObject<CameraControlsImpl | null>;
   dims: PitchDims;
   glbStadium: boolean;
+  /** 動的far（SetPiece3D側のdynamicLimitsから）。camera.farへ反映する。 */
+  far: number;
+  /** GLBスタジアムのBox3要約（未到着/procedural時はnull）。"exterior"プリセットのフィットに使う。 */
+  stadiumBounds: StadiumBoundsSummary | null;
+  /** 「リセット」ボタンが押されるたびに増える値。presetが同値("overhead")のままでも、
+   * これが変わればプリセット遷移を強制的に再適用する（React stateの同値bailoutを迂回する）。 */
+  resetNonce: number;
 }) {
   const board = useBoard();
   const { camera, invalidate, size } = useThree();
@@ -2279,10 +2357,6 @@ function CameraController({
   const sizeRef = useRef(size);
   sizeRef.current = size;
 
-  const fromPos = useRef(new THREE.Vector3());
-  const fromTarget = useRef(new THREE.Vector3());
-  const toPos = useRef(new THREE.Vector3());
-  const toTarget = useRef(new THREE.Vector3());
   // プリセットごとのFOV遷移（three.jsのCamera型はPerspective/Orthographicの合併型のため、
   // このCanvasは常にPerspectiveCameraで構成している前提でキャストする）
   const fromFov = useRef(50);
@@ -2290,131 +2364,217 @@ function CameraController({
   const t = useRef(1);
   const mounted = useRef(false);
 
-  // replay用: 注視点からの水平距離・高さ・現在角度（プリセット切替のたびに再計算し、
-  // 以後はuseFrameが角度だけ進める）
-  const replayRadius = useRef(0);
-  const replayHeight = useRef(0);
-  const replayAngle = useRef(0);
+  const applyPreset = (id: CameraPresetId, enableTransition: boolean) => {
+    const aspect = sizeRef.current.height > 0 ? sizeRef.current.width / sizeRef.current.height : undefined;
+    const pose = computeCameraPreset(id, stateRef.current, dims, aspect, {
+      glbStadium,
+      stadiumBounds: stadiumBounds ?? undefined,
+    });
+    const controls = controlsRef.current;
+    const pcam = camera as THREE.PerspectiveCamera;
+    // プリセット姿勢の距離をminDistance/maxDistanceへ事前クランプする。setLookAt()は
+    // 半径をクランプしない一方dollyTo()はクランプするため、姿勢が制限外のままだと
+    // 「適用直後の最初のホイール1ノッチでいきなり制限値まで飛ぶ」実測不具合になる
+    // （例: 地上カメラの距離1.82<min2、フォールバック時の俯瞰45°170.8>旧max120）。
+    let [px, py, pz] = pose.position;
+    const [tx, ty, tz] = pose.target;
+    if (controls) {
+      const dx = px - tx;
+      const dy = py - ty;
+      const dz = pz - tz;
+      const d = Math.hypot(dx, dy, dz) || 1;
+      const lo = controls.minDistance + 0.2;
+      const hi = Math.max(lo, controls.maxDistance - 0.5);
+      const cd = Math.min(hi, Math.max(lo, d));
+      if (cd !== d) {
+        const s = cd / d;
+        px = tx + dx * s;
+        py = ty + dy * s;
+        pz = tz + dz * s;
+      }
+    }
+    void controls?.setLookAt(px, py, pz, tx, ty, tz, enableTransition);
+    if (enableTransition) {
+      fromFov.current = pcam.fov;
+      toFov.current = pose.fov;
+      t.current = 0;
+    } else {
+      pcam.fov = pose.fov;
+      pcam.updateProjectionMatrix();
+      t.current = 1;
+    }
+    invalidate();
+  };
 
   useEffect(() => {
-    // 実アスペクト比（Canvas実寸から）。broadcast以外は無視されるため、他プリセットの
-    // 遷移には影響しない。高さ0（マウント直後でResizeObserverが未発火等）はundefined扱いにし
-    // computeCameraPreset側のデフォルト(BROADCAST_ASSUMED_ASPECT)へフォールバックさせる。
-    const aspect = sizeRef.current.height > 0 ? sizeRef.current.width / sizeRef.current.height : undefined;
-    const pose = computeCameraPreset(preset, stateRef.current, dims, aspect, { glbStadium });
-    const controls = controlsRef.current;
-    const dx = pose.position[0] - pose.target[0];
-    const dz = pose.position[2] - pose.target[2];
-    replayRadius.current = Math.hypot(dx, dz);
-    replayHeight.current = pose.position[1] - pose.target[1];
-    replayAngle.current = Math.atan2(dz, dx);
-    const pcam = camera as THREE.PerspectiveCamera;
     if (!mounted.current) {
       // 初回マウント：Canvasの初期カメラ位置・画角と揃えるだけなので遷移させない
       mounted.current = true;
-      camera.position.set(...pose.position);
-      controls?.target.set(...pose.target);
-      controls?.update();
-      pcam.fov = pose.fov;
-      pcam.updateProjectionMatrix();
-      t.current = 1;
-      invalidate();
+      applyPreset(preset, false);
       return;
     }
-    if (reducedMotion) {
-      camera.position.set(...pose.position);
-      controls?.target.set(...pose.target);
-      controls?.update();
-      pcam.fov = pose.fov;
-      pcam.updateProjectionMatrix();
-      t.current = 1;
-      invalidate();
-      return;
-    }
-    fromPos.current.copy(camera.position);
-    fromTarget.current.copy(controls?.target ?? fromPos.current);
-    toPos.current.set(...pose.position);
-    toTarget.current.set(...pose.target);
-    fromFov.current = pcam.fov;
-    toFov.current = pose.fov;
-    t.current = 0;
-    invalidate();
-    // preset切替の瞬間・dims(format)切替の瞬間のみ再計算する（board.state の他の変化には
-    // 追従させない設計。dimsはformatが変わらない限り同一オブジェクト参照のまま＝
-    // getPitchDimsが固定テーブルを返すため、通常のboard.state更新では再発火しない）
+    applyPreset(preset, !reducedMotion);
+    // preset切替の瞬間・dims(format)切替の瞬間・resetNonce変化の瞬間にのみ再計算する
+    // （board.state の他の変化には追従させない設計。dimsはformatが変わらない限り同一
+    // オブジェクト参照のまま＝getPitchDimsが固定テーブルを返すため、通常のboard.state更新
+    // では再発火しない。resetNonceは「リセット」ボタンがpresetを同値("overhead")のまま
+    // 再適用したいときに使う専用のトリガー）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset, reducedMotion, camera, controlsRef, invalidate, dims, glbStadium]);
+  }, [preset, reducedMotion, camera, controlsRef, invalidate, dims, glbStadium, stadiumBounds, resetNonce]);
 
   // camera.farの切替反映。<Canvas camera={{far:...}}>はCanvas生成時にしか適用されない
   // （R3Fは既存カメラのユーザー設定を上書きしない）ため、3Dを開いたまま品質を切り替えて
-  // glbStadiumが変化したケースでは、ここで明示的にfarを代入して反映する
-  // （GLBスタジアムは±195mまであるためfar=450、プロシージャルは従来どおり300）。
+  // farが変化したケース（glbStadium切替・GLB境界の到着による動的far確定）では、ここで
+  // 明示的にfarを代入して反映する（動的far算出自体はSetPiece3D.tsx側のdynamicLimits）。
   useEffect(() => {
     const pcam = camera as THREE.PerspectiveCamera;
-    const far = glbStadium ? 450 : 300;
     if (pcam.far !== far) {
       pcam.far = far;
       pcam.updateProjectionMatrix();
       invalidate();
     }
-  }, [glbStadium, camera, invalidate]);
+  }, [far, camera, invalidate]);
 
   // Canvas実寸が変化した時（スマホ回転・ウィンドウリサイズ等）、broadcastプリセット中なら
   // 実アスペクト比でfov/位置を再フィットする（他プリセットはaspectを使わないため対象外）。
-  // 初回マウント時はこの直前の遷移用useEffectが同じ内容を既に反映済みのため、初回の
-  // 発火はスキップして二重適用を避ける。遷移(t)は使わず即時スナップ（リサイズは連続動作の
+  // 「実際にサイズが変わった時」だけ動かすこと: depsにpresetを含むため、前回サイズとの
+  // 比較無しだと「放送カメラへ切り替えた瞬間」にも発火し、直前の遷移(setLookAt smooth)を
+  // applyPreset("broadcast", false)の即時スナップで上書き＝放送カメラだけ瞬間ワープする
+  // 実測不具合の原因になっていた。遷移(t)は使わず即時スナップ（リサイズは連続動作の
   // 途中ではないため、イージングさせる必要が無い）。
-  const sizeInitialized = useRef(false);
+  const prevSizeRef = useRef<{ w: number; h: number } | null>(null);
   useEffect(() => {
-    if (!sizeInitialized.current) {
-      sizeInitialized.current = true;
-      return;
-    }
+    const cur = { w: size.width, h: size.height };
+    const prev = prevSizeRef.current;
+    prevSizeRef.current = cur;
+    if (!prev) return; // 初回は遷移用useEffectが反映済み
+    if (prev.w === cur.w && prev.h === cur.h) return; // サイズ以外のdeps変化では何もしない
     if (preset !== "broadcast") return;
-    const aspect = size.height > 0 ? size.width / size.height : undefined;
-    const pose = computeCameraPreset("broadcast", stateRef.current, dims, aspect, { glbStadium });
-    const controls = controlsRef.current;
-    const pcam = camera as THREE.PerspectiveCamera;
-    camera.position.set(...pose.position);
-    controls?.target.set(...pose.target);
-    controls?.update();
-    pcam.fov = pose.fov;
-    pcam.updateProjectionMatrix();
-    t.current = 1;
-    invalidate();
+    applyPreset("broadcast", false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [size.width, size.height, preset, dims, camera, controlsRef, invalidate, glbStadium]);
+  }, [size.width, size.height, preset, dims, camera, controlsRef, invalidate, glbStadium, stadiumBounds]);
 
   useFrame((_, delta) => {
     const controls = controlsRef.current;
     if (t.current < 1) {
       t.current = Math.min(1, t.current + delta / 0.7);
       const e = 1 - Math.pow(1 - t.current, 3);
-      camera.position.lerpVectors(fromPos.current, toPos.current, e);
-      if (controls) {
-        controls.target.lerpVectors(fromTarget.current, toTarget.current, e);
-        controls.update();
-      }
       const pcam = camera as THREE.PerspectiveCamera;
       pcam.fov = fromFov.current + (toFov.current - fromFov.current) * e;
       pcam.updateProjectionMatrix();
       invalidate();
-      return;
     }
     if (preset === "replay" && !reducedMotion && controls) {
-      replayAngle.current += delta * 0.12;
-      const cx = controls.target.x;
-      const cy = controls.target.y;
-      const cz = controls.target.z;
-      camera.position.set(
-        cx + replayRadius.current * Math.cos(replayAngle.current),
-        cy + replayHeight.current,
-        cz + replayRadius.current * Math.sin(replayAngle.current)
-      );
-      controls.update();
+      void controls.rotate(delta * CAMERA_TUNING.replayOrbitAngularSpeedRadPerSec, 0, false);
       invalidate();
     }
   });
+
+  return null;
+}
+
+/* ============================================================
+   wheel正規化層（トラックパッド1級対応、2項）。drei CameraControlsはmouseButtons.wheel=NONE
+   にしているためwheelイベントを一切処理しない（node_modules/camera-controls側の実装でも
+   wheel===NONEのときevent.preventDefault()すら呼ばれないことを確認済み）。ここで独自に
+   canvas要素へ直接(passive:false, capture)wheelリスナーを張り、classifyWheelGesture（three
+   非依存の純粋関数、lib/setPiece3d.ts）で分類してからcontrols.dolly系/truck系を呼び分ける。
+   canvas上のイベントなので常にpreventDefault()してよい（ページスクロールへは波及しない）。
+   ドラッグ中（トークンドラッグでcontrols.enabled=falseの間）は無視する（7項と同じ排他）。
+   ============================================================ */
+function WheelNormalizer({
+  controlsRef,
+  panRadius,
+}: {
+  controlsRef: React.RefObject<CameraControlsImpl | null>;
+  /** 注視点の水平移動を許す半径（m）。スタジアム水平半径+余白（親が算出して渡す） */
+  panRadius: number;
+}) {
+  const { gl, camera, invalidate } = useThree();
+  // 直近のwheelイベント時刻（ms）。classifyWheelGestureへ「直近連続イベントか」を渡すための
+  // 状態はrefで管理する（判定ヘルパー自体は純粋関数のまま、状態を持たせない）。
+  const lastEventTimeRef = useRef(0);
+  const panRadiusRef = useRef(panRadius);
+  panRadiusRef.current = panRadius;
+  // レイキャスト用の使い回しオブジェクト（毎イベントの生成を避ける）
+  const scratchRef = useRef({
+    raycaster: new THREE.Raycaster(),
+    groundPlane: new THREE.Plane(new THREE.Vector3(0, 1, 0), 0),
+    hit: new THREE.Vector3(),
+    target: new THREE.Vector3(),
+    ndc: new THREE.Vector2(),
+  });
+
+  useEffect(() => {
+    const canvas = gl.domElement;
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+    // 注視点のクランプ（パン・ズーム後に共通適用）: 2本指スワイプの継続やズーム操作で
+    // 注視点が地面下・上空・場外へ逃げて復帰不能になるのを防ぐ（CAMERA_TUNING.panTarget*）
+    const clampTarget = (controls: CameraControlsImpl) => {
+      const s = scratchRef.current;
+      controls.getTarget(s.target);
+      const r = panRadiusRef.current;
+      const cx = clamp(s.target.x, -r, r);
+      const cy = clamp(s.target.y, CAMERA_TUNING.panTargetMinYM, CAMERA_TUNING.panTargetMaxYM);
+      const cz = clamp(s.target.z, -r, r);
+      if (cx !== s.target.x || cy !== s.target.y || cz !== s.target.z) {
+        void controls.setTarget(cx, cy, cz, false);
+      }
+    };
+    const onWheel = (e: WheelEvent) => {
+      // canvas上のホイールは常にページスクロールへ渡さない
+      e.preventDefault();
+      const controls = controlsRef.current;
+      if (!controls || !controls.enabled) return;
+      const now = performance.now();
+      const recentContinuous = now - lastEventTimeRef.current < CAMERA_TUNING.wheelContinuousWindowMs;
+      lastEventTimeRef.current = now;
+      const kind = classifyWheelGesture(e, recentContinuous);
+      if (kind === "trackpadPan") {
+        // 2本指パン: 距離比例のtruck（近距離で精密・遠距離で速い）
+        const k = controls.distance * CAMERA_TUNING.trackpadPanFactorPerDistance;
+        void controls.truck(e.deltaX * k, e.deltaY * k, false);
+        clampTarget(controls);
+      } else {
+        // pinch（Ctrl+ホイール）・wheelZoom（通常マウスホイール）とも乗算dolly（距離比例・過冲なし）。
+        // pinchのdeltaYはdeltaModeでpx換算に正規化する（deltaMode=1のCtrl+マウスホイールが
+        // px入力の約1/8の速度になっていた実測不具合の対策）。
+        const dyNorm =
+          e.deltaY *
+          (e.deltaMode === 1 ? CAMERA_TUNING.wheelDeltaLinePx : e.deltaMode === 2 ? CAMERA_TUNING.wheelDeltaPagePx : 1);
+        const factor =
+          kind === "pinch"
+            ? Math.exp(dyNorm * CAMERA_TUNING.wheelCtrlPinchFactor)
+            : Math.exp((e.deltaY > 0 ? 1 : -1) * CAMERA_TUNING.wheelMouseDollyFactor);
+        // ズームイン時はカーソル直下の地面点へ注視点を引き寄せる（dolly-to-cursor相当）。
+        // これが無いと「全景」など注視点が空中・遠方にある状態から寄り切っても
+        // 何もない空間に着地する（実測: 全景→ズームインでセンターサークル上空17mの空中）。
+        // ズームアウト時は注視点を動かさない（一般的なdolly-to-cursorと同じ非対称）。
+        if (factor < 1) {
+          const s = scratchRef.current;
+          const rect = canvas.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            s.ndc.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -(((e.clientY - rect.top) / rect.height) * 2 - 1));
+            s.raycaster.setFromCamera(s.ndc, camera);
+            const hit = s.raycaster.ray.intersectPlane(s.groundPlane, s.hit);
+            const r = panRadiusRef.current;
+            if (hit && Number.isFinite(hit.x) && Math.abs(hit.x) <= r && Math.abs(hit.z) <= r) {
+              controls.getTarget(s.target);
+              s.target.lerp(hit, (1 - factor) * 0.9);
+              void controls.setTarget(s.target.x, s.target.y, s.target.z, false);
+            }
+          }
+        }
+        // setTargetで距離（=カメラ-注視点間）が変わるため、dollyToは現在値から掛け直す。
+        // dollyTo()自体がminDistance/maxDistanceへ内部クランプするため追加クランプは不要。
+        void controls.dollyTo(controls.distance * factor, false);
+        clampTarget(controls);
+      }
+      invalidate();
+    };
+    canvas.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    return () => canvas.removeEventListener("wheel", onWheel, { capture: true });
+  }, [gl, camera, controlsRef, invalidate]);
 
   return null;
 }
@@ -2472,7 +2632,7 @@ function KickTargetMarker({ path, dims }: { path: Point[]; dims: PitchDims }) {
 /* ============================================================
    再生駆動（Playback3D）: Canvas外の軽量rAFポーリングで board.getTime() の変化を検知し、
    変化があったときだけ useThree().invalidate() を呼ぶための橋渡し。frameloop="demand"のまま
-   （Canvasのprop自体は変更しない）、CameraController/GazeClickPlaneと同じ「動いている間だけ
+   （Canvasのprop自体は変更しない）、CameraController/InteractionPlaneと同じ「動いている間だけ
    invalidate()し続ける」流儀を再生駆動にも適用する＝再生中は毎フレームtが変わるので実質
    連続描画になり、停止中（tが変化しない間）は本当に無描画のまま（性能予算どおり）。
    BoardProvider.onTickは2DのAnimationStudioが専有する単一スロットのため
@@ -2668,20 +2828,27 @@ function PlaybackBar({
   );
 }
 
-/** ボール追従カメラ（FC26リプレイの追従モード風）。注視点をボールへ滑らかに寄せ、
- * カメラ位置も同じ差分だけ平行移動して「見ている角度・距離」を保ったまま追いかける。
- * OrbitControlsはそのまま使えるため、追従中でもドラッグで角度・ズームを変えられる。 */
+/** ボール追従カメラ（FC26リプレイの追従モード風）。注視点をボールへ滑らかに寄せる。
+ * drei CameraControlsは position = target + spherical(距離・角度) という内部モデルを持つため
+ * （node_modules/camera-controls/dist/camera-controls.module.js update()参照）、setTarget()で
+ * 注視点だけを動かせば、距離・角度（＝球面座標オフセット）が変わらない限りカメラ位置も
+ * 自動的に同じ差分だけ追従する＝「見ている角度・距離」を保ったまま追いかける、という
+ * 旧実装（target/position両方を手動で同量シフト）と同じ結果を1回のAPI呼び出しで得られる。
+ * enableTransition=falseで呼ぶ（このuseFrame自身が毎フレームk倍率で寄せる自前の補間を
+ * 持っているため、CameraControls側のsmoothTimeを二重に掛けない）。追従中でもドラッグで
+ * 角度・ズームを変えられる（controls.enabledはトークンドラッグ時のみfalseになる＝7項と同じ排他）。 */
 function FollowBallController({
   on,
   controlsRef,
   dims,
 }: {
   on: boolean;
-  controlsRef: React.RefObject<OrbitControlsImpl | null>;
+  controlsRef: React.RefObject<CameraControlsImpl | null>;
   dims: PitchDims;
 }) {
   const board = useBoard();
-  const { camera, invalidate } = useThree();
+  const { invalidate } = useThree();
+  const currentTarget = useRef(new THREE.Vector3());
   useFrame((_, delta) => {
     if (!on) return;
     const controls = controlsRef.current;
@@ -2691,15 +2858,19 @@ function FollowBallController({
     const p = actorPos("ball", t, st.moves, st.slots, st.ball, st.opponents, st.holder);
     const wx = boardXToWorldX(p.x, dims);
     const wz = boardYToWorldZ(p.y, dims);
+    // receiveEndValue=falseで「今まさに描画されている」現在値を読む（この直前まで慣性が
+    // 残っていた場合でも、そこから連続的に寄せる。末端値を読むと動き始めに一瞬飛んで見える）。
+    controls.getTarget(currentTarget.current, false);
+    if (
+      Math.abs(wx - currentTarget.current.x) < 0.005 &&
+      Math.abs(wz - currentTarget.current.z) < 0.005
+    ) {
+      return;
+    }
     const k = Math.min(1, delta * 6);
-    const dx = (wx - controls.target.x) * k;
-    const dz = (wz - controls.target.z) * k;
-    if (Math.abs(wx - controls.target.x) < 0.005 && Math.abs(wz - controls.target.z) < 0.005) return;
-    controls.target.x += dx;
-    controls.target.z += dz;
-    camera.position.x += dx;
-    camera.position.z += dz;
-    controls.update();
+    const nx = currentTarget.current.x + (wx - currentTarget.current.x) * k;
+    const nz = currentTarget.current.z + (wz - currentTarget.current.z) * k;
+    void controls.setTarget(nx, currentTarget.current.y, nz, false);
     invalidate();
   });
   return null;
@@ -2709,7 +2880,17 @@ function FollowBallController({
    本体
    ============================================================ */
 
-export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetId; onPreset?: (id: CameraPresetId) => void }) {
+export default function SetPiece3D({
+  preset,
+  onPreset,
+  resetNonce = 0,
+}: {
+  preset: CameraPresetId;
+  onPreset?: (id: CameraPresetId) => void;
+  /** 「リセット」ボタン（SetPieceBoard.tsx CameraBar）が押されるたびに増える値。presetが
+   * 既に"overhead"のままでもプリセット遷移を再適用するためのトリガー（CameraController参照）。 */
+  resetNonce?: number;
+}) {
   const board = useBoard();
   const reducedMotion = usePrefersReducedMotion();
   const [quality, setQuality] = useSp3dQuality();
@@ -2789,11 +2970,57 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
   // - 軽(mobile)品質は不使用: GLBは1,460,240trisと軽品質のtris予算を大きく超えるため、
   //   軽量端末向けにはprocedural一式(軽量ジオメトリ)を使い続ける。
   const glbStadium = format === 11 && quality !== "mobile";
+  // GLBスタジアムのBox3境界要約（動的maxDistance/far/fog算出・「全景」プリセットのフィットに
+  // 使う）。glbStadium時のみ購読する（procedural一式・8人制/軽品質はGLB自体を読み込まないため
+  // 境界は常にnullのまま＝lib側のcomputeCameraPresetがdims由来のフォールバックへ自動で落ちる）。
+  // 初期値はgetStadiumBoundsSummary()で即座に取得を試みる（品質切替でSetPiece3Dが
+  // 再マウントされた場合など、GLBが既にロード済みで境界が判明済みのケースに対応する）。
+  const [stadiumBounds, setStadiumBounds] = useState<StadiumBoundsSummary | null>(() =>
+    glbStadium ? getStadiumBoundsSummary() : null
+  );
+  useEffect(() => {
+    if (!glbStadium) return;
+    return subscribeStadiumBounds(setStadiumBounds);
+  }, [glbStadium]);
+  // 動的カメラ境界（3項）: GLB境界が判明していればスタジアム外観のフィット距離から
+  // maxDistance/far/fogを算出する。未到着（procedural一式・GLB未ロード）時は現行の固定値
+  // （120 / far 300or450 / fog 現行）のまま＝マージン付き挙動を変えない。
+  const dynamicLimits = useMemo(() => {
+    if (glbStadium && stadiumBounds) {
+      const fitDist = exteriorFitDistanceM(stadiumBounds.radiusH);
+      const maxDistance = fitDist * CAMERA_TUNING.exteriorMaxDistanceMult;
+      const far = maxDistance + stadiumBounds.radiusH + CAMERA_TUNING.exteriorFarMarginM;
+      return {
+        maxDistance,
+        far,
+        fogNear: CAMERA_TUNING.exteriorFogNearM,
+        fogFar: far * CAMERA_TUNING.exteriorFogFarMult,
+      };
+    }
+    return glbStadium
+      ? {
+          maxDistance: CAMERA_TUNING.fallbackMaxDistanceM,
+          far: CAMERA_TUNING.glbFallbackFarM,
+          fogNear: CAMERA_TUNING.glbFallbackFogNearM,
+          fogFar: CAMERA_TUNING.glbFallbackFogFarM,
+        }
+      : {
+          maxDistance: CAMERA_TUNING.fallbackMaxDistanceM,
+          far: CAMERA_TUNING.proceduralFarM,
+          fogNear: CAMERA_TUNING.proceduralFogNearM,
+          fogFar: CAMERA_TUNING.proceduralFogFarM,
+        };
+  }, [glbStadium, stadiumBounds]);
   // 環境（空・光・霧）プリセット。現時点は切替UIが無くduskのみを使う（構造だけ用意）
   const sky = SKY_PRESETS[ACTIVE_SKY_PRESET];
   // 初回マウント時のカメラ位置・画角のみに使う（以後はCameraControllerが管理）
-  const [initialPose] = useState(() => computeCameraPreset(preset, board.state, dims, undefined, { glbStadium }));
-  const controlsRef = useRef<OrbitControlsImpl | null>(null);
+  const [initialPose] = useState(() =>
+    computeCameraPreset(preset, board.state, dims, undefined, {
+      glbStadium,
+      stadiumBounds: stadiumBounds ?? undefined,
+    })
+  );
+  const controlsRef = useRef<CameraControlsImpl | null>(null);
 
   // 再生駆動：Canvas外の軽量rAFで board.getTime() をポーリングし、変化した瞬間だけ
   // invalidate()する（ThreeBridge参照）。tを読むだけで比較のみ・GPU描画は伴わないため
@@ -2842,10 +3069,10 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
           shadows={quality !== "mobile"}
           // dpr上限: high=1.5 / medium=1.25 / mobile=1固定（性能予算どおり上限1.5を超えない）
           dpr={quality === "high" ? [1, 1.5] : quality === "medium" ? [1, 1.25] : 1}
-          // 静止時は再描画しない（性能予算）。カメラ操作(OrbitControls)は変更イベントのたびに
-          // 自前でinvalidate()するため引き続き滑らかに動く。プリセット遷移・ダブルクリック注視点
-          // 移動・replayオービットはCameraController/GazeClickPlaneが動いている間だけ
-          // invalidate()し続ける。
+          // 静止時は再描画しない（性能予算）。カメラ操作(drei CameraControls)は内部で
+          // update/wake/control系イベントを自動購読してinvalidate()するため引き続き滑らかに
+          // 動く。プリセット遷移・ダブルクリック注視点移動・replayオービットも同じ仕組みに乗る
+          // （CameraController/InteractionPlane参照）。
           frameloop="demand"
           gl={{
             antialias: true,
@@ -2855,10 +3082,11 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.08,
           }}
-          // GLBスタジアムは全体bbox±195×±168・高さ55.5まであり、procedural一式の想定範囲
-          // （far=300で足りていた）を超えて見える箇所があるため、glbStadium時だけfar/fogを
-          // 300→450・(90,300)→(110,420)へ広げる（procedural・8人制時は従来どおり）。
-          camera={{ fov: initialPose.fov, near: 0.1, far: glbStadium ? 450 : 300, position: initialPose.position }}
+          // farはdynamicLimits.far（GLB境界到着時は外観フィットから動的算出、未到着/procedural
+          // 時は現行の固定値300/450）。GLB境界到着後の変更はCameraController側のuseEffectが
+          // pcam.far書き換え+updateProjectionMatrixで反映する（Canvasのcamera propはマウント時
+          // にしか効かないため、ここは初期値としてのみ使う）。
+          camera={{ fov: initialPose.fov, near: 0.1, far: dynamicLimits.far, position: initialPose.position }}
         >
           {/* 夕暮れ+照明点灯(DUSK)。色/強度はlib/setPiece3d.tsのSKY_PRESETS[ACTIVE_SKY_PRESET]に
               集約し、ここでは参照するだけ（day/nightへの切替は将来、この参照先を変えるだけで済む）。
@@ -2881,10 +3109,11 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             shadow-camera-far={80}
           />
           <directionalLight position={sky.fillPosition} intensity={sky.fillIntensity} color={sky.fillColor} />
-          {/* 地平線色のFog(near90/far300、glbStadium時はnear110/far420)。スカイドーム自体は
-              material.fog=falseで対象外にする（SkyDome側で設定済み）。低空の雲は霧の影響を
-              受けたままにし、地平線付近で自然に溶け込ませる */}
-          <fog attach="fog" args={glbStadium ? [sky.fogColor, 110, 420] : [sky.fogColor, 90, 300]} />
+          {/* 地平線色のFog。near/farはdynamicLimits（GLB境界到着時は動的算出、未到着/procedural
+              時は現行の固定値90/300or110/420）。スカイドーム自体はmaterial.fog=falseで対象外に
+              する（SkyDome側で設定済み）。低空の雲は霧の影響を受けたままにし、地平線付近で
+              自然に溶け込ませる */}
+          <fog attach="fog" args={[sky.fogColor, dynamicLimits.fogNear, dynamicLimits.fogFar]} />
           <SkyFollow preset={sky} cloudTint={sky.cloud} />
           {glbStadium ? (
             // 11人制・高/中品質: Blender製GLBスタジアムを描画する。procedural一式
@@ -2902,7 +3131,13 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
           )}
           <ShapesFloor dims={dims} />
           <MovesFloor dims={dims} />
-          <TokensLayer quality={quality} dims={dims} onActorDown={beginActorDrag} />
+          <TokensLayer
+            quality={quality}
+            dims={dims}
+            onActorDown={beginActorDrag}
+            controlsRef={controlsRef}
+            reducedMotion={reducedMotion}
+          />
           <InteractionPlane
             controlsRef={controlsRef}
             reducedMotion={reducedMotion}
@@ -2914,19 +3149,40 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
           {kickEdit && ballMove && <KickTargetMarker path={ballMove.path} dims={dims} />}
           <FollowBallController on={follow} controlsRef={controlsRef} dims={dims} />
           <ThreeBridge invalidateRef={invalidateRef} />
-          <OrbitControls
+          {/* drei CameraControls（camera-controlsパッケージ）。OrbitControlsから全面置換
+              （二重制御系にしない＝OrbitControlsは未importに戻した）。
+              マウス: left=ROTATE / right=TRUCK(パン) / middle=DOLLY(ズーム) / wheel=NONE
+              （ホイールは下のWheelNormalizerが正規化して処理するため、ここでは必ずNONEにする）。
+              タッチ: one=TOUCH_ROTATE / two=TOUCH_DOLLY_TRUCK（2本指ピンチ+パン） /
+              three=TOUCH_TRUCK（3本指パン）。minDistance/極角/dollyToCursor/infinityDollyは
+              lib/setPiece3d.ts CAMERA_TUNINGに集中定義した値を使う。maxDistanceのみ
+              dynamicLimits（GLB外観境界から動的算出、未到着時は現行120）。 */}
+          <CameraControls
             ref={controlsRef}
             makeDefault
-            enablePan
-            enableRotate
-            enableZoom
-            enableDamping
-            dampingFactor={0.08}
-            // 「あらゆる角度」: ほぼ真上(5°)からほぼ地表すれすれまで、距離2〜120mまで許容する
-            minDistance={2}
-            maxDistance={120}
-            minPolarAngle={Math.PI / 36}
-            maxPolarAngle={Math.PI / 2 - 0.02}
+            smoothTime={CAMERA_TUNING.smoothTime}
+            draggingSmoothTime={CAMERA_TUNING.draggingSmoothTime}
+            minDistance={CAMERA_TUNING.minDistance}
+            maxDistance={dynamicLimits.maxDistance}
+            minPolarAngle={(CAMERA_TUNING.minPolarAngleDeg * Math.PI) / 180}
+            maxPolarAngle={(CAMERA_TUNING.maxPolarAngleDeg * Math.PI) / 180}
+            dollyToCursor
+            infinityDolly={false}
+            mouseButtons={{
+              left: CameraControlsImpl.ACTION.ROTATE,
+              right: CameraControlsImpl.ACTION.TRUCK,
+              middle: CameraControlsImpl.ACTION.DOLLY,
+              wheel: CameraControlsImpl.ACTION.NONE,
+            }}
+            touches={{
+              one: CameraControlsImpl.ACTION.TOUCH_ROTATE,
+              two: CameraControlsImpl.ACTION.TOUCH_DOLLY_TRUCK,
+              three: CameraControlsImpl.ACTION.TOUCH_TRUCK,
+            }}
+          />
+          <WheelNormalizer
+            controlsRef={controlsRef}
+            panRadius={(stadiumBounds?.radiusH ?? 130) + CAMERA_TUNING.panTargetRadiusMarginM}
           />
           <CameraController
             preset={preset}
@@ -2934,6 +3190,9 @@ export default function SetPiece3D({ preset, onPreset }: { preset: CameraPresetI
             controlsRef={controlsRef}
             dims={dims}
             glbStadium={glbStadium}
+            far={dynamicLimits.far}
+            stadiumBounds={stadiumBounds}
+            resetNonce={resetNonce}
           />
           {!booted && <FirstFrameGate onFirstFrame={() => setBooted(true)} />}
         </Canvas>

@@ -111,15 +111,20 @@ function ImportBanner() {
 /**
  * 3D表示中に SetPieceBar の代わりに出すカメラプリセットバー（Canvas外のReact UI）。
  * 見た目は SetPieceBar 下段(.spbar-presets)と同じ .fbar/.chip/.fmini 語彙をそのまま使う。
+ * 「リセット」は俯瞰45°プリセットへ再適用する（presetが既に"overhead"のときはReact state側の
+ * onPreset呼び出しだけでは同値バイルアウトして何も起きないため、onResetはpreset状態を
+ * "overhead"へ寄せるのと同時にSetPiece3D側のresetNonceを進め、同値でも遷移を強制する）。
  */
 function CameraBar({
   preset,
   onPreset,
   onExit3D,
+  onReset,
 }: {
   preset: CameraPresetId;
   onPreset: (id: CameraPresetId) => void;
   onExit3D: () => void;
+  onReset: () => void;
 }) {
   return (
     <div className="fbar spbar-presets sp3dbar">
@@ -133,6 +138,14 @@ function CameraBar({
           {CAMERA_PRESET_LABEL[id]}
         </button>
       ))}
+      <button
+        type="button"
+        className="fmini"
+        title="視点をリセット（操作: ドラッグ=回転 / 右ドラッグ・2本指=移動 / ピンチ・ホイール=ズーム）"
+        onClick={onReset}
+      >
+        <span>リセット</span>
+      </button>
       <button type="button" className="fmini" onClick={onExit3D}>
         <span>2Dに戻る</span>
       </button>
@@ -150,6 +163,13 @@ export default function SetPieceBoard() {
   // 切替ビューにすぎず、盤面データ(playState/spState)そのものは変えない
   const [view, setView] = useState<"2d" | "3d">("2d");
   const [preset, setPreset] = useState<CameraPresetId>("overhead");
+  // 「リセット」クリックのたびに増える値。presetが既に"overhead"でもSetPiece3D側の
+  // プリセット遷移を強制的に再適用させるためのトリガー（CameraBar/CameraController参照）。
+  const [resetNonce, setResetNonce] = useState(0);
+  const handleResetCamera = () => {
+    setPreset("overhead");
+    setResetNonce((n) => n + 1);
+  };
   // 味方/相手のドラッグ固定（密集での誤操作防止）。CSSクラス経由でpointer-eventsを遮断する
   const [lockOwn, setLockOwn] = useState(false);
   const [lockOpp, setLockOpp] = useState(false);
@@ -178,10 +198,19 @@ export default function SetPieceBoard() {
           onToggleLockOpp={() => setLockOpp((v) => !v)}
         />
       ) : (
-        <CameraBar preset={preset} onPreset={setPreset} onExit3D={() => setView("2d")} />
+        <CameraBar
+          preset={preset}
+          onPreset={setPreset}
+          onExit3D={() => setView("2d")}
+          onReset={handleResetCamera}
+        />
       )}
       <div className="scroll">
-        {view === "2d" ? <Pitch /> : <SetPiece3D preset={preset} onPreset={setPreset} />}
+        {view === "2d" ? (
+          <Pitch />
+        ) : (
+          <SetPiece3D preset={preset} onPreset={setPreset} resetNonce={resetNonce} />
+        )}
         <div className="boardside">
           {spPanelType ? <SpPanelHost type={spPanelType} /> : <AnimationStudio />}
         </div>

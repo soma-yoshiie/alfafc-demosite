@@ -265,7 +265,7 @@ export function buildPitchMarkings(dims: PitchDims = DEFAULT_DIMS): PitchMarking
 /* ============================================================
    カメラプリセット
    ============================================================ */
-export type CameraPresetId = "overhead" | "broadcast" | "kicker" | "gk" | "ground" | "replay";
+export type CameraPresetId = "overhead" | "broadcast" | "kicker" | "gk" | "ground" | "replay" | "exterior";
 
 export const CAMERA_PRESET_ORDER: CameraPresetId[] = [
   "overhead",
@@ -274,6 +274,7 @@ export const CAMERA_PRESET_ORDER: CameraPresetId[] = [
   "gk",
   "ground",
   "replay",
+  "exterior",
 ];
 
 export const CAMERA_PRESET_LABEL: Record<CameraPresetId, string> = {
@@ -283,7 +284,142 @@ export const CAMERA_PRESET_LABEL: Record<CameraPresetId, string> = {
   gk: "GK目線",
   ground: "地上カメラ",
   replay: "リプレイ",
+  exterior: "全景",
 };
+
+/* ============================================================
+   カメラUXチューニング定数（Camera UX Overhaul V2）。three非依存の数値のみを持ち、
+   components/SetPiece3D.tsx側（drei CameraControlsの各種props・wheel正規化層・
+   動的境界計算）がここをimportして使う。単位: 距離=m、角度=度(Deg。使用側でラジアンへ変換)、
+   時間=秒（smoothTime系）・ms（wheel連続イベント判定）。
+   ============================================================ */
+export const CAMERA_TUNING = {
+  // --- drei CameraControls 基本設定 ---
+  /** 通常時の慣性（smoothTime、秒） */
+  smoothTime: 0.12,
+  /** ドラッグ中の慣性（秒。通常よりキビキビ追従させる） */
+  draggingSmoothTime: 0.05,
+  /** 最小距離（m） */
+  minDistance: 2,
+  /** 極角の下限・上限（度）。ピッチ下・裏返り防止。
+   * 上限89.5°: GK目線/キッカー目線のプリセット姿勢が実測89.2°前後（ほぼ水平の目線）のため、
+   * 88°だと適用直後の最初のドラッグで1.2°の「吸着」が起きる。89.5°なら目線姿勢を包含しつつ
+   * カメラは常に注視点平面より上（cos89.5°>0）に留まり、パン側の注視点y下限クランプ
+   * （panTargetMinYM）と合わせて地面下への潜り込みは引き続き防止される。 */
+  minPolarAngleDeg: 3,
+  maxPolarAngleDeg: 89.5,
+
+  // --- wheel正規化層（トラックパッド1級対応） ---
+  /** 「直近連続イベント」とみなす時間窓（ms） */
+  wheelContinuousWindowMs: 150,
+  /** Ctrl+ホイール（トラックパッドのピンチズーム相当）の距離比例係数 */
+  wheelCtrlPinchFactor: 0.005,
+  /** 通常マウスホイール1ノッチあたりの距離倍率の指数（e^0.12≒1.127＝約12%変化） */
+  wheelMouseDollyFactor: 0.12,
+  /** トラックパッド2本指パンの距離比例係数（truck量 = distance × deltaX/Y × この値） */
+  trackpadPanFactorPerDistance: 0.0009,
+  /** deltaMode正規化: deltaMode===1(行単位。Windowsのマウスホイールや一部ブラウザの
+   * Ctrl+ホイール)のdeltaYへ掛けるpx換算係数。これが無いとCtrl+ホイールのズームが
+   * ピクセル単位入力の約1/8の速度になる（実測1ノッチ1.5%）。 */
+  wheelDeltaLinePx: 16,
+  /** deltaMode===2(ページ単位)のpx換算係数 */
+  wheelDeltaPagePx: 400,
+  /** パン(truck)後の注視点クランプ: yの下限/上限(m)。2本指スワイプを続けても注視点が
+   * 地面下・上空へ逃げないようにする（実測: クランプ無しだと約1.2秒の下スワイプで
+   * カメラがピッチ下へ潜り復帰不能になった）。x/zは「スタジアム水平半径+この余白」まで。 */
+  panTargetMinYM: 0.4,
+  panTargetMaxYM: 60,
+  panTargetRadiusMarginM: 40,
+
+  // --- 動的境界（スタジアムBox3から求めるmaxDistance/far/fog） ---
+  /** 「外観フィット」半画角（度）。fitDist = radiusH / tan(この角度) */
+  exteriorFitHalfAngleDeg: 23,
+  /** 動的maxDistance = fitDist × この倍率 */
+  exteriorMaxDistanceMult: 1.35,
+  /** camera.far = maxDistance + radiusH + このマージン（m） */
+  exteriorFarMarginM: 100,
+  /** 境界到着時、fog far = camera.far × この係数 */
+  exteriorFogFarMult: 0.95,
+  /** 境界到着時のfog near（m、固定） */
+  exteriorFogNearM: 120,
+  /** 境界未到着 or 8人制/軽品質(procedural一式)時のフォールバックmaxDistance（m）。
+   * 260: 俯瞰45°の距離(11人制で170.8m)や8人制の全景(189.7m)がクランプに衝突しない値
+   * （旧OrbitControls時代の120は俯瞰45°の時点で既に超過しており、最初のズーム操作で
+   * 50m飛ぶ実測不具合の原因だった）。 */
+  fallbackMaxDistanceM: 260,
+  /** procedural一式時のフォールバックfar/fog（m）。farはfallbackMaxDistanceM+視界分 */
+  proceduralFarM: 560,
+  proceduralFogNearM: 90,
+  proceduralFogFarM: 530,
+  /** GLBスタジアムだが境界未到着時のフォールバックfar/fog（m、現行値） */
+  glbFallbackFarM: 450,
+  glbFallbackFogNearM: 110,
+  glbFallbackFogFarM: 420,
+  /** 「全景」プリセット: bounds未指定（procedural一式 or GLB境界未到着）時のフォールバック半径
+   * マージン（m）。半径 = dims.pitchWidthM/2 + この値 */
+  exteriorFallbackRadiusMarginM: 45,
+
+  // --- 「全景」プリセット自体の構図 ---
+  /** カメラ距離 = 外観フィット距離 × この倍率。
+   * 0.8: Box3半径は周辺プラザ床まで含むため1.15ではスタジアムが画面の約39%にしかならず
+   * 構図が緩かった（実測）。0.8でスタンド本体＋屋根＋プラザが程よく収まる。 */
+  exteriorPresetDistMult: 0.8,
+  /** 方位角・仰角（度） */
+  exteriorAzimuthDeg: 45,
+  exteriorElevationDeg: 35,
+  /** 注視点の高さ = スタジアム全高 × この比率。
+   * 0.12: 0.35だと注視点が上空16.8mになり、全景からピンチ/ホイールで寄り切った着地点が
+   * 「センターサークル上空17mの空中」になる実測不具合があった。地面寄りに下げることで
+   * ズームインの着地点がピッチ面になる（構図上の見え方は仰角35°でほぼ不変）。 */
+  exteriorTargetHeightRatio: 0.12,
+
+  // --- ダブルクリック/トークンフォーカス ---
+  /** フォーカス後の最大距離（m）。現在距離がこれを超えていればここまで寄せる（現在距離が
+   * これ未満ならそのまま維持＝無用な寄せ直しをしない） */
+  focusMaxDistanceM: 10,
+
+  // --- リプレイ自動オービット ---
+  /** 自動オービットの角速度（rad/秒） */
+  replayOrbitAngularSpeedRadPerSec: 0.12,
+} as const;
+
+/** 外観フィット距離（m）: 半径radiusHの円/球を、半画角CAMERA_TUNING.exteriorFitHalfAngleDeg
+ * （度）でちょうど収める距離。SetPiece3D.tsx側の動的maxDistance算出と、下の
+ * computeCameraPresetの"exterior"分岐の両方が使う共通式（three非依存の純粋関数）。 */
+export function exteriorFitDistanceM(radiusH: number): number {
+  return radiusH / Math.tan((CAMERA_TUNING.exteriorFitHalfAngleDeg * Math.PI) / 180);
+}
+
+export type WheelGestureKind = "pinch" | "trackpadPan" | "wheelZoom";
+
+/**
+ * wheelイベント1件を3種のジェスチャーへ分類する純粋関数（three非依存・単体テストしやすい形に
+ * 分離）。SetPiece3D.tsx側のwheel正規化層（canvasへ直接張るwheelリスナー）が使う。
+ * - (a) e.ctrlKey===true → "pinch"（macOS/Windows Precision Touchpadのピンチズームは、
+ *   ブラウザがwheelイベントへ合成的にctrlKey=trueを付与する共通規約に依拠する）。
+ * - (b) e.deltaMode===0（ピクセル単位）かつ、横方向の動きがある／小数点のdeltaYを持つ／
+ *   直前のイベントから連続的に来ている（recentContinuous）のいずれか → "trackpadPan"。
+ * - (c) それ以外（deltaMode!==0、または粗い整数deltaYの単発イベント）→ "wheelZoom"（通常マウス）。
+ * @param recentContinuous 直前のwheelイベントからCAMERA_TUNING.wheelContinuousWindowMs以内かどうか
+ *   （呼び出し側がrefでイベント間隔を追跡して渡す。この関数自身はイベント列の状態を持たない）。
+ * 既知の限界: フリースピン対応の高速マウスホイールを回し続けると、その連打自体が
+ * 「直近150ms以内に連続イベント」に該当し"trackpadPan"に誤判定されることがある。
+ * マウスの物理ホイールとトラックパッドを確実に区別する手段はブラウザのWheelEvent APIには
+ * 存在しないため、この誤判定は既知の限界として許容している。
+ */
+export function classifyWheelGesture(
+  e: { ctrlKey: boolean; deltaMode: number; deltaX: number; deltaY: number },
+  recentContinuous: boolean
+): WheelGestureKind {
+  if (e.ctrlKey) return "pinch";
+  if (
+    e.deltaMode === 0 &&
+    (Math.abs(e.deltaX) > 0 || (Math.abs(e.deltaY) < 50 && !Number.isInteger(e.deltaY)) || recentContinuous)
+  ) {
+    return "trackpadPan";
+  }
+  return "wheelZoom";
+}
 
 /** ラインの帯幅（m）。実物の12cm線に合わせる */
 const MARKING_LINE_W_M = 0.12;
@@ -351,6 +487,7 @@ export const CAMERA_PRESET_FOV: Record<CameraPresetId, number> = {
   gk: 42,
   ground: 44,
   replay: 40,
+  exterior: 46,
 };
 
 const EYE_HEIGHT_M = 1.7;
@@ -544,13 +681,21 @@ const GLB_BROADCAST_BOUNDARY_X_M = 100;
  *   18-40度クランプ内に収まり、fovフィット・後退フォールバックのロジック自体は8人制/
  *   プロシージャル時と完全に共有する（ここで分岐するのはアンカー座標(rx/ry/rz)のみ）。
  *   8人制・プロシージャル時は省略でよい（従来どおりの計算になる）。
+ * @param opts.stadiumBounds "exterior"（全景）プリセット専用。components/AlfaStadium.tsxの
+ *   getStadiumBoundsSummary()/subscribeStadiumBounds()が返す要約（構造的に同じ形の値であれば
+ *   足りるため、three非依存を保つこのファイルへその型を持ち込まず、ここではインラインの
+ *   最小限の形だけを要求する）。未指定（GLB境界未到着・procedural一式）時はdims由来の
+ *   概算値へフォールバックする。
  */
 export function computeCameraPreset(
   id: CameraPresetId,
   state: BoardState,
   dims: PitchDims = DEFAULT_DIMS,
   aspect?: number,
-  opts?: { glbStadium?: boolean }
+  opts?: {
+    glbStadium?: boolean;
+    stadiumBounds?: { centerX: number; centerY: number; centerZ: number; radiusH: number; height: number };
+  }
 ): CameraPose {
   const ball = state.ball ?? { x: 50, y: 50 };
   const ballW = boardToWorld(ball, dims);
@@ -698,6 +843,36 @@ export function computeCameraPreset(
       position: [cx + radius * Math.cos(angle0), REPLAY_ORBIT_HEIGHT_M, cz + radius * Math.sin(angle0)],
       target: [cx, 1.0, cz],
       fov: CAMERA_PRESET_FOV.replay,
+    };
+  }
+  if (id === "exterior") {
+    // bounds未指定（GLB境界未到着・procedural一式）時は、STADIUM_M積み上げからの概算高さと
+    // dims.pitchWidthM由来の概算半径へフォールバックする（GLB実測値ほど正確ではないが、
+    // 「全景」が選べない状態にはしない）。
+    const fallbackHeightM =
+      STADIUM_M.frontWallM +
+      STADIUM_M.lowerDepthM * Math.sin(STADIUM_M.lowerRakeRad) +
+      STADIUM_M.concourseHeightM +
+      STADIUM_M.upperDepthM * Math.sin(STADIUM_M.upperRakeRad) +
+      STADIUM_M.backWallM;
+    const bounds = opts?.stadiumBounds;
+    const radiusH = bounds?.radiusH ?? dims.pitchWidthM / 2 + CAMERA_TUNING.exteriorFallbackRadiusMarginM;
+    const heightM = bounds?.height ?? fallbackHeightM;
+    const centerX = bounds?.centerX ?? 0;
+    const centerZ = bounds?.centerZ ?? 0;
+    const dist = exteriorFitDistanceM(radiusH) * CAMERA_TUNING.exteriorPresetDistMult;
+    const azRad = (CAMERA_TUNING.exteriorAzimuthDeg * Math.PI) / 180;
+    const elRad = (CAMERA_TUNING.exteriorElevationDeg * Math.PI) / 180;
+    const horiz = dist * Math.cos(elRad);
+    const targetY = heightM * CAMERA_TUNING.exteriorTargetHeightRatio;
+    return {
+      position: [
+        centerX + horiz * Math.cos(azRad),
+        targetY + dist * Math.sin(elRad),
+        centerZ + horiz * Math.sin(azRad),
+      ],
+      target: [centerX, targetY, centerZ],
+      fov: CAMERA_PRESET_FOV.exterior,
     };
   }
   // gk: 守備ゴール（常にy0=自陣）の1.7m前に立ち、ボールを見る

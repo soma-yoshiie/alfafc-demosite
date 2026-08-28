@@ -34,7 +34,7 @@
 //   スクリーン用に生成したテクスチャ・マテリアルは「自作分のみ」dispose管理する
 //   （GLB自体はテクスチャを持たないため、差し替え前の状態には自作テクスチャが存在しない）。
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { useGLTF } from "@react-three/drei";
 
@@ -264,11 +264,76 @@ function makeScoreboardPlaceholderCanvas(): HTMLCanvasElement {
 }
 
 /* ============================================================
+   スタジアム境界（Box3）の要約（カメラUXオーバーホール用）。
+   ロード完了処理の中で、ルートgroup（rotation/position適用後）から一度だけ
+   new THREE.Box3().setFromObject() を計算し、three非依存の数値の組だけを
+   components/SetPiece3D.tsx へ公開する（three系型を跨いで渡さない＝呼び出し側は
+   このファイルをimportできる、という既存の非対称importの向きをそのまま使う）。
+   GLBはページ生存中ずっと同じ実寸のため、一度計算したら以後は再計算しない
+   （品質切替でAlfaStadiumが再マウントされても、stadiumBoundsSummaryは
+   モジュールスコープに残ったまま＝subscribeStadiumBoundsは即座にその値を返せる）。
+   ============================================================ */
+export interface StadiumBoundsSummary {
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  /** 中心からの最大水平距離（m）。bboxのXZ方向の半対角＝「外観フィット距離」計算の入力。 */
+  radiusH: number;
+  /** 全高（m、bboxのY方向サイズ） */
+  height: number;
+  /** 最高点のワールドY座標（m） */
+  maxY: number;
+}
+
+let stadiumBoundsSummary: StadiumBoundsSummary | null = null;
+const stadiumBoundsListeners = new Set<(b: StadiumBoundsSummary) => void>();
+
+/** 現在判明しているスタジアム境界の要約（GLB未ロードならnull）。 */
+export function getStadiumBoundsSummary(): StadiumBoundsSummary | null {
+  return stadiumBoundsSummary;
+}
+
+/** 境界が判明した時に1回通知するコールバックを登録する。登録時点で既に判明していれば
+ * （品質切替でAlfaStadiumが再マウントされた後の再購読等）即座に1回呼ぶ。戻り値は解除関数。 */
+export function subscribeStadiumBounds(cb: (b: StadiumBoundsSummary) => void): () => void {
+  if (stadiumBoundsSummary) cb(stadiumBoundsSummary);
+  stadiumBoundsListeners.add(cb);
+  return () => {
+    stadiumBoundsListeners.delete(cb);
+  };
+}
+
+/** ルートgroup（rotation適用後）のワールドBox3から要約を1回だけ計算して公開する
+ * （2回目以降の呼び出しは無視＝GLBは静的アセットのため再計算不要）。 */
+function computeAndPublishStadiumBounds(root: THREE.Object3D): void {
+  if (stadiumBoundsSummary) return;
+  const box = new THREE.Box3().setFromObject(root);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const summary: StadiumBoundsSummary = {
+    centerX: center.x,
+    centerY: center.y,
+    centerZ: center.z,
+    radiusH: Math.hypot(size.x / 2, size.z / 2),
+    height: size.y,
+    maxY: box.max.y,
+  };
+  stadiumBoundsSummary = summary;
+  stadiumBoundsListeners.forEach((cb) => cb(summary));
+}
+
+/* ============================================================
    本体
    ============================================================ */
 
 export function AlfaStadium() {
   const gltf = useGLTF(STADIUM_GLB_URL) as unknown as { scene: THREE.Group };
+  // rotation/position適用後のルートgroup参照（境界計算はこのrefに対して行う。
+  // gltf.scene自身に対して行うと、祖先のrotationがまだ反映されていないタイミングで
+  // 呼ばれた場合に不正確になりうるため、祖先を持たないこのルート自体を対象にする）。
+  const rootRef = useRef<THREE.Group | null>(null);
 
   useEffect(() => {
     const scene = gltf.scene;
@@ -310,6 +375,12 @@ export function AlfaStadium() {
         }
       });
     }
+
+    // スタジアム境界（Box3）の要約を1回だけ計算して公開する（カメラUXオーバーホール:
+    // 動的maxDistance/far/fog算出・「全景」プリセットのフィット計算の入力）。ルートgroupは
+    // このuseEffectが走る時点で既にコミット済み（refはレイアウト段階でアタッチされ、
+    // passiveエフェクトより先に確定する）ため、マウント直後の1回で十分正確に計算できる。
+    if (rootRef.current) computeAndPublishStadiumBounds(rootRef.current);
 
     // 広告4面+スコアボード2面へテクスチャを適用する（この部分はマウントのたびに実行する。
     // 直前のアンマウントで自作テクスチャをdispose済みのため、再適用しないと画面が白ポリのまま
@@ -354,7 +425,7 @@ export function AlfaStadium() {
   }, []);
 
   return (
-    <group rotation={[0, -Math.PI / 2, 0]} position={[0, -0.32, 0]}>
+    <group ref={rootRef} rotation={[0, -Math.PI / 2, 0]} position={[0, -0.32, 0]}>
       <primitive object={gltf.scene} />
     </group>
   );
