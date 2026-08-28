@@ -1,4 +1,4 @@
-ALFA_Stadium_V5_6_1.glb
+ALFA_Stadium_V5_6_1_packed.glb
 - 出所: 自社制作(Blender 4.x / ALFA_Stadium生成スクリプト、glTF Y-up出力)
 - ライセンス: 自社アセット(社内制作物、商用利用可)
 - スケール: 1 unit = 1m、ピッチ105×68m、原点=ピッチ中心、芝表面 y=0.32
@@ -15,3 +15,10 @@ ALFA_Stadium_V5_6_1.glb
 - V5.4の修正: 全マーキングを芝面+3〜9mmへ降下(旧+6cm) / スポット類を薄い塗装ディスク化 /
   円・アーク類をフラットリボン化 / 縞・wearを芝とほぼ共面化
 - 実測: 82.0MB / 1,024メッシュ / 約146万三角形 / 37マテリアル / テクスチャなし
+- 配信用の圧縮: gltfpack 1.2 (meshopt/EXT_meshopt_compression) で82.0MB→11.7MB(gzip後1.8MB)。
+  再生成手順: ①ランタイム参照14ノード(AD×4/Scoreboard×2/BALL_ROOT系3/ANCHOR×3/Pitch_Base/
+  ALFA_EXPORT_ROOT)以外のノード名を除去 ②gltfpack -cc -kn -ke -vpf -vtf -kv
+  (-vpf/-vtf=位置とUVを浮動小数のまま量子化しない: ミリ単位のマーキング高と広告/スコアボードの
+  CanvasTexture用UVを無劣化維持。-kv=テクスチャ未参照でもUV属性を保持。-knは名前維持と引き換えに
+  メッシュマージ/インスタンシング無効=draw call数は非圧縮と同じ)。
+  非圧縮の原本は 3Dモデル/ALFA_Stadium_V5_6_1.glb (リポジトリ外) が正。

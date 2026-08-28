@@ -40,7 +40,7 @@ import { useGLTF } from "@react-three/drei";
 
 /** GLB配置パス（相対パス。components/SetPiece3D.tsx の MODEL_URL="models/player.glb" と
  * 同じ方式＝GitHub Pagesのサブパス配信・next.config.mjsのoutput:"export"どちらでも解決できる）。 */
-const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_6_1.glb";
+const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_6_1_packed.glb";
 
 // 注意: useGLTF.preload(STADIUM_GLB_URL) はあえて呼ばない。
 // 81.7MBという重量級アセットを、11人制以外（8人制・軽品質）のユーザーも含めて全員に
