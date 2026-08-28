@@ -892,29 +892,11 @@ function CornerFlags({ dims }: { dims: PitchDims }) {
    ゾーン図形・テキスト図形（床面投影）
    ============================================================ */
 
-function ZoneMesh({ shape, dims }: { shape: ZoneShape; dims: PitchDims }) {
-  const cx = boardXToWorldX(shape.x, dims);
-  const cz = boardYToWorldZ(shape.y, dims);
-  const col = shape.color ?? "#ffe27a";
-  if (shape.kind === "zoneEllipse") {
-    const rx = Math.max(0.05, lenXToMeters(shape.w, dims) / 2);
-    const rz = Math.max(0.05, lenYToMeters(shape.h, dims) / 2);
-    return (
-      <mesh position={[cx, 0.02, cz]} rotation-x={-Math.PI / 2} scale={[rx, rz, 1]}>
-        <circleGeometry args={[1, 40]} />
-        <meshBasicMaterial color={col} transparent opacity={0.22} side={THREE.DoubleSide} depthWrite={false} />
-      </mesh>
-    );
-  }
-  const w = Math.max(0.1, lenXToMeters(shape.w, dims));
-  const h = Math.max(0.1, lenYToMeters(shape.h, dims));
-  return (
-    <mesh position={[cx, 0.02, cz]} rotation-x={-Math.PI / 2}>
-      <planeGeometry args={[w, h]} />
-      <meshBasicMaterial color={col} transparent opacity={0.22} side={THREE.DoubleSide} depthWrite={false} />
-    </mesh>
-  );
-}
+/* ゾーン図形(zoneRect/zoneEllipse)の「塗り」は3Dでは描画しない。
+ * 半透明0.22の塗りが夕暮れトーンマッピング下の芝と混ざると泥のような茶褐色の板に見え、
+ * 「ゴール前のオリーブ色の長方形」として異物に見えることが実機確認されたため
+ * （CKプリセットの「ニア」ゾーン#ff8a65が該当。2Dでは従来どおりオレンジのゾーンとして表示を
+ * 継続する＝この抑制は3D表示のみ）。位置の意図はテキストラベル(TextShapeLabel)が引き続き伝える。 */
 
 const TEXT_PX: Record<string, number> = { s: 11, m: 14, l: 18 };
 
@@ -944,9 +926,8 @@ function ShapesFloor({ dims }: { dims: PitchDims }) {
   return (
     <group>
       {shapes.map((s) => {
-        if (s.kind === "zoneEllipse" || s.kind === "zoneRect") return <ZoneMesh key={s.id} shape={s} dims={dims} />;
+        // ゾーンの塗りは3Dでは非表示（上のコメント参照）。テキストのみ床へ投影する
         if (s.kind === "text") return <TextShapeLabel key={s.id} shape={s} dims={dims} />;
-        // Phase1は仕様どおりゾーン/テキストのみ床へ投影する（矢印・連結ライン・囲み枠は対象外）
         return null;
       })}
     </group>
