@@ -381,6 +381,22 @@ export const CAMERA_TUNING = {
   // --- リプレイ自動オービット ---
   /** 自動オービットの角速度（rad/秒） */
   replayOrbitAngularSpeedRadPerSec: 0.12,
+
+  // --- キーボードフリーカメラ(WASD/QE、Camera UX Overhaul V3)。速度は現在のcontrols.distance
+  // （カメラ-注視点間の距離）に比例させ、ピッチ近景では精密に・スタジアム外観では速く動ける
+  // ようにする。components/SetPiece3D.tsx の KeyboardFlyController のみが参照する。 ---
+  /** 基準速度 = controls.distance × この係数（m/秒）。keySpeedMinMps/keySpeedMaxMpsでクランプする */
+  keySpeedPerDistance: 0.35,
+  /** 基準速度の下限（m/秒）。minDistance(2m)付近の近接視点でも実用速度を確保する */
+  keySpeedMinMps: 5,
+  /** 基準速度の上限（m/秒）。スタジアム外観相当の最大距離でも暴走しない上限 */
+  keySpeedMaxMps: 160,
+  /** Shift押下時の速度倍率（ピッチ⇔スタジアム外観の移動を短時間で終えられるようにする） */
+  keyShiftMult: 3.5,
+  /** 目標速度への追従にかける時定数（秒）。v += (vTarget - v) × min(1, delta/この値) で
+   * 押下開始/解放の瞬間が硬い一瞬停止/急発進にならないよう軽く慣らす（急な始動/停止ではなく
+   * 緩やかな加減速にする） */
+  keyAccelTimeS: 0.08,
 } as const;
 
 /** 外観フィット距離（m）: 半径radiusHの円/球を、半画角CAMERA_TUNING.exteriorFitHalfAngleDeg

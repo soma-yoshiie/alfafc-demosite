@@ -199,6 +199,96 @@ function QualityToggle({
 }
 
 /* ============================================================
+   操作方法ヘルプUI（Camera UX Overhaul V3、10項）。開閉状態そのものはSetPieceBoard.tsx
+   （CameraBar末尾の「操作方法 ?」ボタン。このファイルからは編集できない親コンポーネント）が
+   sessionStorageと合わせて保持し、helpOpen/onCloseHelp propsとしてSetPiece3Dへ渡す
+   （＝完全な制御コンポーネント。ここではsessionStorageに触れない）。パネル自体はQualityToggle・
+   sp3dkickと同じ流儀で.sp3dpitch内のオーバーレイとして描画する（Canvas内の3Dシーンではなく
+   普通のDOM）。初回ヒント(useFirst3dHint)はこのパネルの開閉とは独立に、3Dを開いたセッション
+   初回だけ自動表示するトーストのための小さな状態で、SetPiece3D本体がローカルに持つ。
+   ============================================================ */
+
+const SP3D_HINT_KEY = "alfa_sp3d_hint_shown";
+/** 初回ヒントトーストを表示している時間（ms） */
+const SP3D_HINT_DURATION_MS = 6000;
+
+/** 3Dを開いたセッション初回のみtrueを返し、約6秒後に自動でfalseへ戻すフック。
+ * sessionStorageに一度でも記録があれば以後は常にfalse（タブを閉じるまで再表示しない）。
+ * プライベートブラウズ等でstorageが使えない環境でも表示自体は機能するよう、
+ * 読み書き失敗は無視する（＝毎回表示されるだけで、機能に支障はない）。 */
+function useFirst3dHint(): boolean {
+  const [show, setShow] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let alreadyShown = false;
+    try {
+      alreadyShown = window.sessionStorage.getItem(SP3D_HINT_KEY) === "1";
+    } catch {
+      alreadyShown = false;
+    }
+    if (alreadyShown) return;
+    setShow(true);
+    try {
+      window.sessionStorage.setItem(SP3D_HINT_KEY, "1");
+    } catch {
+      /* 無視（保存できなくても今回の表示自体はそのまま行う） */
+    }
+    const timer = window.setTimeout(() => setShow(false), SP3D_HINT_DURATION_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+  return show;
+}
+
+/** 操作方法ヘルプパネル本体。仕様10章どおり「マウス/トラックパッド/キーボード」の3見出し。
+ * キーボード行はキーキャップ風の.sp3dkbdスパンで表す。右上の×で閉じる（onClose、任意）。
+ * open=falseのときは何も描画しない（親のhelpOpenで完全に制御される） */
+function HelpPanel({ open, onClose }: { open: boolean; onClose?: () => void }) {
+  if (!open) return null;
+  return (
+    <div className="sp3dhelp" role="dialog" aria-label="操作方法">
+      <button type="button" className="sp3dhelp-close" onClick={onClose} aria-label="閉じる">
+        ×
+      </button>
+      <div className="sp3dhelp-h">マウス</div>
+      <div className="sp3dhelp-row">左ドラッグ — 視点回転</div>
+      <div className="sp3dhelp-row">右ドラッグ — 平行移動</div>
+      <div className="sp3dhelp-row">ホイール／中ボタンドラッグ — ズーム</div>
+      <div className="sp3dhelp-row">ダブルクリック — 選手/ボールへフォーカス</div>
+      <div className="sp3dhelp-h">トラックパッド</div>
+      <div className="sp3dhelp-row">クリック＋1本指ドラッグ — 視点回転</div>
+      <div className="sp3dhelp-row">2本指移動 — 平行移動</div>
+      <div className="sp3dhelp-row">ピンチ — ズーム</div>
+      <div className="sp3dhelp-note">MacBookトラックパッド／Windowsタッチパッド対応</div>
+      <div className="sp3dhelp-h">キーボード</div>
+      <div className="sp3dhelp-row">
+        <span className="sp3dkbd">W</span>
+        <span className="sp3dkbd">A</span>
+        <span className="sp3dkbd">S</span>
+        <span className="sp3dkbd">D</span>
+        <span>前後左右へ移動（↑↓←→でも可）</span>
+      </div>
+      <div className="sp3dhelp-row">
+        <span className="sp3dkbd">Q</span>
+        <span className="sp3dkbd">E</span>
+        <span>上下移動</span>
+      </div>
+      <div className="sp3dhelp-row">
+        <span className="sp3dkbd">Shift</span>
+        <span>高速移動</span>
+      </div>
+      <div className="sp3dhelp-row">
+        <span className="sp3dkbd">R</span>
+        <span>視点リセット</span>
+      </div>
+      <div className="sp3dhelp-row">
+        <span className="sp3dkbd">F</span>
+        <span>選択中の選手/ボールへフォーカス</span>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    共有ジオメトリ・マテリアルキャッシュ（性能予算: 選手間はクローンでなく同一参照を使う）
    モジュールスコープで一度だけ生成し、以後は全選手・全マウントで使い回す（2D/3D切替の
    たびに作り直さない）。色・番号のバリエーションは有限（チーム内の役割色数×表示中の背番号数）
@@ -2096,12 +2186,42 @@ function ProceduralPlayers({
   );
 }
 
-/** 選手/ボールトークンのダブルクリック注視移動（6項）。target=トークン位置(y≈1.0)、
- * 現在距離(controls.distance)がCAMERA_TUNING.focusMaxDistanceMを超えていればそこまで
- * 寄せる（下回っていればそのまま維持＝無用な寄せ直しをしない）。方向は現在のカメラ位置→
- * 注視点ベクトルを維持する（getPosition/getTarget から算出しsetLookAtの滑らか版へ渡す）。
- * minDistance尊重（モデル内部へ入らない）。useThree()を使うためCanvas内の（TokensLayerのような）
- * コンポーネントの中で組み立てる必要がある。 */
+/** ワールド座標(tx,ty,tz)へカメラをフォーカスする共通ヘルパー（6項のトークンdblclick
+ * フォーカスと、キーボードF（KeyboardFlyController）の両方が使う。現在のカメラ位置→注視点の
+ * 方向を保ったまま、距離をCAMERA_TUNING.focusMaxDistanceMまでクランプして寄せる（現在距離が
+ * それ未満ならそのまま維持＝無用な寄せ直しをしない）。minDistance尊重（モデル内部へ入らない）。
+ * invalidate()・e.stopPropagation()は呼び出し側の責務（このヘルパー自身はThree.js非依存の
+ * カメラ操作のみを行う）。 */
+function focusWorldPoint(
+  controls: CameraControlsImpl,
+  tx: number,
+  ty: number,
+  tz: number,
+  enableTransition: boolean
+): void {
+  const camPos = new THREE.Vector3();
+  const oldTarget = new THREE.Vector3();
+  controls.getPosition(camPos);
+  controls.getTarget(oldTarget);
+  const dir = camPos.sub(oldTarget);
+  const curDist = dir.length();
+  if (curDist < 1e-6) return;
+  dir.divideScalar(curDist);
+  const nextDist = Math.max(controls.minDistance, Math.min(curDist, CAMERA_TUNING.focusMaxDistanceM));
+  void controls.setLookAt(
+    tx + dir.x * nextDist,
+    ty + dir.y * nextDist,
+    tz + dir.z * nextDist,
+    tx,
+    ty,
+    tz,
+    enableTransition
+  );
+}
+
+/** 選手/ボールトークンのダブルクリック注視移動（6項）。target=トークン位置(y≈1.0)。
+ * 実際のカメラ操作はfocusWorldPoint（キーボードFと共用）へ委譲する。useThree()を使うため
+ * Canvas内の（TokensLayerのような）コンポーネントの中で組み立てる必要がある。 */
 function useTokenFocusHandler(
   controlsRef: React.RefObject<CameraControlsImpl | null>,
   dims: PitchDims,
@@ -2117,25 +2237,7 @@ function useTokenFocusHandler(
     const p = actorPos(actor, board.getTime(), st.moves, st.slots, st.ball, st.opponents, st.holder);
     const tx = boardXToWorldX(p.x, dims);
     const tz = boardYToWorldZ(p.y, dims);
-    const ty = 1.0;
-    const camPos = new THREE.Vector3();
-    const oldTarget = new THREE.Vector3();
-    controls.getPosition(camPos);
-    controls.getTarget(oldTarget);
-    const dir = camPos.sub(oldTarget);
-    const curDist = dir.length();
-    if (curDist < 1e-6) return;
-    dir.divideScalar(curDist);
-    const nextDist = Math.max(controls.minDistance, Math.min(curDist, CAMERA_TUNING.focusMaxDistanceM));
-    void controls.setLookAt(
-      tx + dir.x * nextDist,
-      ty + dir.y * nextDist,
-      tz + dir.z * nextDist,
-      tx,
-      ty,
-      tz,
-      !reducedMotion
-    );
+    focusWorldPoint(controls, tx, 1.0, tz, !reducedMotion);
     invalidate();
   };
 }
@@ -2243,6 +2345,31 @@ function InteractionPlane({
     e.stopPropagation();
     const controls = controlsRef.current;
     if (!controls) return;
+    // 近傍トークンへの委譲: 俯瞰45°(距離170m)では選手が画面上6px程度しかなく、選手を狙った
+    // ダブルクリックでも地面プレーンが拾ってしまう（実測）。ヒット点の近傍（距離比例の閾値:
+    // 170mで約2m、近距離で1.5m）にトークンがあればトークンのdblclickと同じフォーカス処理へ回す。
+    const st = board.state;
+    const thr = Math.max(1.5, controls.distance * 0.012);
+    let best: { x: number; z: number } | null = null;
+    let bestD = thr;
+    const consider = (p: { x: number; y: number }) => {
+      const wx = boardXToWorldX(p.x, dims);
+      const wz = boardYToWorldZ(p.y, dims);
+      const d = Math.hypot(wx - e.point.x, wz - e.point.z);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: wx, z: wz };
+      }
+    };
+    st.slots.forEach(consider);
+    (st.opponents ?? []).forEach(consider);
+    if (st.ball) consider(st.ball);
+    if (best) {
+      const b: { x: number; z: number } = best;
+      focusWorldPoint(controls, b.x, 1.0, b.z, !reducedMotion);
+      invalidate();
+      return;
+    }
     void controls.setTarget(e.point.x, Math.max(0.3, e.point.y + 0.3), e.point.z, !reducedMotion);
     invalidate();
   };
@@ -2293,6 +2420,25 @@ function InteractionPlane({
     if (controls) controls.enabled = true;
     invalidate();
   };
+
+  // ドラッグ排他の堅牢化（11項）: R3Fの合成onPointerUp/onPointerLeaveは、ネイティブの
+  // pointerup/pointercancelがcanvas（このメッシュ）を外れた場所で発生すると発火しない
+  // （pointer captureを張っていないため、canvas外でドラッグを離すとイベントを取りこぼす）。
+  // windowレベルで同じendDrag()を必ず一度実行し、controls.enabled=falseのまま固着するのを
+  // 防ぐ。通常経路（このメッシュ上でのpointerup/pointerleave）で既にendDrag済みのときは
+  // dragRef.current===nullなので即returnし、二重発火は無害（route確定・addMoveの二重実行も
+  // 起きない）。onPointerLeaveの既存処理はそのまま維持する。
+  const endDragRef = useRef(endDrag);
+  endDragRef.current = endDrag;
+  useEffect(() => {
+    const onWindowPointerEnd = () => endDragRef.current();
+    window.addEventListener("pointerup", onWindowPointerEnd);
+    window.addEventListener("pointercancel", onWindowPointerEnd);
+    return () => {
+      window.removeEventListener("pointerup", onWindowPointerEnd);
+      window.removeEventListener("pointercancel", onWindowPointerEnd);
+    };
+  }, []);
 
   return (
     <mesh
@@ -2473,6 +2619,32 @@ function CameraController({
   return null;
 }
 
+/** 注視点のクランプ用の使い回しVector3（モジュールスコープで1個だけ持つ。呼び出しは常に
+ * 同期的・非再入なので複数呼び出し元での共有は安全）。 */
+const clampTargetScratch = new THREE.Vector3();
+
+/** 注視点のクランプ（WheelNormalizerのパン/ズーム操作後・KeyboardFlyControllerのWASD/QE移動後の
+ * 両方から共通で呼ぶ）: 操作を続けても注視点が地面下・上空・場外へ逃げて復帰不能になるのを
+ * 防ぐ（CAMERA_TUNING.panTarget*）。panRadiusは「注視点の水平移動を許す半径（m）」で、
+ * 呼び出し側（スタジアム水平半径+余白から算出）が渡す。 */
+const clampPosScratch = new THREE.Vector3();
+function clampControlsTarget(controls: CameraControlsImpl, panRadius: number): void {
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  const t = clampTargetScratch;
+  controls.getTarget(t);
+  const cx = clamp(t.x, -panRadius, panRadius);
+  const cy = clamp(t.y, CAMERA_TUNING.panTargetMinYM, CAMERA_TUNING.panTargetMaxYM);
+  const cz = clamp(t.z, -panRadius, panRadius);
+  if (cx !== t.x || cy !== t.y || cz !== t.z) {
+    // 注視点だけを補正するとカメラとの距離・仰角が変わり「パンしただけなのにズームが動く」
+    // 副作用が出る（実測: 2本指パンで距離-3%）。補正ベクトルをカメラにも同量適用して
+    // 距離・角度を保ったまま平行移動として押し戻す。
+    const p = clampPosScratch;
+    controls.getPosition(p);
+    void controls.setLookAt(p.x + (cx - t.x), p.y + (cy - t.y), p.z + (cz - t.z), cx, cy, cz, false);
+  }
+}
+
 /* ============================================================
    wheel正規化層（トラックパッド1級対応、2項）。drei CameraControlsはmouseButtons.wheel=NONE
    にしているためwheelイベントを一切処理しない（node_modules/camera-controls側の実装でも
@@ -2507,20 +2679,6 @@ function WheelNormalizer({
 
   useEffect(() => {
     const canvas = gl.domElement;
-    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-    // 注視点のクランプ（パン・ズーム後に共通適用）: 2本指スワイプの継続やズーム操作で
-    // 注視点が地面下・上空・場外へ逃げて復帰不能になるのを防ぐ（CAMERA_TUNING.panTarget*）
-    const clampTarget = (controls: CameraControlsImpl) => {
-      const s = scratchRef.current;
-      controls.getTarget(s.target);
-      const r = panRadiusRef.current;
-      const cx = clamp(s.target.x, -r, r);
-      const cy = clamp(s.target.y, CAMERA_TUNING.panTargetMinYM, CAMERA_TUNING.panTargetMaxYM);
-      const cz = clamp(s.target.z, -r, r);
-      if (cx !== s.target.x || cy !== s.target.y || cz !== s.target.z) {
-        void controls.setTarget(cx, cy, cz, false);
-      }
-    };
     const onWheel = (e: WheelEvent) => {
       // canvas上のホイールは常にページスクロールへ渡さない
       e.preventDefault();
@@ -2534,7 +2692,7 @@ function WheelNormalizer({
         // 2本指パン: 距離比例のtruck（近距離で精密・遠距離で速い）
         const k = controls.distance * CAMERA_TUNING.trackpadPanFactorPerDistance;
         void controls.truck(e.deltaX * k, e.deltaY * k, false);
-        clampTarget(controls);
+        clampControlsTarget(controls, panRadiusRef.current);
       } else {
         // pinch（Ctrl+ホイール）・wheelZoom（通常マウスホイール）とも乗算dolly（距離比例・過冲なし）。
         // pinchのdeltaYはdeltaModeでpx換算に正規化する（deltaMode=1のCtrl+マウスホイールが
@@ -2568,13 +2726,245 @@ function WheelNormalizer({
         // setTargetで距離（=カメラ-注視点間）が変わるため、dollyToは現在値から掛け直す。
         // dollyTo()自体がminDistance/maxDistanceへ内部クランプするため追加クランプは不要。
         void controls.dollyTo(controls.distance * factor, false);
-        clampTarget(controls);
+        clampControlsTarget(controls, panRadiusRef.current);
       }
       invalidate();
     };
     canvas.addEventListener("wheel", onWheel, { passive: false, capture: true });
     return () => canvas.removeEventListener("wheel", onWheel, { capture: true });
   }, [gl, camera, controlsRef, invalidate]);
+
+  return null;
+}
+
+/* ============================================================
+   キーボードフリーカメラ（Camera UX Overhaul V3、3項）。W/A/S/D=前後左右・Q/E=上下・
+   Shift=高速・R=視点リセット・F=選択中トークン/ボールへフォーカス。SetPiece3Dマウント中のみ
+   windowへkeydown/keyupを登録する（Canvasやcanvas要素へフォーカスを当てる操作をユーザーに
+   要求しない＝V3仕様「小さな見えないフォーカスターゲットをクリックさせない」を満たす）。
+   ============================================================ */
+
+/** キー移動として扱うキー（WASD/QE+矢印）のcode集合。preventDefault対象でもある
+ * （矢印はページスクロールを止める必要があるが、編集要素にフォーカスがあるときは
+ * isEditableEventTargetで弾かれるためこのSetへは到達しない＝編集要素では絶対に
+ * preventDefaultしない、という要求を自然に満たす）。 */
+const KEY_MOVE_CODES = new Set([
+  "KeyW",
+  "KeyA",
+  "KeyS",
+  "KeyD",
+  "KeyQ",
+  "KeyE",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+]);
+
+/** イベントターゲット（またはその祖先）が編集可能要素かどうか。input/textarea/select/
+ * contenteditable=true/role=textboxのいずれかを祖先方向へ辿って判定する（子孫要素に
+ * フォーカスがあるケース＝target自身がそれらでなくても、それらの内部にある場合を含む）。
+ * キーボードカメラ操作はテキスト入力中には絶対に発火してはならないため、この判定にヒットした
+ * keydownはpreventDefaultも一切せずそのまま無視する。 */
+function isEditableEventTarget(target: EventTarget | null): boolean {
+  let el = target instanceof Element ? target : null;
+  while (el) {
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (el.getAttribute("contenteditable") === "true") return true;
+    if (el.getAttribute("role") === "textbox") return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/**
+ * キーボードでのフリーカメラ移動＋リセット＋フォーカス。押下状態はrefのSet（KeyW/KeyA/…の
+ * event.code）で保持し、useFrame内で速度ベクトルへ変換→camera-controlsのforward/truck/elevateへ
+ * 直接書き込む（Reactの再レンダーは一切発生させない＝WheelNormalizer/CameraControllerと同じ
+ * 「refとuseFrameで完結させ、stateを更新しない」流儀。13項の性能要件）。
+ *
+ * 無視条件（該当時は何もせず、preventDefaultもしない）: e.repeat（自動リピート。連続移動は
+ * このコンポーネント自身のuseFrameで作るため、ブラウザのキーリピートは使わない）・
+ * e.isComposing（IME変換中）・イベントターゲットが編集可能要素/その子孫
+ * （isEditableEventTarget）。R（視点リセット）だけはこれらのうちcontrols.enabled===false
+ * （トークンドラッグ中）の判定を通過させる＝ドラッグ中断でcontrols.enabledがstaleに
+ * なった場合の回復役も兼ねるため。それ以外（WASD/QE/矢印/F）はcontrols.enabled===falseの間
+ * （ドラッグ中）は無視する（7項と同じ排他）。
+ *
+ * 速度: base = clamp(controls.distance × keySpeedPerDistance, keySpeedMinMps, keySpeedMaxMps)、
+ * Shift押下でkeyShiftMult倍。目標速度への追従は時定数keyAccelTimeSの一次遅れ
+ * （v += (vTarget-v) × min(1, delta/keyAccelTimeS)）でハードな加減速を避ける。
+ * 移動後はWheelNormalizerと同じclampControlsTargetで注視点をクランプする。
+ */
+function KeyboardFlyController({
+  controlsRef,
+  dims,
+  panRadius,
+  reducedMotion,
+  onReset,
+}: {
+  controlsRef: React.RefObject<CameraControlsImpl | null>;
+  dims: PitchDims;
+  /** 注視点の水平移動を許す半径（m）。WheelNormalizerと同じ値を親から渡す */
+  panRadius: number;
+  reducedMotion: boolean;
+  /** R押下時に呼ぶ（SetPieceBoard側がresetNonceを進める既存のリセット経路）。任意（未指定時はR
+   * を押してもcontrols.enabled復帰のみ行う） */
+  onReset?: () => void;
+}) {
+  const board = useBoard();
+  const { invalidate } = useThree();
+  // 押下中キー（event.code）の集合。Reactの再レンダーを経由しない（useFrameから直接読む） */
+  const pressedRef = useRef<Set<string>>(new Set());
+  const shiftRef = useRef(false);
+  const velocityRef = useRef(new THREE.Vector3());
+  // 最新propsをrefへミラーする（CameraControllerのstateRef.current = board.stateと同じ手法）。
+  // これによりwindowリスナー登録useEffectの依存配列を空のままにでき、dims/panRadius/
+  // reducedMotion/onResetが変わるたびにリスナーを張り直さずに済む。
+  const dimsRef = useRef(dims);
+  dimsRef.current = dims;
+  const panRadiusRef = useRef(panRadius);
+  panRadiusRef.current = panRadius;
+  const reducedMotionRef = useRef(reducedMotion);
+  reducedMotionRef.current = reducedMotion;
+  const onResetRef = useRef(onReset);
+  onResetRef.current = onReset;
+
+  // F: 選択中トークン（selActorがslot番号 or opp文字列）があればその現在位置、
+  // 無ければ（未選択、またはselActorが"ball"）ボール位置へ。実際のカメラ操作は
+  // focusWorldPoint（トークンdblclickフォーカスと共用）へ委譲する。
+  const doFocus = () => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const st = board.stateRef.current;
+    const sel = board.selActor;
+    const focusActor: Actor =
+      typeof sel === "number" || (typeof sel === "string" && sel.startsWith("opp")) ? sel : "ball";
+    const p = actorPos(focusActor, board.getTime(), st.moves, st.slots, st.ball, st.opponents, st.holder);
+    const tx = boardXToWorldX(p.x, dimsRef.current);
+    const tz = boardYToWorldZ(p.y, dimsRef.current);
+    focusWorldPoint(controls, tx, 1.0, tz, !reducedMotionRef.current);
+    invalidate();
+  };
+  const doFocusRef = useRef(doFocus);
+  doFocusRef.current = doFocus;
+
+  useEffect(() => {
+    const clearAll = () => {
+      pressedRef.current.clear();
+      shiftRef.current = false;
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      // Shiftは押されているキーに関わらず毎keydownで最新値を反映する（後からShiftを
+      // 押し足す/離す操作が、既に押しっぱなしのWASDへ即座に反映されるようにするため）
+      shiftRef.current = e.shiftKey;
+      if (e.repeat || e.isComposing) return;
+      if (isEditableEventTarget(e.target)) return;
+      const code = e.code;
+      if (code === "KeyR") {
+        // Rはcontrols.enabled===falseの間（ドラッグ中断でstaleになったケース含む）でも
+        // 常に処理する＝視点リセットが回復手段を兼ねる
+        onResetRef.current?.();
+        const controls = controlsRef.current;
+        if (controls) controls.enabled = true;
+        invalidate();
+        return;
+      }
+      const controls = controlsRef.current;
+      if (!controls || !controls.enabled) return; // ドラッグ中は無視（7項と同じ排他）
+      if (code === "KeyF") {
+        doFocusRef.current();
+        return;
+      }
+      if (KEY_MOVE_CODES.has(code)) {
+        pressedRef.current.add(code);
+        e.preventDefault(); // 矢印のページスクロールを防止
+        invalidate(); // frameloop="demand": 押下開始のフレームを確実にキックする
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      shiftRef.current = e.shiftKey;
+      // keyupはisEditableEventTarget判定をしない: フォーカスが入力欄へ移った後にkeyupが
+      // 来ても必ずpressedRef から取り除く（そうしないと「離しても動き続ける」スタックの
+      // 原因になる。Setからの削除は未追加キーに対しても無害なno-op）
+      pressedRef.current.delete(e.code);
+    };
+    const onBlur = () => clearAll();
+    const onVisibility = () => {
+      if (document.hidden) clearAll();
+    };
+    // window.blur・visibilitychange(hidden)・pointercancelで全クリア（スタック防止）
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pointercancel", clearAll);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pointercancel", clearAll);
+      pressedRef.current.clear();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useFrame((_, delta) => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+    const pressed = pressedRef.current;
+    const hasInput = pressed.size > 0;
+    let tx = 0;
+    let ty = 0;
+    let tz = 0;
+    if (hasInput) {
+      if (pressed.has("KeyW") || pressed.has("ArrowUp")) tz += 1;
+      if (pressed.has("KeyS") || pressed.has("ArrowDown")) tz -= 1;
+      if (pressed.has("KeyD") || pressed.has("ArrowRight")) tx += 1;
+      if (pressed.has("KeyA") || pressed.has("ArrowLeft")) tx -= 1;
+      if (pressed.has("KeyE")) ty += 1;
+      if (pressed.has("KeyQ")) ty -= 1;
+      const len = Math.hypot(tx, ty, tz);
+      if (len > 1e-6) {
+        tx /= len;
+        ty /= len;
+        tz /= len;
+      }
+    }
+    const base = Math.max(
+      CAMERA_TUNING.keySpeedMinMps,
+      Math.min(CAMERA_TUNING.keySpeedMaxMps, controls.distance * CAMERA_TUNING.keySpeedPerDistance)
+    );
+    const speed = base * (shiftRef.current ? CAMERA_TUNING.keyShiftMult : 1);
+    const v = velocityRef.current;
+    // タブ非表示から復帰した最初のフレームはdeltaが非表示中の経過時間ぶん巨大になり、
+    // 1フレームで数百m飛ぶ（実測: 注視点が場外z≈-227mへ）。0.5秒超は「復帰フレーム」と
+    // みなして速度を捨て、通常フレームも0.1秒で頭打ちにして移動量を有界にする。
+    if (delta > 0.5) {
+      v.set(0, 0, 0);
+      return;
+    }
+    const dt = Math.min(delta, 0.1);
+    const damp = Math.min(1, dt / CAMERA_TUNING.keyAccelTimeS);
+    v.x += (tx * speed - v.x) * damp;
+    v.y += (ty * speed - v.y) * damp;
+    v.z += (tz * speed - v.z) * damp;
+    // 停止判定は|v|<0.05m/s（keyup後の惰性を体感0.3秒程度で打ち切る）
+    if (!hasInput && v.lengthSq() < 0.0025) {
+      if (v.x !== 0 || v.y !== 0 || v.z !== 0) v.set(0, 0, 0);
+      return; // 完全停止・入力なし: このフレームはinvalidateし続けない（性能予算）
+    }
+    // camera-controlsのforward/truck/elevateはカメラと注視点を同時に動かす（オービット復帰時に
+    // スナップしない）。forward=水平前後、truck(x,0)=左右ストレイフ（yを渡さないことで
+    // カメラのローカルupへは動かさない＝世界水平面内のストレイフになる）、elevate=世界上下。
+    if (v.z !== 0) void controls.forward(v.z * dt, false);
+    if (v.x !== 0) void controls.truck(v.x * dt, 0, false);
+    if (v.y !== 0) void controls.elevate(v.y * dt, false);
+    clampControlsTarget(controls, panRadiusRef.current);
+    invalidate();
+  });
 
   return null;
 }
@@ -2884,16 +3274,29 @@ export default function SetPiece3D({
   preset,
   onPreset,
   resetNonce = 0,
+  onReset,
+  helpOpen = false,
+  onCloseHelp,
 }: {
   preset: CameraPresetId;
   onPreset?: (id: CameraPresetId) => void;
   /** 「リセット」ボタン（SetPieceBoard.tsx CameraBar）が押されるたびに増える値。presetが
    * 既に"overhead"のままでもプリセット遷移を再適用するためのトリガー（CameraController参照）。 */
   resetNonce?: number;
+  /** キーボードR（KeyboardFlyController）が呼ぶリセット関数。「リセット」ボタン
+   * （SetPieceBoard.tsx CameraBar）のonClickと同じ関数（setPreset("overhead")+resetNonceを
+   * 進める既存経路）を親から渡してもらう＝ロジックの重複実装をしない。 */
+  onReset?: () => void;
+  /** 操作方法ヘルプパネルの開閉状態。開閉状態自体・sessionStorage永続化はSetPieceBoard側が
+   * 保持する（完全な制御コンポーネント。HelpPanel参照）。 */
+  helpOpen?: boolean;
+  /** ヘルプパネルの×ボタンから呼ぶ（親がhelpOpenをfalseへ）。 */
+  onCloseHelp?: () => void;
 }) {
   const board = useBoard();
   const reducedMotion = usePrefersReducedMotion();
   const [quality, setQuality] = useSp3dQuality();
+  const showHint = useFirst3dHint();
   // ボール追従カメラ(FC26リプレイ風)のON/OFF。PlaybackBar(トグルUI)とCanvas内の
   // FollowBallControllerで共有する
   const [follow, setFollow] = useState(false);
@@ -3044,6 +3447,10 @@ export default function SetPiece3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // 注視点の水平移動を許す半径（m。スタジアム水平半径+余白）。WheelNormalizer（パン/ズーム後の
+  // クランプ）とKeyboardFlyController（WASD/QE移動後のクランプ）の両方が同じ値を使う。
+  const panRadius = (stadiumBounds?.radiusH ?? 130) + CAMERA_TUNING.panTargetRadiusMarginM;
+
   // procedural スタジアム一式（StadiumBowl/PitchGround/PitchLines/Goal×2/CornerFlags/
   // ApronGround）。glbStadium=falseの通常描画と、glbStadium=true時のGlbStadiumBoundary/
   // Suspenseのfallback（ロード中・失敗時に見せる画）の両方から参照するため変数化して重複を避ける。
@@ -3180,10 +3587,7 @@ export default function SetPiece3D({
               three: CameraControlsImpl.ACTION.TOUCH_TRUCK,
             }}
           />
-          <WheelNormalizer
-            controlsRef={controlsRef}
-            panRadius={(stadiumBounds?.radiusH ?? 130) + CAMERA_TUNING.panTargetRadiusMarginM}
-          />
+          <WheelNormalizer controlsRef={controlsRef} panRadius={panRadius} />
           <CameraController
             preset={preset}
             reducedMotion={reducedMotion}
@@ -3193,6 +3597,13 @@ export default function SetPiece3D({
             far={dynamicLimits.far}
             stadiumBounds={stadiumBounds}
             resetNonce={resetNonce}
+          />
+          <KeyboardFlyController
+            controlsRef={controlsRef}
+            dims={dims}
+            panRadius={panRadius}
+            reducedMotion={reducedMotion}
+            onReset={onReset}
           />
           {!booted && <FirstFrameGate onFirstFrame={() => setBooted(true)} />}
         </Canvas>
@@ -3206,6 +3617,12 @@ export default function SetPiece3D({
           </div>
         )}
         <QualityToggle quality={quality} onChange={setQuality} />
+        <HelpPanel open={helpOpen} onClose={onCloseHelp} />
+        {showHint && !helpOpen && (
+          <div className="sp3dhint" role="status">
+            WASDで移動 / ドラッグで視点操作 / 操作方法 ?
+          </div>
+        )}
         {isCoach && (
           <div className="sp3dkick" role="group" aria-label="キック調整">
             <button type="button" className={`sp3dqbtn${kickEdit ? " on" : ""}`} onClick={toggleKickEdit}>

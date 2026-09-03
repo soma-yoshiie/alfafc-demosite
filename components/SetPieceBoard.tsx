@@ -30,6 +30,29 @@ const SetPiece3D = dynamic(() => import("./SetPiece3D"), {
   ),
 });
 
+/** 操作方法ヘルプパネルの開閉状態を記憶するsessionStorageキー（10項）。タブを閉じるまでの
+ * 間だけ記憶する簡易な永続化で、複雑な仕組みは持たない（仕様どおり）。 */
+const SP3D_HELP_KEY = "alfa_sp3d_help_open";
+
+/** sessionStorageからヘルプパネルの開閉状態を読む。プライベートブラウズ等でstorageが
+ * 使えない環境でも表示切替自体は機能するよう、読み書き失敗は無視する（既定は閉）。 */
+function readStoredHelpOpen(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.sessionStorage.getItem(SP3D_HELP_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeStoredHelpOpen(open: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(SP3D_HELP_KEY, open ? "1" : "0");
+  } catch {
+    /* 無視（保存できなくても表示切替自体は機能する） */
+  }
+}
+
 /** PC(min-width:1024px)判定のブレークポイント。TacticsBoard.tsx usePc() と同じ値・同じ手法 */
 const PC_MQ = "(min-width: 1024px)";
 
@@ -120,11 +143,15 @@ function CameraBar({
   onPreset,
   onExit3D,
   onReset,
+  helpOpen,
+  onToggleHelp,
 }: {
   preset: CameraPresetId;
   onPreset: (id: CameraPresetId) => void;
   onExit3D: () => void;
   onReset: () => void;
+  helpOpen: boolean;
+  onToggleHelp: () => void;
 }) {
   return (
     <div className="fbar spbar-presets sp3dbar">
@@ -149,6 +176,14 @@ function CameraBar({
       <button type="button" className="fmini" onClick={onExit3D}>
         <span>2Dに戻る</span>
       </button>
+      <button
+        type="button"
+        className={`fmini${helpOpen ? " on" : ""}`}
+        title="操作方法（マウス/トラックパッド/キーボード）"
+        onClick={onToggleHelp}
+      >
+        <span>操作方法 ?</span>
+      </button>
     </div>
   );
 }
@@ -169,6 +204,12 @@ export default function SetPieceBoard() {
   const handleResetCamera = () => {
     setPreset("overhead");
     setResetNonce((n) => n + 1);
+  };
+  // 操作方法ヘルプパネルの開閉。sessionStorageへ記憶する（タブを閉じるまでの簡易な永続化）。
+  const [helpOpen, setHelpOpenState] = useState<boolean>(() => readStoredHelpOpen());
+  const setHelpOpen = (open: boolean) => {
+    setHelpOpenState(open);
+    writeStoredHelpOpen(open);
   };
   // 味方/相手のドラッグ固定（密集での誤操作防止）。CSSクラス経由でpointer-eventsを遮断する
   const [lockOwn, setLockOwn] = useState(false);
@@ -203,13 +244,22 @@ export default function SetPieceBoard() {
           onPreset={setPreset}
           onExit3D={() => setView("2d")}
           onReset={handleResetCamera}
+          helpOpen={helpOpen}
+          onToggleHelp={() => setHelpOpen(!helpOpen)}
         />
       )}
       <div className="scroll">
         {view === "2d" ? (
           <Pitch />
         ) : (
-          <SetPiece3D preset={preset} onPreset={setPreset} resetNonce={resetNonce} />
+          <SetPiece3D
+            preset={preset}
+            onPreset={setPreset}
+            resetNonce={resetNonce}
+            onReset={handleResetCamera}
+            helpOpen={helpOpen}
+            onCloseHelp={() => setHelpOpen(false)}
+          />
         )}
         <div className="boardside">
           {spPanelType ? <SpPanelHost type={spPanelType} /> : <AnimationStudio />}
