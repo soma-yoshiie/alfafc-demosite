@@ -258,8 +258,10 @@ export function searchAuthors(profiles: AuthorProfile[], opts: AuthorSearchOptio
 /* ===================== シードデータ ===================== */
 
 const DAY = 86_400_000;
+/** シードの日付計算はimport時のDate.now()ではなく固定基準時刻にする（毎回結果が変わらないように） */
+const SEED_BASE = Date.UTC(2026, 8, 11);
 function daysAgo(n: number): number {
-  return Date.now() - n * DAY;
+  return SEED_BASE - n * DAY;
 }
 
 /** 指導者6名（全員架空。実在の人物・チーム名は使用していない） */
@@ -368,11 +370,11 @@ export const SEED_PROFILES: AuthorProfile[] = [
 
 /** 既存seed記事（lib/articles.ts の ARTICLES）に著者・タグ・公開日を付与するメタデータ */
 export const SEED_ARTICLE_META: Record<string, { authorId: string; tags?: string[]; publishedAt: number }> = {
-  "a-cone-touch": { authorId: "s-alfa", tags: ["練習法", "U-12"], publishedAt: daysAgo(120) },
-  "a-warmup-why": { authorId: "s-trainer", tags: ["コンディション", "フィジカル"], publishedAt: daysAgo(95) },
-  "a-press-cues": { authorId: "s-nakagaku", tags: ["戦術", "プレッシング"], publishedAt: daysAgo(80) },
+  "a-cone-touch": { authorId: "s-alfa", tags: ["U-12", "8人制"], publishedAt: daysAgo(120) },
+  "a-warmup-why": { authorId: "s-trainer", tags: ["フィジカル", "U-15"], publishedAt: daysAgo(95) },
+  "a-press-cues": { authorId: "s-nakagaku", tags: ["プレッシング", "11人制"], publishedAt: daysAgo(80) },
   "a-attendance-use": { authorId: "s-alfa", tags: ["チーム運営"], publishedAt: daysAgo(60) },
-  "a-touch-kick": { authorId: "s-koko", tags: ["練習法", "U-12"], publishedAt: daysAgo(45) },
+  "a-touch-kick": { authorId: "s-koko", tags: ["U-12"], publishedAt: daysAgo(45) },
 };
 
 /** 新規シード記事5本（うち有料3本：¥300／¥500／¥1,000）。本文はオリジナル */

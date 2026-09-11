@@ -41,18 +41,23 @@ interface OpenHandlers {
   onOpenArticle: (articleId: string) => void;
 }
 
-/** カテゴリ・価格・読者絞り込みの汎用チップ行 */
+/** カテゴリ・価格・読者絞り込みの汎用チップ行
+ * wrapClassName: モバイルでの折り返し方。項目数が多いタグ・対象行は横スクロール
+ * (cl-scrollchips)にしてファーストビューを埋めないようにし、カテゴリ・価格は
+ * 従来どおり折り返し(cl-wrapchips)のままにする */
 function FilterChips<T extends string>({
   value,
   options,
   onChange,
+  wrapClassName = "cl-wrapchips",
 }: {
   value: T;
   options: { key: T; label: string }[];
   onChange: (v: T) => void;
+  wrapClassName?: string;
 }) {
   return (
-    <div className="catbar cl-wrapchips">
+    <div className={`catbar ${wrapClassName}`}>
       {options.map((o) => (
         <button
           key={o.key}
@@ -69,7 +74,7 @@ function FilterChips<T extends string>({
 
 function TagChips({ selected, onToggle }: { selected: string[]; onToggle: (t: string) => void }) {
   return (
-    <div className="catbar cl-wrapchips">
+    <div className="catbar cl-scrollchips">
       {ARTICLE_TAGS_SUGGEST.map((t) => (
         <button
           key={t}
@@ -258,6 +263,7 @@ export function CoachLabExplore({ onOpenAuthor, onOpenArticle }: OpenHandlers) {
           <FilterChips
             value={audience}
             onChange={setAudience}
+            wrapClassName="cl-scrollchips"
             options={[
               { key: "all", label: "対象：すべて" },
               { key: "coach", label: "指導者向け" },

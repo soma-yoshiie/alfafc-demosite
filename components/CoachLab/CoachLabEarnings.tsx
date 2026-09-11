@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import { useBoard } from "../BoardProvider";
 import { useCoachLab } from "./CoachLabProvider";
-import { MIN_PAYOUT, SALE_FEE_RATE, allArticles, resolveAuthorId, splitSale } from "@/lib/coachlab";
+import { MIN_PAYOUT, PAYOUT_FEE_YEN, SALE_FEE_RATE, allArticles, resolveAuthorId, splitSale } from "@/lib/coachlab";
 import { fmtYen, priceLabel, useMeId } from "./CoachLabParts";
 
 /**
@@ -42,6 +42,8 @@ export default function CoachLabEarnings() {
     .sort((a, b) => b.sales - a.sales);
 
   const example = splitSale(1000);
+  const payoutFeeText =
+    PAYOUT_FEE_YEN > 0 ? `振込手数料は${fmtYen(PAYOUT_FEE_YEN)}かかります。` : "振込手数料はかかりません。";
 
   const handlePayout = () => {
     if (earnings.payable < MIN_PAYOUT) return;
@@ -106,10 +108,15 @@ export default function CoachLabEarnings() {
           </table>
         </div>
       )}
+      {(rows.length === 0 || earnings.count === 0) && (
+        <div className="cl-tablehint">
+          自分の記事は自分では購入できません。別のアカウントで購入されると、ここに売上が反映されます。
+        </div>
+      )}
 
       <div className="cl-feecard">
         販売手数料は{Math.round(SALE_FEE_RATE * 100)}%（決済手数料込み）。例：¥1,000の記事が1本売れると受取は{fmtYen(example.creator)}。
-        振込手数料はかかりません。売上は毎月末に自動で振り込まれます（{fmtYen(MIN_PAYOUT)}未満は翌月に繰り越し）。
+        {payoutFeeText}売上は毎月末に自動で振り込まれます（{fmtYen(MIN_PAYOUT)}未満は翌月に繰り越し）。
       </div>
 
       <div className="cl-payoutcard">

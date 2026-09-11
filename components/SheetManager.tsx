@@ -51,10 +51,10 @@ import LogoMark from "./Logo";
 import { SendTargetField, targetThreadKey, type SendTarget } from "./SendTarget";
 import { fmtFitnessValue } from "@/lib/fitness";
 import {
-  IconBook,
   IconCalendarCheck,
   IconCog,
   IconCone,
+  IconLab,
   IconLogout,
   IconUsers,
 } from "./icons";
@@ -1259,7 +1259,7 @@ function MoreSheet() {
             board.closeSheet();
           }}
         >
-          <div className="mi"><IconBook /></div> コーチラボ
+          <div className="mi"><IconLab /></div> コーチラボ
         </div>
         <div className="mitem" onClick={() => board.openSheet({ type: "settings" })}>
           <div className="mi"><IconCog /></div> 設定（チーム・プラン）

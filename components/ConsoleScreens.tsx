@@ -35,12 +35,14 @@ function usePc(): boolean {
 }
 
 /**
- * PCレール直結の3画面（ライブラリ／コーチラボ／設定）。
+ * PCレール直結の2画面（ライブラリ／設定）。
  * 従来はモーダル(シート)で開いていたが、レールの他項目と同様に
- * 画面切り替えで表示する。コーチラボ／設定は SheetManager 側の *Body を
+ * 画面切り替えで表示する。設定は SheetManager 側の SettingsBody を
  * そのまま再利用し、モバイルのシート表示（DOM・見た目）は一切変えない。
  * ライブラリのみPC専用のマスター・ディテール（左:一覧／右:プレビュー）を持つため
  * シート版(LibraryBody/SheetManager)とは別に画面専用実装を持つ。
+ * コーチラボは components/CoachLab/ 配下の専用画面（CoachLabScreen）であり、
+ * このファイルには含まれない。
  */
 
 const PITCH_LABEL: Record<PitchType, string> = {

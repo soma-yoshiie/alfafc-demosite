@@ -154,13 +154,18 @@ export function CoachLabProvider({ children }: { children: React.ReactNode }) {
 
   const purchase = useCallback(
     (articleId: string, price: number) => {
+      // 自分の記事は自分では購入できない（board.userArticles+シードから著者を解決して防御。
+      // UI側（CoachLabArticle.tsx）でも自分の記事には購入ボタンを出していないが、
+      // provider側にも同じ防御を入れておく）
+      const article = allArticles(board.userArticles).find((a) => a.id === articleId);
+      if (article && resolveAuthorId(article, meId) === meId) return;
       setState((s) =>
         s.purchases.some((p) => p.userId === meId && p.articleId === articleId)
           ? s
           : { ...s, purchases: [...s.purchases, { userId: meId, articleId, price, ts: Date.now() }] }
       );
     },
-    [meId]
+    [meId, board.userArticles]
   );
   const hasPurchased = useCallback(
     (articleId: string) => state.purchases.some((p) => p.userId === meId && p.articleId === articleId),
@@ -178,6 +183,9 @@ export function CoachLabProvider({ children }: { children: React.ReactNode }) {
 
   const toggleLike = useCallback(
     (articleId: string) => {
+      // 自分の記事には「参考になった」を押せない（purchaseと同じ方針で防御）
+      const article = allArticles(board.userArticles).find((a) => a.id === articleId);
+      if (article && resolveAuthorId(article, meId) === meId) return;
       setState((s) => {
         const exists = s.likes.some((l) => l.userId === meId && l.articleId === articleId);
         return exists
@@ -185,7 +193,7 @@ export function CoachLabProvider({ children }: { children: React.ReactNode }) {
           : { ...s, likes: [...s.likes, { userId: meId, articleId, ts: Date.now() }] };
       });
     },
-    [meId]
+    [meId, board.userArticles]
   );
   const hasLiked = useCallback(
     (articleId: string) => state.likes.some((l) => l.userId === meId && l.articleId === articleId),
@@ -247,30 +255,51 @@ export function CoachLabProvider({ children }: { children: React.ReactNode }) {
     [state.purchases]
   );
 
-  const value: CoachLabContextValue = {
-    profiles: state.profiles,
-    follows: state.follows,
-    purchases: state.purchases,
-    likes: state.likes,
-    views: state.views,
-    payouts: state.payouts,
-    myProfile,
-    upsertMyProfile,
-    follow,
-    unfollow,
-    isFollowing,
-    purchase,
-    hasPurchased,
-    refundPurchase,
-    toggleLike,
-    hasLiked,
-    recordView,
-    requestPayout,
-    earningsFor,
-    followerCount,
-    likeCount,
-    purchaseCount,
-  };
+  const value = useMemo<CoachLabContextValue>(
+    () => ({
+      profiles: state.profiles,
+      follows: state.follows,
+      purchases: state.purchases,
+      likes: state.likes,
+      views: state.views,
+      payouts: state.payouts,
+      myProfile,
+      upsertMyProfile,
+      follow,
+      unfollow,
+      isFollowing,
+      purchase,
+      hasPurchased,
+      refundPurchase,
+      toggleLike,
+      hasLiked,
+      recordView,
+      requestPayout,
+      earningsFor,
+      followerCount,
+      likeCount,
+      purchaseCount,
+    }),
+    [
+      state,
+      myProfile,
+      upsertMyProfile,
+      follow,
+      unfollow,
+      isFollowing,
+      purchase,
+      hasPurchased,
+      refundPurchase,
+      toggleLike,
+      hasLiked,
+      recordView,
+      requestPayout,
+      earningsFor,
+      followerCount,
+      likeCount,
+      purchaseCount,
+    ]
+  );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

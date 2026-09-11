@@ -62,7 +62,7 @@ import { fmtFitnessValue } from "@/lib/fitness";
 const PC_MQ = "(min-width: 1024px)";
 
 /**
- * PC幅かどうかを追跡するフック（ConsoleScreens.tsx ArticlesScreen 436-446 と同じ手法）。
+ * PC幅かどうかを追跡するフック（components/CoachLab/CoachLabParts.tsx useIsPc() と同じ手法）。
  * 左ペインに新規追加する「サマリー行」など、モバイルでは描画してはいけないPC専用DOMの
  * 出し分けに使う（クリック分岐自体は各所で window.matchMedia を直接判定する）。
  */

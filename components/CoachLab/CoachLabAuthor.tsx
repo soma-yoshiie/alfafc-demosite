@@ -70,7 +70,7 @@ export default function CoachLabAuthor({
             {[profile.role, profile.team, profile.region].filter(Boolean).join(" ・ ")}
           </div>
           <LicenseBadgeRow licenses={profile.licenses} max={99} />
-          {profile.licenses.length > 0 && (
+          {(profile.licenses.length > 0 || profile.career.length > 0) && (
             <div className="cl-authorhead-note">資格・経歴は本人の申告に基づきます</div>
           )}
           <div className="cl-authorhead-stats">

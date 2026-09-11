@@ -3895,7 +3895,7 @@ header {
 }
 /* 旧ArticleForm(PC専用)で使っていた下記4系統は、コーチラボのエディタ(モバイルにも
    対応)が同じクラス名をそのまま使うため、ここでBASE(モバイル)側の定義を追加する。
-   値はPC版(旧1つ目の@mediaブロック内)と同一。PC側は元のPC専用ルールがそのまま
+   値はPC版(旧1つ目のメディアクエリブロック内)と同一。PC側は元のPC専用ルールがそのまま
    後勝ちで効くため、見え方に変化はない */
 .artactbar {
   display: flex;
@@ -4023,6 +4023,19 @@ header {
 .cl-wrapchips {
   flex-wrap: wrap;
   overflow-x: visible;
+}
+
+/* タグ・対象(読者)の絞り込みチップは項目数が多く、折り返すとファーストビューを
+   埋めてしまうため、モバイルでは横スクロールの1行にする。PC側は2つ目の
+   @media(min-width:1024px)ブロックの.clapp区画で従来どおりの折り返しに戻す */
+.cl-scrollchips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.cl-scrollchips::-webkit-scrollbar {
+  display: none;
 }
 
 .cl-sortrow {
@@ -4650,6 +4663,17 @@ header {
   min-width: 160px;
   font-weight: 700;
   color: var(--ink);
+}
+
+/* 記事別テーブルが空、または販売数0のときの案内（自分の記事は自分では購入できない旨） */
+.cl-tablehint {
+  margin: 0 16px 16px;
+  padding: 10px 12px;
+  background: var(--surface-low);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--mut);
 }
 
 .cl-feecard {
@@ -15280,11 +15304,14 @@ header {
     width: 100%;
     padding: 16px 0 calc(env(safe-area-inset-bottom) + 40px);
   }
-  /* 情報ラベル=青の原則にあわせ、記事カードのカテゴリバッジもPCでは青にする
-     （.screenbody .artcat と同じ考え方。cl-cardcatは新規クラスのためここで定義） */
-  .clapp .cl-cardcat {
-    background: var(--accent);
-    color: var(--on-primary);
+  /* cl-cardcatは.artcatと同じ見た目（基底のライム地）に統一するため、PC専用の
+     色上書きは持たない（.screenbody .artcatのような色替えはしない） */
+
+  /* タグ・対象(読者)の絞り込みチップは基底(モバイル)で横スクロール1行にしているが、
+     PCでは従来どおりの折り返しに戻す（cl-wrapchipsと同じ見た目） */
+  .clapp .cl-scrollchips {
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
   /* 探す/フォロー中/指導者ページ: カードグリッドを3列に、指導者一覧を2列に */
@@ -15319,6 +15346,7 @@ header {
     padding: 4px 24px 18px;
   }
   .clapp .cl-table-wrap,
+  .clapp .cl-tablehint,
   .clapp .cl-feecard,
   .clapp .cl-payoutcard {
     max-width: 1200px;
