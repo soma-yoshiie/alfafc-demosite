@@ -100,7 +100,10 @@ export function ArticleCard({
       tabIndex={0}
       onClick={() => onOpenArticle(a.id)}
       onKeyDown={(e) => {
-        if (e.key === "Enter") onOpenArticle(a.id);
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenArticle(a.id);
+        }
       }}
     >
       <span className="cl-cardcat">{a.category}</span>
@@ -128,7 +131,18 @@ function AuthorCard({
 } & Pick<OpenHandlers, "onOpenAuthor">) {
   const cl = useCoachLab();
   return (
-    <div className="cl-authorcard" onClick={() => onOpenAuthor(profile.id)} role="button" tabIndex={0}>
+    <div
+      className="cl-authorcard"
+      onClick={() => onOpenAuthor(profile.id)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpenAuthor(profile.id);
+        }
+      }}
+    >
       <Avatar name={profile.name} hue={profile.hue} size="lg" />
       <div className="cl-authorcard-tx">
         <div className="cl-authorcard-name">{profile.name}</div>

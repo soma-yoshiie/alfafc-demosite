@@ -4946,6 +4946,54 @@ header {
   text-decoration: none;
 }
 
+/* ---- モバイル用ボトムナビ（.cl-mobilenav。.noteapp .notenavと同じ組み立て方）----
+   PCでは.conrailのサブナビ(.conrail-sub)に一本化するため、2つ目のPC
+   @media(min-width:1024px)ブロック側で非表示にする（該当箇所を参照） */
+.clapp .cl-mobilenav {
+  flex-shrink: 0;
+  display: flex;
+  border: 0;
+  border-top: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
+  z-index: 300;
+}
+.clapp .cl-mobilenav-item {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--mut);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.clapp .cl-mobilenav-item .emj {
+  width: 22px;
+  height: 22px;
+  box-sizing: content-box;
+  padding: 3px 14px;
+  border-radius: var(--r-full);
+  transition: background-color var(--dur-s) var(--ease-standard);
+}
+.clapp .cl-mobilenav-item.on {
+  color: var(--accent);
+}
+.clapp .cl-mobilenav-item.on .emj {
+  background: var(--accent-tint);
+}
+.clapp .cl-mobilenav-item:active .emj {
+  background: var(--surface-low);
+}
 
 /* ---------- Login: tabs / error / switch ---------- */
 .logintabs {
@@ -15352,6 +15400,10 @@ header {
     border: 1px solid var(--outline);
     border-radius: var(--r-lg);
     padding: 18px 20px;
+  }
+  /* PCはコンソールレールのサブナビ(.conrail-sub)に一本化するため、モバイル用ボトムナビは非表示 */
+  .clapp .cl-mobilenav {
+    display: none;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }

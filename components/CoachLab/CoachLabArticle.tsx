@@ -129,11 +129,14 @@ export default function CoachLabArticle({
   const profile = resolveAuthorProfile(a, cl.profiles, meId);
   const isMine = authorId === meId;
   const priced = !!a.price && a.price > 0;
-  const hasPaywall = priced && a.paidFrom != null && a.paidFrom < a.body.length;
+  // 価格が付いているのに有料ラインが未設定（旧データ・保存時の異常値）のときは
+  // 「全文無料」ではなく安全側（全文有料）に倒す。エディタ側で有料ライン未設定の
+  // 公開は止めているが、ここでも防御しておく（CoachLabEditor.tsx参照）
+  const hasPaywall = priced && (a.paidFrom == null ? true : a.paidFrom < a.body.length);
   const purchased = cl.hasPurchased(a.id);
   const fullAccess = isMine || purchased || !hasPaywall;
 
-  const splitAt = a.paidFrom ?? a.body.length;
+  const splitAt = hasPaywall ? Math.max(0, a.paidFrom ?? 0) : a.body.length;
   const visibleBody = fullAccess ? a.body : a.body.slice(0, splitAt);
   const hiddenBody = fullAccess ? [] : a.body.slice(splitAt);
   const attachments = a.attachments ?? [];

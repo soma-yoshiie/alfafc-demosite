@@ -71,9 +71,15 @@ export default function CoachLabScreen() {
 
   const openAuthor = (authorId: string) => push({ kind: "author", authorId });
   const openArticle = (articleId: string) => push({ kind: "article", articleId });
-  const goProfile = () => push({ kind: "profile" });
+  // プロフィールへの寄り道だけは「離脱」として扱わない（push/confirmLeaveWriteを通さない）。
+  // 有料記事の公開ブロック（CoachLabEditor.tsx:publishBlocked）や著者ページの
+  // 「プロフィールを編集」から呼ばれる。confirmLeaveWriteを通すと「編集中の内容を
+  // 破棄しますか？」の確認→OKでclearCoachLabDraft()まで実行され、書きかけの記事本文が
+  // 消えてしまう。ここでは単にスタックへpushするだけにして、書きかけの下書き(clDraft)を
+  // 残す。戻ってきたときはCoachLabEditor側がclDraftのeditIdを見て同じ記事を開き直す
+  const goProfile = () => setStack((s) => [...s, { kind: "profile" }]);
 
-  const consoleSubnav = useMemo(() => {
+  const navItems = useMemo(() => {
     const items: ConsoleSubnavItem[] = [
       { key: "explore", label: "探す", icon: <E n="search" />, on: current.kind === "explore", onSelect: () => goTop({ kind: "explore" }) },
       { key: "following", label: "フォロー中", icon: <E n="star" />, on: current.kind === "following", onSelect: () => goTop({ kind: "following" }) },
@@ -85,9 +91,13 @@ export default function CoachLabScreen() {
         { key: "profile", label: "プロフィール", icon: <E n="users" />, on: current.kind === "profile", onSelect: () => goTop({ kind: "profile" }) }
       );
     }
-    return { anchor: "articles" as const, items };
+    return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current.kind, isCoach]);
+  // PCレールのサブナビ（.conrail-sub）とモバイル下部ナビ(.cl-mobilenav)で同じ項目を共有する。
+  // .conrailはモバイルでは display:none のため、レールのサブナビだけでは
+  // モバイルから「フォロー中／書く／収益／プロフィール」に到達できない
+  const consoleSubnav = useMemo(() => ({ anchor: "articles" as const, items: navItems }), [navItems]);
   useConsoleSubnav(consoleSubnav);
 
   const merged = useMemo(() => allArticles(board.userArticles), [board.userArticles]);
@@ -167,6 +177,25 @@ export default function CoachLabScreen() {
       ) : (
         <div className="scroll screenbody">{renderBody()}</div>
       )}
+
+      {/* モバイル用ボトムナビ。PCはコンソールレールのサブナビ(.conrail-sub)に一本化するため
+          2つ目のPC @media(min-width:1024px)ブロックで非表示にする（.conrailはモバイルで
+          display:noneのため、これが無いとモバイルからフォロー中／書く／収益／プロフィールへ
+          到達できない） */}
+      <nav className="cl-mobilenav" aria-label="コーチラボ ナビゲーション">
+        {navItems.map((it) => (
+          <button
+            key={it.key}
+            type="button"
+            className={`cl-mobilenav-item${it.on ? " on" : ""}`}
+            aria-current={it.on ? "page" : undefined}
+            onClick={it.onSelect}
+          >
+            {it.icon}
+            <span>{it.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

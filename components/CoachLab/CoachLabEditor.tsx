@@ -185,9 +185,33 @@ function EditorForm({
   const titleRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
   const priceRef = useRef<HTMLInputElement | null>(null);
+  const paidFromRef = useRef<HTMLSelectElement | null>(null);
 
   const paragraphs = useMemo(() => splitParagraphs(bodyText), [bodyText]);
   const price = priceFromMode(priceMode, customPrice);
+  const paidFromOptions = paragraphs.length >= 2 ? Array.from({ length: paragraphs.length - 1 }, (_, i) => i + 1) : [];
+
+  // 有料ラインを本文の段落数に追随させる：(1)価格を有料に切り替えた直後に有料ラインが
+  // 未設定のままにならないよう既定値（先頭段落＝最も保守的）を入れる、(2)本文を短くして
+  // 現在の有料ラインが選べなくなったら選べる範囲の最大値に丸める（元の設定に一番近い形を保つ）。
+  // buildPayload側でも同じ範囲へ丸める（二重の安全策。CoachLabArticle.tsx側のフォールバックとあわせて
+  // 「価格はあるのに有料ラインが無い＝全文無料公開」を防ぐ）。
+  useEffect(() => {
+    if (paidFromOptions.length === 0) {
+      if (paidFrom !== "") setPaidFrom("");
+      return;
+    }
+    const min = paidFromOptions[0];
+    const max = paidFromOptions[paidFromOptions.length - 1];
+    if (paidFrom === "") {
+      if (price > 0) setPaidFrom(String(min));
+      return;
+    }
+    const n = Number(paidFrom);
+    if (!Number.isFinite(n) || n > max) setPaidFrom(String(max));
+    else if (n < min) setPaidFrom(String(min));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [price, paragraphs.length]);
 
   const errors = useMemo<EditorFormErrors>(() => {
     const e: EditorFormErrors = {};
@@ -261,7 +285,12 @@ function EditorForm({
   const buildPayload = (draftFlag: boolean): Omit<UserArticle, "id" | "ts" | "updatedAt"> => {
     const body = splitParagraphs(bodyText);
     const finalPrice = priceFromMode(priceMode, customPrice);
-    const paidFromVal = finalPrice > 0 && paidFrom !== "" ? Number(paidFrom) : null;
+    // 表示中のselectと段落数がズレていても（クランプ用useEffectが未反映の一瞬など）
+    // 保存値は必ず本文の範囲内に丸める（二重の安全策）
+    const paidFromVal =
+      finalPrice > 0 && paidFrom !== ""
+        ? Math.min(Math.max(1, Number(paidFrom)), Math.max(1, body.length - 1))
+        : null;
     const authorName = cl.myProfile?.name?.trim() || board.auth.name;
     return {
       title: title.trim(),
@@ -288,6 +317,14 @@ function EditorForm({
       return null;
     }
     const finalPrice = priceFromMode(priceMode, customPrice);
+    // 有料記事は有料ラインが決まっていないと公開できない（下書き保存はここを通す＝
+    // allArticles()が下書きを除外するので、読者に「価格はあるが全文無料」の記事が
+    // 見えることはない）。段落数が足りない場合はここで空のまま止まる。
+    if (!draftFlag && finalPrice > 0 && paidFrom === "") {
+      paidFromRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      paidFromRef.current?.focus();
+      return null;
+    }
     if (!draftFlag && finalPrice > 0 && !canPublishPaid(cl.myProfile)) {
       setPublishBlocked(true);
       return null;
@@ -346,6 +383,11 @@ function EditorForm({
     }
   };
   const handleUnpublish = () => {
+    // disabled属性頼みにせず、購入者保護をここでも再チェックする
+    if (salesLocked) {
+      board.toast("購入実績があるため下書きに戻せません");
+      return;
+    }
     const id = trySave(true);
     if (id) {
       board.toast("公開を取り消して下書きに戻しました");
@@ -354,6 +396,10 @@ function EditorForm({
   };
   const handleDelete = () => {
     if (!existing) return;
+    if (salesLocked) {
+      board.toast("購入実績があるため削除できません");
+      return;
+    }
     if (!window.confirm(`「${existing.title}」を削除しますか？`)) return;
     board.removeUserArticle(existing.id);
     clDraft = null;
@@ -424,11 +470,13 @@ function EditorForm({
   const removeAttachment = (i: number) => setAttachments((list) => list.filter((_, idx) => idx !== i));
 
   const published = existing != null && existing.draft === false;
-  const salesLocked = !!existing && (existing.price ?? 0) > 0 && cl.purchaseCount(existing.id) > 0;
+  // 購入実績があれば、現在フォームで選んでいる価格に関わらず保護する
+  // （価格を「無料」に変更しただけで下書き化・削除が解禁されるのを防ぐ）
+  const salesLocked = !!existing && cl.purchaseCount(existing.id) > 0;
 
-  const paidFromOptions = paragraphs.length >= 2 ? Array.from({ length: paragraphs.length - 1 }, (_, i) => i + 1) : [];
   const freeCount = price > 0 && paidFrom !== "" ? Number(paidFrom) : paragraphs.length;
   const paidParas = paragraphs.slice(freeCount);
+  const paidLineError = submitAttempted && price > 0 && paidFrom === "";
 
   return (
     <div className="cl-form">
@@ -715,15 +763,34 @@ function EditorForm({
       {price > 0 && (
         <>
           <div className="ffield">
-            <label>有料ライン</label>
-            <select value={paidFrom} onChange={(e) => setPaidFrom(e.target.value)}>
-              <option value="">全文無料</option>
-              {paidFromOptions.map((n) => (
-                <option key={n} value={n}>
-                  第{n + 1}段落から有料
-                </option>
-              ))}
+            <label>
+              有料ライン <span className="reqb">必須</span>
+            </label>
+            {/* 価格が付いている記事に「全文無料」の選択肢は出さない（有料表示なのに
+                本文が全部無料になる不整合を防ぐ）。段落が1つしかなく選べる区切りが
+                無い場合はプレースホルダのみを出し、下の注意文で本文を増やすよう促す */}
+            <select
+              ref={paidFromRef}
+              value={paidFrom}
+              onChange={(e) => setPaidFrom(e.target.value)}
+              aria-invalid={paidLineError ? "true" : undefined}
+            >
+              {paidFromOptions.length === 0 ? (
+                <option value="">（本文を2段落以上にしてください）</option>
+              ) : (
+                paidFromOptions.map((n) => (
+                  <option key={n} value={n}>
+                    第{n + 1}段落から有料
+                  </option>
+                ))
+              )}
             </select>
+            {paidLineError && (
+              <div className="arterr">
+                ⚠ 有料記事には有料ラインの指定が必要です
+                {paidFromOptions.length === 0 && "（本文を2段落以上にしてください）"}
+              </div>
+            )}
             <div className="cl-paidpreview">
               無料で読める：冒頭{Math.min(freeCount, paragraphs.length)}段落、有料部分：{paidParas.length}段落・約
               {totalChars(paidParas)}字
@@ -764,7 +831,10 @@ export default function CoachLabEditor({
 }) {
   const board = useBoard();
   const pc = useIsPc();
-  const [editId, setEditIdState] = useState<string | "new" | null>(null);
+  // プロフィール編集などへ一時的に離れてCoachLabEditorごとアンマウント→再マウントされた
+  // 場合に、書きかけの下書き(clDraft)が残っていれば同じ記事を自動で開き直す
+  // （goProfile経由の遷移はconfirmLeaveWrite/clearCoachLabDraftを通らないためclDraftが残る）
+  const [editId, setEditIdState] = useState<string | "new" | null>(() => clDraft?.editId ?? null);
   const formDirtyRef = useRef(false);
 
   const confirmDiscard = () => !formDirtyRef.current || window.confirm("編集中の内容を破棄しますか？");
