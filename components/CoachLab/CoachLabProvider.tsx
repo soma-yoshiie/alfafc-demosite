@@ -69,6 +69,8 @@ interface CoachLabContextValue {
   /** 重複購入不可（既に購入済みなら何もしない） */
   purchase: (articleId: string, price: number) => void;
   hasPurchased: (articleId: string) => boolean;
+  /** 自分の購入記録を取り消す（返金）。呼び出し側で24時間以内かどうかを確認すること */
+  refundPurchase: (articleId: string) => void;
   toggleLike: (articleId: string) => void;
   hasLiked: (articleId: string) => boolean;
   /** 同一セッションで同じ記事は1回だけ加算する */
@@ -164,6 +166,15 @@ export function CoachLabProvider({ children }: { children: React.ReactNode }) {
     (articleId: string) => state.purchases.some((p) => p.userId === meId && p.articleId === articleId),
     [state.purchases, meId]
   );
+  const refundPurchase = useCallback(
+    (articleId: string) => {
+      setState((s) => ({
+        ...s,
+        purchases: s.purchases.filter((p) => !(p.userId === meId && p.articleId === articleId)),
+      }));
+    },
+    [meId]
+  );
 
   const toggleLike = useCallback(
     (articleId: string) => {
@@ -250,6 +261,7 @@ export function CoachLabProvider({ children }: { children: React.ReactNode }) {
     isFollowing,
     purchase,
     hasPurchased,
+    refundPurchase,
     toggleLike,
     hasLiked,
     recordView,
