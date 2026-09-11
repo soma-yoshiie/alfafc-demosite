@@ -11,12 +11,16 @@ import NotebookScreen from "./NotebookScreen";
 import SheetManager from "./SheetManager";
 import Toast from "./Toast";
 import ConsoleShell from "./ConsoleShell";
-import { LibraryScreen, ArticlesScreen, SettingsScreen } from "./ConsoleScreens";
+import { LibraryScreen, SettingsScreen } from "./ConsoleScreens";
+import { CoachLabProvider } from "./CoachLab/CoachLabProvider";
+import CoachLabScreen from "./CoachLab/CoachLabScreen";
 
 export default function AppRoot() {
   const board = useBoard();
   return (
-    <>
+    // CoachLabProvider は BoardProvider の内側・ConsoleShell の外側に配置する
+    // （画面だけでなくシート等どこからでも useCoachLab() できるように）
+    <CoachLabProvider>
       <ConsoleShell>
         {board.screen === "drill" ? (
           <DrillEditor />
@@ -33,7 +37,7 @@ export default function AppRoot() {
         ) : board.screen === "library" ? (
           <LibraryScreen />
         ) : board.screen === "articles" ? (
-          <ArticlesScreen />
+          <CoachLabScreen />
         ) : board.screen === "settings" ? (
           <SettingsScreen />
         ) : (
@@ -43,6 +47,6 @@ export default function AppRoot() {
       {/* シート・トーストはどの画面でも使えるよう全体に配置 */}
       <SheetManager />
       <Toast />
-    </>
+    </CoachLabProvider>
   );
 }

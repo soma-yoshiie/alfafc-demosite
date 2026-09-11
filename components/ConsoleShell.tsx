@@ -8,13 +8,13 @@ import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import LogoMark from "./Logo";
 import {
-  IconBook,
   IconCalendarCheck,
   IconChat,
   IconClipboard,
   IconCog,
   IconCone,
   IconFolder,
+  IconLab,
   IconNote,
   IconSetPiece,
 } from "./icons";
@@ -142,7 +142,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         { sec: "チーム", item: { key: "notebook", label: "サッカーノート", icon: <IconNote />, badge: noteUnread, onSelect: () => board.setScreen("notebook") } },
         { item: { key: "team", label: "チーム運営", icon: <IconCalendarCheck />, onSelect: () => board.setScreen("team") } },
         { item: { key: "chat", label: "チャット", icon: <IconChat />, onSelect: () => board.setScreen("chat") } },
-        { sec: "その他", item: { key: "articles", label: "お役立ち記事", icon: <IconBook />, onSelect: () => board.setScreen("articles") } },
+        { sec: "その他", item: { key: "articles", label: "コーチラボ", icon: <IconLab />, onSelect: () => board.setScreen("articles") } },
         { item: { key: "settings", label: "設定", icon: <IconCog />, onSelect: () => board.setScreen("settings") } },
       ]
     : [

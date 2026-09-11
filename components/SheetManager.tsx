@@ -1252,8 +1252,14 @@ function MoreSheet() {
         >
           <div className="mi"><IconCalendarCheck /></div> チーム（出欠・連絡）
         </div>
-        <div className="mitem" onClick={() => board.openSheet({ type: "articles" })}>
-          <div className="mi"><IconBook /></div> お役立ち記事
+        <div
+          className="mitem"
+          onClick={() => {
+            board.setScreen("articles");
+            board.closeSheet();
+          }}
+        >
+          <div className="mi"><IconBook /></div> コーチラボ
         </div>
         <div className="mitem" onClick={() => board.openSheet({ type: "settings" })}>
           <div className="mi"><IconCog /></div> 設定（チーム・プラン）
@@ -2038,7 +2044,7 @@ export function ArticlesBody({
     <>
       {!hideTitle && (
         <h2>
-          お役立ち記事 <span>{list.length}本</span>
+          コーチラボ <span>{list.length}本</span>
         </h2>
       )}
       <div className="catbar">

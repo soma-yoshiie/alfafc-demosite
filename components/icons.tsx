@@ -466,6 +466,17 @@ export function IconSetPiece(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** コーチラボ（フラスコ） */
+export function IconLab(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M9 2h6" />
+      <path d="M10 2v6.2L4.8 18.3a2 2 0 0 0 1.8 2.9h10.8a2 2 0 0 0 1.8-2.9L14 8.2V2" />
+      <path d="M7.3 15.2h9.4" />
+    </Svg>
+  );
+}
+
 /** 左右反転（中央の軸線を挟んで内向きの矢印） */
 export function IconFlipH(p: SVGProps<SVGSVGElement>) {
   return (

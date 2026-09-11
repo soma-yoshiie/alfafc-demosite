@@ -29,6 +29,21 @@ export interface UserArticle extends Article {
   updatedAt: number;
   draft?: boolean;
   attachments?: ArticleAttachment[];
+  /* ---- コーチラボ（後方互換の任意項目。既存データは未設定のまま読める） ---- */
+  /** 指導者プロフィールのID。未設定なら閲覧時に投稿者本人（"me:<email>"相当）として扱う */
+  authorId?: string;
+  /** 最大5個 */
+  tags?: string[];
+  /** 0 or 未設定＝無料。有料は100〜50,000円 */
+  price?: number;
+  /** 有料ラインの位置＝この index 以降の段落が有料（null/未設定＝全文無料） */
+  paidFrom?: number | null;
+  /** 初回公開時刻 */
+  publishedAt?: number;
+  /** 購入後24時間以内の返金申請を受け付けるか（既定 true） */
+  refundable?: boolean;
+  /** 読者の想定（任意） */
+  audience?: "coach" | "parent" | "player";
 }
 
 /** 閲覧一覧用: seed記事 + 公開済み投稿記事（新しい順で先頭に） */
@@ -41,7 +56,7 @@ export function mergedArticles(userArticles: UserArticle[]): Article[] {
 
 export const ARTICLE_CATEGORIES = ["練習法", "コンディション", "戦術", "チーム運営"] as const;
 
-/** メニューの「お役立ち記事」一覧（デモ用の読み物コンテンツ） */
+/** メニューの「コーチラボ」一覧（デモ用の読み物コンテンツ） */
 export const ARTICLES: Article[] = [
   {
     id: "a-cone-touch",

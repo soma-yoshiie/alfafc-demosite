@@ -1045,7 +1045,7 @@ interface BoardContextValue {
   applySetPiecePreset: (presetId: string) => void;
   /** セットプレー文書を左右反転する */
   flipSetPieceX: () => void;
-  // お役立ち記事（ユーザー投稿）
+  // コーチラボ（ユーザー投稿記事）
   userArticles: UserArticle[];
   /** 新規投稿を追加し、生成した記事IDを返す */
   addUserArticle: (a: Omit<UserArticle, "id" | "ts" | "updatedAt">) => string;
@@ -1628,7 +1628,7 @@ export function BoardProvider({
   useEffect(() => {
     saveDeliverables(deliverables);
   }, [deliverables]);
-  // お役立ち記事（ユーザー投稿）。lazy初期化で保存データを直接読む
+  // コーチラボ（ユーザー投稿記事）。lazy初期化で保存データを直接読む
   // （mount後のload→save競合を防ぐ。messages/notebook等と同方針。
   //   空配列初期化+後追いloadだとStrictModeの二重マウントで保存済み投稿が消える）
   const [userArticles, setUserArticles] = useState<UserArticle[]>(() => loadUserArticles());
@@ -2501,7 +2501,7 @@ export function BoardProvider({
     [showToast]
   );
 
-  // ---- お役立ち記事（ユーザー投稿） ----
+  // ---- コーチラボ（ユーザー投稿記事） ----
   const addUserArticle = useCallback(
     (a: Omit<UserArticle, "id" | "ts" | "updatedAt">): string => {
       const id = newArticleId();

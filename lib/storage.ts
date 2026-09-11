@@ -12,6 +12,8 @@ import type {
   TeamViewer,
 } from "./types";
 import type { UserArticle } from "./articles";
+import type { CoachLabState } from "./coachlab";
+import { emptyCoachLabState } from "./coachlab";
 import {
   DEFAULT_FITNESS_TESTS,
   FITNESS_TEST_1000M,
@@ -34,6 +36,7 @@ const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
 const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
+const COACHLAB_KEY = "soccer_tactics_coachlab_v1";
 
 /* ---- 体力測定：旧形式(id/name/value:string)→新形式(testId/value:number)の後方互換変換 ---- */
 
@@ -187,7 +190,7 @@ export function saveDrills(drills: SavedDrill[]): void {
   }
 }
 
-/* ---- 投稿された記事（お役立ち記事のユーザー投稿） ---- */
+/* ---- 投稿された記事（コーチラボのユーザー投稿） ---- */
 export function loadUserArticles(): UserArticle[] {
   if (typeof window === "undefined") return [];
   try {
@@ -204,6 +207,37 @@ export function saveUserArticles(list: UserArticle[]): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(USER_ARTICLES_KEY, JSON.stringify(list));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/* ---- コーチラボ（プロフィール・フォロー・購入・参考になった・閲覧数・振込） ---- */
+export function loadCoachLab(): CoachLabState {
+  const empty = emptyCoachLabState();
+  if (typeof window === "undefined") return empty;
+  try {
+    const raw = window.localStorage.getItem(COACHLAB_KEY);
+    if (!raw) return empty;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return empty;
+    return {
+      profiles: Array.isArray(data.profiles) ? data.profiles : [],
+      follows: Array.isArray(data.follows) ? data.follows : [],
+      purchases: Array.isArray(data.purchases) ? data.purchases : [],
+      likes: Array.isArray(data.likes) ? data.likes : [],
+      views: data.views && typeof data.views === "object" ? data.views : {},
+      payouts: Array.isArray(data.payouts) ? data.payouts : [],
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function saveCoachLab(state: CoachLabState): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COACHLAB_KEY, JSON.stringify(state));
   } catch {
     /* 無視 */
   }

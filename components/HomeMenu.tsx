@@ -17,13 +17,13 @@ import { E } from "./Emoji";
 import LogoMark from "./Logo";
 import { StatBody } from "./SheetManager";
 import {
-  IconBook,
   IconCalendarCheck,
   IconChat,
   IconClipboard,
   IconCog,
   IconCone,
   IconFolder,
+  IconLab,
   IconNote,
   IconSetPiece,
 } from "./icons";
@@ -416,10 +416,10 @@ export default function HomeMenu() {
                 onClick={() => board.setScreen("notebook")}
               />
               <Tile
-                icon={<IconBook />}
-                label="お役立ち記事"
-                desc="練習法やコンディション作りの記事を読む"
-                onClick={() => board.openSheet({ type: "articles" })}
+                icon={<IconLab />}
+                label="コーチラボ"
+                desc="指導者の記事を読む・書く・売る"
+                onClick={() => board.setScreen("articles")}
               />
               <Tile
                 icon={<IconCog />}
