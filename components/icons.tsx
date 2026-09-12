@@ -477,6 +477,27 @@ export function IconLab(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** コーチング（ホイッスル。下部タブ「コーチング」・コーチングハブで使用） */
+export function IconWhistle(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <circle cx="9" cy="14.5" r="5.5" />
+      <path d="M14 11.5h4.5a2 2 0 0 1 2 2V15a2 2 0 0 1-2 2H16" />
+      <path d="M9 12v2.5h2.6" />
+      <path d="M4.5 8 7 10.5" />
+    </Svg>
+  );
+}
+
+/** 戻る（山形。スマホ共通ヘッダーMobileHeader.tsxの左上「戻る」専用） */
+export function IconChevronLeft(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="m15 5-7 7 7 7" />
+    </Svg>
+  );
+}
+
 /** 左右反転（中央の軸線を挟んで内向きの矢印） */
 export function IconFlipH(p: SVGProps<SVGSVGElement>) {
   return (
@@ -485,5 +506,16 @@ export function IconFlipH(p: SVGProps<SVGSVGElement>) {
       <path d="M8 8 4 12l4 4" />
       <path d="M16 8l4 4-4 4" />
     </Svg>
+  );
+}
+
+/** その他（横並びの三点。MobileHeaderMoreのオーバーフローボタン専用） */
+export function IconMore(p: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
+      <circle cx="5" cy="12" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="19" cy="12" r="2" />
+    </svg>
   );
 }

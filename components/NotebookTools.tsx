@@ -515,6 +515,10 @@ export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
   const board = useBoard();
   const [weeks, setWeeks] = useState<8 | 12>(8);
   const [tab, setTab] = useState(0);
+  // mobile-redesign Phase D-2(critical PC回帰): 見出しの区切りをEN DASH→中黒へ統一した
+  // Phase D-1の変更(§8-4 #22)がPCの見た目も変えてしまっていた(共通ルール「PCの見た目を
+  // 変えない」に抵触)。中黒はスマホのみに残し、PCは元のEN DASH表記に戻す
+  const pc = usePc();
 
   const isPlayer = mode === "player";
   const nameOf = (pid: string) => board.state.players.find((p) => p.id === pid)?.name ?? "選手";
@@ -596,7 +600,11 @@ export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
   return (
     <div className="apanel">
       <div className="apanel-h">
-        {isPlayer ? `マイ分析 — ${board.auth.name}` : `チーム分析 — ${board.state.teamName ?? "U-12"}`}
+        {/* mobile-redesign Phase D-1(minor §8-4 #22): 見出しのEN DASHは使わず中黒に統一。
+            ただしPCは既存表記(EN DASH)のまま変えない（Phase D-2 critical回帰対応） */}
+        {isPlayer
+          ? `マイ分析${pc ? " – " : "・"}${board.auth.name}`
+          : `チーム分析${pc ? " – " : "・"}${board.state.teamName ?? "U-12"}`}
       </div>
       <div className="apanel-f">
         <button type="button" className="afchip" onClick={() => setWeeks(weeks === 8 ? 12 : 8)}>

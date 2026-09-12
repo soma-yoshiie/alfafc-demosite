@@ -54,9 +54,14 @@ export default function Pitch() {
   };
 
   return (
-    <div className="pitchwrap">
+    // mobile-redesign Phase D-1(C1-critical §3/§7-5): 縁ぎりぎりのトークン(GKラベル・
+    // コーナー配置の丸)が.pitchのoverflow:hiddenで欠けて見える問題を、クリップ位置を
+    // 外側の.pitch2dwrapへ逃がして解消する(pitch2d/pitch2dwrapは3Dビュー(.sp3dwrap)とは
+    // 別クラスなので3D側の見た目には影響しない)。.pitch自体の矩形(getPitchRect()が
+    // 参照)は変えないため、ドラッグ・配置ロジックは無改造
+    <div className="pitchwrap pitch2dwrap">
       <div
-        className={`pitch${half ? " halfview" : ""}`}
+        className={`pitch pitch2d${half ? " halfview" : ""}`}
         ref={board.pitchRef}
         onPointerDown={onPitchPointerDown}
         onPointerUp={onPitchPointerUp}

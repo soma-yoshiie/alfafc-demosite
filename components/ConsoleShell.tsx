@@ -17,6 +17,7 @@ import {
   IconLab,
   IconNote,
   IconSetPiece,
+  IconWhistle,
 } from "./icons";
 
 /* ===================== サブナビ（画面側からレールへ登録） ===================== */
@@ -67,6 +68,40 @@ function IconHome() {
       <path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10" />
     </svg>
   );
+}
+
+/** 下部タブ(.mtab)の「コーチング」がアクティブになる画面（mobile-redesign §1-1） */
+const MTAB_COACHING_SCREENS: ReadonlySet<ScreenKey> = new Set([
+  "coaching",
+  "board",
+  "setpiece",
+  "drill",
+  "library",
+]);
+/** 下部タブの「ホーム」がアクティブになる画面（コーチラボ・設定もホーム扱い） */
+const MTAB_HOME_SCREENS: ReadonlySet<ScreenKey> = new Set(["home", "settings", "articles"]);
+/** 選手・保護者用「ホーム」タブ: コーチのような「コーチング」タブが無いため、
+ * ホームから到達できるsetpiece(セットプレーデザイン)・board/drill/library(到達経路があれば)
+ * も含めて現在地を示す（mobile-redesign Phase D-1(C2-minor 観点1/§8-5-26)：
+ * どのタブもアクティブにならない=現在地不明を防ぐ） */
+const MTAB_HOME_SCREENS_PLAYER: ReadonlySet<ScreenKey> = new Set([
+  ...MTAB_HOME_SCREENS,
+  "setpiece",
+  "board",
+  "drill",
+  "library",
+]);
+
+/** 同じタブの再タップ時、現在の画面のスクロールコンテナを先頭へ戻す（§8-5-27）。
+ * 各画面はそれぞれ .scroll（または .libpane/.libmain 等）を主要な可動域として持つため、
+ * body/windowではなくそれらの scrollTop をリセットする */
+function scrollActiveScreenToTop(): void {
+  if (typeof document === "undefined") return;
+  const root = document.querySelector(".conmain") ?? document;
+  root.querySelectorAll<HTMLElement>(".scroll, .libpane, .libmain").forEach((el) => {
+    el.scrollTop = 0;
+  });
+  window.scrollTo(0, 0);
 }
 
 /* ===================== 本体 ===================== */
@@ -122,6 +157,87 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
       team: teamCtx.team,
     }).filter((n) => n.ts > seen).length;
   }, [coach, board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, teamCtx.team, seenVer]);
+
+  // 下部タブ(.mtab)。項目数はスタッフ5・選手/保護者4（mobile-redesign §1-1）。
+  // チャット未読は既存の未読計算が無いため出さない
+  type MtabItem = {
+    key: string;
+    label: string;
+    icon: React.ReactNode;
+    badge?: number;
+    on: boolean;
+    onSelect: () => void;
+  };
+  const mtabItems: MtabItem[] = coach
+    ? [
+        {
+          key: "home",
+          label: "ホーム",
+          icon: <IconHome />,
+          on: MTAB_HOME_SCREENS.has(board.screen),
+          onSelect: () => board.setScreen("home"),
+        },
+        {
+          key: "coaching",
+          label: "コーチング",
+          icon: <IconWhistle />,
+          on: MTAB_COACHING_SCREENS.has(board.screen),
+          onSelect: () => board.setScreen("coaching"),
+        },
+        {
+          key: "notebook",
+          label: "ノート",
+          icon: <IconNote />,
+          badge: noteUnread,
+          on: board.screen === "notebook",
+          onSelect: () => board.setScreen("notebook"),
+        },
+        {
+          key: "team",
+          label: "チーム",
+          icon: <IconCalendarCheck />,
+          on: board.screen === "team",
+          onSelect: () => board.setScreen("team"),
+        },
+        {
+          key: "chat",
+          label: "チャット",
+          icon: <IconChat />,
+          on: board.screen === "chat",
+          onSelect: () => board.setScreen("chat"),
+        },
+      ]
+    : [
+        {
+          key: "home",
+          label: "ホーム",
+          icon: <IconHome />,
+          on: MTAB_HOME_SCREENS_PLAYER.has(board.screen),
+          onSelect: () => board.setScreen("home"),
+        },
+        {
+          key: "notebook",
+          label: "ノート",
+          icon: <IconNote />,
+          badge: noteUnread,
+          on: board.screen === "notebook",
+          onSelect: () => board.setScreen("notebook"),
+        },
+        {
+          key: "team",
+          label: "チーム",
+          icon: <IconCalendarCheck />,
+          on: board.screen === "team",
+          onSelect: () => board.setScreen("team"),
+        },
+        {
+          key: "chat",
+          label: "チャット",
+          icon: <IconChat />,
+          on: board.screen === "chat",
+          onSelect: () => board.setScreen("chat"),
+        },
+      ];
 
   type Item = {
     key: string;
@@ -226,6 +342,38 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
       <div className="conmain">
         <ConsoleShellContext.Provider value={ctxValue}>{children}</ConsoleShellContext.Provider>
       </div>
+      {/* 下部タブ（スマホ常設）。PCでは打ち消しリセット(.mtab{display:none})で隠す。
+          全画面再生(FullPlayOverlay/.fp)中は隠す（mobile-redesign §1-1） */}
+      {!board.fullplay && (
+        <nav className="mtab" aria-label="主要メニュー">
+          {mtabItems.map((it) => (
+            <button
+              key={it.key}
+              type="button"
+              className={`mtab-item${it.on ? " on" : ""}`}
+              aria-current={it.on ? "page" : undefined}
+              aria-label={it.badge ? `${it.label} 未読${it.badge}件` : it.label}
+              onClick={() => {
+                // 「コーチング」「ホーム」はboard/setpiece等の下位画面も含めて
+                // アクティブ表示になるため、再タップ判定は遷移先そのもの(=キー)と
+                // board.screen の厳密一致で行う（下位画面からタブを押したときは
+                // その集約画面へ遷移させ、既にその画面にいるときだけ先頭へ戻す）
+                if (board.screen === it.key) {
+                  scrollActiveScreenToTop();
+                  return;
+                }
+                it.onSelect();
+              }}
+            >
+              {it.icon}
+              <span>{it.label}</span>
+              {!!it.badge && it.badge > 0 && (
+                <span className="mtab-badge" aria-hidden="true">{it.badge > 9 ? "9+" : it.badge}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }

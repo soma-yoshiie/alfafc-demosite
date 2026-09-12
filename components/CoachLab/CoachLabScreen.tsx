@@ -5,6 +5,8 @@ import { useBoard } from "../BoardProvider";
 import { useConsoleSubnav } from "../ConsoleShell";
 import type { ConsoleSubnavItem } from "../ConsoleShell";
 import { E } from "../Emoji";
+import { MobileHeader } from "../MobileHeader";
+import { MobileSegments } from "../MobileSegments";
 import { useCoachLab } from "./CoachLabProvider";
 import { allArticles } from "@/lib/coachlab";
 import { useIsPc } from "./CoachLabParts";
@@ -94,8 +96,8 @@ export default function CoachLabScreen() {
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current.kind, isCoach]);
-  // PCレールのサブナビ（.conrail-sub）とモバイル下部ナビ(.cl-mobilenav)で同じ項目を共有する。
-  // .conrailはモバイルでは display:none のため、レールのサブナビだけでは
+  // PCレールのサブナビ（.conrail-sub）とモバイルのヘッダー直下セグメント(MobileSegments)で
+  // 同じ項目を共有する。.conrailはモバイルでは display:none のため、レールのサブナビだけでは
   // モバイルから「フォロー中／書く／収益／プロフィール」に到達できない
   const consoleSubnav = useMemo(() => ({ anchor: "articles" as const, items: navItems }), [navItems]);
   useConsoleSubnav(consoleSubnav);
@@ -111,7 +113,10 @@ export default function CoachLabScreen() {
   else if (current.kind === "profile") tag = "プロフィール編集";
 
   const isRoot = stack.length === 1;
-  const backLabel = isRoot ? (pc ? "ホーム" : "メニュー") : "戻る";
+  // mobile-redesign Phase D-1(C2-minor 到達不能コード): backLabelはPC分岐の<header>内
+  // (160行以降)でのみ使われる(=pcがtrueのときしか参照されない)ため、pc?...:"メニュー"の
+  // false側は到達しない死にコードだった。「‹ メニュー」表記は他画面でも全廃済みのため簡約する
+  const backLabel = isRoot ? "ホーム" : "戻る";
   const handleBack = () => {
     if (isRoot) {
       if (!confirmLeaveWrite()) return;
@@ -155,17 +160,30 @@ export default function CoachLabScreen() {
 
   return (
     <div className="app clapp">
-      <header>
-        <div className="fpback" onClick={handleBack}>
-          ‹ {backLabel}
-        </div>
-        <div className="brand" style={{ marginLeft: 4 }}>
-          <div className="logo">コーチラボ</div>
-          <div className="tag team" style={{ marginTop: 4 }}>
-            {tag}
+      {pc ? (
+        <header>
+          <div className="fpback" onClick={handleBack}>
+            ‹ {backLabel}
           </div>
-        </div>
-      </header>
+          <div className="brand" style={{ marginLeft: 4 }}>
+            <div className="logo">コーチラボ</div>
+            <div className="tag team" style={{ marginTop: 4 }}>
+              {tag}
+            </div>
+          </div>
+        </header>
+      ) : (
+        <>
+          {/* mobile-redesign §1-6/§1-7: 共通ヘッダー＋ヘッダー直下セグメント。
+              .cl-mobilenav(下部ナビ)は廃止し、同じnavItemsをセグメントで表示する */}
+          <MobileHeader title={isRoot ? "コーチラボ" : tag} onBack={isRoot ? undefined : handleBack} />
+          {isRoot && (
+            <div className="mseg-wrap">
+              <MobileSegments ariaLabel="コーチラボの表示切替" items={navItems} />
+            </div>
+          )}
+        </>
+      )}
 
       {current.kind === "write" && isCoach ? (
         <CoachLabEditor
@@ -177,25 +195,6 @@ export default function CoachLabScreen() {
       ) : (
         <div className="scroll screenbody">{renderBody()}</div>
       )}
-
-      {/* モバイル用ボトムナビ。PCはコンソールレールのサブナビ(.conrail-sub)に一本化するため
-          2つ目のPC @media(min-width:1024px)ブロックで非表示にする（.conrailはモバイルで
-          display:noneのため、これが無いとモバイルからフォロー中／書く／収益／プロフィールへ
-          到達できない） */}
-      <nav className="cl-mobilenav" aria-label="コーチラボ ナビゲーション">
-        {navItems.map((it) => (
-          <button
-            key={it.key}
-            type="button"
-            className={`cl-mobilenav-item${it.on ? " on" : ""}`}
-            aria-current={it.on ? "page" : undefined}
-            onClick={it.onSelect}
-          >
-            {it.icon}
-            <span>{it.label}</span>
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }

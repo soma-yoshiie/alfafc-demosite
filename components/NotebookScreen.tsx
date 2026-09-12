@@ -54,6 +54,8 @@ import { AnalyticsPanel, CoachDashboard, NoteSearch, NotificationsView, notifIde
 import { KpiBody } from "./SheetManager";
 import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
+import { MobileHeader } from "./MobileHeader";
+import { MobileSegments } from "./MobileSegments";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const PLAY_KINDS: PlayKind[] = ["receive", "shot", "miss"];
@@ -281,49 +283,75 @@ export default function NotebookScreen() {
 
   return (
     <div className={"app noteapp" + (isCoach ? " coachapp" : "")}>
-      <header>
-        {(!isRoot || tab === "home") && (
-          <div
-            className="fpback"
-            onClick={() => (isRoot ? board.setScreen("home") : setView({ mode: "root" }))}
-          >
-            ‹ {isRoot ? (pc ? "ホーム" : "メニュー") : "戻る"}
-          </div>
-        )}
-        <div className="brand" style={{ marginLeft: 4 }}>
-          <div className="logo">
-            サッカー<b>ノート</b>
-          </div>
-          <div className="tag team" style={{ marginTop: 4 }}>
-            {isCoach ? "提出された振り返り" : `${board.auth.name} さん`}
-          </div>
-        </div>
-        {isRoot && (
-          <>
-            <button
-              className="hdrcta"
-              onClick={() => (isCoach ? switchTab("deliver") : setSheetOpen(true))}
+      {pc ? (
+        <header>
+          {(!isRoot || tab === "home") && (
+            <div
+              className="fpback"
+              onClick={() => (isRoot ? board.setScreen("home") : setView({ mode: "root" }))}
             >
-              {isCoach ? "＋ 配信" : "＋ ノートを作成"}
-            </button>
-            {/* 通知ベル(PC専用・モバイルは基底CSSで非表示)。未読があれば赤バッジで件数を出す */}
-            <button
-              className={"hdrbell" + (tab === "notifs" ? " on" : "")}
-              type="button"
-              title="通知"
-              aria-label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
-              onClick={() => switchTab("notifs")}
-            >
-              <E n="bell" />
-              {unread > 0 && <span className="hdrbellbadge">{unread > 9 ? "9+" : unread}</span>}
-            </button>
-            <span className="hdrusr">
-              {board.auth.name}
-              {isCoach ? " ・ 管理者" : ""}
-            </span>
-          </>
-        )}
-      </header>
+              ‹ {isRoot ? "ホーム" : "戻る"}
+            </div>
+          )}
+          <div className="brand" style={{ marginLeft: 4 }}>
+            <div className="logo">
+              サッカー<b>ノート</b>
+            </div>
+            <div className="tag team" style={{ marginTop: 4 }}>
+              {isCoach ? "提出された振り返り" : `${board.auth.name} さん`}
+            </div>
+          </div>
+          {isRoot && (
+            <>
+              <button
+                className="hdrcta"
+                onClick={() => (isCoach ? switchTab("deliver") : setSheetOpen(true))}
+              >
+                {isCoach ? "＋ 配信" : "＋ ノートを作成"}
+              </button>
+              {/* 通知ベル(PC専用・モバイルは基底CSSで非表示)。未読があれば赤バッジで件数を出す */}
+              <button
+                className={"hdrbell" + (tab === "notifs" ? " on" : "")}
+                type="button"
+                title="通知"
+                aria-label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
+                onClick={() => switchTab("notifs")}
+              >
+                <E n="bell" />
+                {unread > 0 && <span className="hdrbellbadge">{unread > 9 ? "9+" : unread}</span>}
+              </button>
+              <span className="hdrusr">
+                {board.auth.name}
+                {isCoach ? " ・ 管理者" : ""}
+              </span>
+            </>
+          )}
+        </header>
+      ) : (
+        <>
+          {/* mobile-redesign §1-6/§1-7: 共通ヘッダー＋ヘッダー直下セグメント。
+              「‹ メニュー」(=アプリホームへ戻る)は下部タブの「ホーム」で代替できるため、
+              モバイルの戻るはisRoot=falseの詳細/フォーム画面でのみ出す */}
+          <MobileHeader
+            title="サッカーノート"
+            onBack={isRoot ? undefined : () => setView({ mode: "root" })}
+          />
+          {isRoot && (
+            <div className="mseg-wrap">
+              <MobileSegments
+                ariaLabel="サッカーノートの表示切替"
+                items={navItems.map((it) => ({
+                  key: it.t,
+                  label: it.label,
+                  badge: it.badge,
+                  on: tab === it.t,
+                  onSelect: () => switchTab(it.t),
+                }))}
+              />
+            </div>
+          )}
+        </>
+      )}
 
       {isRoot && tab === "notes" && (
         <div className="fbar">
@@ -579,23 +607,6 @@ export default function NotebookScreen() {
         </div>
       )}
 
-      <nav className="notenav">
-        {navItems.map((it) => (
-          <Fragment key={it.t}>
-            {isCoach && it.t === "home" && <div className="navsec">モニタリング</div>}
-            {isCoach && it.t === "deliver" && <div className="navsec">コミュニケーション</div>}
-            <button
-              className={`notenav-item${tab === it.t && isRoot ? " on" : ""}`}
-              onClick={() => switchTab(it.t)}
-            >
-              <E n={it.icon} />
-              <span className="navlb">{it.label}</span>
-              {(it.badge ?? 0) > 0 && <span className="notenav-badge">{it.badge! > 9 ? "9+" : it.badge}</span>}
-            </button>
-          </Fragment>
-        ))}
-        {isCoach && <div className="navuser">{board.auth.name} ・ 管理者</div>}
-      </nav>
     </div>
   );
 }
@@ -796,18 +807,25 @@ function PlayerHome({
             <div className="dbv">{thisWeekCount}</div>
             <div className="dbl">今週のノート</div>
             <div className={"dbd " + (weekNoteDiff > 0 ? "up" : weekNoteDiff < 0 ? "down" : "flat")}>
-              {weekNoteDiff > 0 ? `↗ 先週 +${weekNoteDiff}` : weekNoteDiff < 0 ? `↘ 先週 ${weekNoteDiff}` : "— 先週と同じ"}
+              {/* mobile-redesign Phase D-1(minor §8-4 #22): EM DASHを使わない */}
+              {weekNoteDiff > 0 ? `↗ 先週 +${weekNoteDiff}` : weekNoteDiff < 0 ? `↘ 先週 ${weekNoteDiff}` : "先週と同じ"}
             </div>
             <Sparkline values={weekSparkline} />
           </button>
-          <div className="dashbox" style={{ cursor: "default" }}>
-            <div className="dbv">{shotRate8 != null ? `${shotRate8}%` : "—"}</div>
-            <div className="dbl">シュート決定率</div>
-          </div>
-          <div className="dashbox" style={{ cursor: "default" }}>
-            <div className="dbv">{achieveAvg8 != null ? `${achieveAvg8}%` : "—"}</div>
-            <div className="dbl">達成度(週平均)</div>
-          </div>
+          {/* mobile-redesign Phase D-1(minor §8-3 #16/§8-4 #22): 値が無い(記録が無く「—」表示になる)
+              タイルは表示自体を落とす（ダッシュ文字を使わないため） */}
+          {shotRate8 != null && (
+            <div className="dashbox" style={{ cursor: "default" }}>
+              <div className="dbv">{shotRate8}%</div>
+              <div className="dbl">シュート決定率</div>
+            </div>
+          )}
+          {achieveAvg8 != null && (
+            <div className="dashbox" style={{ cursor: "default" }}>
+              <div className="dbv">{achieveAvg8}%</div>
+              <div className="dbl">達成度(週平均)</div>
+            </div>
+          )}
           <button type="button" className="dashbox" onClick={() => onOpenStats("total")}>
             <div className="dbv">{myNotes.length}</div>
             <div className="dbl">これまでの合計</div>

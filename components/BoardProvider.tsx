@@ -783,6 +783,7 @@ export interface SheetState {
 /** アプリの画面。レール項目の key と一致させる（ConsoleShell のサブナビ anchor もこの型） */
 export type ScreenName =
   | "home"
+  | "coaching"
   | "board"
   | "setpiece"
   | "drill"
@@ -1054,6 +1055,10 @@ interface BoardContextValue {
   // 画面（戦術ボード / 練習メニュー）
   screen: ScreenName;
   setScreen: (s: ScreenName) => void;
+  /** 直前にいた画面の「戻り先」の丸め値（"home" か "coaching"）。
+   * board/setpiece/drill/library 遷移時にのみ更新される。モバイルの
+   * エディタ/ライブラリの「‹ 戻る」がホーム起点かコーチング起点かを判定するために使う */
+  navFrom: ScreenName;
   /** ログイン中のアカウント */
   auth: Session;
 }
@@ -1395,6 +1400,13 @@ export function BoardProvider({
   // セットプレー用の第2文書スロット（spState）へ切り替える。盤面レイヤーはすべて
   // useBoard() 直結・props無しのため、この切替だけで無改造のまま別文書を描画できる
   const sp = screen === "setpiece";
+  // 直前の screen を setScreen のクロージャから参照するための ref（stateRef と同じ手法）
+  const screenRef = useRef<ScreenName>(screen);
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
+  // モバイルの「‹ 戻る」の戻り先（home起点かcoaching起点か）。既定はhome
+  const [navFrom, setNavFromState] = useState<ScreenName>("home");
 
   // ---- 文書スロット：戦術ボード用(playState) / セットプレーデザイン用(spState) ----
   const [playState, playDispatch] = useReducer(reducer, undefined, makeInitial);
@@ -2206,6 +2218,11 @@ export function BoardProvider({
   // 残留・復活するのを防ぐ）。setScreen→openSheetの順で呼ぶ既存フローは、
   // 直後のopenSheetが最終的なsheet値を上書きするため影響しない
   const setScreen = useCallback((s: ScreenName) => {
+    // board/setpiece/drill/library へ入るときだけ navFrom を更新する（直前画面がhomeならhome、
+    // それ以外（coaching含む）はcoachingへ丸める。詳細な履歴は持たず単純化）
+    if (s === "board" || s === "setpiece" || s === "drill" || s === "library") {
+      setNavFromState(screenRef.current === "home" ? "home" : "coaching");
+    }
     setSheet({ type: null });
     setScreenState(s);
   }, []);
@@ -3227,6 +3244,7 @@ export function BoardProvider({
       removeUserArticle,
       screen,
       setScreen,
+      navFrom,
       auth: session,
     }),
     [
@@ -3345,6 +3363,7 @@ export function BoardProvider({
       updateUserArticle,
       removeUserArticle,
       screen,
+      navFrom,
       session,
     ]
   );

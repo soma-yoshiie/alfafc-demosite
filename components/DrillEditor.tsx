@@ -33,6 +33,7 @@ import {
   IconTrash,
   IconUndo,
 } from "./icons";
+import { MobileHeader, MobileHeaderAction, MobileHeaderMore } from "./MobileHeader";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
@@ -575,54 +576,97 @@ function Inner() {
 
   return (
     <div className="app drillapp dx">
-      <header>
-        {/* 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま) */}
-        <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ {pc ? "ホーム" : "メニュー"}
-        </div>
-        <button
-          className="drilltitle"
-          onClick={() => {
-            setTitleDraft(doc.title);
-            setMemoDraft(doc.memo);
-            drill.openSheet("memo");
-          }}
-          title="タイトル・メモを編集"
-        >
-          <span className="dtname">
-            {doc.title}
-            <span className="dtedit">
-              <IconEdit />
-            </span>
-          </span>
-          <span className={`dtstate ${stateCls}`}>{stateLabel}</span>
-        </button>
-        <div className="hbtn">
-          <button className="hact" title="保存した練習メニュー" onClick={() => drill.openSheet("library")}>
-            <IconFolder />
-            <span>ライブラリ</span>
-          </button>
-          <button className="hact" title="画像で保存" onClick={drill.exportPng}>
-            <IconDownload />
-            <span>画像</span>
-          </button>
-          <button className="hact" title="ライブラリに保存" onClick={drill.saveDrill}>
-            <IconSave />
-            <span>保存</span>
-          </button>
+      {pc ? (
+        <header>
+          {/* 戻り先: PCは常にホーム(不変) */}
+          <div className="fpback" onClick={() => board.setScreen("home")}>
+            ‹ ホーム
+          </div>
           <button
-            className="hact primary"
-            title="選手アプリに送信"
+            className="drilltitle"
             onClick={() => {
-              setAsTitle(doc.title);
-              drill.openSheet("send");
+              setTitleDraft(doc.title);
+              setMemoDraft(doc.memo);
+              drill.openSheet("memo");
             }}
+            title="タイトル・メモを編集"
           >
-            <IconSend />
-            <span>送信</span>
+            <span className="dtname">
+              {doc.title}
+              <span className="dtedit">
+                <IconEdit />
+              </span>
+            </span>
+            <span className={`dtstate ${stateCls}`}>{stateLabel}</span>
           </button>
-        </div>
-      </header>
+          <div className="hbtn">
+            <button className="hact" title="保存した練習メニュー" onClick={() => drill.openSheet("library")}>
+              <IconFolder />
+              <span>ライブラリ</span>
+            </button>
+            <button className="hact" title="画像で保存" onClick={drill.exportPng}>
+              <IconDownload />
+              <span>画像</span>
+            </button>
+            <button className="hact" title="ライブラリに保存" onClick={drill.saveDrill}>
+              <IconSave />
+              <span>保存</span>
+            </button>
+            <button
+              className="hact primary"
+              title="選手アプリに送信"
+              onClick={() => {
+                setAsTitle(doc.title);
+                drill.openSheet("send");
+              }}
+            >
+              <IconSend />
+              <span>送信</span>
+            </button>
+          </div>
+        </header>
+      ) : (
+        // mobile-redesign Phase D-1(C1-critical): §1-6「アイコンボタン最大3つ」に収める。
+        // 保存・送信(主CTA)は単独ボタンのまま残し、編集/ライブラリ/画像は
+        // 「…」オーバーフロー(MobileHeaderMore)へ移す(機能は維持)
+        <MobileHeader
+          title="練習メニュー"
+          subtitle={`${doc.title} ・ ${stateLabel}`}
+          onBack={() => board.setScreen(board.navFrom === "home" ? "home" : "coaching")}
+          actions={
+            <>
+              <MobileHeaderMore
+                items={[
+                  {
+                    label: "タイトル・メモを編集",
+                    icon: <IconEdit />,
+                    onClick: () => {
+                      setTitleDraft(doc.title);
+                      setMemoDraft(doc.memo);
+                      drill.openSheet("memo");
+                    },
+                  },
+                  { label: "保存した練習メニュー", icon: <IconFolder />, onClick: () => drill.openSheet("library") },
+                  { label: "画像で保存", icon: <IconDownload />, onClick: drill.exportPng },
+                ]}
+              />
+              <MobileHeaderAction label="ライブラリに保存" onClick={drill.saveDrill}>
+                <IconSave />
+              </MobileHeaderAction>
+              <MobileHeaderAction
+                label="選手アプリに送信"
+                primary
+                onClick={() => {
+                  setAsTitle(doc.title);
+                  drill.openSheet("send");
+                }}
+              >
+                <IconSend />
+              </MobileHeaderAction>
+            </>
+          }
+        />
+      )}
 
       <div className="dxbody">
         <div className="dxstage">

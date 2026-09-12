@@ -12,6 +12,7 @@ import SheetManager from "./SheetManager";
 import Toast from "./Toast";
 import ConsoleShell from "./ConsoleShell";
 import { LibraryScreen, SettingsScreen } from "./ConsoleScreens";
+import CoachingHub from "./CoachingHub";
 import { CoachLabProvider } from "./CoachLab/CoachLabProvider";
 import CoachLabScreen from "./CoachLab/CoachLabScreen";
 
@@ -22,7 +23,9 @@ export default function AppRoot() {
     // （画面だけでなくシート等どこからでも useCoachLab() できるように）
     <CoachLabProvider>
       <ConsoleShell>
-        {board.screen === "drill" ? (
+        {board.screen === "coaching" ? (
+          <CoachingHub />
+        ) : board.screen === "drill" ? (
           <DrillEditor />
         ) : board.screen === "team" ? (
           <TeamHub />

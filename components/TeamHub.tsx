@@ -57,6 +57,8 @@ import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import { IconEdit } from "./icons";
 import { fmtFitnessValue } from "@/lib/fitness";
+import { MobileHeader } from "./MobileHeader";
+import { MobileSegments } from "./MobileSegments";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -416,43 +418,48 @@ function Inner() {
 
   return (
     <div className="app teamapp">
-      <header>
-        {/* 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま) */}
-        <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ {pc ? "ホーム" : "メニュー"}
-        </div>
-        <div className="brand" style={{ marginLeft: 4 }}>
-          <div className="logo">
-            {board.auth.role === "coach" ? (
-              <>
-                チーム<b>運営</b>
-              </>
-            ) : (
-              "チーム"
-            )}
+      {pc ? (
+        <header>
+          {/* 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に */}
+          <div className="fpback" onClick={() => board.setScreen("home")}>
+            ‹ ホーム
           </div>
-          <div className="tag team" style={{ marginTop: 4 }}>
-            {board.state.teamName ?? "マイチーム"}
+          <div className="brand" style={{ marginLeft: 4 }}>
+            <div className="logo">
+              {board.auth.role === "coach" ? (
+                <>
+                  チーム<b>運営</b>
+                </>
+              ) : (
+                "チーム"
+              )}
+            </div>
+            <div className="tag team" style={{ marginTop: 4 }}>
+              {board.state.teamName ?? "マイチーム"}
+            </div>
           </div>
-        </div>
-        {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
-            カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加。他タブでは出さない */}
-        {board.auth.role === "coach" && activeTab === "cal" && (
-          <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
-            ＋ 予定を追加
-          </button>
-        )}
-        {board.auth.role === "coach" && activeTab === "rec" && (
-          <button className="teamcta" type="button" onClick={() => setSheet({ type: "match" })}>
-            ＋ 試合結果を記録
-          </button>
-        )}
-        {board.auth.role === "coach" && activeTab === "ros" && (
-          <button className="teamcta" type="button" onClick={() => setSheet({ type: "playerForm" })}>
-            ＋ 新規選手を追加
-          </button>
-        )}
-      </header>
+          {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
+              カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加。他タブでは出さない */}
+          {board.auth.role === "coach" && activeTab === "cal" && (
+            <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
+              ＋ 予定を追加
+            </button>
+          )}
+          {board.auth.role === "coach" && activeTab === "rec" && (
+            <button className="teamcta" type="button" onClick={() => setSheet({ type: "match" })}>
+              ＋ 試合結果を記録
+            </button>
+          )}
+          {board.auth.role === "coach" && activeTab === "ros" && (
+            <button className="teamcta" type="button" onClick={() => setSheet({ type: "playerForm" })}>
+              ＋ 新規選手を追加
+            </button>
+          )}
+        </header>
+      ) : (
+        // mobile-redesign §1-6: 下部タブ「チーム」の直下画面のため戻るは出さない
+        <MobileHeader title={board.auth.role === "coach" ? "チーム運営" : "チーム"} />
+      )}
 
       {board.auth.role === "coach" ? (
         <div className="rolebar">
@@ -486,13 +493,17 @@ function Inner() {
         </div>
       )}
 
-      <div className="fbar">
-        {tabs.map(([t, label]) => (
-          <div key={t} className={`chip${activeTab === t ? " on" : ""}`} onClick={() => setTab(t)}>
-            {label}
-          </div>
-        ))}
-      </div>
+      {/* mobile-redesign §1-7: 既存の上部タブ帯を.mseg様式に統一（PCでは従来どおり.fbar自体が非表示） */}
+      <MobileSegments
+        wrapClassName="fbar"
+        ariaLabel="チーム運営の表示切替"
+        items={tabs.map(([t, label]) => ({
+          key: t,
+          label,
+          on: activeTab === t,
+          onSelect: () => setTab(t),
+        }))}
+      />
 
       {/* PC専用の第2ペインを出す(=グリッドが発火する)のは、元来の3ペイン構成である
           コーチのrec/ros/attタブのみ。それ以外(home/calタブ・選手ロール)でsheetを開くと

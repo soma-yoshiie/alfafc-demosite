@@ -48,6 +48,7 @@ import { useTeam } from "./TeamProvider";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
+import { MobileHeader } from "./MobileHeader";
 import { SendTargetField, targetThreadKey, type SendTarget } from "./SendTarget";
 import { fmtFitnessValue } from "@/lib/fitness";
 import {
@@ -130,12 +131,17 @@ function Sheet({
   children,
   full,
   onBack,
+  topBar = true,
 }: {
   open: boolean;
   onClose: () => void;
   children: React.ReactNode;
   full?: boolean;
   onBack?: () => void;
+  /** mobile-redesign Phase D-2(major §1-6): チャットのスレッド(ChatSheet)は自前の
+      MobileHeader(戻る＋見出し1段)を持つため、こちらの汎用「‹ 戻る」バーは二重表示になる。
+      false で.sheettopを出さない（chat以外のfull sheetは既定どおり表示） */
+  topBar?: boolean;
 }) {
   return (
     <>
@@ -145,17 +151,17 @@ function Sheet({
         <button className="sheetx" type="button" aria-label="閉じる" onClick={onClose}>
           ×
         </button>
-        {full ? (
+        {full && topBar ? (
           <div className="sheettop">
             <button className="sheetback" onClick={onBack ?? onClose}>
               ‹ 戻る
             </button>
           </div>
-        ) : (
+        ) : !full ? (
           <div className="grabzone" onClick={onClose}>
             <div className="grab" />
           </div>
-        )}
+        ) : null}
         <div className="sheetBody">{open ? children : null}</div>
       </div>
     </>
@@ -1225,6 +1231,9 @@ function FormationSheet() {
 }
 
 /* ---------------- More menu ---------------- */
+// mobile-redesign Phase D-1(C2-minor 観点3/観点7): §1-4/§1-5でライブラリ・設定の到達経路を
+// setScreenへ移したため、MoreSheet/LibrarySheet/SettingsSheetの呼び出し元は現在0件（未使用）。
+// 復活させる場合は色を--lime→--accentへ直すこと（下のMoreSheetは既に修正済み）
 function MoreSheet() {
   const board = useBoard();
   return (
@@ -1237,8 +1246,8 @@ function MoreSheet() {
         <div
           className="mitem"
           onClick={() => {
+            // setScreenが内部でsetSheet({type:null})を行うためcloseSheet()は不要（冗長だった呼び出しを削除）
             board.setScreen("drill");
-            board.closeSheet();
           }}
         >
           <div className="mi"><IconCone /></div> 練習メニュー（ドリル図）
@@ -1247,7 +1256,6 @@ function MoreSheet() {
           className="mitem"
           onClick={() => {
             board.setScreen("team");
-            board.closeSheet();
           }}
         >
           <div className="mi"><IconCalendarCheck /></div> チーム（出欠・連絡）
@@ -1256,14 +1264,18 @@ function MoreSheet() {
           className="mitem"
           onClick={() => {
             board.setScreen("articles");
-            board.closeSheet();
           }}
         >
           <div className="mi"><IconLab /></div> コーチラボ
         </div>
-        <div className="mitem" onClick={() => board.openSheet({ type: "settings" })}>
+        <div
+          className="mitem"
+          onClick={() => {
+            board.setScreen("settings");
+          }}
+        >
           <div className="mi"><IconCog /></div> 設定（チーム・プラン）
-          <span style={{ marginLeft: "auto", color: "var(--lime)", fontWeight: 700, fontSize: 13 }}>
+          <span style={{ marginLeft: "auto", color: "var(--accent)", fontWeight: 700, fontSize: 13 }}>
             {PLAN_INFO[board.plan].name}
           </span>
         </div>
@@ -1291,7 +1303,9 @@ function ChatSheet({ to }: { to: string }) {
       : board.state.players.find((p) => "p:" + p.id === to)?.name ?? "メッセージ";
   return (
     <div className="chatsheet">
-      <h2 className="chathead">{title}</h2>
+      {/* mobile-redesign Phase D-2(major §1-6): 「‹ 戻る」バー＋大見出しの2段構成を、
+          他画面と同じ52px単段のMobileHeaderへ統一する */}
+      <MobileHeader title={title} onBack={board.closeSheet} />
       <ChatThread to={to} />
     </div>
   );
@@ -1826,7 +1840,15 @@ function ShareSheet() {
 }
 
 /* ---------------- Settings（チーム設定＋プラン） ---------------- */
-export function SettingsBody({ hideTitle }: { hideTitle?: boolean } = {}) {
+export function SettingsBody({
+  hideTitle,
+  pc,
+}: {
+  hideTitle?: boolean;
+  /** mobile-redesign Phase D-2(major §8-3-17): 「人気」ピルはPCの既存見た目のため残し、
+      スマホだけ装飾ピルを出さない（呼び出し元のSettingsScreenからpcを渡す） */
+  pc?: boolean;
+} = {}) {
   const board = useBoard();
   const cur = board.plan;
   const [annual, setAnnual] = useState(false);
@@ -1956,7 +1978,7 @@ export function SettingsBody({ hideTitle }: { hideTitle?: boolean } = {}) {
             <div key={tier} className={`plancard${cur === tier ? " on" : ""}`}>
               <div className="pcname">
                 {p.name}
-                {tier === "standard" && <span className="pcbadge">人気</span>}
+                {tier === "standard" && pc && <span className="pcbadge">人気</span>}
               </div>
               <div className="pchint">{p.target}</div>
               <div className="pcprice">
@@ -2363,7 +2385,13 @@ export default function SheetManager() {
   };
 
   return (
-    <Sheet open={open} onClose={board.closeSheet} full={full} onBack={full ? onBack : undefined}>
+    <Sheet
+      open={open}
+      onClose={board.closeSheet}
+      full={full}
+      onBack={full ? onBack : undefined}
+      topBar={sheet.type !== "chat"}
+    >
       {content}
     </Sheet>
   );

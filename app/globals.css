@@ -284,11 +284,13 @@ header {
   transition: 0.15s;
   white-space: nowrap;
 }
+/* mobile-redesign B-2: 選択=青(PC既存の「B2:選択状態統一」パスの最終値と同じ:
+   accent-tint地+accent枠+accent文字、影なし) */
 .chip.on {
-  background: var(--lime);
-  color: #ffffff;
-  border-color: var(--lime);
-  box-shadow: 0 4px 14px rgba(19, 138, 77, 0.25);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: none;
 }
 .chip:active {
   transform: scale(0.95);
@@ -312,6 +314,27 @@ header {
   );
   box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.1), var(--shadow);
   touch-action: none;
+}
+/* mobile-redesign Phase D-1(C1-critical): 縁ぎりぎりのトークン(GKラベル・コーナー配置の丸)が
+   .pitchのoverflow:hiddenで欠けて見える問題(§3 盤面コンテナのoverflow:hidden・§7-5 文字の
+   切れ)を、クリップ位置を外側の.pitch2dwrapへ逃がして解消する。.pitch/.pitchwrap自体の
+   矩形・サイズは変えず(getPitchRect()が参照する.pitchのrectは不変＝ドラッグ・配置ロジック
+   無改造)、新設クラス(.pitch2d/.pitch2dwrap。Pitch.tsxのみに付与)でパディング・overflowだけ
+   上書きする。3Dビュー(.pitch.sp3dpitch。sp3dwrapマーカー)は別クラスのため対象外(見た目不変)。
+   PCは.boardapp:not(.fullplay) .pitchwrap / .spapp:not(.fullplay) .pitchwrapの
+   padding:0(詳細度0,3,0)が本ルール(詳細度0,1,0)に確実に勝つため、paddingの打ち消しリセットは
+   不要（要 getComputedStyle 確認）。ただしoverflowはPC側で上書きされておらず、PCのbox-shadow
+   クリップ回帰の原因になっていたため、PCブロック末尾のリセットでoverflow:visibleに戻す
+   （Phase D-2 major/critical レビュー指摘）。 */
+.pitch2dwrap {
+  /* mobile-redesign Phase D-2(major §7-5): 右端付近のトークン(選手名・役割ラベル)が
+     左右28pxのpaddingでは足りず、盤面の縁で文字が切れていた。左右paddingを広げて
+     ラベル幅を確保する（PCはpadding:0が別途勝つため無影響） */
+  padding: 0 44px 36px;
+  overflow: hidden;
+}
+.pitch2d {
+  overflow: visible;
 }
 .markings {
   position: absolute;
@@ -497,8 +520,9 @@ header {
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
 }
+/* mobile-redesign B-2: 選択リング=青(PC既存の.tok.sel .discと同じ値。トークン本体の色は不変) */
 .tok.sel .disc {
-  box-shadow: 0 0 0 3px var(--lime), 0 5px 14px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 3px var(--accent), 0 5px 14px rgba(0, 0, 0, 0.5);
 }
 .app.anim .tok {
   z-index: 5;
@@ -539,8 +563,9 @@ header {
 .ball.drag .b {
   transform: scale(1.15);
 }
+/* mobile-redesign B-2: 選択リング=青(PC既存の.ball.sel .bと同じ値) */
 .ball.sel .b {
-  box-shadow: 0 0 0 3px var(--lime), 0 3px 8px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 3px var(--accent), 0 3px 8px rgba(0, 0, 0, 0.55);
 }
 
 /* Phase0: セットプレーの種目別ズーム(boxatk/boxdef)は拡大構図のため、選手/相手/ボールの
@@ -620,11 +645,12 @@ header {
   color: var(--mut);
   text-transform: uppercase;
 }
+/* mobile-redesign B-2: 数値の強調はink(PC既存の.stat .vと同じ値。選択・リンクのみ青の原則) */
 .stat .v {
   font-family: var(--font-display);
   font-size: 22px;
   letter-spacing: 1px;
-  color: var(--lime);
+  color: var(--ink);
   line-height: 1;
 }
 .stat .v small {
@@ -654,11 +680,12 @@ header {
   font-size: 11px;
   color: var(--mut);
 }
+/* mobile-redesign B-2: 数値の強調はink(PC既存の.bench .bh iと同じ値) */
 .bench .bh i {
   margin-left: auto;
   font-style: normal;
   font-size: 10px;
-  color: var(--lime-dim);
+  color: var(--ink);
   letter-spacing: 1px;
 }
 .bgrid {
@@ -706,11 +733,12 @@ header {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* mobile-redesign B-2: ポジション表記はink(PC既存の.bcard .bpと同じ値) */
 .bcard .bp {
   font-family: var(--font-display);
   font-size: 12px;
   letter-spacing: 0.5px;
-  color: var(--lime-dim);
+  color: var(--ink);
   line-height: 0.9;
 }
 .benchEmpty {
@@ -790,10 +818,11 @@ header {
 .tbtn:active {
   transform: scale(0.94);
 }
+/* mobile-redesign B-2: 再生ボタンは保存/公開CTAではないため青(PC既存の.tbtn.playと同じ値) */
 .tbtn.play {
-  background: var(--lime);
+  background: var(--accent);
   color: #ffffff;
-  border-color: var(--lime);
+  border-color: var(--accent);
   flex: 1;
   min-width: 110px;
 }
@@ -829,12 +858,13 @@ header {
   background: var(--line);
   outline: none;
 }
+/* mobile-redesign B-2: つまみ=青(PC既存の.scrubスライダーと同じ値) */
 .scrub::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--lime);
+  background: var(--accent);
   border: 2px solid #ffffff;
   cursor: pointer;
 }
@@ -842,7 +872,7 @@ header {
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: var(--lime);
+  background: var(--accent);
   border: 2px solid #ffffff;
   cursor: pointer;
 }
@@ -875,10 +905,11 @@ header {
 .toolchip:active {
   transform: scale(0.95);
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.toolchip.onと同じ値) */
 .toolchip.on {
-  background: rgba(19, 138, 77, 0.14);
-  color: var(--lime);
-  border-color: rgba(19, 138, 77, 0.4);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent-tint-strong);
 }
 
 /* ことばで作る（文章→シーン生成） */
@@ -928,12 +959,13 @@ header {
 .nlex:active {
   transform: scale(0.96);
 }
+/* mobile-redesign B-2: 「ことばで作る」実行ボタンは保存/公開CTAではないため青(PC既存の.nlrunと同じ値) */
 .nlrun {
   width: 100%;
   padding: 11px;
   border-radius: 11px;
   border: 0;
-  background: var(--lime);
+  background: var(--accent);
   color: #ffffff;
   font-weight: 800;
   font-size: 14px;
@@ -1124,10 +1156,11 @@ header {
 .tlchip.danger {
   color: var(--red);
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.tlchip.onと同じ値) */
 .tlchip.on {
-  background: rgba(19, 138, 77, 0.14);
-  border-color: var(--lime);
-  color: var(--lime);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* clips / timeline */
@@ -1156,8 +1189,9 @@ header {
   padding: 8px 10px;
   cursor: pointer;
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.clip.selと同じ値) */
 .clip.sel {
-  border-color: var(--lime);
+  border-color: var(--accent);
 }
 .clip .crow {
   display: flex;
@@ -1197,8 +1231,9 @@ header {
   gap: 10px;
   padding: 2px 0;
 }
+/* mobile-redesign B-2: 数値表示=青(PC既存の.cedit label bと同じ値) */
 .cedit label b {
-  color: var(--lime);
+  color: var(--accent);
   font-variant-numeric: tabular-nums;
   margin-left: auto;
   font-size: 14px;
@@ -1214,12 +1249,13 @@ header {
   background: var(--line);
   touch-action: pan-x;
 }
+/* mobile-redesign B-2: つまみ=青(PC既存の.cedit inputスライダーと同じ値) */
 .cedit input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--lime);
+  background: var(--accent);
   border: 3px solid #ffffff;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
@@ -1227,7 +1263,7 @@ header {
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  background: var(--lime);
+  background: var(--accent);
   border: 3px solid #ffffff;
 }
 .cdel {
@@ -1361,8 +1397,8 @@ header {
   font-size: 11px;
   font-family: var(--font-ui);
   font-weight: 700;
-  color: var(--lime);
-  background: rgba(19, 138, 77, 0.12);
+  color: var(--accent);
+  background: var(--accent-tint);
   padding: 3px 9px;
   border-radius: 999px;
   margin-left: auto;
@@ -1387,6 +1423,23 @@ header {
 .libpane, .libmain {
   min-height: 0;
   overflow-y: auto;
+}
+/* mobile-redesign Phase D-1(C2-critical §1-1/§1-4): ライブラリは.scrollを持たず.libpane/
+   .libmainだけで構成されるため、他の.scroll系5系統に足した下部タブ分の余白がここには
+   効かない。保存件数が増え合計高が.appの100dvhに達すると最後の1行がタブの下に隠れる。
+   PC(1つ目のPCブロック12134/12258行)は同じ詳細度(0,2,0)で自前のpaddingを後段で
+   再確定させるため、ここでの追加はPCの見た目に影響しない(要 getComputedStyle 確認。
+   だからPCブロック末尾の「mobile-redesign PC reset」には何も足さない) */
+.libapp .libpane,
+.libapp .libmain {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
+}
+/* mobile-redesign Phase D-1(C1-critical §1-4/§8-4 #20): 同義の空状態(戦術/練習/セットプレー
+   未選択・0件)が.libpane側の.empty-msgと.libmain側の.libemptyの2つ縦に並んで見える対策。
+   スマホは1カラムなので.libmain側(.libempty)を隠し、.libpane側の.empty-msgだけ残す
+   （PC(2ペイン)は「mobile-redesign PC reset」でdisplay:blockへ戻す） */
+.libempty {
+  display: none;
 }
 /* 記事のマスター・ディテールも同じ保険(モバイル幅で描画されてもクリップされない最低限) */
 .artpane, .artmain {
@@ -1478,10 +1531,11 @@ header {
   font-size: 11px;
   color: var(--mut);
 }
+/* mobile-redesign B-2: 数値の強調はink(PC既存の.prow .numと同じ値) */
 .prow .num {
   font-family: var(--font-display);
   font-size: 18px;
-  color: var(--lime);
+  color: var(--ink);
   letter-spacing: 0.5px;
 }
 /* KPI内訳(選手別)の数値。.num と同じ数値文法だがジャージ番号色(lime)は使わない */
@@ -1545,6 +1599,15 @@ header {
   font-size: 13px;
   line-height: 1.7;
 }
+/* mobile-redesign Phase D-1(C1-major §8-4 #20): コーチング/ライブラリ/コーチラボの空状態は
+   「何が無いか＋次の一手」を左揃えで置く。.empty-msgはTeamHub等の多数の短い1行メッセージ
+   にも使われる汎用クラスのため、対象を.chubapp/.libapp/.clapp配下に限定してそれ以外
+   （チーム運営の「選手がいません。」等）の中央揃えは変えない */
+.chubapp .empty-msg,
+.libapp .empty-msg,
+.clapp .empty-msg {
+  text-align: left;
+}
 
 /* action menu */
 .menu {
@@ -1563,6 +1626,7 @@ header {
 .mitem:active {
   background: var(--panel2);
 }
+/* mobile-redesign B-2: メニュー行アイコン=青(PC既存の.mitem .miと同じ値) */
 .mitem .mi {
   width: 34px;
   height: 34px;
@@ -1571,7 +1635,7 @@ header {
   place-items: center;
   background: var(--panel2);
   font-size: 15px;
-  color: var(--lime);
+  color: var(--accent);
 }
 .mitem .mi svg {
   width: 18px;
@@ -1586,20 +1650,21 @@ header {
 .rolememo {
   margin: 4px 2px 14px;
 }
+/* mobile-redesign B-2: 見出し・バッジ=青(PC既存の.rolememo label/.rmroleと同じ値) */
 .rolememo label {
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: var(--lime-dim);
+  color: var(--accent);
   margin-bottom: 6px;
 }
 .rolememo .rmrole {
   font-size: 11px;
   font-weight: 700;
-  color: var(--bg);
-  background: var(--lime);
+  color: var(--on-primary);
+  background: var(--accent);
   border-radius: 999px;
   padding: 1px 8px;
 }
@@ -1627,10 +1692,12 @@ header {
   font-weight: 700;
   cursor: pointer;
 }
+/* mobile-redesign B-2: 選択=青(PC既存の「B2:選択状態統一」パスの最終値と同じ:
+   accent-tint地+accent枠+accent文字、影なし。.chip.onと同じイディオム) */
 .rmsave.on {
-  border-color: var(--lime);
-  background: var(--lime);
-  color: var(--bg);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 .rmsave:disabled {
   cursor: default;
@@ -1773,6 +1840,14 @@ header {
   opacity: 0;
   transition: opacity 0.22s;
 }
+/* mobile-redesign B-2: 非表示時(opacity:0)もflexレイアウトのまま残っていたため、
+   .fpgroup/.fpbtn(固定幅×2列)が幅394pxの.fpctrlに収まらず横はみ出しの原因になっていた(§3)。
+   非表示時はdisplay:noneにして幅計算から外す(操作は元々pointer-events:noneで不可)。
+   PCは幅に余裕がありこの問題が無いため、PC側は元のopacityフェードの器(display:flex)へ戻す
+   （下方のPCブロック「mobile-redesign PC reset」参照） */
+.fpover:not(.on) {
+  display: none;
+}
 /* 全画面でもピッチを操作できるよう、コンテナはイベントを透過しボタンのみ受ける */
 .fpover.on {
   pointer-events: none;
@@ -1822,8 +1897,10 @@ header {
   letter-spacing: 1.5px;
   color: rgba(234, 255, 240, 0.85);
 }
+/* mobile-redesign B-2: 全画面再生オーバーレイのタグ文字=青(PC既存の.fptag bと同じ値。
+   ログイン/スプラッシュのロゴ(.login-logo b等)は別途「据え置き」対象のため対象外) */
 .fptag b {
-  color: var(--lime);
+  color: var(--accent);
 }
 .fpctrl {
   display: flex;
@@ -1847,12 +1924,13 @@ header {
 .fpbtn:active {
   transform: scale(0.94);
 }
+/* mobile-redesign B-2: 再生ボタンは保存/公開CTAではないため青(PC既存の.fpbtn.fplayと同じ値) */
 .fpbtn.fplay {
   flex: 0 0 auto;
   font-size: 17px;
   padding: 12px 22px;
   border-radius: 13px;
-  background: var(--lime);
+  background: var(--accent);
   color: #ffffff;
   box-shadow: 0 6px 22px rgba(0, 0, 0, 0.5);
   display: inline-flex;
@@ -1928,9 +2006,10 @@ header {
   border-radius: 13px;
   border: 1px solid transparent;
 }
+/* mobile-redesign B-2: 現在読込中=青(PC既存の.playrow.curと同じ値。ライブラリ/セットプレー保存シート) */
 .playrow.cur {
-  border-color: rgba(19, 138, 77, 0.4);
-  background: rgba(19, 138, 77, 0.06);
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 .playmain {
   flex: 1;
@@ -1988,13 +2067,36 @@ header {
 .libtabs {
   display: none;
 }
+/* mobile-redesign Phase D-1(C1-critical §1-7/§2/§7-2/§8-1 #6 #7/§8-2 #8): ライブラリの
+   「戦術/練習/セットプレー」セグメントがブラウザ既定ボタン(43×25px・13.3333px・灰地・黒枠)の
+   ままだった対策。§1-7の様式(高さ36px・--r-md・非アクティブ=白+outline・アクティブ=
+   accent-tint+accent)に揃える。PC側の.libtab(12039行〜)は.sheet .libtabs限定の別ブロックで
+   詳細度が同じ(0,1,0)だが本ルールより後段(PC専用@media内)にあるため、PCの見た目は
+   衝突せず変わらない（要 getComputedStyle 確認） */
+.libtab {
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.libtab.on {
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .folderhdr {
   display: flex;
   align-items: center;
   gap: 6px;
   font-weight: 800;
   font-size: 13px;
-  color: var(--lime-dim);
+  color: var(--accent);
   margin: 12px 6px 4px;
 }
 .folderhdr button {
@@ -2022,23 +2124,25 @@ header {
   flex: 1;
   background: var(--panel2);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: var(--r-lg);
   padding: 14px 12px;
   display: flex;
   flex-direction: column;
 }
+/* mobile-redesign B-1: 選択枠は青（PC既存の.sheet/.screenbody .plancard.onと同じ値） */
 .plancard.on {
-  border-color: var(--lime);
-  box-shadow: 0 0 0 1px var(--lime) inset;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 .pcname {
   font-weight: 800;
   font-size: 14px;
 }
+/* 価格数字は「数値=ink」の原則（PC既存の.sheet/.screenbody .pcpriceと同じ値） */
 .pcprice {
   font-family: var(--font-display);
   font-size: 30px;
-  color: var(--lime);
+  color: var(--ink);
   letter-spacing: 1px;
   margin: 2px 0 8px;
 }
@@ -2065,23 +2169,26 @@ header {
   text-align: center;
   font-weight: 800;
   font-size: 13px;
-  color: var(--lime);
+  color: var(--accent);
   padding: 12px 0 2px;
 }
 .planseote {
   font-size: 11px;
   color: var(--mut);
-  text-align: center;
+  /* mobile-redesign Phase D-2(major §8-3-13): 中央揃えは空状態・数値タイルのみ。本文の注記は
+     左揃えへ（PCは打ち消しリセットで中央揃えのまま維持） */
+  text-align: left;
   padding: 0 16px calc(env(safe-area-inset-bottom) + 16px);
   line-height: 1.6;
 }
+/* mobile-redesign B-1: 情報バナーは青ティントへ（PC既存の.sheet/.screenbody .trialbannerと同じ値） */
 .trialbanner {
   margin: 0 16px 10px;
   padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(19, 138, 77, 0.1);
-  border: 1px solid rgba(19, 138, 77, 0.4);
-  color: var(--lime);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-tint-strong);
+  color: var(--accent);
   font-weight: 700;
   font-size: 13px;
   text-align: center;
@@ -2234,18 +2341,20 @@ header {
 }
 .billtoggle {
   display: flex;
-  gap: 6px;
+  /* 最終修正(V2 §1-7): 設定「月払い／年払い」を .mseg-item と同じセグメント文法に統一
+     （青ベタ塗り＋白文字をやめる）。PC既存の見た目は PC reset で戻す */
+  gap: 8px;
   margin: 0 16px 12px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 4px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 .billtoggle button {
   flex: 1;
-  border: 0;
-  background: transparent;
-  color: var(--mut);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
   font-weight: 700;
   font-size: 13px;
   padding: 9px;
@@ -2253,14 +2362,34 @@ header {
   cursor: pointer;
 }
 .billtoggle button.on {
-  background: var(--lime);
-  color: #ffffff;
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* 最終修正(V2 §1-7): 3つのトグル（提出一覧｜予定別・記事｜指導者・月払い｜年払い）の寸法も
+   .mseg-item に揃える（高さ36px・14px・非選択400／選択700・角丸 --r-md）。
+   .mhead（MobileHeader）はスマホ分岐でしか描画されないので、body:has(.mhead) で自然に
+   スマホ限定になり、PC reset は不要 */
+body:has(.mhead) .noteapp .ngchip,
+body:has(.mhead) .cl-toggle button,
+body:has(.mhead) .billtoggle button {
+  height: 36px;
+  padding: 0 12px;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1;
+  border-radius: var(--r-md);
+}
+body:has(.mhead) .noteapp .ngchip.on,
+body:has(.mhead) .cl-toggle button.on,
+body:has(.mhead) .billtoggle button.on {
+  font-weight: 700;
 }
 .pcbadge {
   font-size: 10px;
   font-weight: 800;
-  color: #ffffff;
-  background: var(--lime);
+  color: var(--on-primary);
+  background: var(--accent);
   padding: 2px 7px;
   border-radius: 999px;
   margin-left: 6px;
@@ -2302,8 +2431,8 @@ header {
   font-family: var(--font-ui);
 }
 .teamapp .rolehint {
-  font-size: 10px;
-  color: var(--lime-dim);
+  font-size: var(--fs-body-s);
+  color: var(--mut);
   flex: 1;
   text-align: right;
   white-space: nowrap;
@@ -2323,10 +2452,13 @@ header {
   align-items: center;
   gap: 8px;
 }
+/* mobile-redesign Phase D-1(major §8-2 #8/#10): 12px未満・800を使わない
+   （PCは14366/14462行のB4正規化で.evkind/.attを400へ既に上書き済みのため、
+   font-weightの変更はPCの見た目に影響しない） */
 .evkind {
   flex: 0 0 auto;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
   padding: 3px 9px;
   border-radius: 999px;
   color: #ffffff;
@@ -2388,8 +2520,8 @@ header {
   cursor: pointer;
 }
 .att {
-  font-size: 11px;
-  font-weight: 800;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
   padding: 4px 8px;
   border-radius: 8px;
   background: var(--panel2);
@@ -2409,7 +2541,7 @@ header {
 .evopen {
   margin-left: auto;
   font-size: 12px;
-  color: var(--lime);
+  color: var(--accent);
   font-weight: 700;
 }
 .attpick {
@@ -2487,8 +2619,8 @@ header {
 .msgfrom {
   font-size: 11px;
   font-weight: 800;
-  color: #ffffff;
-  background: var(--lime);
+  color: var(--on-primary);
+  background: var(--accent);
   padding: 2px 9px;
   border-radius: 999px;
 }
@@ -2507,6 +2639,10 @@ header {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  /* mobile-redesign Phase D-2(major §2): アイコン寸法は据え置きでタップ領域だけ44×44pxを確保する
+     （破壊操作のため誤タップ・タップ漏れの両方が痛い）。PCは打ち消しリセットで元の寸法に戻す */
+  min-width: 44px;
+  min-height: 44px;
 }
 /* 直下svgのみ対象(<E n="trash"/>は.emj svgが別途100%基準で処理するため、
    ここでは.emjでラップされていない直接のIconEditのみを1em(=隣の.emjと外形一致)へ揃える) */
@@ -2523,9 +2659,9 @@ header {
 .msgplay {
   margin-top: 10px;
   width: 100%;
-  background: rgba(19, 138, 77, 0.12);
-  border: 1px solid rgba(19, 138, 77, 0.4);
-  color: var(--lime);
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-tint-strong);
+  color: var(--accent);
   border-radius: 11px;
   padding: 10px;
   font-weight: 700;
@@ -2566,7 +2702,7 @@ header {
 }
 .calwd {
   text-align: center;
-  font-size: 11px;
+  font-size: var(--fs-body-s);
   font-weight: 700;
   color: var(--mut);
   padding-bottom: 4px;
@@ -2594,9 +2730,12 @@ header {
   border-color: transparent;
   cursor: default;
 }
+/* mobile-redesign Phase D-1(C1-major §8-1 #1/#2): 今日のリングは達成表示でもCTAでもなく
+   選択・クロームなので青に統一（PCは14073行で既に--accentへ上書き済みのためこの変更で
+   PCの見た目は変わらない） */
 .calcell.today {
-  border-color: var(--lime);
-  box-shadow: 0 0 0 1px var(--lime) inset;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 .caldate {
   font-size: 12px;
@@ -2648,9 +2787,12 @@ header {
   align-items: center;
   gap: 5px;
 }
+/* mobile-redesign Phase D-1(C1-major §8-1 #1): ヒント文はCTA/選択ではない補助説明のため
+   --mutに（PCは14078行で既に--accentへ独自に上書き済みで、この変更後もPCはaccentのまま
+   変わらない＝意図的にモバイルだけmutへ寄せる） */
 .callegend .calhint {
   margin-left: auto;
-  color: var(--lime-dim);
+  color: var(--mut);
 }
 
 /* ---------- Match stats ---------- */
@@ -2680,7 +2822,7 @@ header {
 .statbox .sv {
   font-family: var(--font-display);
   font-size: 24px;
-  color: var(--lime);
+  color: var(--ink);
   letter-spacing: 1px;
 }
 .scorers {
@@ -2708,7 +2850,7 @@ header {
   place-items: center;
   font-size: 11px;
   font-weight: 800;
-  color: var(--lime);
+  color: var(--ink);
 }
 .scorerrow .snm {
   flex: 1;
@@ -2717,7 +2859,7 @@ header {
 }
 .scorerrow .sgoals {
   font-weight: 800;
-  color: var(--lime);
+  color: var(--ink);
 }
 
 .matchcard {
@@ -2779,7 +2921,7 @@ header {
   font-family: var(--font-display);
   font-size: 56px;
   letter-spacing: 2px;
-  color: var(--lime);
+  color: var(--ink);
   margin: 4px 0;
 }
 .mvscore small {
@@ -2912,7 +3054,8 @@ header {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  background: radial-gradient(120% 90% at 50% 35%, #fefdfa 0%, #f6f2ea 60%);
+  /* mobile-redesign B-1: 暖色グラデ→フラットな面(--surface)へ（グラデーション禁止・§8-1-4） */
+  background: var(--surface);
   color: var(--ink);
   transition: opacity 0.3s ease;
   cursor: pointer;
@@ -2990,7 +3133,8 @@ header {
   justify-content: center;
   padding: calc(env(safe-area-inset-top) + 30px) 16px
     calc(env(safe-area-inset-bottom) + 30px);
-  background: radial-gradient(120% 90% at 50% 20%, #fefdfa 0%, #f6f2ea 60%);
+  /* mobile-redesign B-1: 暖色グラデ→フラットな面(--surface)へ（グラデーション禁止・§8-1-4） */
+  background: var(--surface);
   color: var(--ink);
 }
 .login-head {
@@ -3019,16 +3163,17 @@ header {
   width: min(92vw, 380px);
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 18px;
+  /* mobile-redesign B-1: 角丸r-lg・影なし+outline罫線（PCは既存のPC専用ブロックでr-xl/elev-3に上書き） */
+  border-radius: var(--r-lg);
   padding: 18px;
-  box-shadow: var(--shadow);
+  box-shadow: none;
   animation: sp-up 0.5s ease 0.08s both;
 }
 .login-card .formfield input {
   width: 100%;
   background: var(--panel2);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-md);
   padding: 12px 13px;
   color: var(--ink);
   font-size: 15px;
@@ -3143,8 +3288,9 @@ header {
 }
 
 /* ---------- ベンチ→ピッチ ドラッグ交代 ---------- */
+/* mobile-redesign B-2: 選択リング=青(PC既存の.tok.drop-target .discと同じ値) */
 .tok.drop-target .disc {
-  box-shadow: 0 0 0 3px var(--lime), 0 5px 14px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 3px var(--accent), 0 5px 14px rgba(0, 0, 0, 0.5);
   transform: scale(1.1);
 }
 .bcard.dragging { opacity: 0.4; }
@@ -3158,12 +3304,13 @@ header {
   align-items: center;
   gap: 3px;
 }
+/* mobile-redesign B-2: ドラッグ中ゴーストの枠=青(PC既存の.bench-ghost .gdiscと同じ値) */
 .bench-ghost .gdisc {
   width: 46px;
   height: 46px;
   border-radius: 50%;
   background: linear-gradient(160deg, #ffffff, #f7f5ee);
-  border: 2px solid var(--lime);
+  border: 2px solid var(--accent);
   display: grid;
   place-items: center;
   font-weight: 800;
@@ -3249,15 +3396,22 @@ header {
   font-family: var(--font-ui);
   flex: 0 0 auto;
   white-space: nowrap;
+  /* mobile-redesign Phase D-1(C1-critical §2 タップ領域44px): ライブラリの「＋新規作成」
+     「＋フォルダ」がh37pxで44pxに届かない対策。PC(14733行)は明示height:32pxのため
+     min-heightとheightは同時計算され最終的な高さは大きい方(max)になり、min-heightを
+     足すとPCが32→44pxへ伸びてしまうので、PCブロック末尾の「mobile-redesign PC reset」で
+     min-height:32pxに戻す(height:32pxとmax(32,32)=32pxで一致し元通り) */
+  min-height: 44px;
 }
 .formbtn:active { transform: scale(0.97); }
 .formbtn .fb-label { font-weight: 700; font-size: 13px; }
+/* mobile-redesign B-2: 現在のフォーメーション表示バッジは青(PC既存の.formbtn .fb-curと同じ値) */
 .formbtn .fb-cur {
   font-family: var(--font-display);
   font-size: 17px;
   letter-spacing: 1px;
   color: #ffffff;
-  background: var(--lime);
+  background: var(--accent);
   border-radius: 999px;
   padding: 2px 11px;
 }
@@ -3282,11 +3436,13 @@ header {
   transition: 0.12s;
 }
 .fcell:active { transform: scale(0.96); }
+/* mobile-redesign B-2: 選択=青(PC既存の「B2:選択状態統一」パスの最終値と同じ:
+   accent-tint地+accent枠+accent文字、影なし。.chip.onと同じイディオム) */
 .fcell.on {
-  background: var(--lime);
-  color: #ffffff;
-  border-color: var(--lime);
-  box-shadow: 0 4px 14px rgba(19, 138, 77, 0.25);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: none;
 }
 
 /* フォーメーション変更の隣: 新規 / 整列 */
@@ -3306,11 +3462,14 @@ header {
   cursor: pointer;
 }
 .fmini:active { transform: scale(0.96); }
-.fmini svg { width: 16px; height: 16px; color: var(--lime); }
-/* アニメバーの表示トグル（ルート表示・描き込み・残像）など、専用色を持たない fmini の共通ON表現 */
+/* mobile-redesign B-2: アイコン色は青(PC既存の.fmini svg{color:accent}と同じ値) */
+.fmini svg { width: 16px; height: 16px; color: var(--accent); }
+/* アニメバーの表示トグル（ルート表示・描き込み・残像）など、専用色を持たない fmini の共通ON表現。
+   mobile-redesign B-2: 選択=青(PC既存の.fmini.onの最終値と同じ:accent-tint地+accent枠+accent文字) */
 .fmini.on {
-  background: rgba(202, 255, 58, 0.16);
-  border-color: var(--lime);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ---------- セットプレーデザイン(SetPieceBar) ---------- */
@@ -3508,9 +3667,10 @@ header {
   background: transparent;
   cursor: pointer;
 }
+/* mobile-redesign B-2: 選択=青(同じ3Dビュー内の.sp3dpbtn.spd.on等と同じ配色に統一) */
 .sp3dqbtn.on {
-  background: var(--lime);
-  color: #0a0e0c;
+  background: var(--accent);
+  color: #ffffff;
 }
 .sp3dqbtn:active {
   transform: scale(0.94);
@@ -3552,11 +3712,12 @@ header {
   width: 13px;
   height: 13px;
 }
+/* mobile-redesign B-2: 主要ボタン=青(同じ3Dビュー内の.sp3dpbtn.spd.on等と同じ配色に統一) */
 .sp3dpbtn.main {
   width: 32px;
   height: 32px;
-  background: var(--lime);
-  color: #0a0e0c;
+  background: var(--accent);
+  color: #ffffff;
 }
 .sp3dpbtn.main.on {
   background: #ff5d6c;
@@ -3689,12 +3850,13 @@ header {
   font-size: 10.5px;
   line-height: 1.3;
 }
+/* mobile-redesign B-2: 見出し=青(同じ3Dビュー内の他の選択色と同じ配色に統一) */
 .sp3dhelp-h {
   margin: 5px 0 2px;
   font-size: 9.5px;
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: var(--lime);
+  color: var(--accent);
 }
 .sp3dhelp-h:first-child {
   margin-top: 0;
@@ -3827,12 +3989,13 @@ header {
   transition: 0.12s;
 }
 .artrow:active { background: var(--panel2); }
+/* mobile-redesign B-1: カテゴリバッジは情報ラベル=青（PC既存の.sheet/.screenbody .artcatと同じ値） */
 .artcat {
   flex: 0 0 auto;
   font-size: 10px;
   font-weight: 800;
-  color: #ffffff;
-  background: var(--lime);
+  color: var(--on-primary);
+  background: var(--accent);
   border-radius: 999px;
   padding: 3px 9px;
   margin-top: 2px;
@@ -3992,18 +4155,21 @@ header {
    2〜3ボタンのセグメントコントロール（.logintabs/.calviewtoggleと同系統の文法） */
 .cl-toggle {
   display: flex;
-  gap: 6px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 4px;
+  /* 最終修正(V2 §1-7): 灰トラック＋白サム型をやめ、.mseg-item と同じ「独立した
+     セグメント」文法（非選択＝白地＋outline枠、選択＝accent-tint地＋accent文字）に統一。
+     PC既存の見た目は PC reset で戻す */
+  gap: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   margin: 0 16px 10px;
 }
 .cl-toggle button {
   flex: 1;
-  border: 0;
-  background: transparent;
-  color: var(--mut);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
   font-weight: 700;
   font-size: 13px;
   padding: 9px;
@@ -4011,9 +4177,13 @@ header {
   cursor: pointer;
   font-family: var(--font-ui);
 }
+/* mobile-redesign Phase D-1(C1-major §8-1 #1): 選択・クロームは青。緑はCTA/達成表示のみ
+   （PC既存の見た目(specs/coachlab.md由来)はPCブロック末尾の「mobile-redesign PC reset」で
+   ライム値へミラーして維持） */
 .cl-toggle button.on {
-  background: var(--lime);
-  color: #ffffff;
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 .cl-authortabs {
   margin: 0 16px 12px;
@@ -4082,11 +4252,17 @@ header {
 /* ---- 記事カードグリッド（探す/フォロー中/指導者ページ/記事ページ共通） ---- */
 .cl-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  /* mobile-redesign B-1: 1frトラックはmin-content分だけ広がりうるため、
+     minmax(0,1fr)でカードの横はみ出しを防ぐ（§3。PCは.clapp .cl-gridで
+     repeat(3,1fr)へ全面上書き済みのため影響なし） */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   padding: 4px 16px 18px;
 }
 .cl-card {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   border: 1px solid var(--outline);
   border-radius: var(--r-lg);
   padding: 14px;
@@ -4104,15 +4280,18 @@ header {
 .cl-card:active {
   transform: scale(0.99);
 }
+/* mobile-redesign Phase D-1(C1-major §8-1 #1): 有料枠線は達成/CTA色ではないため既存outlineへ。
+   カテゴリピルも緑クロームをやめ青ティントへ（PC既存の見た目はPCブロック末尾の
+   「mobile-redesign PC reset」でミラーして維持） */
 .cl-card.paid {
-  border-color: rgba(21, 128, 61, 0.35);
+  border-color: var(--outline);
 }
 .cl-cardcat {
   align-self: flex-start;
   font-size: 10px;
   font-weight: 800;
-  color: #ffffff;
-  background: var(--lime);
+  color: var(--accent);
+  background: var(--accent-tint);
   border-radius: 999px;
   padding: 3px 9px;
 }
@@ -4198,11 +4377,13 @@ header {
   color: var(--primary-dim);
 }
 
-/* ---- フォロー／フォロー中ボタン ---- */
+/* ---- フォロー／フォロー中ボタン ----
+   mobile-redesign Phase D-1(C1-major §8-1 #1): フォローするは主CTA/達成表示ではない選択操作
+   のため青へ（PC既存の見た目はPCブロック末尾の「mobile-redesign PC reset」でミラーして維持） */
 .cl-followbtn {
   flex: none;
-  border: 1px solid var(--lime);
-  background: var(--lime);
+  border: 1px solid var(--accent);
+  background: var(--accent);
   color: #ffffff;
   font-size: 12px;
   font-weight: 700;
@@ -4630,6 +4811,28 @@ header {
   color: var(--ink);
   margin-top: 4px;
 }
+/* mobile-redesign Phase D-2(major 収益 §8-3-16/§8-3-14): 5枚同寸グリッドをやめ、上位3つ
+   (売上合計/受取見込み/販売数)だけタイルにし、残り2つ(参考になった合計/フォロワー数)は
+   行リスト(ラベル左・数値右)へ落とす。DOM(.cl-kpi×5)はPC専用のrepeat(5,1fr)グリッド
+   (このファイル内のPCブロックを参照)を保つため変えず、CSSだけで並べ替える。
+   PCは打ち消しリセットで5枚同寸グリッドのまま維持する */
+.cl-kpirow .cl-kpi:nth-child(3) {
+  grid-column: 1 / -1;
+}
+.cl-kpirow .cl-kpi:nth-child(4),
+.cl-kpirow .cl-kpi:nth-child(5) {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 14px;
+}
+.cl-kpirow .cl-kpi:nth-child(4) .cl-kpi-value,
+.cl-kpirow .cl-kpi:nth-child(5) .cl-kpi-value {
+  margin-top: 0;
+  font-size: var(--fs-title-s);
+}
 
 .cl-table-wrap {
   overflow-x: auto;
@@ -4970,85 +5173,42 @@ header {
   text-decoration: none;
 }
 
-/* ---- モバイル用ボトムナビ（.cl-mobilenav。.noteapp .notenavと同じ組み立て方）----
-   PCでは.conrailのサブナビ(.conrail-sub)に一本化するため、2つ目のPC
-   @media(min-width:1024px)ブロック側で非表示にする（該当箇所を参照） */
-.clapp .cl-mobilenav {
-  flex-shrink: 0;
-  display: flex;
-  border: 0;
-  border-top: 1px solid var(--outline);
-  background: var(--surface-lowest);
-  padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
-  z-index: 300;
-}
-.clapp .cl-mobilenav-item {
-  flex: 1;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 4px 0;
-  border: 0;
-  border-radius: var(--r-md);
-  background: none;
-  color: var(--mut);
-  font-size: var(--fs-label);
-  font-weight: 700;
-  font-family: var(--font-ui);
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.clapp .cl-mobilenav-item .emj {
-  width: 22px;
-  height: 22px;
-  box-sizing: content-box;
-  padding: 3px 14px;
-  border-radius: var(--r-full);
-  transition: background-color var(--dur-s) var(--ease-standard);
-}
-.clapp .cl-mobilenav-item.on {
-  color: var(--accent);
-}
-.clapp .cl-mobilenav-item.on .emj {
-  background: var(--accent-tint);
-}
-.clapp .cl-mobilenav-item:active .emj {
-  background: var(--surface-low);
-}
+/* 旧・モバイル用ボトムナビ(.cl-mobilenav)はmobile-redesign §1-7で
+   ヘッダー直下セグメント(CoachLabScreen.tsx→MobileSegments)に置換。CSSごと削除済み */
 
 /* ---------- Login: tabs / error / switch ---------- */
+/* mobile-redesign Phase D-2(major §1-7): チーム運営のカレンダー表示切替(.calviewtoggle)と
+   同様、他画面の確定様式(.libtab/.mseg-item＝非選択=白地+outline／選択=accent-tint+accent)
+   と違う「濃い青ベタ塗り」の独自セグメント様式だった。同じ色文法へ統一する。
+   PCは既存の専用ブロックで.on側が既にaccent-tint統一済みのため無変更(要確認済み)、
+   非選択側はPCブロック末尾のリセットで元の見た目(グループ枠+transparentボタン)に戻す */
 .logintabs {
   display: flex;
-  gap: 6px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 4px;
+  gap: 8px;
   margin-bottom: 16px;
 }
 .logintabs button {
   flex: 1;
-  border: 0;
-  background: transparent;
-  color: var(--mut);
-  font-weight: 700;
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-weight: 400;
   font-size: 14px;
   padding: 10px;
-  border-radius: 9px;
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 .logintabs button.on {
-  background: var(--lime);
-  color: #ffffff;
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
 }
 .login-err {
-  background: rgba(255, 91, 110, 0.12);
-  border: 1px solid rgba(255, 91, 110, 0.4);
+  background: rgba(217, 45, 32, 0.08);
+  border: 1px solid var(--danger);
   color: var(--red);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   padding: 9px 11px;
   font-size: 12.5px;
   font-weight: 700;
@@ -5058,13 +5218,13 @@ header {
   width: 100%;
   background: transparent;
   border: 0;
-  color: var(--lime-dim);
+  color: var(--accent);
   font-size: 13px;
   font-weight: 700;
   margin-top: 12px;
   cursor: pointer;
 }
-.login-note b { color: var(--lime); }
+.login-note b { color: var(--accent); }
 
 /* ---------- Home menu ---------- */
 .homeapp header {
@@ -5167,36 +5327,39 @@ header {
   white-space: nowrap;
   font-family: var(--font-ui);
 }
+/* mobile-redesign B-1: 選択=青ティント（PC既存の.sheet/.screenbody .catchip.onと同じ様式） */
 .catchip.on {
-  background: var(--lime);
-  color: #ffffff;
-  border-color: var(--lime);
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ---------- カレンダー: 表示切替 / リスト(アジェンダ) ---------- */
+/* mobile-redesign Phase D-2(major §1-7): .logintabsと同じ理由・同じ様式統一
+   （非選択=白地+outline／選択=accent-tint+accent）。PCはブロック末尾のリセットで
+   元のグループ枠+transparentボタンへ戻す（.onはPC既存の専用ブロックで既にaccent-tint
+   統一済みのため無変更） */
 .calviewtoggle {
   display: flex;
-  gap: 6px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  padding: 4px;
+  gap: 8px;
   margin: 0 0 12px;
 }
 .calviewtoggle button {
   flex: 1;
-  border: 0;
-  background: transparent;
-  color: var(--mut);
-  font-weight: 700;
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-weight: 400;
   font-size: 13px;
   padding: 8px;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   cursor: pointer;
 }
 .calviewtoggle button.on {
-  background: var(--lime);
-  color: #ffffff;
+  background: var(--accent-tint);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
 }
 
 .agenda {
@@ -5210,8 +5373,8 @@ header {
   align-items: stretch;
 }
 .agrow.today .agdate {
-  border-color: var(--lime);
-  box-shadow: 0 0 0 1px var(--lime) inset;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 .agdate {
   flex: 0 0 52px;
@@ -5324,12 +5487,12 @@ header {
   cursor: pointer;
 }
 .sendtgt label.on {
-  border-color: var(--lime);
-  color: var(--lime);
-  background: rgba(19, 138, 77, 0.08);
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-tint);
 }
 .sendtgt label:has(input:focus-visible) {
-  outline: 2px solid var(--lime);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 .sendtgt input {
@@ -5338,7 +5501,7 @@ header {
   pointer-events: none;
   width: 0;
   height: 0;
-  accent-color: var(--lime);
+  accent-color: var(--accent);
 }
 
 /* スタッフ: 会話一覧 */
@@ -5365,41 +5528,60 @@ header {
   display: none;
 }
 
+/* mobile-redesign Phase D-1(C1-major/C3-minor §3「会話一覧の行は白カード内の区切り線」/
+   §8-3 #14「同じ大きさのカードを並べるグリッドを作らない」): 独立カードが縦に並ぶ見た目を、
+   .mrowcard/.mrowと同じ「白カード1枚+1px区切り線」の行文法へ揃える。PCの会話一覧は
+   コーチ2ペイン側(.chatapp:has(.chatmain) .convlist/.convrow、11705/11713/15755行)が
+   詳細度0,3,0で自前のborder/background/gap/paddingを再確定しており無関係。プレイヤー/
+   ソロ側(.chatapp .convlist/.convrow、11619/11625行、0,2,0)は本来のカード風グリッドの
+   ままなので、PCブロック末尾の「mobile-redesign PC reset」で元の値に戻す */
 .convlist {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 0 4px;
+  gap: 0;
+  margin: 12px 0 4px;
+  padding: 0;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
 .convrow {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
+  min-height: 56px;
   text-align: left;
   padding: 11px 12px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--panel);
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  border-radius: 0;
+  background: none;
   color: var(--ink);
   cursor: pointer;
+}
+.convlist .convrow:last-child {
+  border-bottom: 0;
 }
 .convrow:active {
   transform: scale(0.99);
 }
+/* mobile-redesign B-1: 本人系アバターは青ティントへ（PC既存のchatapp/sheet配下の
+   accent-tint運用・.convavatarフォールバックと同じ値に揃える） */
 .convavatar {
   flex: 0 0 auto;
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: var(--panel2);
+  background: var(--accent-tint);
   border: 1px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 17px;
   font-weight: 700;
-  color: var(--lime);
+  color: var(--accent);
 }
 .convmain {
   flex: 1;
@@ -5441,6 +5623,17 @@ header {
 .chathead {
   margin: 0 0 8px !important;
 }
+/* mobile-redesign Phase D-1(C3-major §2「余白：画面左右16px」/§1-6): スレッド画面
+   (.chatsheet。SheetManager.tsxのChatSheet)はPCの.chattab(20px padding)を経由せず
+   常にモバイル(シート表示)専用のため、画面左右16pxが無いまま文字・入力欄が画面端に
+   貼り付いていた。.chatsheetはPCの表示経路(常に.chattab経由の直接インライン表示)
+   には一切登場しないため、PCブロックの打ち消しは不要（要 grep確認済み） */
+.chatsheet .chathead,
+.chatsheet .chatscroll,
+.chatsheet .chatcompose {
+  padding-left: 16px;
+  padding-right: 16px;
+}
 .chattab {
   height: 100%;
 }
@@ -5475,15 +5668,15 @@ header {
   border-bottom-left-radius: 4px;
 }
 .chatrow.mine .chatbubble {
-  background: rgba(19, 138, 77, 0.14);
-  border-color: rgba(19, 138, 77, 0.4);
+  background: var(--accent-tint);
+  border-color: var(--accent-tint-strong);
   border-bottom-left-radius: 16px;
   border-bottom-right-radius: 4px;
 }
 .chatname {
   font-size: 12px;
   font-weight: 700;
-  color: var(--lime);
+  color: var(--accent);
   margin-bottom: 3px;
 }
 .chattext {
@@ -5501,8 +5694,8 @@ header {
 .chatbadge {
   font-size: 10px;
   font-weight: 700;
-  color: var(--bg);
-  background: var(--lime);
+  color: var(--on-primary);
+  background: var(--accent);
   border-radius: 6px;
   padding: 1px 5px;
 }
@@ -5537,9 +5730,9 @@ header {
   margin-top: 6px;
   padding: 9px 11px;
   border-radius: 10px;
-  border: 1px solid var(--lime);
-  background: rgba(19, 138, 77, 0.08);
-  color: var(--lime);
+  border: 1px solid var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
   font-weight: 700;
   font-size: 13.5px;
   cursor: pointer;
@@ -5676,13 +5869,14 @@ header {
   height: 18px;
 }
 .chatplus.on {
-  border-color: var(--lime);
-  color: var(--lime);
+  border-color: var(--accent);
+  color: var(--accent);
 }
+/* mobile-redesign B-1: 送信ボタンは--accent（§1-7。PC既存の.chatsend上書きと同じ値） */
 .chatsend {
-  background: var(--lime);
-  border-color: var(--lime);
-  color: var(--bg);
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-primary);
   font-weight: 700;
 }
 .chatcompose textarea {
@@ -5771,22 +5965,29 @@ header {
   gap: 8px;
   flex-wrap: wrap;
 }
+/* mobile-redesign B-1: モバイルは役割ピル=青ティント（§1-2）。
+   PC選手ホーム(HomeMenu.tsx の if(pc) 分岐)は.homeapp .homerole(11879行)で既に
+   同じ青ティントへ上書き済み(詳細度0,2,0でこのルールに後勝ちする)ため色は不変。
+   ただしfont-sizeはPC側に上書きが無いため、Phase D-1のfont-size変更分だけ
+   PCブロック末尾の「mobile-redesign PC reset」で11pxに戻す（誤っていた緑塗りの
+   戻しは削除済み） */
 .homerole {
-  font-size: 11px;
+  font-size: var(--fs-body-s);
   font-weight: 700;
-  color: var(--bg);
-  background: var(--lime);
+  color: var(--accent);
+  background: var(--accent-tint);
   border-radius: 999px;
   padding: 2px 9px;
 }
-/* ⑥ スタッフ「今日やること」カード */
+/* ⑥ スタッフ「今日やること」カード（モバイルのみ実描画。PCコーチはMatchdayBoard、
+   PC選手はcoach=falseのためこのブロックは常にdisplay:noneのまま到達しない） */
 .todaycard {
   margin: 10px 0 4px;
   padding: 14px;
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--line);
   background: var(--panel);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.04);
+  box-shadow: none;
 }
 .todaycard-h {
   font-size: 12px;
@@ -5802,24 +6003,24 @@ header {
   width: 100%;
   text-align: left;
   padding: 12px;
-  border-radius: 14px;
+  border-radius: var(--r-lg);
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(19, 138, 77, 0.06), rgba(19, 138, 77, 0.02));
+  background: var(--panel2);
   cursor: pointer;
   font-family: var(--font-ui);
 }
 .todayevent:active {
   transform: scale(0.99);
 }
+/* mobile-redesign B-1: 装飾用アイコンチップ（色付き丸角地）を除去し、線画アイコンをinkで表示 */
 .todayevent-ic {
   flex: none;
   width: 40px;
   height: 40px;
-  border-radius: 12px;
   display: grid;
   place-items: center;
-  background: var(--lime);
-  color: #fff;
+  background: none;
+  color: var(--ink);
 }
 .todayevent-ic svg {
   width: 20px;
@@ -5860,7 +6061,7 @@ header {
   align-items: center;
   gap: 2px;
   padding: 10px 4px;
-  border-radius: 12px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--panel2);
   cursor: pointer;
@@ -5872,7 +6073,7 @@ header {
 .todaystat-n {
   font-size: 18px;
   font-weight: 800;
-  color: var(--lime);
+  color: var(--ink);
   line-height: 1.1;
 }
 .todaystat-n svg {
@@ -5993,9 +6194,9 @@ header {
   white-space: nowrap;
 }
 .cmpchip.on {
-  border-color: var(--lime);
-  color: var(--lime);
-  background: rgba(19, 138, 77, 0.08);
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-tint);
 }
 .cmpmanage {
   width: 100%;
@@ -6451,10 +6652,35 @@ header {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 最終修正(V2 §7-5): 「共有」「コメント済」の2バッジが氏名と同じ行に収まらないとき、
+     氏名を潰したりバッジをカード外へ出したりせず、バッジを2行目へ折り返す
+     （PCは行幅に余裕があるため PC reset で nowrap に戻す） */
+  flex-wrap: wrap;
+  row-gap: 4px;
+}
+/* 折り返した2行目（バッジだけの行）は右寄せにして、1行目の右端のバッジと縦に揃える
+   （1行目は氏名が flex:1 で余白を吸収するため影響しない）。
+   氏名(.notewho)の無い行（選手のノート検索の種別チップ＋日付の行）には掛けない：
+   flex:1 の子が無いので右寄せがそのまま効いて行頭が空いてしまうため */
+.noteapp .notetop:has(.notewho) {
+  justify-content: flex-end;
 }
 .noteapp .notewho {
   font-weight: 700;
   font-size: var(--fs-title-s);
+  /* mobile-redesign Phase D-1(C1-critical §7-5): 行が詰まったとき氏名側を縮めて省略する
+     （詰まったときはピル(.notetag)ではなく氏名が省略されるようにする） */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* mobile-redesign Phase D-2(major §7-5): バッジ2つ(共有・コメント済等)がflex:0 0 auto
+     で縮まないため、氏名側が1文字まで詰め切られていた。氏名を優先的に広げ、最低6em
+     (=氏名が最低限読める幅)を確保する */
+  flex: 1 1 auto;
+  /* 最終修正(V2): min-width:6em はバッジ側の min-content と合算して行幅を超えるため 0 に戻す。
+     氏名の可読性は .notetop の flex-wrap（バッジを2行目へ）で確保する */
+  min-width: 0;
 }
 .noteapp .notedate {
   font-size: var(--fs-body-s);
@@ -6468,14 +6694,29 @@ header {
   border-radius: var(--r-full);
   background: var(--surface-low);
   color: var(--mut);
+  /* mobile-redesign Phase D-1(C1-critical §7-5): 「共有」「コメント済」ピルが折り返して
+     文字単位で2行に割れる(「共/有」等)対策。ピルは縮めず折り返させない */
+  white-space: nowrap;
+  /* mobile-redesign Phase D-2(major §7-5): flex-shrink:0だと氏名(.notewho)がどれだけ
+     詰まってもピル側が一切縮まなかった。white-space:nowrapで文字の折り返しは防いだまま
+     shrinkを許可し、真に狭いときはピル側にも幅を分担させる */
+  flex: 0 1 auto;
+}
+/* 最終修正(V2): 2つ目以降のバッジは margin-left:auto を持たない（折り返した行でバッジ同士が
+   離れて散らばらないように、1つ目だけが右寄せの起点になる） */
+.noteapp .notetag ~ .notetag {
+  margin-left: 0;
 }
 .noteapp .notetag.done {
   color: var(--primary-dim);
   background: var(--primary-container);
 }
+/* mobile-redesign Phase D-2(major §8-1-1): 「共有」は達成・ポジティブ指標ではないため
+   緑ティントをやめ、中立(accent-tint)へ。「コメント済」(.notetag.done)は達成表示なので
+   緑のまま維持する */
 .noteapp .notetag.share {
-  color: var(--primary-dim);
-  background: var(--primary-container);
+  color: var(--accent);
+  background: var(--accent-tint);
 }
 .noteapp .notebody {
   font-size: 13px;
@@ -6736,9 +6977,11 @@ header {
   flex: 1;
   padding: 9px;
   border-radius: var(--r-md);
-  border: 1px solid transparent;
-  background: var(--surface-low);
-  color: var(--mut);
+  /* 最終修正(V2 §1-7): 非選択＝白地＋outline枠＋ink文字（.mseg-item と同じ文法）。
+     PC既存の灰地は PC reset で戻す */
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
   font-size: 13px;
   font-weight: 700;
   font-family: var(--font-ui);
@@ -7334,16 +7577,19 @@ header {
   gap: 6px;
   margin-bottom: 8px;
 }
+/* mobile-redesign Phase D-1(C1-major §8-1 #1): 4ボタン同格で「主CTA」ではないため緑をやめ
+   青へ（PCは15428行で既にaccentへ上書き済み・同じ詳細度で後勝ちするため、この変更で
+   PCの見た目は変わらない） */
 .noteapp .dlvcreate .dynadd {
   flex: 1;
   min-width: 44%;
   background: var(--surface-lowest);
-  border: 1px solid var(--primary);
-  color: var(--primary-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent);
   box-shadow: var(--elev-1);
 }
 .noteapp .dlvcreate .dynadd:active {
-  background: var(--primary-container);
+  background: var(--accent-tint);
 }
 .noteapp .dlvcard {
   display: flex;
@@ -7367,12 +7613,14 @@ header {
   border-radius: var(--r-xs);
   border: 0;
 }
+/* mobile-redesign Phase D-1(C1-major §8-1 #1): 行内タグも緑をやめ、PC既存(15438行、
+   既にaccent系へ上書き済み)と同じ青系に揃える */
 .noteapp .dlvtag.menu,
 .noteapp .dlvtag.assignment,
 .noteapp .dlvtag.meeting,
 .noteapp .dlvtag.setpiece {
-  color: var(--primary-dim);
-  background: var(--primary-container);
+  color: var(--accent-strong);
+  background: var(--accent-tint);
 }
 .noteapp .dlvmain {
   flex: 1;
@@ -7744,11 +7992,36 @@ header {
   color: var(--primary-dim);
   background: var(--primary-container);
 }
+/* mobile-redesign Phase D-2(major §8-1-1): 選手カード内の帯(.kpicard .kpialerts。PCには
+   出ない=.ptable-alerts経由の別DOMのためPC影響なし)で「未コメントのノートが◯件あります。」
+   「まだノートの提出がありません。」はlevel="info"(lib/coaching.ts)の中立な通知だが、
+   .kpialert.infoが警告色(--warn=オレンジ)にマップされ、警告でない情報が警告色になって
+   いた。通知タブの.digestbox内(7954行)と同様に地--surface・文字--mutへ中立化する。
+   level="warn"(怪我・出席率低下・提出途絶)は実際の警告のため対象外のまま維持する */
+.noteapp .kpialerts .kpialert.info {
+  color: var(--mut);
+  background: var(--surface);
+}
+/* mobile-redesign Phase D-1(C1-major §8-1 #1/#3): 「今日のまとめ」の赤・オレンジ帯が
+   エラー・破壊操作・警告のいずれでもない内容(提出途絶・未コメント件数)にまで使われ、
+   面の階調も3段を超えていた。.digestbox内(=「今日のまとめ」)に限り白地+既定文字色へ戻す
+   （.ptable-alerts .kpialert等、他の.kpialert利用箇所は対象外のまま）。PCの通知パネル
+   (.coachapp:has(.nbmain))にも同じ.digestboxが出るため、PCブロック末尾の
+   「mobile-redesign PC reset」で元の配色に戻す */
+.noteapp .digestbox .kpialert.warn,
+.noteapp .digestbox .kpialert.info {
+  color: var(--ink);
+  background: var(--surface-low);
+}
+/* mobile-redesign Phase D-2(major §2/§8-1-1): 二次アクション「レポート」ボタンが緑の
+   枠線+文字+アイコンで、CTAでも達成表示でもないのに緑を使っていた。枠線は中立の--outline
+   へ、文字・アイコン(currentColor)は--accentへ。PCは既存の専用ブロック(15548行付近)で
+   border-color/colorを--accentへ既に上書き済みのため、この変更はPCの見た目に影響しない */
 .noteapp .kpireport {
   font-size: var(--fs-label);
   font-weight: 700;
-  color: var(--primary-dim);
-  border: 1px solid var(--primary);
+  color: var(--accent);
+  border: 1px solid var(--outline);
   border-radius: var(--r-full);
   padding: 3px 9px;
 }
@@ -7946,83 +8219,10 @@ header {
 }
 
 /* =========================================================
-   ボトムナビ / FAB / 書くシート / ホーム
+   FAB / 書くシート / ホーム
+   （旧下部ナビ.notenavはmobile-redesign §1-1でヘッダー直下セグメント
+   （NotebookScreen.tsx→MobileSegments）に置換。CSSごと削除済み）
    ========================================================= */
-.noteapp .notenav {
-  flex-shrink: 0;
-  display: flex;
-  border: 0;
-  border-top: 1px solid var(--outline);
-  background: var(--surface-lowest);
-  padding: 6px 8px calc(env(safe-area-inset-bottom) + 6px);
-  z-index: 300;
-}
-.noteapp .notenav-item {
-  flex: 1;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 4px 0;
-  border: 0;
-  border-radius: var(--r-md);
-  background: none;
-  color: var(--mut);
-  font-size: var(--fs-label);
-  font-weight: 700;
-  font-family: var(--font-ui);
-  cursor: pointer;
-  user-select: none;
-  -webkit-user-select: none;
-}
-/* アイコンをピルで包む（M3流の選択インジケータ） */
-.noteapp .notenav-item .emj {
-  width: 22px;
-  height: 22px;
-  box-sizing: content-box;
-  padding: 3px 14px;
-  border-radius: var(--r-full);
-  transition: background-color var(--dur-s) var(--ease-standard);
-}
-.noteapp .notenav-item.on {
-  color: var(--accent);
-}
-.noteapp .notenav-item.on .emj {
-  background: var(--accent-tint);
-}
-.noteapp .notenav-item:active .emj {
-  background: var(--surface-low);
-}
-/* ナビラベル文字。PC(1024px以上)ではアイコンレール化のため非表示 */
-.noteapp .navlb {
-  display: inline;
-}
-/* コーチPCのボトムナビ用セクション見出し・ユーザー表示（モバイルでは非表示） */
-.noteapp .navsec {
-  display: none;
-}
-.noteapp .navuser {
-  display: none;
-}
-.noteapp .notenav-badge {
-  position: absolute;
-  top: 0;
-  left: calc(50% + 6px);
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: var(--r-sm);
-  background: var(--danger);
-  color: #fff;
-  font-size: 9.5px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 1.5px solid var(--surface-lowest);
-}
-
 .noteapp .fab {
   position: absolute;
   right: 16px;
@@ -8298,7 +8498,6 @@ header {
 .noteapp .fpback,
 .noteapp .notecard,
 .noteapp .dlvcard,
-.noteapp .notenav-item,
 .noteapp .fab,
 .noteapp .wsheetopt,
 .noteapp .condbtn,
@@ -8483,9 +8682,12 @@ header {
   cursor: pointer;
   white-space: nowrap;
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.dxseg button.onと同じ値。ベタ塗り(background:accent)は
+   保存/送信の主CTAと同じフィルになり紛らわしいため、.dxpal button.onと同じ二層分離形式にする) */
 .dxseg button.on {
-  background: var(--lime);
-  color: #ffffff;
+  border: 1px solid var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 .dxrow {
   display: flex;
@@ -8530,11 +8732,12 @@ header {
 .dxpal button:active {
   transform: scale(0.95);
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.dxpal button.onと同じ値) */
 .dxpal button.on {
-  border-color: var(--lime);
-  background: rgba(19, 138, 77, 0.1);
-  color: var(--lime);
-  box-shadow: 0 0 0 1.5px rgba(19, 138, 77, 0.35);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 .dx .pv {
   width: 100%;
@@ -8575,8 +8778,9 @@ header {
   cursor: pointer;
   padding: 2px 2px;
 }
+/* mobile-redesign B-2: 選択コントロール=青(PC既存の.dxlock inputと同じ値) */
 .dxlock input {
-  accent-color: var(--lime);
+  accent-color: var(--accent);
   width: 16px;
   height: 16px;
 }
@@ -8795,6 +8999,541 @@ header {
   outline-offset: -1px;
 }
 
+/* =========================================================
+   mobile-redesign Phase A-1（構造）
+   下部タブ(.mtab)・行部品(.mrow系。ホーム/コーチングハブ共有)・
+   コーチングハブ(.chubapp)・ホーム刷新(.mhome系)。
+   新規 @media は作らない（基底に置き、PCは既存の2ブロック末尾の
+   打ち消しリセットでのみ無効化する）。色は既存トークンのみ使用。
+   ========================================================= */
+
+/* ---- 下部タブ（常設。§1-1 / §8-5） ---- */
+.mtab {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40; /* シート(.scrim:50/.sheet:60)より下、本文より上 */
+  display: flex;
+  background: var(--surface-lowest);
+  border-top: 1px solid var(--outline);
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: var(--elev-1);
+}
+.mtab-item {
+  flex: 1;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  background: none;
+  color: var(--mut);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  position: relative;
+  cursor: pointer;
+}
+.mtab-item svg {
+  width: 24px;
+  height: 24px;
+}
+.mtab-item.on {
+  color: var(--accent);
+  font-weight: 700;
+}
+/* mobile-redesign Phase D-1(C2-minor/major §8-2 #8): 12px未満は使わない。バッジが潰れない
+   よう最小サイズも18pxへ拡大。.mtabはPCでdisplay:none(打ち消しリセット参照)のためPC影響なし */
+.mtab-badge {
+  position: absolute;
+  top: 2px;
+  left: calc(50% + 8px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 全画面の本文に下部タブ分の余白を確保する（PCは各画面のPC専用.scroll規則が
+   paddingショートハンドで上書き済みのため、この追加分は自動的に打ち消される） */
+.scroll {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
+}
+/* .teamapp/.chatapp/.homeapp/.noteapp は同specificityの基底ルールで
+   padding(ショートハンド)を個別に持つため、上の汎用.scrollでは上書きできない。
+   下部タブ分だけ加算したpadding-bottomを、それぞれ同じ詳細度で後勝ちさせる
+   （PCは各PC専用規則がショートハンドで上書き済みのため影響なし） */
+.teamapp .scroll {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 24px);
+}
+.chatapp .scroll {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 24px);
+}
+.chatapp .scroll.pchat {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 8px);
+}
+.homeapp .scroll {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 28px);
+}
+.noteapp .scroll {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 24px);
+}
+
+/* ---- 行部品（MobileRows.tsx。ホーム/コーチングハブ共有。§8-3-14） ---- */
+.mrowgroup {
+  margin: 0 0 24px;
+}
+.mrowgroup-h {
+  padding: 0 4px 8px;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--mut);
+}
+.mrowcard {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.mrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  background: none;
+  text-align: left;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.mrowcard .mrow:last-child {
+  border-bottom: 0;
+}
+.mrow:active {
+  background: var(--surface-low);
+}
+.mrow-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--ink);
+}
+.mrow-icon svg {
+  width: 24px;
+  height: 24px;
+}
+.mrow-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mrow-toprow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mrow-label {
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.mrow-desc {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mrow-chev {
+  flex: none;
+  color: var(--mut);
+  font-size: 18px;
+  line-height: 1;
+}
+/* mobile-redesign Phase D-1(C2-minor/major §8-2 #8): 12px未満は使わない */
+.mrow-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- コーチングハブ（新設・スマホ専用。§1-3） ---- */
+.chubapp .scroll {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* ---- ホーム刷新（スマホのみ。§1-2） ---- */
+.mhome-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+  background: var(--surface-lowest);
+  border-bottom: 1px solid var(--outline);
+}
+.mhome-club {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mhome-emblem {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  object-fit: cover;
+}
+.mhome-emblem.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  color: var(--ink);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+.mhome-clubtx {
+  min-width: 0;
+}
+.mhome-clubname {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mhome-plan {
+  margin-top: 1px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+/* mobile-redesign Phase D-1(C3-minor §2 タップ領域44px) */
+.mhome-gear {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.mhome-gear svg {
+  width: 22px;
+  height: 22px;
+}
+.mhome-greet {
+  margin-top: 0;
+}
+.mstatgrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 16px 0;
+}
+.mstat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.mstat-n {
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.mstat-n.ev {
+  font-size: var(--fs-title-s);
+}
+.mstat-l {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.mhome-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.mhome-footlogo {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.mhome-logout {
+  border: 0;
+  background: none;
+  padding: 4px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+
+/* =========================================================
+   mobile-redesign Phase A-2（構造の後半）
+   共通ヘッダー(.mhead。MobileHeader.tsx)・画面内セグメント(.mseg。
+   MobileSegments.tsx)。新規 @media は作らない（基底に置く）。
+   .mhead/.mseg は各画面側のpc分岐でPCでは描画されない（既存<header>を
+   維持）ため、PC打ち消しリセットの追加は不要。色は既存トークンのみ使用。
+   ========================================================= */
+
+/* ---- 共通ヘッダー（§1-6。MobileHeader.tsx） ---- */
+.mhead {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: calc(52px + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 6px 0;
+  background: var(--surface-lowest);
+  border-bottom: 1px solid var(--outline);
+}
+.mhead-back {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  padding: 0;
+  cursor: pointer;
+}
+.mhead-back svg {
+  width: 22px;
+  height: 22px;
+}
+.mhead-back:active {
+  background: var(--surface-low);
+}
+.mhead-back.mhead-spacer {
+  visibility: hidden;
+  cursor: default;
+}
+.mhead-tx {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+}
+.mhead-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mhead-sub {
+  margin-top: 1px;
+  font-size: var(--fs-body-s);
+  line-height: 1.3;
+  color: var(--mut);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mhead-actions {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+.mhead-action {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  padding: 0;
+  cursor: pointer;
+}
+.mhead-action svg {
+  width: 20px;
+  height: 20px;
+}
+.mhead-action:active {
+  background: var(--surface-low);
+}
+.mhead-action.primary {
+  color: var(--accent);
+}
+/* mobile-redesign Phase D-1: ヘッダーアクション4つ目以降を集約する「…」オーバーフロー
+   （MobileHeaderMore、§1-6「アイコンボタン最大3つ」対応）。.mhead-more自身は.mhead-actions
+   の中の1項目として並ぶだけなので、幅・gapは.mhead-action(44px)のまま変わらない */
+.mhead-more {
+  position: relative;
+}
+.mhead-more-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: transparent;
+}
+.mhead-more-pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 46;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-2);
+}
+.mhead-more-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: none;
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+.mhead-more-item:active {
+  background: var(--surface-low);
+}
+.mhead-more-item svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--mut);
+}
+
+/* ---- 画面内セグメント（§1-7。MobileSegments.tsx） ---- */
+.mseg {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.mseg::-webkit-scrollbar {
+  display: none;
+}
+.mseg-wrap {
+  flex-shrink: 0;
+  padding: 8px 16px;
+}
+.mseg-item {
+  flex: 0 0 auto;
+  height: 36px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.mseg-item.on {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
+}
+.mseg-item:active {
+  opacity: 0.85;
+}
+/* mobile-redesign Phase D-1(C2-minor/major §8-2 #8): 12px未満は使わない */
+.mseg-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--r-sm);
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* mobile-redesign Phase D-2(major): 横スクロール可の上部ツールバー・チップ行・セグメント行
+   (戦術ボード/セットプレーデザインの.fbar・.steps、コーチラボの.mseg・.cl-scrollchips、
+   チーム運営の.fbar・.mseg・.cmpbar、予定フォームの.catpick等)は、右端で文字が半端に
+   切れて終わり、続きがあるという手がかりも無かった。線形フェードで端を抜き、
+   スクロール可能なことを示す（新規色トークンは使わない）。.fbar/.cmpbar/.cl-scrollchipsは
+   PCにも同じクラスが出るため、PCブロック末尾のリセットで元の見た目に戻す */
+.fbar,
+.mseg,
+.steps,
+.catpick,
+.nlexrow,
+.cmpbar,
+.cl-scrollchips {
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
+}
+
 /* 狭い画面ではチップ・追加ボタンの余白を少し詰める（dx系はPC/モバイルでレイアウトを分けないため、
    この調整もBASE内の@mediaに収める＝例外的に許可されている書式） */
 @media (max-width: 879px) {
@@ -8877,13 +9616,14 @@ header {
 }
 
 /* ---- 選択とコンテキストツールバー ---- */
+/* mobile-redesign B-2: 選択=青(PC既存の.ditem.sel::afterと同じ値) */
 .ditem.sel::after {
   content: "";
   position: absolute;
   inset: -7px;
   border-radius: 50%;
   border: 2px solid #ffffff;
-  box-shadow: 0 0 0 2px rgba(19, 138, 77, 0.9), 0 2px 8px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 2px rgba(44, 111, 214, 0.9), 0 2px 8px rgba(0, 0, 0, 0.35);
   pointer-events: none;
 }
 .dxctx {
@@ -8951,10 +9691,11 @@ header {
   transform: translate(-50%, 16px);
   z-index: 41;
 }
+/* mobile-redesign B-2: クローム側の入力枠=青(PC既存の.dxlabeledit inputと同じ値) */
 .dxlabeledit input {
   width: 150px;
   background: var(--panel);
-  border: 1.5px solid var(--lime);
+  border: 1.5px solid var(--accent);
   border-radius: 10px;
   padding: 8px 10px;
   color: var(--ink);
@@ -8988,9 +9729,10 @@ header {
   border-radius: 14px;
   border: 1px solid transparent;
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.drillcard.curと同じ値) */
 .drillcard.cur {
-  border-color: rgba(19, 138, 77, 0.4);
-  background: rgba(19, 138, 77, 0.06);
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 .drillcard .dcimg {
   flex: 0 0 auto;
@@ -9122,6 +9864,15 @@ header {
   }
 }
 
+/* mobile-redesign Phase D-1(C2-critical): 練習メニューの.dxside(ツールパレット。9542行の
+   @media(max-width:879px)でpadding:10pxに縮む内部スクロール領域)は他の.scroll系5系統と違い
+   下部タブ(.mtab、高さ56px+safe-area)分の余白を持たないため、最終行がタブの下に隠れて
+   タップできない。詳細度0,2,0で9547行のpadding:10pxに後勝ちさせる（PC分はPCブロック末尾の
+   「mobile-redesign PC reset」で14px(8403行のPC本来値)に戻す） */
+.dx .dxside {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 10px);
+}
+
 /* マーカー色をPNG書き出しと揃える（金色） */
 .dx .d-marker,
 .dx .pv .d-marker {
@@ -9149,7 +9900,7 @@ header {
 .seclink {
   margin-left: auto;
   font-size: 12px;
-  color: var(--lime);
+  color: var(--accent);
   font-weight: 700;
   cursor: pointer;
   letter-spacing: 0;
@@ -9173,6 +9924,21 @@ header {
   margin: 0;
   padding: 13px;
   font-size: 18px;
+}
+/* 最終修正(V2): チーム運営ホーム上部の2ボタン。「＋ 試合結果を記録」が18pxでは2行に泣き別れる
+   ため、スマホでは15pxに落として1行に収め、ゴースト側は白地＋outline枠（§2）にする。
+   .mhead（MobileHeader）はスマホ分岐でしか描画されないので、この規則はPCでは成立しない
+   （PC reset 不要） */
+.teamapp:has(.mhead) .quickrow .bigbtn {
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  padding: 13px 8px;
+  white-space: nowrap;
+}
+.teamapp:has(.mhead) .quickrow .bigbtn.ghost {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  color: var(--ink);
 }
 /* 出欠回答シート：サマリー・グループ見出し */
 .attsummary {
@@ -9389,8 +10155,8 @@ header {
 .ongoing {
   display: inline-block;
   margin-left: 6px;
-  font-size: 10px;
-  font-weight: 800;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
   color: #0f6f3d;
   border: 1px solid rgba(15, 111, 61, 0.45);
   background: #e3f5ea;
@@ -9509,10 +10275,11 @@ header {
   align-items: center;
   gap: 6px;
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.tlchip.kind.onと同じ値) */
 .tlchip.kind.on {
-  background: rgba(19, 138, 77, 0.14);
-  border-color: var(--lime);
-  color: var(--lime);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .tlchip .lk {
   display: inline-block;
@@ -9583,8 +10350,9 @@ header {
 .penswatch:active {
   transform: scale(0.92);
 }
+/* mobile-redesign B-2: 選択リング=青(PC既存の.penswatch.onと同じ値) */
 .penswatch.on {
-  box-shadow: 0 0 0 3px var(--lime);
+  box-shadow: 0 0 0 3px var(--accent);
   border-color: #ffffff;
 }
 .penwidth,
@@ -9615,10 +10383,11 @@ header {
 .pendash i.dashed {
   border-top: 2.5px dashed var(--ink);
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.penwidth.on/.pendash.onと同じ値) */
 .penwidth.on,
 .pendash.on {
-  border-color: var(--lime);
-  background: rgba(19, 138, 77, 0.12);
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 .penact {
   height: 28px;
@@ -9648,15 +10417,18 @@ header {
   margin: 0 14px 8px;
   flex-shrink: 0;
 }
+/* mobile-redesign B-2: ペン/ハーフコート/ズームの専用色(黄・水色)を選択=青の原則へ統一
+   (PC既存の統一パスの最終値と同じ:accent-tint地+accent枠+accent文字) */
 .fmini.pen.on {
-  background: rgba(255, 226, 122, 0.22);
-  border-color: rgba(214, 158, 32, 0.6);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .fmini.half.on,
 .fmini.zoom.on {
-  background: rgba(79, 195, 247, 0.18);
-  border-color: rgba(79, 195, 247, 0.55);
-  color: var(--ink);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 .fmini.opp .oppdot {
   width: 12px;
@@ -9831,10 +10603,11 @@ header {
   font-family: var(--font-ui);
   white-space: nowrap;
 }
+/* mobile-redesign B-2: 選択=青(PC既存の.penscope.onと同じ値。.fppen配下の暗面専用配色は対象外) */
 .penscope.on {
-  border-color: var(--lime);
-  background: rgba(19, 138, 77, 0.12);
-  color: var(--lime);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 .fppen .penscope {
   background: rgba(255, 255, 255, 0.08);
@@ -9864,9 +10637,10 @@ header {
 .pathsvg.shapes.active {
   touch-action: none;
 }
+/* mobile-redesign B-2: 操作ハンドル=青(PC既存の.shapehandleと同じ値) */
 .shapehandle {
   fill: #ffffff;
-  stroke: var(--lime);
+  stroke: var(--accent);
   stroke-width: 0.5;
   cursor: pointer;
   pointer-events: auto;
@@ -9929,9 +10703,11 @@ header {
   margin: 0 14px 8px;
   flex-shrink: 0;
 }
+/* mobile-redesign B-2: 図形ツールの専用色(水色)を選択=青の原則へ統一(PC既存と同じ値) */
 .fmini.shapes.on {
-  background: rgba(79, 195, 247, 0.18);
-  border-color: rgba(79, 195, 247, 0.55);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 /* ---- 選手追従図形（連結ライン・囲み枠） Phase 1b ---- */
@@ -10022,9 +10798,10 @@ header {
   font-weight: 600;
   font-family: var(--font-ui);
 }
+/* mobile-redesign B-2: フォーカス枠=青(PC既存の.shapetextinput:focusと同じ値) */
 .shapetextinput:focus {
   outline: none;
-  border-color: var(--lime);
+  border-color: var(--accent);
 }
 
 /* ---- 選択物のミニツールバー（FormatBar：Keynote風の書式バー） ---- */
@@ -13800,7 +14577,6 @@ header {
   .noteapp .statrow .srl,
   .noteapp .kpireport,
   .noteapp .repbrand,
-  .noteapp .notenav-badge,
   .noteapp .daybadge,
   .noteapp .wsheetcancel,
   .noteapp .homedate,
@@ -13957,7 +14733,6 @@ header {
   .noteapp .kpiname,
   .noteapp .repname,
   .noteapp .repsec-h,
-  .noteapp .notenav-item,
   .noteapp .wsheet-h,
   .noteapp .homecta-msg,
   .noteapp .daypanel-h,
@@ -14128,7 +14903,6 @@ header {
   .noteapp .mtok,
   .noteapp .chart-line .clv,
   .teamapp .chart-line .clv,
-  .noteapp .notenav-badge,
   .noteapp .pill,
   .stepchip .stepdur,
   .guidelabel,
@@ -14320,7 +15094,7 @@ header {
      .logintabs button.on / .billtoggle button.on(無印+.sheet/.screenbody両scope) /
      .calviewtoggle button.on / .wdchip.on / .tseg.on / .kpitile.on(+子要素)。
      ピル/丸形状(.chip/.wdchip/.tseg等)は形状を維持し色文法のみ変更する。
-     下線タブ(.noteapp .notenav-item)はPCでは非表示(.notenav{display:none})のため対象外
+     下線タブ(.mseg-item.on)はmobile-redesignで新設のtint文法を最初から使うため対象外
      (=第2の公認イディオムとして現状のまま特に手を入れない)。 */
   .chip.on,
   .rmsave.on,
@@ -14528,8 +15302,6 @@ header {
 @media (min-width: 1024px) {
   .app.noteapp { max-width: none; }
   .noteapp .scroll { padding: 8px 32px 40px; }
-  /* PCではシェルのレール(.conrail)に一本化。モバイルのボトムナビ(.notenav)は基底ルールのまま非表示にするだけ */
-  .noteapp .notenav { display: none; }
   .noteapp .fab { right: 28px; bottom: 28px; }
   /* PCトップバー（アイコンレール化に伴いクロームを白+薄罫線+ブルーリンクへ） */
   .noteapp header { background: var(--surface-lowest); border-bottom: 1px solid var(--outline); padding: 10px 18px; }
@@ -15429,9 +16201,261 @@ header {
     border-radius: var(--r-lg);
     padding: 18px 20px;
   }
-  /* PCはコンソールレールのサブナビ(.conrail-sub)に一本化するため、モバイル用ボトムナビは非表示 */
-  .clapp .cl-mobilenav {
+  /* === mobile-redesign PC reset ===
+     基底に追加したスマホ専用ルールをPCで打ち消す（PCのDOM・見た目・挙動は変えない）。
+     このセクションだけが「PCブロック内の変更」の唯一の例外。 */
+  .mtab {
     display: none;
+  }
+  .scroll {
+    padding-bottom: 0;
+  }
+  /* Phase B-2: .fpover:not(.on)の display:none はモバイルの横はみ出し対策(§3)。
+     PCは幅に余裕があり元々問題が無いため、フェード演出(opacity遷移)を保つ
+     元のdisplay:flexへ戻す */
+  .fpover:not(.on) {
+    display: flex;
+  }
+  /* Phase D-1(C3-minor review): .homeroleの戻しは1つ目のPCブロックの
+     .homeapp .homerole(詳細度0,2,0)が既に上書きしており、ここ(0,1,0)は効かない
+     うえ変更前のPCが緑塗りだった事実も無いため削除（レビュー指摘どおり誤りを除去） */
+
+  /* Phase D-1(C1-critical): 縁ぎりぎりのトークンの欠け対策(.pitch2d/.pitch2dwrap)は
+     基底のoverflow:visibleがPCにも波及するため、PCのクリップ挙動を元通りに戻す */
+  .pitch2d {
+    overflow: hidden;
+  }
+  /* Phase D-1(C2-major): 練習メニューの.dxside下端が.mtab(下部タブ)の下に隠れる対策の
+     padding-bottom追加はPCにも波及するため、PC既存値(8387行の.dxside{padding:14px}と同値)
+     に戻す */
+  .dx .dxside {
+    padding-bottom: 14px;
+  }
+  /* Phase D-1(C1-critical): ライブラリの空状態重複対策(.libempty非表示)はPCの2ペイン
+     (プレビュー側)には不要なため元のdisplay:blockに戻す */
+  .libempty {
+    display: block;
+  }
+  /* Phase D-1(C2-major): ライブラリ画面(.libpane/.libmain)に下部タブ分の余白を足す対策は
+     基底(1418行)への追加だが、1つ目のPCブロックの.libapp .libpane(12134行、padding:10px)と
+     .libapp .libmain(12258行、padding:16px 24px calc(...+24px))が同じ詳細度(0,2,0)で
+     後勝ちして自前のpadding-bottomを再度確定させるため、ここでの打ち消しは不要
+     （むしろ0を足すとその2つより後段になり誤ってPCのpadding-bottomを0にしてしまうため
+     書かない。要 getComputedStyle 確認） */
+  /* Phase D-1(C3-critical): .cl-card{width:100%;min-width:0}がPCの記事カードグリッド幅を
+     変えてしまうため、PC既存の可変幅(auto)に戻す */
+  .cl-card {
+    min-width: auto;
+    width: auto;
+  }
+  /* Phase D-1(C1-major/C3-minor): 会話一覧を白カード+区切り線化した対策は、PCの
+     コーチ2ペイン(.chatapp:has(.chatmain) .convlist/.convrow、詳細度0,3,0)には
+     影響しない(自前のborder/background/gap/paddingで常に上書きされる)が、
+     プレイヤー/ソロ側のカード風グリッド(.chatapp .convlist/.convrow、0,2,0。
+     gap/paddingは触れていない)には基底の新しい値が漏れるため元の値に戻す */
+  .convlist {
+    gap: 8px;
+    margin: 0;
+    padding: 12px 0 4px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .convrow {
+    min-height: 0;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+  }
+  .convlist .convrow:last-child {
+    border-bottom: 1px solid var(--line);
+  }
+  /* Phase D-1(major §8-2 #8): 12px未満を無くす対策(.evkind/.att/.calwd/.ongoing/
+     .teamapp .rolehintのfont-size)はPCにfont-sizeの上書きが無いため素通りしてしまう。
+     元のサイズに戻す(font-weightは14366/14462行のB4正規化で既に400へ上書き済みのため
+     ここでは触れない) */
+  .evkind,
+  .att,
+  .calwd,
+  .homerole {
+    font-size: 11px;
+  }
+  .ongoing,
+  .teamapp .rolehint {
+    font-size: 10px;
+  }
+  /* Phase D-1(C1-major): 「今日のまとめ」の赤・オレンジ中和はPCの通知パネル
+     (.coachapp:has(.nbmain))にも波及するため、元の配色(7883/7887行と同値)に戻す */
+  .noteapp .digestbox .kpialert.warn {
+    color: var(--danger);
+    background: rgba(217, 45, 32, 0.08);
+  }
+  .noteapp .digestbox .kpialert.info {
+    color: var(--warn);
+    background: rgba(180, 83, 9, 0.08);
+  }
+  /* Phase D-1(C1-major): コーチラボの緑クローム(トグル選択・カードカテゴリピル・
+     フォローするボタン・有料枠線)はspecs/coachlab.md由来のPC既存デザインのため、
+     基底を青へ変更した分をPCでは元のライム値に戻す（15725行付近のコメント参照） */
+  .cl-toggle button.on {
+    background: var(--lime);
+    color: #ffffff;
+  }
+  .cl-cardcat {
+    color: #ffffff;
+    background: var(--lime);
+  }
+  .cl-followbtn {
+    border-color: var(--lime);
+    background: var(--lime);
+  }
+  .cl-card.paid {
+    border-color: rgba(21, 128, 61, 0.35);
+  }
+  /* Phase D-1(C2-major): セットプレー3Dビュー(PCでも使用)の選択色・主要ボタン・
+     ヘルプ見出しは基底が青(--accent)へ変更されたためPC既存のライム値へ戻す
+     （他の3D関連セレクタは既にPC側で同値の上書きがあり対象外） */
+  .sp3dqbtn.on {
+    background: var(--lime);
+    color: #0a0e0c;
+  }
+  .sp3dpbtn.main {
+    background: var(--lime);
+    color: #0a0e0c;
+  }
+  .sp3dhelp-h {
+    color: var(--lime);
+  }
+  /* Phase D-1(C1-major §8-4 #20): 空状態の左揃え化(.chubapp/.libapp/.clapp .empty-msg)は
+     PCの.libapp/.clapp(ライブラリ・コーチラボ)にも波及するため、PC既存の中央揃えに戻す */
+  .chubapp .empty-msg,
+  .libapp .empty-msg,
+  .clapp .empty-msg {
+    text-align: center;
+  }
+  /* Phase D-1(C1-critical): 基底の.formbtn{min-height:44px}はPC既存のheight:32px(14733行)と
+     同時計算されると max(32,44)=44pxへ伸びてしまうため、min-heightを32pxへ戻して元の高さに
+     揃える(height:32pxと合わせてmax(32,32)=32pxで変化なし) */
+  .formbtn {
+    min-height: 32px;
+  }
+  /* Phase D-2(critical レビュー指摘): 基底の.pitch2dwrap{overflow:hidden}(327行)が
+     PCの.pitchwrap(box-shadowで外側に浮くカード影)にも波及し、外側box-shadowがクリップ
+     されて戦術ボード/セットプレーデザインのPC見た目が変わっていた。.pitch2d(内側)は
+     既に16129行でhiddenへ戻しているが、外側の.pitch2dwrap自体はvisibleに戻す必要がある
+     （getComputedStyle実測でPC 10画面がbaselineとピクセル完全一致に戻ることを確認済み） */
+  .pitch2dwrap {
+    overflow: visible;
+  }
+  /* Phase D-2(major §2): 連絡削除ボタン(.msgdel)のタップ領域拡大(44×44px)はPCにも波及するため
+     元の寸法(min-width/height無指定=コンテンツに応じた自然サイズ)に戻す */
+  .msgdel {
+    min-width: 0;
+    min-height: 0;
+  }
+  /* Phase D-2(major §8-3-13): 設定>プランの注記(.planseote)を左揃えにした対策はPCにも波及
+     するため、PC既存の中央揃えに戻す */
+  .planseote {
+    text-align: center;
+  }
+  /* Phase D-2(major): 横スクロール帯の右端フェード(mask-image)は.fbar/.cmpbar/.cl-scrollchips
+     がPCにも同じクラス名で出るため、PCでは元の見た目(フェード無し)に戻す
+     （.mseg/.steps/.catpick/.nlexrowはPCで描画されない、またはPC専用ブロックで
+     display:flex/flex-wrap:wrapへ切り替わり横スクロール自体が無いため対象外） */
+  .fbar,
+  .cmpbar,
+  .cl-scrollchips {
+    mask-image: none;
+    -webkit-mask-image: none;
+  }
+  /* Phase D-2(major §1-7): .logintabs/.calviewtoggleの基底セグメント統一(§1-7)をPCでは
+     打ち消し、PCの既存グループ型segmented look(--panel2地+--line枠+padding4px、
+     非選択transparentボタン)を維持する（.onはPC既存の専用ブロックで既にaccent-tint
+     統一済みのため対象外） */
+  .logintabs {
+    gap: 6px;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 4px;
+  }
+  .logintabs button {
+    border: 0;
+    background: transparent;
+    color: var(--mut);
+    font-weight: 700;
+    border-radius: var(--r-sm);
+  }
+  .calviewtoggle {
+    gap: 6px;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    padding: 4px;
+  }
+  .calviewtoggle button {
+    border: 0;
+    background: transparent;
+    color: var(--mut);
+    font-weight: 700;
+    border-radius: 8px;
+  }
+  /* Phase D-2(major コーチラボ>収益 §8-3-16/§8-3-14): 5枚同寸グリッドを3タイル+2行リストへ
+     組み替えた対策(nth-child(3)〜(5))はDOM(.cl-kpi×5)を変えていないが、PC専用の
+     repeat(5,1fr)グリッド(このファイル内の.clapp .cl-kpirow参照)と組み合わさると
+     3〜5番目が全幅化・行化してしまうため、PCでは元の同寸タイル(block/padding:12px/
+     値20px数値)に戻す */
+  .clapp .cl-kpirow .cl-kpi:nth-child(3),
+  .clapp .cl-kpirow .cl-kpi:nth-child(4),
+  .clapp .cl-kpirow .cl-kpi:nth-child(5) {
+    grid-column: auto;
+    display: block;
+    padding: 12px;
+  }
+  .clapp .cl-kpirow .cl-kpi:nth-child(4) .cl-kpi-value,
+  .clapp .cl-kpirow .cl-kpi:nth-child(5) .cl-kpi-value {
+    margin-top: 4px;
+    font-size: 20px;
+  }
+  /* 最終修正(V2 §7-5): 提出一覧の氏名行のバッジ折り返し(flex-wrap)はPCでは不要。
+     基底の min-width:6em → 0 はPCの行幅では見た目に影響しない */
+  .noteapp .notetop,
+  .noteapp .notetop:has(.notewho) {
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+  /* 最終修正(V2 §1-7): .ngchip / .cl-toggle / .billtoggle の基底セグメント統一を
+     PCでは打ち消し、PC既存の見た目（灰トラック＋透明ボタン）に戻す。
+     選択面(.on)はPC専用ブロックの既存上書き（accent / lime）がそのまま勝つ */
+  .noteapp .ngchip {
+    border-color: transparent;
+    background: var(--surface-low);
+    color: var(--mut);
+  }
+  .cl-toggle {
+    gap: 6px;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 4px;
+  }
+  .cl-toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--mut);
+  }
+  .billtoggle {
+    gap: 6px;
+    background: var(--panel2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 4px;
+  }
+  .billtoggle button {
+    border: 0;
+    background: transparent;
+    color: var(--mut);
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }

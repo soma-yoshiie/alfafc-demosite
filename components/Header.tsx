@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useBoard } from "./BoardProvider";
+import { MobileHeader, MobileHeaderAction, MobileHeaderMore } from "./MobileHeader";
+import { IconFilm, IconFolder, IconSave, IconShare } from "./icons";
 
 /** PC(min-width:1024px)判定のブレークポイント。TeamHub.tsx usePc() と同じ値・同じ手法 */
 const PC_MQ = "(min-width: 1024px)";
@@ -35,22 +37,47 @@ export default function Header() {
   // モバイルは従来どおりブランド名(ALFA FOOTBALL)のまま変更しない
   const pc = usePc();
 
+  if (!pc) {
+    // mobile-redesign §1-6: ブランドロゴ(ALFA FOOTBALL)→画面名に置換。.tag.teamの緑ピルは廃止し、
+    // 保存先タイトルがあれば画面名の下に小さく出す。戻り先はnavFromに従いhome/coachingへ（§1-3）
+    return (
+      <MobileHeader
+        title={isSp ? "セットプレーデザイン" : "戦術ボード"}
+        subtitle={title || undefined}
+        onBack={() => board.setScreen(board.navFrom === "home" ? "home" : "coaching")}
+        actions={
+          coach ? (
+            // mobile-redesign Phase D-1(C1-critical): §1-6「アイコンボタン最大3つ」に収める。
+            // 保存・共有(出力・配信)は単独ボタンのまま残し、頻度の低いアニメ/ライブラリは
+            // 「…」オーバーフロー(MobileHeaderMore)へ移す(機能は維持)
+            <>
+              <MobileHeaderAction label="保存" onClick={isSp ? board.saveCurrentSetPiece : board.saveCurrent}>
+                <IconSave />
+              </MobileHeaderAction>
+              <MobileHeaderAction label="共有・出力" onClick={() => board.openSheet({ type: "share" })}>
+                <IconShare />
+              </MobileHeaderAction>
+              <MobileHeaderMore
+                items={[
+                  { label: "戦術アニメ", icon: <IconFilm />, onClick: board.openStudio },
+                  { label: "ライブラリ", icon: <IconFolder />, onClick: () => board.setScreen("library") },
+                ]}
+              />
+            </>
+          ) : undefined
+        }
+      />
+    );
+  }
+
   return (
     <header>
       <div className="brand">
-        <div className="logo">
-          {pc ? (isSp ? "セットプレーデザイン" : "戦術ボード") : (<>ALFA<b> FOOTBALL</b></>)}
-        </div>
+        <div className="logo">{isSp ? "セットプレーデザイン" : "戦術ボード"}</div>
         {coach ? (
           <button
             className={`tag${name ? " team" : ""}`}
-            onClick={() => {
-              if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-                board.setScreen("settings");
-              } else {
-                board.openSheet({ type: "settings" });
-              }
-            }}
+            onClick={() => board.setScreen("settings")}
             title="設定（チーム名・プラン）"
           >
             {title ? `${name ?? "マイチーム"}・${title}` : name ?? "チーム名を設定"}
@@ -80,14 +107,8 @@ export default function Header() {
         </div>
         <div
           className="icon"
-          title="保存した戦術"
-          onClick={() => {
-            if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
-              board.setScreen("library");
-            } else {
-              board.openSheet({ type: "library" });
-            }
-          }}
+          title="ライブラリ"
+          onClick={() => board.setScreen("library")}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 20h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1h-7.6l-1.7-2.1a1 1 0 0 0-.8-.4H4a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1Z" />
@@ -103,7 +124,12 @@ export default function Header() {
         </div>
         </>
         )}
-        <div className="icon" title="メニューに戻る" onClick={() => board.setScreen("home")}>
+        {/* 戻り先: PCは常にホーム(不変) */}
+        <div
+          className="icon"
+          title="メニューに戻る"
+          onClick={() => board.setScreen("home")}
+        >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M3 10.5 12 3l9 7.5" />
             <path d="M5 9.5V21h14V9.5" />

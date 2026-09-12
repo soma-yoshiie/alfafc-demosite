@@ -5,6 +5,7 @@ import { dmThreadKey } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
+import { MobileHeader } from "./MobileHeader";
 
 const PC_MQ = "(min-width: 1024px)";
 
@@ -85,17 +86,22 @@ export default function ChatScreen() {
 
   return (
     <div className="app chatapp">
-      <header>
-        <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ {pc ? "ホーム" : "メニュー"}
-        </div>
-        <div className="brand" style={{ marginLeft: 4 }}>
-          <div className="logo">チャット</div>
-          <div className="tag team" style={{ marginTop: 4 }}>
-            {board.state.teamName ?? "マイチーム"}
+      {pc ? (
+        <header>
+          <div className="fpback" onClick={() => board.setScreen("home")}>
+            ‹ ホーム
           </div>
-        </div>
-      </header>
+          <div className="brand" style={{ marginLeft: 4 }}>
+            <div className="logo">チャット</div>
+            <div className="tag team" style={{ marginTop: 4 }}>
+              {board.state.teamName ?? "マイチーム"}
+            </div>
+          </div>
+        </header>
+      ) : (
+        // mobile-redesign §1-6: 下部タブ「チャット」の直下画面のため戻るは出さない
+        <MobileHeader title="チャット" />
+      )}
 
       {/* paddingは基底CSS(.chatapp .scroll / .pchat)へ移設（PCで上書きできるように） */}
       {isCoach ? (

@@ -16,6 +16,7 @@ import type {
 import { renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
 import { loadDrills } from "@/lib/storage";
+import { MobileHeader } from "./MobileHeader";
 
 const PC_MQ = "(min-width: 1024px)";
 
@@ -214,17 +215,26 @@ export function LibraryScreen() {
 
   return (
     <div className="app libapp">
-      <header>
-        <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ {pc ? "ホーム" : "メニュー"}
-        </div>
-        <div className="brand" style={{ marginLeft: 4 }}>
-          <div className="logo">ライブラリ</div>
-          <div className="tag team" style={{ marginTop: 4 }}>
-            {board.state.teamName ?? "マイチーム"}
+      {pc ? (
+        <header>
+          {/* 戻り先: PCは常にホーム(不変) */}
+          <div className="fpback" onClick={() => board.setScreen("home")}>
+            ‹ ホーム
           </div>
-        </div>
-      </header>
+          <div className="brand" style={{ marginLeft: 4 }}>
+            <div className="logo">ライブラリ</div>
+            <div className="tag team" style={{ marginTop: 4 }}>
+              {board.state.teamName ?? "マイチーム"}
+            </div>
+          </div>
+        </header>
+      ) : (
+        // mobile-redesign §1-6: 戻り先はnavFromに従いhome/coachingへ（§1-3）
+        <MobileHeader
+          title="ライブラリ"
+          onBack={() => board.setScreen(board.navFrom === "home" ? "home" : "coaching")}
+        />
+      )}
 
       <div className="libpane">
         {/* レールが無い幅(<1024px)向けのタブ。PCではレールのサブナビが担うため隠す */}
@@ -266,10 +276,13 @@ export function LibraryScreen() {
               </button>
             </div>
             {plays.length === 0 ? (
+              // mobile-redesign Phase D-1(C1-critical §3): 空状態の文言をspecs/mobile-redesign.md
+              // §3の指定例文そのままに統一（PCはこの.empty-msgを:has(.libctrls)で隠すため
+              // 見た目は変わらない。要 getComputedStyle 確認）
               <div className="empty-msg">
-                <b>保存された戦術はありません</b>
+                <b>まだ保存した戦術がありません。</b>
                 <br />
-                盤面を作って共有・出力→ライブラリに保存から追加できます
+                戦術ボードで作って保存すると、ここに並びます。
               </div>
             ) : (
               <div className="liblist">
@@ -304,9 +317,9 @@ export function LibraryScreen() {
           drills.length === 0 ? (
             !pc && (
               <div className="empty-msg">
-                <b>保存された練習メニューはありません</b>
+                <b>まだ保存した練習メニューがありません。</b>
                 <br />
-                練習メニューを作成して保存すると、ここに一覧できます
+                練習メニューで作って保存すると、ここに並びます。
               </div>
             )
           ) : (
@@ -664,20 +677,25 @@ export function SettingsScreen() {
 
   return (
     <div className="app setapp">
-      <header>
-        <div className="fpback" onClick={() => board.setScreen("home")}>
-          ‹ {pc ? "ホーム" : "メニュー"}
-        </div>
-        <div className="brand" style={{ marginLeft: 4 }}>
-          <div className="logo">設定</div>
-          <div className="tag team" style={{ marginTop: 4 }}>
-            {board.state.teamName ?? "マイチーム"}
+      {pc ? (
+        <header>
+          <div className="fpback" onClick={() => board.setScreen("home")}>
+            ‹ ホーム
           </div>
-        </div>
-      </header>
+          <div className="brand" style={{ marginLeft: 4 }}>
+            <div className="logo">設定</div>
+            <div className="tag team" style={{ marginTop: 4 }}>
+              {board.state.teamName ?? "マイチーム"}
+            </div>
+          </div>
+        </header>
+      ) : (
+        // mobile-redesign §1-6: 下部タブ「ホーム」配下の画面のため戻るは出す（ホームのメニュー行/歯車から遷移）
+        <MobileHeader title="設定" onBack={() => board.setScreen("home")} />
+      )}
       <div className="scroll screenbody">
         <div className="setwrap">
-          <SettingsBody hideTitle />
+          <SettingsBody hideTitle pc={pc} />
         </div>
       </div>
     </div>

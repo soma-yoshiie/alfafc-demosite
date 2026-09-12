@@ -9,13 +9,14 @@ import { attendanceRate } from "@/lib/teamStats";
 import { monthlyWinPct, weeklyAttendancePct, weeklyNoteCounts } from "@/lib/homeStats";
 import type { TrendPoint } from "@/lib/homeStats";
 import { LEAGUE_STANDINGS, leaguePosition } from "@/lib/sampleLeague";
-import { NOTE_KIND_LABEL } from "@/lib/types";
+import { NOTE_KIND_LABEL, PLAN_INFO } from "@/lib/types";
 import type { EventCategory, MatchRecord, Player, TeamData, TeamEvent } from "@/lib/types";
 import { useBoard, type StatMetric } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
 import { StatBody } from "./SheetManager";
+import { MenuGroup, MenuRow } from "./MobileRows";
 import {
   IconCalendarCheck,
   IconChat,
@@ -162,14 +163,27 @@ export default function HomeMenu() {
     }
   };
 
+  // モバイル「チームのいま」の出席率（PCのMatchdayBoardと同じ算出方法・既存 attendanceRate を再利用）
+  const attPctAvg = useMemo(() => {
+    const rates = board.state.players
+      .map((p) => attendanceRate(teamCtx.team, p.id))
+      .filter((r) => r.total > 0);
+    if (rates.length === 0) return null;
+    return Math.round(rates.reduce((s, r) => s + r.pct, 0) / rates.length);
+  }, [board.state.players, teamCtx.team]);
+
   // PC×コーチのみ「マッチデー・ボード」へ刷新。モバイル・選手のJSXは以下、一切変更しない
   if (pc && coach) {
     return <MatchdayBoard board={board} team={teamCtx} logout={logout} today={today} />;
   }
 
-  return (
-    <div className="app homeapp">
-      <div className="homehero">
+  // PC（選手）ホーム：mobile-redesignの対象外（PCのDOM・見た目は変更しない）。
+  // 従来のJSXをそのまま維持する（openSheet(library/settings)だけsetScreenへ統一。
+  // ここはcoachが常にfalseの経路のため、coach分岐の中身は実行されない＝表示に影響なし）
+  if (pc) {
+    return (
+      <div className="app homeapp">
+        <div className="homehero">
         <div className="homeherotop">
           <div className="homemark">
             <LogoMark uid="hm" />
@@ -204,7 +218,7 @@ export default function HomeMenu() {
               <span className="hstat-n">{noteUnread}</span>
               <span className="hstat-l">ノート未読</span>
             </button>
-            <button className="hstat" onClick={() => board.openSheet({ type: "library" })}>
+            <button className="hstat" onClick={() => board.setScreen("library")}>
               <span className="hstat-n">{board.library.plays.length}</span>
               <span className="hstat-l">保存した戦術</span>
             </button>
@@ -379,7 +393,7 @@ export default function HomeMenu() {
                 icon={<IconFolder />}
                 label="保存した戦術"
                 desc="保存した戦術を選んで読み込む"
-                onClick={() => board.openSheet({ type: "library" })}
+                onClick={() => board.setScreen("library")}
               />
               <Tile
                 icon={<IconCone />}
@@ -425,7 +439,7 @@ export default function HomeMenu() {
                 icon={<IconCog />}
                 label="設定"
                 desc="チーム名やプラン、公開範囲を変更する"
-                onClick={() => board.openSheet({ type: "settings" })}
+                onClick={() => board.setScreen("settings")}
               />
             </>
           ) : (
@@ -457,6 +471,228 @@ export default function HomeMenu() {
               />
             </>
           )}
+        </div>
+      </div>
+    </div>
+    );
+  }
+
+  // ---- ここからモバイル（コーチ・選手共通）。mobile-redesign §1-2 ----
+  return (
+    <div className="app homeapp">
+      <div className="mhome-header">
+        <div className="mhome-club">
+          {board.teamLogo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="mhome-emblem" src={board.teamLogo} alt="" />
+          ) : (
+            <div className="mhome-emblem empty" aria-hidden="true">
+              {(board.state.teamName ?? "マイチーム").trim().charAt(0)}
+            </div>
+          )}
+          <div className="mhome-clubtx">
+            <div className="mhome-clubname" title={board.state.teamName ?? "マイチーム"}>
+              {board.state.teamName ?? "マイチーム"}
+            </div>
+            {coach && <div className="mhome-plan">{PLAN_INFO[board.plan].name}プラン</div>}
+          </div>
+        </div>
+        {coach && (
+          <button
+            type="button"
+            className="mhome-gear"
+            aria-label="設定"
+            onClick={() => board.setScreen("settings")}
+          >
+            <IconCog />
+          </button>
+        )}
+      </div>
+
+      <div className="scroll">
+        <div className="homegreet mhome-greet">
+          <div className="homedate">{today}</div>
+          <div className="homename">
+            こんにちは、{board.auth.name}さん
+            <span className="homerole">{coach ? "スタッフ" : "選手・保護者"}</span>
+          </div>
+        </div>
+
+        {coach && (
+          <div className="todaycard">
+            <div className="todaycard-h">今日やること</div>
+            <button className="todayevent" onClick={() => board.setScreen("team")}>
+              <span className="todayevent-ic">
+                <IconCalendarCheck />
+              </span>
+              <span className="todayevent-txt">
+                {todayInfo.focusEvent ? (
+                  <>
+                    <b>
+                      {todayInfo.isToday ? "今日" : fmtEventDate(todayInfo.focusEvent.date)}・
+                      {todayInfo.focusEvent.kind === "match" ? "試合" : "練習"}
+                    </b>
+                    <span className="todayevent-sub">
+                      {todayInfo.focusEvent.title}
+                      {todayInfo.focusEvent.time ? ` ${todayInfo.focusEvent.time}〜` : ""}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <b>予定は未登録です</b>
+                    <span className="todayevent-sub">タップして練習・試合を追加</span>
+                  </>
+                )}
+              </span>
+              <span className="todayevent-chev">›</span>
+            </button>
+          </div>
+        )}
+
+        {coach ? (
+          <div className="mstatgrid">
+            <button type="button" className="mstat" onClick={() => board.setScreen("team")}>
+              <span className="mstat-n">{attPctAvg != null ? `${attPctAvg}%` : "—"}</span>
+              <span className="mstat-l">出席率</span>
+            </button>
+            <button type="button" className="mstat" onClick={() => board.setScreen("notebook")}>
+              <span className="mstat-n">{todayInfo.notesWeek}</span>
+              <span className="mstat-l">今週のノート</span>
+            </button>
+            <button type="button" className="mstat" onClick={() => board.setScreen("notebook")}>
+              <span className="mstat-n">{todayInfo.uncommented}</span>
+              <span className="mstat-l">未コメント</span>
+            </button>
+            <button type="button" className="mstat" onClick={() => board.setScreen("team")}>
+              <span className="mstat-n">{pctOrDash(recordSummary.winPct)}</span>
+              <span className="mstat-l">勝率</span>
+            </button>
+          </div>
+        ) : (
+          <div className="mstatgrid">
+            <button type="button" className="mstat" onClick={() => board.setScreen("team")}>
+              <span className="mstat-n ev">
+                {todayInfo.focusEvent
+                  ? (todayInfo.isToday ? "今日" : fmtEventDate(todayInfo.focusEvent.date)) +
+                    "・" +
+                    (todayInfo.focusEvent.kind === "match" ? "試合" : "練習")
+                  : "予定なし"}
+              </span>
+              <span className="mstat-l">
+                {todayInfo.focusEvent
+                  ? todayInfo.focusEvent.title +
+                    (todayInfo.focusEvent.time ? " " + todayInfo.focusEvent.time + "〜" : "")
+                  : "次の予定"}
+              </span>
+            </button>
+            <button type="button" className="mstat" onClick={() => board.setScreen("notebook")}>
+              <span className="mstat-n">{noteUnread}</span>
+              <span className="mstat-l">今日のノート</span>
+            </button>
+          </div>
+        )}
+
+        {coach ? (
+          <>
+            <MenuGroup title="コーチング">
+              <MenuRow
+                icon={<IconClipboard />}
+                label="戦術ボード"
+                desc="スタメンを並べて動きをアニメで確認"
+                onClick={() => board.setScreen("board")}
+              />
+              <MenuRow
+                icon={<IconCone />}
+                label="練習メニュー"
+                desc="コーンを並べて動線を描き、練習図を作る"
+                onClick={() => board.setScreen("drill")}
+              />
+              <MenuRow
+                icon={<IconSetPiece />}
+                label="セットプレーデザイン"
+                desc="CK・FK・スローインの動きを設計して共有する"
+                onClick={() => board.setScreen("setpiece")}
+              />
+              <MenuRow
+                icon={<IconFolder />}
+                label="ライブラリ"
+                desc="保存した戦術・練習・セットプレー"
+                onClick={() => board.setScreen("library")}
+              />
+            </MenuGroup>
+            <MenuGroup title="チーム">
+              <MenuRow
+                icon={<IconNote />}
+                label="サッカーノート"
+                desc="試合や練習を振り返ってノートに書く"
+                badge={noteUnread}
+                onClick={() => board.setScreen("notebook")}
+              />
+              <MenuRow
+                icon={<IconCalendarCheck />}
+                label="チーム運営"
+                desc="名簿や出欠、試合の記録をまとめて管理する"
+                onClick={() => board.setScreen("team")}
+              />
+              <MenuRow
+                icon={<IconChat />}
+                label="チャット"
+                desc="戦術や写真、動画をチームに送って共有する"
+                onClick={() => board.setScreen("chat")}
+              />
+            </MenuGroup>
+            <MenuGroup title="その他">
+              <MenuRow
+                icon={<IconLab />}
+                label="コーチラボ"
+                desc="指導者の記事を読む・書く・売る"
+                onClick={() => board.setScreen("articles")}
+              />
+              <MenuRow
+                icon={<IconCog />}
+                label="設定"
+                desc="チーム名やプラン、公開範囲を変更する"
+                onClick={() => board.setScreen("settings")}
+              />
+            </MenuGroup>
+          </>
+        ) : (
+          <MenuGroup>
+            <MenuRow
+              icon={<IconNote />}
+              label="サッカーノート"
+              desc="試合や練習を振り返ってノートに書く"
+              badge={noteUnread}
+              onClick={() => board.setScreen("notebook")}
+            />
+            <MenuRow
+              icon={<IconCalendarCheck />}
+              label="チーム"
+              desc="予定や試合の結果を確認する"
+              onClick={() => board.setScreen("team")}
+            />
+            <MenuRow
+              icon={<IconChat />}
+              label="チャット"
+              desc="スタッフやチームとメッセージをやりとりする"
+              onClick={() => board.setScreen("chat")}
+            />
+            <MenuRow
+              icon={<IconSetPiece />}
+              label="セットプレーデザイン"
+              desc="CK・FK・スローインの動きを設計して共有する"
+              onClick={() => board.setScreen("setpiece")}
+            />
+          </MenuGroup>
+        )}
+
+        <div className="mhome-foot">
+          <div className="mhome-footlogo">
+            ALFA<b> FOOTBALL</b>
+          </div>
+          <button type="button" className="mhome-logout" onClick={logout}>
+            ログアウト
+          </button>
         </div>
       </div>
     </div>
