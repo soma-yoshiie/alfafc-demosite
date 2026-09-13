@@ -39,12 +39,16 @@ export default function Header() {
 
   if (!pc) {
     // mobile-redesign §1-6: ブランドロゴ(ALFA FOOTBALL)→画面名に置換。.tag.teamの緑ピルは廃止し、
-    // 保存先タイトルがあれば画面名の下に小さく出す。戻り先はnavFromに従いhome/coachingへ（§1-3）
+    // 保存先タイトルがあれば画面名の下に小さく出す。戻り先はnavFromに従いhome/coaching/otherへ
+    // （§1-3。選手はセットプレーデザインを「その他」ハブからも開けるため、otherも丸め先に
+    // 含める。mobile-redesign-v2 §2）
     return (
       <MobileHeader
         title={isSp ? "セットプレーデザイン" : "戦術ボード"}
         subtitle={title || undefined}
-        onBack={() => board.setScreen(board.navFrom === "home" ? "home" : "coaching")}
+        onBack={() =>
+          board.setScreen(board.navFrom === "home" ? "home" : board.navFrom === "other" ? "other" : "coaching")
+        }
         actions={
           coach ? (
             // mobile-redesign Phase D-1(C1-critical): §1-6「アイコンボタン最大3つ」に収める。

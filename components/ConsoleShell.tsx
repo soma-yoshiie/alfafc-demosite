@@ -15,6 +15,7 @@ import {
   IconCone,
   IconFolder,
   IconLab,
+  IconMore,
   IconNote,
   IconSetPiece,
   IconWhistle,
@@ -70,27 +71,71 @@ function IconHome() {
   );
 }
 
-/** 下部タブ(.mtab)の「コーチング」がアクティブになる画面（mobile-redesign §1-1） */
-const MTAB_COACHING_SCREENS: ReadonlySet<ScreenKey> = new Set([
-  "coaching",
-  "board",
-  "setpiece",
-  "drill",
-  "library",
-]);
-/** 下部タブの「ホーム」がアクティブになる画面（コーチラボ・設定もホーム扱い） */
-const MTAB_HOME_SCREENS: ReadonlySet<ScreenKey> = new Set(["home", "settings", "articles"]);
-/** 選手・保護者用「ホーム」タブ: コーチのような「コーチング」タブが無いため、
- * ホームから到達できるsetpiece(セットプレーデザイン)・board/drill/library(到達経路があれば)
- * も含めて現在地を示す（mobile-redesign Phase D-1(C2-minor 観点1/§8-5-26)：
- * どのタブもアクティブにならない=現在地不明を防ぐ） */
-const MTAB_HOME_SCREENS_PLAYER: ReadonlySet<ScreenKey> = new Set([
-  ...MTAB_HOME_SCREENS,
-  "setpiece",
-  "board",
-  "drill",
-  "library",
-]);
+/** 下部タブ(.mtab)の1項目の定義。screens=このタブがアクティブになる画面、
+ * target=タップ時の遷移先画面（mobile-redesign-v2 §1）。
+ * スタッフ／選手それぞれ1つの配列にまとめ、順序・所属をここ1箇所で変えられるようにする */
+type MtabDef = {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  screens: ReadonlySet<ScreenKey>;
+  target: ScreenKey;
+};
+
+/** スタッフ（コーチ）用：ホーム／コーチング／ノート／チーム／その他 の5つ（mobile-redesign-v2 §1） */
+const STAFF_MTAB: readonly MtabDef[] = [
+  { key: "home", label: "ホーム", icon: <IconHome />, target: "home", screens: new Set(["home"]) },
+  {
+    key: "coaching",
+    label: "コーチング",
+    icon: <IconWhistle />,
+    target: "coaching",
+    screens: new Set(["coaching", "board", "setpiece", "drill", "library"]),
+  },
+  { key: "notebook", label: "ノート", icon: <IconNote />, target: "notebook", screens: new Set(["notebook"]) },
+  {
+    key: "team",
+    label: "チーム",
+    icon: <IconCalendarCheck />,
+    target: "team",
+    screens: new Set(["team", "chat"]),
+  },
+  {
+    key: "other",
+    label: "その他",
+    icon: <IconMore />,
+    target: "other",
+    screens: new Set(["other", "articles", "settings"]),
+  },
+];
+
+/** 選手・保護者用：ホーム／ノート／チーム／その他 の4つ（コーチングタブが無い。mobile-redesign-v2 §1） */
+const PLAYER_MTAB: readonly MtabDef[] = [
+  {
+    key: "home",
+    label: "ホーム",
+    icon: <IconHome />,
+    target: "home",
+    // mobile-redesign Phase D-1(C2-minor 観点1/§8-5-26)を踏襲：ホームから到達できる
+    // board/drill/library もホーム扱いにして「現在地不明」を防ぐ（setpieceは「その他」へ）
+    screens: new Set(["home", "board", "drill", "library"]),
+  },
+  { key: "notebook", label: "ノート", icon: <IconNote />, target: "notebook", screens: new Set(["notebook"]) },
+  {
+    key: "team",
+    label: "チーム",
+    icon: <IconCalendarCheck />,
+    target: "team",
+    screens: new Set(["team", "chat"]),
+  },
+  {
+    key: "other",
+    label: "その他",
+    icon: <IconMore />,
+    target: "other",
+    screens: new Set(["other", "articles", "settings", "setpiece"]),
+  },
+];
 
 /** 同じタブの再タップ時、現在の画面のスクロールコンテナを先頭へ戻す（§8-5-27）。
  * 各画面はそれぞれ .scroll（または .libpane/.libmain 等）を主要な可動域として持つため、
@@ -158,8 +203,9 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
     }).filter((n) => n.ts > seen).length;
   }, [coach, board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, teamCtx.team, seenVer]);
 
-  // 下部タブ(.mtab)。項目数はスタッフ5・選手/保護者4（mobile-redesign §1-1）。
-  // チャット未読は既存の未読計算が無いため出さない
+  // 下部タブ(.mtab)。項目数はスタッフ5・選手/保護者4（mobile-redesign-v2 §1）。
+  // チャット未読は既存の未読計算が無いため出さない。STAFF_MTAB/PLAYER_MTABの並びが
+  // そのままタブの並びになる（並び替えは配列の並びを変えるだけで済む）
   type MtabItem = {
     key: string;
     label: string;
@@ -168,76 +214,14 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
     on: boolean;
     onSelect: () => void;
   };
-  const mtabItems: MtabItem[] = coach
-    ? [
-        {
-          key: "home",
-          label: "ホーム",
-          icon: <IconHome />,
-          on: MTAB_HOME_SCREENS.has(board.screen),
-          onSelect: () => board.setScreen("home"),
-        },
-        {
-          key: "coaching",
-          label: "コーチング",
-          icon: <IconWhistle />,
-          on: MTAB_COACHING_SCREENS.has(board.screen),
-          onSelect: () => board.setScreen("coaching"),
-        },
-        {
-          key: "notebook",
-          label: "ノート",
-          icon: <IconNote />,
-          badge: noteUnread,
-          on: board.screen === "notebook",
-          onSelect: () => board.setScreen("notebook"),
-        },
-        {
-          key: "team",
-          label: "チーム",
-          icon: <IconCalendarCheck />,
-          on: board.screen === "team",
-          onSelect: () => board.setScreen("team"),
-        },
-        {
-          key: "chat",
-          label: "チャット",
-          icon: <IconChat />,
-          on: board.screen === "chat",
-          onSelect: () => board.setScreen("chat"),
-        },
-      ]
-    : [
-        {
-          key: "home",
-          label: "ホーム",
-          icon: <IconHome />,
-          on: MTAB_HOME_SCREENS_PLAYER.has(board.screen),
-          onSelect: () => board.setScreen("home"),
-        },
-        {
-          key: "notebook",
-          label: "ノート",
-          icon: <IconNote />,
-          badge: noteUnread,
-          on: board.screen === "notebook",
-          onSelect: () => board.setScreen("notebook"),
-        },
-        {
-          key: "team",
-          label: "チーム",
-          icon: <IconCalendarCheck />,
-          on: board.screen === "team",
-          onSelect: () => board.setScreen("team"),
-        },
-        {
-          key: "chat",
-          label: "チャット",
-          icon: <IconChat />,
-          on: board.screen === "chat",
-          onSelect: () => board.setScreen("chat"),
-        },
-      ];
+  const mtabItems: MtabItem[] = (coach ? STAFF_MTAB : PLAYER_MTAB).map((d) => ({
+    key: d.key,
+    label: d.label,
+    icon: d.icon,
+    badge: d.key === "notebook" ? noteUnread : undefined,
+    on: d.screens.has(board.screen),
+    onSelect: () => board.setScreen(d.target),
+  }));
 
   type Item = {
     key: string;

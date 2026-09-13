@@ -120,7 +120,9 @@ export default function CoachLabScreen() {
   const handleBack = () => {
     if (isRoot) {
       if (!confirmLeaveWrite()) return;
-      board.setScreen("home");
+      // ホームの行／その他ハブの行のどちらから開いたかでnavFromに従い戻る
+      // （mobile-redesign-v2 §2）
+      board.setScreen(board.navFrom === "home" ? "home" : "other");
     } else {
       back();
     }
@@ -175,8 +177,10 @@ export default function CoachLabScreen() {
       ) : (
         <>
           {/* mobile-redesign §1-6/§1-7: 共通ヘッダー＋ヘッダー直下セグメント。
-              .cl-mobilenav(下部ナビ)は廃止し、同じnavItemsをセグメントで表示する */}
-          <MobileHeader title={isRoot ? "コーチラボ" : tag} onBack={isRoot ? undefined : handleBack} />
+              .cl-mobilenav(下部ナビ)は廃止し、同じnavItemsをセグメントで表示する。
+              ルート(探す/フォロー中)でも、ホームの行/その他ハブの行のどちらから開いても
+              戻れるよう「‹戻る」を常に出す（mobile-redesign-v2 §2） */}
+          <MobileHeader title={isRoot ? "コーチラボ" : tag} onBack={handleBack} />
           {isRoot && (
             <div className="mseg-wrap">
               <MobileSegments ariaLabel="コーチラボの表示切替" items={navItems} />

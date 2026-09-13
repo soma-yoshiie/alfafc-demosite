@@ -631,14 +631,18 @@ export default function HomeMenu() {
               <MenuRow
                 icon={<IconCalendarCheck />}
                 label="チーム運営"
-                desc="名簿や出欠、試合の記録をまとめて管理する"
+                desc="予定・出欠・試合の記録・名簿"
                 onClick={() => board.setScreen("team")}
               />
               <MenuRow
                 icon={<IconChat />}
                 label="チャット"
                 desc="戦術や写真、動画をチームに送って共有する"
-                onClick={() => board.setScreen("chat")}
+                onClick={() => {
+                  // mobile-redesign-v2 §3-2: チャットはチームのチャットタブへ統合
+                  board.setTeamIntent({ tab: "chat" });
+                  board.setScreen("team");
+                }}
               />
             </MenuGroup>
             <MenuGroup title="その他">
@@ -675,7 +679,11 @@ export default function HomeMenu() {
               icon={<IconChat />}
               label="チャット"
               desc="スタッフやチームとメッセージをやりとりする"
-              onClick={() => board.setScreen("chat")}
+              onClick={() => {
+                // mobile-redesign-v2 §3-2: チャットはチームのチャットタブへ統合
+                board.setTeamIntent({ tab: "chat" });
+                board.setScreen("team");
+              }}
             />
             <MenuRow
               icon={<IconSetPiece />}

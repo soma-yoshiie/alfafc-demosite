@@ -13,6 +13,7 @@ import Toast from "./Toast";
 import ConsoleShell from "./ConsoleShell";
 import { LibraryScreen, SettingsScreen } from "./ConsoleScreens";
 import CoachingHub from "./CoachingHub";
+import OtherHub from "./OtherHub";
 import { CoachLabProvider } from "./CoachLab/CoachLabProvider";
 import CoachLabScreen from "./CoachLab/CoachLabScreen";
 
@@ -25,6 +26,8 @@ export default function AppRoot() {
       <ConsoleShell>
         {board.screen === "coaching" ? (
           <CoachingHub />
+        ) : board.screen === "other" ? (
+          <OtherHub />
         ) : board.screen === "drill" ? (
           <DrillEditor />
         ) : board.screen === "team" ? (

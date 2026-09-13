@@ -509,7 +509,7 @@ export function IconFlipH(p: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** その他（横並びの三点。MobileHeaderMoreのオーバーフローボタン専用） */
+/** その他（横並びの三点。MobileHeaderMoreのオーバーフローボタン／下部タブ「その他」で使用） */
 export function IconMore(p: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
@@ -517,5 +517,15 @@ export function IconMore(p: SVGProps<SVGSVGElement>) {
       <circle cx="12" cy="12" r="2" />
       <circle cx="19" cy="12" r="2" />
     </svg>
+  );
+}
+
+/** 追加（プラス）。MobileHeaderActionの「＋◯◯を追加/送る」系ボタン専用（mobile-redesign-v2 §3-3） */
+export function IconPlus(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </Svg>
   );
 }

@@ -137,7 +137,8 @@ export default function ChatScreen() {
   );
 }
 
-function CoachConversations({
+/** TeamHub.tsx のチャットタブ本体としてもそのまま使う（mobile-redesign-v2 §3-2） */
+export function CoachConversations({
   selected,
   onSelect,
 }: {
@@ -210,9 +211,13 @@ function CoachConversations({
   );
 }
 
-function PlayerChat() {
+/** TeamHub.tsx のチャットタブ本体としてもそのまま使う（mobile-redesign-v2 §3-2）。
+ * Phase D-1(C2 major): playerId省略時は従来どおりboard.auth.playerId(ログイン本人)。
+ * TeamHub.ChatTab はコーチが選手プレビュー中(isCoach=false、board.auth.playerIdはnull)
+ * にもこれを描画するため、その閲覧対象(team.viewer.memberPlayerId)を明示的に渡せるようにする */
+export function PlayerChat({ playerId }: { playerId?: string | null } = {}) {
   const board = useBoard();
-  const memberId = board.auth.playerId ?? null;
+  const memberId = (playerId !== undefined ? playerId : board.auth.playerId) ?? null;
   const myKey = memberId ? dmThreadKey(memberId) : "team";
   return (
     <div className="chattab" style={{ flex: 1 }}>

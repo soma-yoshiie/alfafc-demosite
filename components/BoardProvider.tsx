@@ -792,7 +792,9 @@ export type ScreenName =
   | "notebook"
   | "library"
   | "articles"
-  | "settings";
+  | "settings"
+  /** 「その他」ハブ（新設・スマホ専用。mobile-redesign-v2 §2）。PCレールには出さない */
+  | "other";
 
 interface BoardContextValue {
   state: BoardState;
@@ -975,9 +977,9 @@ interface BoardContextValue {
   drillIntent: "library" | { open: string } | null;
   setDrillIntent: (v: "library" | { open: string } | null) => void;
   /** チームHub: 他画面からタブ・選手・予定を指定して遷移させる意図（消費後はnullに戻す） */
-  teamIntent: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string; eventId?: string } | null;
+  teamIntent: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string } | null;
   setTeamIntent: (
-    v: { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string; eventId?: string } | null
+    v: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string } | null
   ) => void;
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
@@ -1615,7 +1617,7 @@ export function BoardProvider({
   const [matchesPublic, setMatchesPublicState] = useState(true);
   const [drillIntent, setDrillIntent] = useState<"library" | { open: string } | null>(null);
   const [teamIntent, setTeamIntent] = useState<
-    { tab: "home" | "att" | "cal" | "rec" | "ros"; playerId?: string; eventId?: string } | null
+    { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string } | null
   >(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
   // lazy初期化で保存データを直接読む（mount後のload→saveの競合・上書きを防ぐ。TeamProviderと同方針）
@@ -2218,10 +2220,21 @@ export function BoardProvider({
   // 残留・復活するのを防ぐ）。setScreen→openSheetの順で呼ぶ既存フローは、
   // 直後のopenSheetが最終的なsheet値を上書きするため影響しない
   const setScreen = useCallback((s: ScreenName) => {
-    // board/setpiece/drill/library へ入るときだけ navFrom を更新する（直前画面がhomeならhome、
+    // board/drill/library へ入るときだけ navFrom を更新する（直前画面がhomeならhome、
     // それ以外（coaching含む）はcoachingへ丸める。詳細な履歴は持たず単純化）
-    if (s === "board" || s === "setpiece" || s === "drill" || s === "library") {
+    if (s === "board" || s === "drill" || s === "library") {
       setNavFromState(screenRef.current === "home" ? "home" : "coaching");
+    } else if (s === "setpiece") {
+      // 選手は「その他」ハブ（OtherHub）からも入れるため、その場合は other へ丸める
+      // （mobile-redesign-v2 §2）。コーチはOtherHubからsetpieceへ入らないため
+      // 実質home/coachingの2値のまま
+      setNavFromState(
+        screenRef.current === "home" ? "home" : screenRef.current === "other" ? "other" : "coaching"
+      );
+    } else if (s === "articles" || s === "settings") {
+      // コーチラボ・設定はホームの行／その他ハブの行のどちらからも開けるため、
+      // その2値だけ丸める（mobile-redesign-v2 §2）
+      setNavFromState(screenRef.current === "home" ? "home" : "other");
     }
     setSheet({ type: null });
     setScreenState(s);

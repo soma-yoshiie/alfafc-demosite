@@ -55,10 +55,11 @@ import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
-import { IconEdit } from "./icons";
+import { IconEdit, IconPlus } from "./icons";
 import { fmtFitnessValue } from "@/lib/fitness";
-import { MobileHeader } from "./MobileHeader";
+import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
+import { CoachConversations, PlayerChat } from "./ChatScreen";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -255,15 +256,17 @@ function Sheet({
   );
 }
 
-type Tab = "home" | "att" | "cal" | "rec" | "ros";
+// mobile-redesign-v2 §3-1: 「ホーム」タブは廃止（チームを開いたら常にカレンダー）。
+// 「att」(出欠)はタブとしては到達不能だが、AttendanceTab自体はPCの都合で残すためTab型にも残す
+type Tab = "att" | "cal" | "rec" | "ros" | "chat";
 
 // PC専用コンソールシェルの左レール：タブ帯と同じ項目をサブメニューとしても出すためのアイコン対応
 const ICON: Record<Tab, Parameters<typeof E>[0]["n"]> = {
-  home: "chart",
   att: "check",
   cal: "calendar",
   rec: "trophy",
   ros: "users",
+  chat: "comment",
 };
 
 type SheetState =
@@ -301,8 +304,9 @@ function Inner() {
   // PC(min-width:1024px)ではシートをモーダルでなく.teammain内のペインとして描画するため、
   // SheetHostの出し分け・.teammainの描画条件で使う
   const pc = usePc();
-  // PC初期タブ=カレンダー、モバイル初期タブ=ホーム（既存のpc判定で分岐。モバイルのタブ構成・チップ列は不変）
-  const [tab, setTab] = useState<Tab>(() => (pc ? "cal" : "home"));
+  // 初期タブ=カレンダー（PC/モバイル共通。mobile-redesign-v2 §3-1: チームを開いたら
+  // カレンダーが表示される＝チームの中の「ホーム」は無い）
+  const [tab, setTab] = useState<Tab>(() => "cal");
   const [sheet, setSheet] = useState<SheetState>(null);
   // カレンダーの表示月・表示モードはタブを跨いで保持する
   const now = new Date();
@@ -332,13 +336,42 @@ function Inner() {
     ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null
     : null;
 
-  const tabs: [Tab, string][] = [["home", "ホーム"]];
-  // 出欠はスタッフ専任（選手・選手プレビューには出さない）
-  if (isCoach) tabs.push(["att", "出欠"]);
-  tabs.push(["cal", "カレンダー"], ["rec", "試合記録"]);
   // 名簿は表示中のロールに合わせる（選手プレビュー時は隠して見え方を揃える）
-  if (isCoach && board.auth.role === "coach") tabs.push(["ros", "名簿"]);
-  const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : pc ? "cal" : "home";
+  const showRos = isCoach && board.auth.role === "coach";
+  // mobile-redesign-v2 §3-1: tabsの生成をpcで分岐する。PCはタブ帯自体が非表示
+  // （.teamapp .fbar{display:none}）のため実質不変。ホームタブはHomeTab削除に伴い
+  // PC/モバイル両方の配列から外す（出欠はPC専用のサブメニュー入口として残す）。
+  // モバイルは新しい配列（カレンダー/試合記録/名簿(スタッフのみ)/チャット）にする。
+  // 並び替えは各配列の並びを変えるだけで済む
+  let tabs: [Tab, string][];
+  if (pc) {
+    tabs = [];
+    // 出欠はスタッフ専任（選手・選手プレビューには出さない）
+    if (isCoach) tabs.push(["att", "出欠"]);
+    tabs.push(["cal", "カレンダー"], ["rec", "試合記録"]);
+    if (showRos) tabs.push(["ros", "名簿"]);
+  } else {
+    tabs = [["cal", "カレンダー"], ["rec", "試合記録"]];
+    if (showRos) tabs.push(["ros", "名簿"]);
+    tabs.push(["chat", "チャット"]);
+  }
+  const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "cal";
+  // mobile-redesign-v2 §3-3: 右のヘッダーアクション（タブ連動で1つだけ・スタッフのみ）。
+  // PCのヘッダーCTA(.teamcta)と同じ対象・同じラベルにする。
+  // Phase D-1(C2 major): ログインロール(board.auth.role)だけでなく閲覧ロール(isCoach=
+  // team.viewer.role==="coach")も見る。選手プレビュー中はスタッフ操作を出さない
+  const headerAction: { label: string; onClick: () => void } | null =
+    !isCoach || board.auth.role !== "coach"
+      ? null
+      : activeTab === "cal"
+        ? { label: "予定を追加", onClick: () => setSheet({ type: "event" }) }
+        : activeTab === "rec"
+          ? { label: "試合結果を記録", onClick: () => setSheet({ type: "match" }) }
+          : activeTab === "ros"
+            ? { label: "選手を追加", onClick: () => setSheet({ type: "playerForm" }) }
+            : activeTab === "chat"
+              ? { label: "連絡を送る", onClick: () => setSheet({ type: "announce" }) }
+              : null;
 
   // PC専用コンソールシェルの左レール：チーム運営項目の直下にタブ帯と同じ一覧を出す。
   // レールはスクリム(left:208px)の外にあるため、シートを開いたままタブ切替できてしまう。
@@ -397,8 +430,8 @@ function Inner() {
 
   // teamIntent消費: 他画面からの「チームHubのこのタブ・選手を開く」という遷移指示を反映する。
   // コーチが選手プレビュー中(team.viewer.role!=="coach")にros/attを指すintentが来た場合、
-  // そのままではタブがコーチ専任のため出ずhomeに丸められてしまう。先にスタッフ表示へ戻す。
-  // 選手ログイン(board.auth.role!=="coach")でros等が来た場合はtabsに無く自然にhomeへ丸まる
+  // そのままではタブがコーチ専任のため出ずcalに丸められてしまう。先にスタッフ表示へ戻す。
+  // 選手ログイン(board.auth.role!=="coach")でros等が来た場合はtabsに無く自然にcalへ丸まる
   // だけなので、intentを破棄する以上の特別処理はしない(現状維持)
   useEffect(() => {
     const intent = board.teamIntent;
@@ -407,14 +440,13 @@ function Inner() {
     if (board.auth.role === "coach" && team.viewer.role !== "coach" && intent.tab === "ros") {
       team.setViewer("coach", null);
     }
-    // PCサブメニューから「ホーム」「出欠」を外したため、intentがそれらを指す場合はカレンダーへ
-    // フォールバックする（モバイルはタブ構成不変のため従来どおりintent.tabをそのまま使う）
-    const targetTab: Tab = pc && (intent.tab === "att" || intent.tab === "home") ? "cal" : intent.tab;
+    // home/attのintentはPC・モバイルどちらでもカレンダーへ丸める（mobile-redesign-v2 §3-1）
+    const targetTab: Tab = intent.tab === "att" || intent.tab === "home" ? "cal" : intent.tab;
     setTab(targetTab);
     if (intent.playerId) setRosSel(intent.playerId);
     if (intent.eventId) setSheet({ type: "eventView", id: intent.eventId });
     board.setTeamIntent(null);
-  }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer, pc]);
+  }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer]);
 
   return (
     <div className="app teamapp">
@@ -457,40 +489,67 @@ function Inner() {
           )}
         </header>
       ) : (
-        // mobile-redesign §1-6: 下部タブ「チーム」の直下画面のため戻るは出さない
-        <MobileHeader title={board.auth.role === "coach" ? "チーム運営" : "チーム"} />
+        // mobile-redesign-v2 §3-3: タイトルは変更なし。右のアクションはタブ連動で1つだけ
+        // （スタッフのみ・headerActionで算出済み）。下部タブ「チーム」の直下画面のため戻るは出さない
+        <MobileHeader
+          title={board.auth.role === "coach" ? "チーム運営" : "チーム"}
+          actions={
+            headerAction && (
+              <MobileHeaderAction primary label={headerAction.label} onClick={headerAction.onClick}>
+                <IconPlus />
+              </MobileHeaderAction>
+            )
+          }
+        />
       )}
 
-      {board.auth.role === "coach" ? (
-        <div className="rolebar">
-          <span>表示</span>
-          <select
-            value={isCoach ? "coach" : team.viewer.memberPlayerId ?? ""}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === "coach") team.setViewer("coach", null);
-              else team.setViewer("member", v);
-            }}
-          >
-            <option value="coach">スタッフ（管理）</option>
-            <optgroup label="選手・保護者として">
-              {players.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-          <span className="rolehint">
-            {isCoach ? "全員を管理" : `${me?.name ?? "選手"} として閲覧`}
-          </span>
-        </div>
+      {pc ? (
+        // PCのrolebarは変更しない
+        board.auth.role === "coach" ? (
+          <div className="rolebar">
+            <span>表示</span>
+            <select
+              value={isCoach ? "coach" : team.viewer.memberPlayerId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v === "coach") team.setViewer("coach", null);
+                else team.setViewer("member", v);
+              }}
+            >
+              <option value="coach">スタッフ（管理）</option>
+              <optgroup label="選手・保護者として">
+                {players.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <span className="rolehint">
+              {isCoach ? "全員を管理" : `${me?.name ?? "選手"} として閲覧`}
+            </span>
+          </div>
+        ) : (
+          <div className="rolebar">
+            <span className="rolehint" style={{ textAlign: "left", flex: 1 }}>
+              {me?.name ?? "選手"} さんとして閲覧できます
+            </span>
+          </div>
+        )
       ) : (
-        <div className="rolebar">
-          <span className="rolehint" style={{ textAlign: "left", flex: 1 }}>
-            {me?.name ?? "選手"} さんとして閲覧できます
-          </span>
-        </div>
+        // mobile-redesign-v2 §3-3: スマホでは通常時のrolebarは出さない。選手として閲覧中
+        // だけセグメントの上に帯を出す（戻すボタンで復帰。名簿タブの「選手・保護者の見え方を
+        // 確認」からこの状態に入る）。選手ログイン時の帯（「〇〇さんとして閲覧できます」）は
+        // スマホでは出さない
+        !isCoach &&
+        board.auth.role === "coach" && (
+          <div className="mrolebanner">
+            <span>{me?.name ?? "選手"}さんとして閲覧中</span>
+            <button type="button" onClick={() => team.setViewer("coach", null)}>
+              スタッフ表示に戻す
+            </button>
+          </div>
+        )
       )}
 
       {/* mobile-redesign §1-7: 既存の上部タブ帯を.mseg様式に統一（PCでは従来どおり.fbar自体が非表示） */}
@@ -529,9 +588,6 @@ function Inner() {
                 />
               ) : (
                 <>
-                  {activeTab === "home" && (
-                    <HomeTab isCoach={isCoach} setSheet={setSheet} setTab={setTab} />
-                  )}
                   {activeTab === "att" && (
                     <AttendanceTab
                       isCoach={isCoach}
@@ -564,6 +620,7 @@ function Inner() {
                   {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
                     <RosterTab players={players} setSheet={setSheet} rosSel={rosSel} setRosSel={setRosSel} />
                   )}
+                  {activeTab === "chat" && <ChatTab isCoach={isCoach} setSheet={setSheet} />}
                 </>
               )}
             </div>
@@ -660,110 +717,20 @@ function sheetKey(s: SheetState): string {
   return s.type;
 }
 
-/* ---------------- ホーム ---------------- */
-function HomeTab({
+/* ---------------- チャット（チーム運営内。mobile-redesign-v2 §3-2） ---------------- */
+function ChatTab({
   isCoach,
   setSheet,
-  setTab,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
-  setTab: (t: Tab) => void;
 }) {
-  const board = useBoard();
   const team = useTeam();
-  const today = todayStr();
-  const upcoming = team.team.events
-    .filter((e) => isUpcomingOrOngoing(e, today))
-    .sort(byDateAsc);
-  const next = upcoming[0];
-  const nextCat = next ? categoryOf(next, team.categories) : null;
   const anns = team.team.announcements;
-  const matches = [...team.team.matches].sort((a, b) => (a.date < b.date ? 1 : -1));
-  const latest = matches[0];
-  let w = 0,
-    d = 0,
-    l = 0,
-    gf = 0,
-    ga = 0;
-  matches.forEach((m) => {
-    gf += m.ourScore;
-    ga += m.theirScore;
-    if (m.ourScore > m.theirScore) w++;
-    else if (m.ourScore === m.theirScore) d++;
-    else l++;
-  });
-  const showMatches = isCoach || board.matchesPublic;
-  const s = next ? team.summary(next.id) : null;
 
   return (
-    // 試合非表示時はサイド列を作らず1カラム（空の360px列を残さない）
-    <div className={`hometab${showMatches ? "" : " solo"}`}>
-      <div className="httop">
-        {isCoach && (
-          <div className="quickrow">
-            <button className="bigbtn" onClick={() => setSheet({ type: "event" })}>
-              ＋ 予定を追加
-            </button>
-            <button className="bigbtn ghost" onClick={() => setSheet({ type: "match" })}>
-              ＋ 試合結果を記録
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="htmain">
-      <div className="sech">次の予定</div>
-      {!next ? (
-        <div className="empty-msg" style={{ padding: "14px 0" }}>
-          今後の予定はありません。
-        </div>
-      ) : (
-        <div className="evcard">
-          <div className="evhead">
-            <span className="evkind" style={{ background: nextCat?.color }}>
-              {nextCat?.label}
-            </span>
-            <span className="evtitle">{next.title}</span>
-            {/* 選手には、シートがカード以上の情報(場所・住所・メモ・繰り返し=地図等)を
-                持つ場合のみ詳細導線を出す。コーチは出欠記録があるため常に表示 */}
-            {(isCoach || next.place || next.address || next.note || next.seriesId) && (
-              <span className="evopen" onClick={() => setSheet({ type: "eventView", id: next.id })}>
-                詳細 ›
-              </span>
-            )}
-          </div>
-          <div className="homewhen">
-            {evWhenText(next)}
-            {isOngoing(next, today) && <span className="ongoing">開催中</span>}
-          </div>
-          {next.place && (
-            <div className="evmeta">
-              <E n="pin" /> {next.place}
-            </div>
-          )}
-          {next.note && <div className="evnote">{next.note}</div>}
-          {isCoach && s && (
-            <div className="evsummary" onClick={() => setSheet({ type: "attendance", eventId: next.id })}>
-              <span className="att yes">出席 {s.yes}</span>
-              <span className="att maybe">未定 {s.maybe}</span>
-              <span className="att no">欠席 {s.no}</span>
-              <span className="att none">未記録 {s.none}</span>
-              <span className="evopen">記録を見る ›</span>
-            </div>
-          )}
-        </div>
-      )}
-      {upcoming.length > 1 && (
-        <div
-          className="seclink"
-          style={{ textAlign: "right" }}
-          onClick={() => setTab(isCoach ? "att" : "cal")}
-        >
-          ほか {upcoming.length - 1} 件の予定を見る ›
-        </div>
-      )}
-
+    <>
+      {/* 旧ホームタブの「連絡」をそのまま上部へ移設 */}
       <div className="sech">
         連絡
         {anns.length > 2 && (
@@ -784,71 +751,23 @@ function HomeTab({
       ) : (
         anns.slice(0, 2).map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} />)
       )}
-      </div>
 
-      {showMatches && (
-      <div className="htside">
-        <>
-          <div className="sech">
-            試合
-            <span className="seclink" onClick={() => setTab("rec")}>
-              試合記録へ ›
-            </span>
-          </div>
-          {matches.length === 0 ? (
-            <div className="empty-msg" style={{ padding: "8px 0" }}>
-              まだ試合記録がありません。
-            </div>
-          ) : (
-            <>
-              <div className="statrow" style={{ marginBottom: 8 }}>
-                <div className="statbox">
-                  <div className="sk">試合</div>
-                  <div className="sv">{matches.length}</div>
-                </div>
-                <div className="statbox">
-                  <div className="sk">勝-分-敗</div>
-                  <div className="sv">
-                    {w}-{d}-{l}
-                  </div>
-                </div>
-                <div className="statbox">
-                  <div className="sk">得点-失点</div>
-                  <div className="sv">
-                    {gf}-{ga}
-                  </div>
-                </div>
-              </div>
-              {latest &&
-                (() => {
-                  const win = latest.ourScore > latest.theirScore;
-                  const draw = latest.ourScore === latest.theirScore;
-                  return (
-                    <div
-                      className="matchcard"
-                      onClick={() => setSheet({ type: "matchView", id: latest.id })}
-                    >
-                      <div className={`mres ${win ? "w" : draw ? "d" : "l"}`}>
-                        {win ? "勝" : draw ? "分" : "敗"}
-                      </div>
-                      <div className="mmid">
-                        <div className="mopp">vs {latest.opponent}</div>
-                        <div className="msub">{fmtDate(latest.date)}</div>
-                      </div>
-                      <div className="mscore">
-                        {latest.ourScore}
-                        <span>-</span>
-                        {latest.theirScore}
-                      </div>
-                    </div>
-                  );
-                })()}
-            </>
-          )}
-        </>
-      </div>
+      {/* ChatScreen.tsx の会話一覧／自分のスレッドをそのままタブ本体として描画する
+          （会話をタップすると既存どおり openSheet({type:"chat"}) が開く）。
+          Phase D-1(C2 major): isCoachは閲覧ロール(viewer.role)なので、コーチが選手
+          プレビュー中(isCoach=false)はPlayerChatが出る。その際board.auth.playerIdは
+          コーチアカウントのためnullになり送信が無言で失敗するので、プレビュー対象の
+          selectedPlayerIdをそのまま渡す */}
+      {/* v2 目視レビュー(major-5): 「連絡」と会話の境界が無かったため見出しを1本入れる */}
+      <div className="sech">メッセージ</div>
+      {isCoach ? (
+        <CoachConversations selected={null} onSelect={() => {}} />
+      ) : (
+        <div className="teamchatthread">
+          <PlayerChat playerId={team.viewer.memberPlayerId} />
+        </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -990,6 +909,9 @@ function EventCard({
     >
       <div className="evhead">
         <span className="evkind" style={{ background: cat.color }}>
+          {/* mobile-redesign-v2 §3-4: 種別ピルの塗りをスマホでは--surface-lowへ打ち消す分、
+              種別の色はこの8pxの丸(evdot)で示す。PCは変更なし(PC resetでdisplay:none) */}
+          <i className="evdot" style={{ background: cat.color }} />
           {cat.label}
         </span>
         <span className="evtitle">{ev.title}</span>
@@ -1065,6 +987,7 @@ function CalendarTab({
   setView: (v: "month" | "list") => void;
 }) {
   const team = useTeam();
+  const pc = usePc();
 
   const first = new Date(ym.y, ym.m, 1);
   const startWd = first.getDay();
@@ -1099,6 +1022,45 @@ function CalendarTab({
     })
   );
   const monthCats = Array.from(monthCatMap.values());
+
+  // 日付ごとの予定行（リスト表示と、スマホの月表示下の「今日からの予定」で共用）
+  const renderAgendaRows = (days: typeof monthDays) =>
+    days.map(({ d, ds, evs }) => {
+      const wd = new Date(ym.y, ym.m, d).getDay();
+      return (
+        <div key={ds} className={`agrow${ds === today ? " today" : ""}`}>
+          <div className={`agdate${wd === 0 ? " sun" : wd === 6 ? " sat" : ""}`}>
+            <b>{d}</b>
+            <span>{WD[wd]}</span>
+          </div>
+          <div className="agevents">
+            {evs.map((e) => {
+              const timeLabel = isMultiDay(e)
+                ? `${fmtMD(e.date)}〜${fmtMD(eventEndDate(e))}`
+                : e.allDay
+                  ? "終日"
+                  : fmtTimeRange(e);
+              const cat = categoryOf(e, team.categories);
+              return (
+                <div
+                  key={e.id}
+                  className={`agbar ${e.kind}`}
+                  style={{ borderLeftColor: cat.color }}
+                  onClick={() => setSheet({ type: "eventView", id: e.id })}
+                >
+                  <span className="agkind" style={{ background: cat.color }}>
+                    <i className="evdot" style={{ background: cat.color }} />
+                    {cat.label}
+                  </span>
+                  <span className="agtitle">{e.title}</span>
+                  {timeLabel && <span className="agtime">{timeLabel}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    });
 
   return (
     <div className="cal">
@@ -1188,6 +1150,32 @@ function CalendarTab({
               {isCoach && <span className="calhint">日付をタップで予定を追加</span>}
             </div>
           )}
+          {/* v2 目視レビュー(minor-10): 月表示だけでは時刻・場所が読めず下半分が空くため、
+              スマホでは月グリッドの下に予定の行（当月なら今日以降、最大5日分）を続ける。PC は変更しない */}
+          {!pc &&
+            (() => {
+              const isThisMonth = today.startsWith(`${ym.y}-${String(ym.m + 1).padStart(2, "0")}`);
+              const days = isThisMonth ? monthDays.filter((x) => x.ds >= today) : monthDays;
+              return (
+                <div className="agenda calagenda">
+                  <div className="sech">
+                    {isThisMonth ? "今日からの予定" : "この月の予定"}
+                    {days.length > 5 && (
+                      <span className="seclink" onClick={() => setView("list")}>
+                        すべて見る ›
+                      </span>
+                    )}
+                  </div>
+                  {days.length === 0 ? (
+                    <div className="empty-msg" style={{ padding: "8px 0" }}>
+                      {isThisMonth ? "今日以降の予定はありません。" : "この月の予定はありません。"}
+                    </div>
+                  ) : (
+                    renderAgendaRows(days.slice(0, 5))
+                  )}
+                </div>
+              );
+            })()}
         </>
       ) : (
         <div className="agenda">
@@ -1198,41 +1186,11 @@ function CalendarTab({
               月を変更すると他の予定を確認できます
             </div>
           ) : (
-            monthDays.map(({ d, ds, evs }) => {
-              const wd = new Date(ym.y, ym.m, d).getDay();
-              return (
-                <div key={ds} className={`agrow${ds === today ? " today" : ""}`}>
-                  <div className={`agdate${wd === 0 ? " sun" : wd === 6 ? " sat" : ""}`}>
-                    <b>{d}</b>
-                    <span>{WD[wd]}</span>
-                  </div>
-                  <div className="agevents">
-                    {evs.map((e) => {
-                      const timeLabel = isMultiDay(e)
-                        ? `${fmtMD(e.date)}〜${fmtMD(eventEndDate(e))}`
-                        : e.allDay
-                          ? "終日"
-                          : fmtTimeRange(e);
-                      const cat = categoryOf(e, team.categories);
-                      return (
-                        <div
-                          key={e.id}
-                          className={`agbar ${e.kind}`}
-                          style={{ borderLeftColor: cat.color }}
-                          onClick={() => setSheet({ type: "eventView", id: e.id })}
-                        >
-                          <span className="agkind" style={{ background: cat.color }}>{cat.label}</span>
-                          <span className="agtitle">{e.title}</span>
-                          {timeLabel && <span className="agtime">{timeLabel}</span>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })
+            renderAgendaRows(monthDays)
           )}
-          {isCoach && (
+          {/* mobile-redesign-v2 §3-3: スマホではヘッダー右上の「予定を追加」に一本化し、
+              リスト表示末尾の全幅緑ボタンは描画しない（PCは変更しない） */}
+          {isCoach && pc && (
             <button
               className="bigbtn"
               style={{ width: "100%", margin: "10px 0 0" }}
@@ -1321,7 +1279,9 @@ function MatchesTab({
         </button>
       )}
       {isCoach && (
-        <div className="evnote" style={{ margin: "12px 2px 4px" }}>
+        // mobile-redesign-v2 §3-4: この注記だけ--mut化するため専用クラスpubnoteを追加
+        // （.evnoteは予定のメモ等でも使われる共有クラスのため、そちらは変更しない）
+        <div className="evnote pubnote" style={{ margin: "12px 2px 4px" }}>
           {board.matchesPublic
             ? "選手・保護者に公開中（設定で変更できます）"
             : "選手・保護者に非公開（設定で変更できます）"}
@@ -1415,13 +1375,8 @@ function MatchesTab({
         </div>
       )}
 
-      {/* PCでは記録導線をヘッダー右上の「＋ 試合結果を記録」に一本化(ページ内の大ボタンは出さない)。
-          モバイルはヘッダーCTAが無いため従来どおりここに残す */}
-      {isCoach && !pc && (
-        <button className="bigbtn" style={{ width: "100%", margin: "10px 0 6px" }} onClick={() => setSheet({ type: "match" })}>
-          ＋ 試合結果を記録
-        </button>
-      )}
+      {/* mobile-redesign-v2 §3-3: PC・スマホともヘッダーの「＋ 試合結果を記録」に一本化した
+          ため、ページ内の全幅緑ボタンは出さない（PCは元々!pcで非表示だったため変更なし） */}
 
       {matches.length === 0 ? (
         <div className="empty-msg">まだ試合記録がありません。</div>
@@ -1479,6 +1434,7 @@ function RosterTab({
   setRosSel?: (id: string | null) => void;
 }) {
   const board = useBoard();
+  const team = useTeam();
   const pc = usePc();
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
@@ -1579,13 +1535,42 @@ function RosterTab({
         })}
         </div>
       )}
-      <button
-        className="bigbtn"
-        style={{ width: "100%", margin: "8px 0 0" }}
-        onClick={() => setSheet({ type: "playerForm" })}
-      >
-        ＋ 新規選手を追加
-      </button>
+      {/* mobile-redesign-v2 §3-3: 名簿の全幅緑ボタンはスマホでは描画しない
+          （スマホはヘッダー右上の「選手を追加」に一本化。PCは変更しない） */}
+      {pc && (
+        <button
+          className="bigbtn"
+          style={{ width: "100%", margin: "8px 0 0" }}
+          onClick={() => setSheet({ type: "playerForm" })}
+        >
+          ＋ 新規選手を追加
+        </button>
+      )}
+      {/* mobile-redesign-v2 §3-3: 通常時は出さないrolebarの代わりに、名簿タブ末尾へ
+          「選手・保護者の見え方を確認」を1行置く（既存のselectをそのまま使う） */}
+      {!pc && board.auth.role === "coach" && (
+        <div className="rosviewrow">
+          <span>選手・保護者の見え方を確認</span>
+          <select
+            aria-label="選手・保護者の見え方を確認"
+            value={team.viewer.role === "coach" ? "coach" : team.viewer.memberPlayerId ?? ""}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === "coach") team.setViewer("coach", null);
+              else team.setViewer("member", v);
+            }}
+          >
+            <option value="coach">スタッフ（管理）</option>
+            <optgroup label="選手・保護者として">
+              {players.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+      )}
     </>
   );
 }
@@ -1710,7 +1695,8 @@ function MatchDetailBody({
     <>
       <h2>
         vs {m.opponent}
-        <span>{win ? "WIN" : draw ? "DRAW" : "LOSE"}</span>
+        {/* v2 目視レビュー(major-3): 一覧の「勝/分/敗」と揃える（英字バッジをやめる） */}
+        <span>{win ? "勝" : draw ? "分" : "敗"}</span>
       </h2>
       <div className="mvscore">
         {m.ourScore} <small>-</small> {m.theirScore}
@@ -1790,7 +1776,9 @@ function MatchDetailBody({
       </div>
       {isCoach && (
         <>
-          <button className="bigbtn ghost" onClick={onEdit}>
+          {/* v2 目視レビュー(major-2): スマホでは主操作を --accent 地に（PC は ghost のまま。
+              .accent の規則は .teamapp:has(.mhead) 配下限定） */}
+          <button className="bigbtn ghost accent" onClick={onEdit}>
             編集する
           </button>
           <button
@@ -1876,7 +1864,9 @@ function PlayerDetailBody({
       </div>
       {isCoach && (
         <>
-          <button className="bigbtn" onClick={onEdit}>
+          {/* v2 目視レビュー(major-1/2): スマホの詳細シートの主操作は3シートとも --accent 地に統一
+              （.accent は .teamapp:has(.mhead) 配下でだけ効く。PC は従来どおり） */}
+          <button className="bigbtn accent" onClick={onEdit}>
             編集する
           </button>
           <button
@@ -3693,7 +3683,10 @@ function SheetHost({
                         onClick={() => setSheet({ type: "eventView", id: e.id })}
                       >
                         <div className="evhead">
-                          <span className="evkind" style={{ background: cat.color }}>{cat.label}</span>
+                          <span className="evkind" style={{ background: cat.color }}>
+                            <i className="evdot" style={{ background: cat.color }} />
+                            {cat.label}
+                          </span>
                           <span className="evtitle">{e.title}</span>
                           <span className="evopen" style={{ marginLeft: "auto" }}>詳細 ›</span>
                         </div>
@@ -3706,7 +3699,10 @@ function SheetHost({
               )}
             </div>
             {isCoach && (
-              <button className="bigbtn" onClick={() => setSheet({ type: "event", date: sheet.date })}>
+              // mobile-redesign-v2 §3-4(緑残存の自動走査対応): table未記載だが、日別シートも
+              // 緑残存走査の対象(予定詳細と同じ導線)のため、モバイルではghost(--ink)にする。
+              // PC(pane)は変更しない
+              <button className={`bigbtn${pane ? "" : " ghost"}`} onClick={() => setSheet({ type: "event", date: sheet.date })}>
                 ＋ この日に予定を追加
               </button>
             )}
@@ -3738,7 +3734,13 @@ function SheetHost({
               <>
                 <h2>
                   {e.title}
-                  <span style={{ background: cat.color, color: "#ffffff" }}>{cat.label}</span>
+                  {/* Phase D-1(C3 major): 他2箇所(EventCard/リスト表示)と同じclassName="evkind"
+                      構成にする。無印styleのままだと.teamapp:has(.mhead)の打ち消しが効かず、
+                      このシートだけ種別ピルが色塗り+白文字のまま残ってしまう */}
+                  <span className="evkind" style={{ background: cat.color }}>
+                    <i className="evdot" style={{ background: cat.color }} />
+                    {cat.label}
+                  </span>
                 </h2>
                 <div className="detail">
                   <div className="dsec">
@@ -3812,7 +3814,12 @@ function SheetHost({
                   <>
                     {e.kind === "match" && (
                       <button
-                        className="bigbtn"
+                        // mobile-redesign-v2 §3-4(緑残存の自動走査対応): 緑残存走査の対象
+                        // (予定詳細)のため、モバイルでは--accent地の強調にする(PC(pane)は
+                        // 変更しない・元の緑bigbtnのまま)。Phase D-1(C2 minor review):
+                        // 直下の「編集する」もghostだと主従の差が消えるため、試合の予定は
+                        // こちらを唯一の強調にする
+                        className={`bigbtn${pane ? "" : " accent"}`}
                         onClick={() =>
                           setSheet({
                             type: "match",
@@ -3829,7 +3836,14 @@ function SheetHost({
                       </button>
                     )}
                     <button
-                      className={`bigbtn${e.kind === "match" ? " ghost" : ""}`}
+                      // Phase D-1(C2 minor review): モバイルでは主操作を1つだけ強調する。
+                      // 試合の予定は上の「この試合の結果を記録」が主役なのでghost、
+                      // 非試合の予定はこちらが唯一の操作なのでaccentで強調する
+                      className={
+                        pane
+                          ? `bigbtn${e.kind === "match" ? " ghost" : ""}`
+                          : `bigbtn${e.kind === "match" ? " ghost" : " accent"}`
+                      }
                       onClick={() => setSheet({ type: "event", event: e })}
                     >
                       編集する

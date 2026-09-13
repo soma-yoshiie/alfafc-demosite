@@ -672,7 +672,8 @@ function DrillPreview({ drill }: { drill: SavedDrill }) {
 
 export function SettingsScreen() {
   const board = useBoard();
-  // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
+  // 戻りラベル: PCは常にホームへ「‹ ホーム」。モバイルはnavFromに従いhome/otherへ
+  // （ホームの行/その他ハブの行のどちらから開いたかで戻り先が変わる。mobile-redesign-v2 §2）
   const pc = usePc();
 
   return (
@@ -690,8 +691,11 @@ export function SettingsScreen() {
           </div>
         </header>
       ) : (
-        // mobile-redesign §1-6: 下部タブ「ホーム」配下の画面のため戻るは出す（ホームのメニュー行/歯車から遷移）
-        <MobileHeader title="設定" onBack={() => board.setScreen("home")} />
+        // mobile-redesign §1-6: 戻るは出す（ホームの行／その他ハブの行のどちらからも遷移する）
+        <MobileHeader
+          title="設定"
+          onBack={() => board.setScreen(board.navFrom === "home" ? "home" : "other")}
+        />
       )}
       <div className="scroll screenbody">
         <div className="setwrap">

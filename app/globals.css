@@ -1516,6 +1516,14 @@ header {
 .pos.fw {
   background: var(--orange);
 }
+/* mobile-redesign-v2 §3-4(緑残存の自動走査対応): table未記載だが、名簿(緑残存走査の
+   対象画面)でMFのポジションバッジだけ--lime(=--primaryの緑)のまま残っていた
+   （gk/df/fwは--gold/--blue/--orangeが既に--ink相当のためこの中でmfだけが唯一の残存緑）。
+   他の3ポジションと同じ--ink基調に揃える。PCの.ptable .pos(名簿の表形式)は
+   .teamapp:has(.mhead)が発火しないため現状の色分けのまま不変 */
+.teamapp:has(.mhead) .pos.mf {
+  background: var(--ink);
+}
 .prow .meta {
   flex: 1;
   min-width: 0;
@@ -1798,6 +1806,63 @@ header {
   background: transparent;
   color: var(--ink);
   border: 1px solid var(--line);
+}
+/* Phase D-1(C3 major review): チーム画面のスマホでは.bigbtn(全幅CTA)を通常の
+   ボタン様式へ正規化する(20px/字間1.5px/14px角丸/見出し用フォントのままだと
+   v1 §8-2-8の5段・§8-1-6の角丸2値のどれにも乗らない)。.mheadはスマホ分岐でしか
+   描画されないため.teamapp:has(.mhead)で自然にスマホ限定になり、PCの.bigbtn(下方
+   のPCブロックで別途正規化済み)は不変 */
+.teamapp:has(.mhead) .bigbtn {
+  font-size: var(--fs-title);
+  letter-spacing: 0;
+  border-radius: var(--r-lg);
+  font-family: var(--font-ui);
+}
+/* Phase D-1(C2 minor review): 予定詳細シートで.ghost化した「編集する」「この試合の
+   結果を記録」が2つとも白地+枠になり主従の差が消えていた分、シート内の主操作だけ
+   --accent地+白文字で強調する(v1 §2の緑CTA残存対象外にするため、緑ではなく§3-4の
+   方針どおり--accentへ寄せる。新規hex色は追加しない) */
+.teamapp:has(.mhead) .bigbtn.accent {
+  background: var(--accent);
+  color: #ffffff;
+  border: 0;
+}
+/* v2 目視レビュー反映（すべてスマホ限定: .mhead の有無で判定。PC reset 不要）
+   major-3: シート見出しのバッジ 11px→12px ／ major-4: 「＋ 大会を登録・管理」の破線を実線白地に
+   minor-7: 月送り・チャット送信のタップ領域 44px ／ minor-10: 月表示下の予定リスト */
+body:has(.mhead) .sheet h2 span,
+body:has(.mhead) .screenbody h2 span {
+  font-size: var(--fs-body-s);
+}
+.teamapp:has(.mhead) .cmpmanage {
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  min-height: 44px;
+}
+.teamapp:has(.mhead) .calnav button {
+  width: 44px;
+  height: 44px;
+}
+body:has(.mhead) .chatplus,
+body:has(.mhead) .chatsend {
+  width: 44px;
+  height: 44px;
+}
+.teamapp:has(.mhead) .calagenda .sech {
+  margin-top: 18px;
+}
+/* minor-9: 試合詳細シートのカード（得点者・交代・メモ）を他のカードと同じ白地＋1px outline に */
+.teamapp:has(.mhead) .dsec {
+  background: var(--surface-lowest);
+  border-color: var(--outline);
+  border-radius: var(--r-lg);
+}
+.teamapp:has(.mhead) .dsec-h {
+  font-weight: 700;
 }
 
 .toast {
@@ -2440,6 +2505,58 @@ body:has(.mhead) .billtoggle button.on {
   text-overflow: ellipsis;
 }
 
+/* mobile-redesign-v2 §3-3: スマホの「選手として閲覧中」帯（通常時のrolebarの代わり）。
+   PCでは描画されない(TeamHub.tsxのpc分岐でDOMごと出さない)ためPC resetは不要 */
+.teamapp .mrolebanner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  background: var(--accent-tint);
+  border-radius: var(--r-md);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+.teamapp .mrolebanner button {
+  margin-left: auto;
+  flex: none;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+/* mobile-redesign-v2 §3-3: 名簿タブ末尾の「選手・保護者の見え方を確認」行。
+   同じくスマホでしか描画されないためPC resetは不要 */
+.rosviewrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 2px 0;
+  border-top: 1px solid var(--outline);
+}
+.rosviewrow > span {
+  font-size: 12px;
+  color: var(--mut);
+}
+.rosviewrow select {
+  background: var(--surface-lowest);
+  color: var(--ink);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: var(--font-ui);
+}
+
 .evcard {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -2469,6 +2586,30 @@ body:has(.mhead) .billtoggle button.on {
 .evkind.match {
   background: var(--match);
 }
+/* mobile-redesign-v2 §3-4: 種別ピルの色塗りをやめ、--surface-low地+--ink文字にする
+   （背景はインラインstyleのため!importantで打ち消す）。種別色は先頭の.evdot(8px丸)で示す。
+   .agkind(リスト表示)も同じ扱い。.mheadはスマホ分岐でしか描画されないため
+   .teamapp:has(.mhead)で自然にスマホ限定になり、PC resetは不要（.evdotの非表示だけ例外） */
+.teamapp:has(.mhead) .evkind,
+.teamapp:has(.mhead) .agkind {
+  background: var(--surface-low) !important;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* Phase D-1(C3 major review): .evkindは既に12px/700(2518-2521)に正規化済みだが、
+     .agkindの基底(5573)は10px/800のまま据え置かれていたため適用漏れになっていた。
+     .agkindの基底自体はPC用なので変更せず、この:has(.mhead)スコープ側だけで揃える */
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.evdot {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
 .evtitle {
   font-weight: 800;
   font-size: 15px;
@@ -2477,6 +2618,10 @@ body:has(.mhead) .billtoggle button.on {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* mobile-redesign-v2 §3-4: 800は使わない(v1 §8-2-10)ため700へ */
+.teamapp:has(.mhead) .evtitle {
+  font-weight: 700;
 }
 .evacts {
   display: flex;
@@ -2494,6 +2639,13 @@ body:has(.mhead) .billtoggle button.on {
   justify-content: center;
   cursor: pointer;
 }
+/* mobile-redesign-v2 §3-4: タップ領域を44px以上に(見た目のアイコンは.evacts button > svgで
+   1emのまま据え置き)。EventCardは現状PC専用導線(AttendanceTab)だが、将来モバイルから
+   到達しても44pxを満たすようにしておく */
+.teamapp:has(.mhead) .evacts button {
+  min-width: 44px;
+  min-height: 44px;
+}
 /* 直下svgのみ対象(<E n="trash"/>は.emj svgが別途100%基準で処理するため、
    ここでは.emjでラップされていない直接のIconEditのみを1em(=隣の.emjと外形一致)へ揃える) */
 .evacts button > svg {
@@ -2510,6 +2662,11 @@ body:has(.mhead) .billtoggle button.on {
   color: var(--ink);
   margin-top: 4px;
   opacity: 0.85;
+}
+/* mobile-redesign-v2 §3-4: 試合記録の「選手・保護者に公開中/非公開」注記だけ--mut化
+   （.evnote自体は予定メモ等の共有クラスのため変更しない） */
+.teamapp:has(.mhead) .pubnote {
+  color: var(--mut);
 }
 .evsummary {
   display: flex;
@@ -2538,6 +2695,18 @@ body:has(.mhead) .billtoggle button.on {
 .att.none {
   color: var(--mut);
 }
+/* mobile-redesign-v2 §3-4: 出席=緑文字をやめ--ink 700(数字はtabular-nums)に。
+   未定=--mut(現状の--gold=--ink相当から明示的にmutへ)。欠席は意味色として--redのまま維持
+   （変更不要）。地(--panel2=--surface-low)は変更しない */
+.teamapp:has(.mhead) .att {
+  font-variant-numeric: tabular-nums;
+}
+.teamapp:has(.mhead) .att.yes {
+  color: var(--ink);
+}
+.teamapp:has(.mhead) .att.maybe {
+  color: var(--mut);
+}
 .evopen {
   margin-left: auto;
   font-size: 12px;
@@ -2560,10 +2729,28 @@ body:has(.mhead) .billtoggle button.on {
   font-size: 13px;
   cursor: pointer;
 }
+/* mobile-redesign-v2 §3-4(タップ領域チェック対応): 出欠の○/△/×は37pxしかなく
+   v1 §2の44px最小に届かないため、出欠記録が到達可能なチーム(モバイル)側だけ広げる。
+   PCは.teamapp:has(.mhead)が発火しないため37pxのまま不変(見た目は変えない) */
+.teamapp:has(.mhead) .attbtn {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .attbtn.yes.on {
   background: #e3f3ea;
   border-color: #0f6f3d;
   color: #0f6f3d;
+}
+/* mobile-redesign-v2 §3-4(緑残存の自動走査対応): 出欠記録の○(出席)選択状態は
+   table未記載だが緑残存走査の対象画面(出欠記録)に含まれるため、.mres.w以外は緑を
+   残さない方針に合わせ.maybe.onと同じ考え方(枠線+文字色=--ink)へ揃える。
+   PCは.teamapp:has(.mhead)が発火しないため現状の緑のまま不変 */
+.teamapp:has(.mhead) .attbtn.yes.on {
+  background: var(--surface-low);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 .attbtn.maybe.on {
   background: #e9edf4;
@@ -2825,6 +3012,24 @@ body:has(.mhead) .billtoggle button.on {
   color: var(--ink);
   letter-spacing: 1px;
 }
+/* mobile-redesign-v2 §3-4: 灰地タイル→白地+1px枠、数値は20px 700(v1 §8-2)。
+   Phase D-1(C3 minor review): 角丸も基底の11px(2938)から--r-md(8px)へ寄せる
+   （同一画面内の.dynaddと統一。v1 §8-1-6の角丸2値ルール） */
+.teamapp:has(.mhead) .statbox {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+}
+.teamapp:has(.mhead) .statbox .sv {
+  font-size: 20px;
+  font-weight: 700;
+}
+/* Phase D-1(C3 minor review): ラベル(.sk)は基底(2942)が10px/字間1pxのまま据え置かれ、
+   v1 §8-2-8の12px下限を割っていたため揃える */
+.teamapp:has(.mhead) .statbox .sk {
+  font-size: var(--fs-body-s);
+  letter-spacing: 0;
+}
 .scorers {
   margin-top: 10px;
 }
@@ -2892,6 +3097,11 @@ body:has(.mhead) .billtoggle button.on {
 }
 .mres.l {
   background: var(--red);
+}
+/* mobile-redesign-v2 §3-4: 勝(.w)の緑はユーザー指示で残す。分(.d)は非強調の--mutへ
+   （敗=--redは既に一致のため変更不要） */
+.teamapp:has(.mhead) .mres.d {
+  background: var(--mut);
 }
 .mmid {
   flex: 1;
@@ -3030,6 +3240,20 @@ body:has(.mhead) .billtoggle button.on {
   font-size: 13px;
   cursor: pointer;
   margin-top: 2px;
+}
+/* mobile-redesign-v2 §3-4: チーム画面(「＋連絡を送る」「過去の予定を表示」等)の
+   緑文字+破線をやめ、--ink文字+1px--outline実線+白地にする。.dynaddは他画面
+   (ノート/コーチラボ等)でも使う共有クラスのため、.teamapp:has(.mhead)でチームの
+   スマホだけに限定する（PC/他画面は不変） */
+.teamapp:has(.mhead) .dynadd {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  color: var(--ink);
+  border-radius: var(--r-md);
+  /* タップ領域チェック(v1 §2)で41px(<44px)だったため確保 */
+  min-height: 44px;
+  /* Phase D-1(C3 minor review): 基底(3168付近)の13pxはv1 §8-2-8の5段のどれでもないため14pxへ */
+  font-size: var(--fs-body);
 }
 
 /* ============================================================
@@ -5429,6 +5653,14 @@ body:has(.mhead) .billtoggle button.on {
 }
 .agbar.practice .agkind { background: var(--blue); }
 .agbar.match .agkind { background: var(--match); }
+/* Phase D-1(C3 minor review): §3-4で種別色を.evdot(8px丸)へ移したのに、同じカードの
+   左端に4px色ストライプ(TeamHub.tsx側のインラインborderLeftColor)が残っており二重に
+   なっていたため、スマホでは1px --outlineへ弱める(インライン優先度に勝つよう!important
+   が必要)。.teamapp:has(.mhead)スコープなのでPCのストライプは不変 */
+.teamapp:has(.mhead) .agbar {
+  border-left-width: 1px;
+  border-left-color: var(--outline) !important;
+}
 .agtitle {
   flex: 1;
   min-width: 0;
@@ -9189,6 +9421,22 @@ body:has(.mhead) .billtoggle button.on {
   padding-right: 16px;
 }
 
+/* ---- 「その他」ハブ（新設・スマホ専用。mobile-redesign-v2 §2） ---- */
+.otherapp .scroll {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/* ---- チーム運営「チャット」タブ（mobile-redesign-v2 §3-2） ----
+   ChatScreen.tsxのPlayerChat(.chattab)は height:100% で自身の親いっぱいに広がる前提
+   （元のチャット画面では.scroll.pchat自体がdisplay:flexの1画面構成）。ここでは「連絡」
+   セクションの下にそのまま差し込むため、.chattabに素直な高さの基準を与えるラッパーを挟む */
+.teamapp .teamchatthread {
+  height: 60vh;
+  min-height: 320px;
+  margin-top: 4px;
+}
+
 /* ---- ホーム刷新（スマホのみ。§1-2） ---- */
 .mhome-header {
   display: flex;
@@ -9302,7 +9550,9 @@ body:has(.mhead) .billtoggle button.on {
 .mhome-logout {
   border: 0;
   background: none;
-  padding: 4px;
+  /* v2 目視レビュー(minor-7): タップ領域 44px（見た目はテキストリンクのまま） */
+  min-height: 44px;
+  padding: 10px 4px;
   color: var(--mut);
   font-size: var(--fs-body-s);
   font-weight: 700;
@@ -9897,6 +10147,12 @@ body:has(.mhead) .billtoggle button.on {
   color: var(--mut);
   margin: 18px 2px 8px;
 }
+/* mobile-redesign-v2 §3-4: 800/字間1.5pxをやめ700/字間0へ(v1 §8-2-10/11)。
+   .sechはTeamHub.tsx専用クラスのため.teamapp:has(.mhead)でスマホだけに限定 */
+.teamapp:has(.mhead) .sech {
+  font-weight: 700;
+  letter-spacing: 0;
+}
 .seclink {
   margin-left: auto;
   font-size: 12px;
@@ -9904,41 +10160,6 @@ body:has(.mhead) .billtoggle button.on {
   font-weight: 700;
   cursor: pointer;
   letter-spacing: 0;
-}
-/* 次の予定カードの日時（大きく） */
-.homewhen {
-  font-family: var(--font-display);
-  font-size: 26px;
-  letter-spacing: 1px;
-  margin-top: 8px;
-}
-/* スタッフ用クイック操作（ホーム上部） */
-.quickrow {
-  display: flex;
-  gap: 10px;
-  margin: 12px 0 2px;
-}
-.quickrow .bigbtn {
-  flex: 1;
-  width: auto;
-  margin: 0;
-  padding: 13px;
-  font-size: 18px;
-}
-/* 最終修正(V2): チーム運営ホーム上部の2ボタン。「＋ 試合結果を記録」が18pxでは2行に泣き別れる
-   ため、スマホでは15pxに落として1行に収め、ゴースト側は白地＋outline枠（§2）にする。
-   .mhead（MobileHeader）はスマホ分岐でしか描画されないので、この規則はPCでは成立しない
-   （PC reset 不要） */
-.teamapp:has(.mhead) .quickrow .bigbtn {
-  font-size: 15px;
-  letter-spacing: 0.5px;
-  padding: 13px 8px;
-  white-space: nowrap;
-}
-.teamapp:has(.mhead) .quickrow .bigbtn.ghost {
-  background: var(--surface-lowest);
-  border: 1px solid var(--outline);
-  color: var(--ink);
 }
 /* 出欠回答シート：サマリー・グループ見出し */
 .attsummary {
@@ -9957,6 +10178,11 @@ body:has(.mhead) .billtoggle button.on {
 .attgh.no { color: var(--red); }
 .attgh.maybe { color: var(--gold); }
 .attgh.yes { color: #0f6f3d; }
+/* mobile-redesign-v2 §3-4(緑残存の自動走査対応): 出欠記録のグループ見出し「出席 n人」も
+   table未記載だが緑残存走査の対象(出欠記録)のため、.att.yesと同じ考え方で--inkへ */
+.teamapp:has(.mhead) .attgh.yes {
+  color: var(--ink);
+}
 /* カレンダー：広い画面ではセル内に予定タイトルを表示 */
 .calevs {
   display: none;
@@ -10163,6 +10389,13 @@ body:has(.mhead) .billtoggle button.on {
   padding: 3px 8px;
   border-radius: 999px;
   vertical-align: middle;
+}
+/* mobile-redesign-v2 §3-4: 緑地+緑枠をやめ--accent-tint地+--accent文字、枠なしに。
+   .ongoingはTeamHub.tsx専用クラスのため.teamapp:has(.mhead)でスマホだけに限定 */
+.teamapp:has(.mhead) .ongoing {
+  color: var(--accent);
+  background: var(--accent-tint);
+  border: 0;
 }
 
 /* カテゴリ管理シートの行 */
@@ -11332,42 +11565,6 @@ body:has(.mhead) .billtoggle button.on {
   .teamapp .matchcard,
   .teamapp .msgcard {
     border-radius: var(--r-lg);
-  }
-  /* ホーム：dashcols準拠(狭い列=左280px)。ヘッダCTAと重複する「予定を追加」はPCでは隠す */
-  .teamapp .quickrow .bigbtn:not(.ghost) {
-    display: none;
-  }
-  .teamapp .hometab {
-    display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
-    grid-template-areas: "top top" "side main";
-    gap: 0 24px;
-    align-items: start;
-    max-width: min(1520px, 100%);
-    margin: 0 auto;
-  }
-  .teamapp .hometab.solo {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "top" "main";
-  }
-  .teamapp .httop {
-    grid-area: top;
-  }
-  .teamapp .htmain {
-    grid-area: main;
-    min-width: 0;
-  }
-  .teamapp .htside {
-    grid-area: side;
-    min-width: 0;
-  }
-  /* サイド列のKPIは正(homecol.side)に倣い縦積み+白カード化 */
-  .teamapp .htside .statrow {
-    flex-direction: column;
-  }
-  .teamapp .htside .statbox {
-    flex: none;
-    min-width: 0;
   }
   .teamapp .statbox {
     background: var(--surface-lowest);
@@ -12971,10 +13168,6 @@ body:has(.mhead) .billtoggle button.on {
     border-radius: 6px;
   }
   .plancard .bigbtn {
-    padding: 0 14px;
-    font-size: 13px;
-  }
-  .quickrow .bigbtn {
     padding: 0 14px;
     font-size: 13px;
   }
@@ -14787,8 +14980,7 @@ body:has(.mhead) .billtoggle button.on {
   .mdb-panel-h,
   .mdb-topicrank,
   .mdb-topicname,
-  .mdb-topicval,
-  .homewhen {
+  .mdb-topicval {
     font-weight: 600;
   }
   /* <b>の合成太字解消: 親.logo/.fptagがPCで600化されると、font-weight未指定の
@@ -16207,6 +16399,24 @@ body:has(.mhead) .billtoggle button.on {
   .mtab {
     display: none;
   }
+  /* Phase B(§3-4): .evkind/.agkindの種別ドットはモバイル専用のDOM追加。
+     PCは種別ピルの色塗りをそのまま使うため、ドット自体は非表示にする */
+  .evdot {
+    display: none;
+  }
+  /* Phase D-1(C3 major review): 予定詳細シート見出し(h2)内の種別ピルは、
+     .tmdetail.tm-sheetpane が「.sheet」「.screenbody」どちらでもないため元々
+     どのh2用ルールも当たらず、素のブラウザ既定(h2を継承した24px/700・パディング無し)
+     で描画されていた。className="evkind"化で.evkind共通ルール(11px/400・パディング・
+     角丸)が新たに掛かってしまう分だけ、ここで元の値に戻す（背景色・白文字は元から
+     インラインstyleのままなので不変）。他2箇所(EventCard/リスト表示)のevkindはh2の外
+     なのでこのセレクタの対象外 */
+  .tmdetail.tm-sheetpane h2 .evkind {
+    font-size: 24px;
+    font-weight: 700;
+    padding: 0;
+    border-radius: 0;
+  }
   .scroll {
     padding-bottom: 0;
   }
@@ -16537,9 +16747,6 @@ body:has(.mhead) .billtoggle button.on {
   .chatapp:has(.chatmain) {
     grid-template-columns: 340px minmax(0, 1fr);
   }
-  .teamapp .hometab {
-    grid-template-columns: 340px minmax(0, 1fr);
-  }
   .noteapp .notehome {
     grid-template-columns: 340px minmax(0, 1fr);
   }
@@ -16581,7 +16788,6 @@ body:has(.mhead) .billtoggle button.on {
   .bigbtn,
   .noteapp .bigbtn,
   .plancard .bigbtn,
-  .quickrow .bigbtn,
   .artactbar .bigbtn {
     padding: 12px 16px;
     font-size: 15px;
