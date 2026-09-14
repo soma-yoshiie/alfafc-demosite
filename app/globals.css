@@ -9506,37 +9506,6 @@ body:has(.mhead) .billtoggle button.on {
 .mhome-greet {
   margin-top: 0;
 }
-.mstatgrid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin: 16px 0;
-}
-.mstat {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border: 1px solid var(--outline);
-  border-radius: var(--r-lg);
-  background: var(--surface-lowest);
-  text-align: left;
-  cursor: pointer;
-  font-family: var(--font-ui);
-}
-.mstat-n {
-  font-size: var(--fs-headline);
-  font-weight: 700;
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-.mstat-n.ev {
-  font-size: var(--fs-title-s);
-}
-.mstat-l {
-  font-size: var(--fs-body-s);
-  color: var(--mut);
-}
 .mhome-foot {
   display: flex;
   align-items: center;
@@ -9559,6 +9528,733 @@ body:has(.mhead) .billtoggle button.on {
   text-decoration: underline;
   cursor: pointer;
   font-family: var(--font-ui);
+}
+
+/* =========================================================
+   mobile-home-v3（スマホホーム。specs/mobile-home-v3.md §4）
+   行メニュー/今日やること/チームのいまを廃し、PCの MatchdayBoard と
+   同じスタッツ中心の見た目に揃える。すべて .mhome-root（MobileHome.tsx
+   専用の外枠。PCには存在しない）配下の新規ルールなので、PC(2つの
+   min-width:1024pxブロック)は一切変更しない＝PC reset は不要。
+   色は PC の MatchdayBoard(.mdb-scroll 配下限定の --mdb-* カスタム
+   プロパティ)を 1440px で getComputedStyle 実測し、そのままコピーした
+   値のみを使う(新規hex色は追加しない)。変数名は PC の --mdb-* と
+   衝突しないよう --mh-* に統一する(DOM上は同時に存在しないため実害は
+   無いが、由来を明確にするため別名にしている)。 */
+.mhome-root {
+  /* ヒーロー: 濃紺→ブランド青（PCの.mdb-heroと同じ2トーン） */
+  --mh-hero-1: #0b1f4d;
+  --mh-hero-2: var(--accent-strong);
+  --mh-hero-3: var(--accent);
+  --mh-pill-bg: rgba(255, 255, 255, 0.9);
+  --mh-pill-ink: var(--mh-hero-1);
+
+  /* KPIタイル4色（PCの--mdb-kpi-*と同じ値） */
+  --mh-kpi-notes: var(--accent);
+  --mh-kpi-notes-ink: var(--accent-strong);
+  --mh-kpi-notes-tint: #eef3fc;
+  --mh-kpi-notes-tint-strong: #e6eefa;
+
+  --mh-kpi-att: #16a34a;
+  --mh-kpi-att-ink: #166534;
+  --mh-kpi-att-tint: #ecf8f1;
+  --mh-kpi-att-tint-strong: #e3f4e9;
+
+  --mh-kpi-win: #f97316;
+  --mh-kpi-win-ink: #9a3412;
+  --mh-kpi-win-tint: #fff4ec;
+  --mh-kpi-win-tint-strong: #feeee3;
+
+  --mh-kpi-rank: #7c3aed;
+  --mh-kpi-rank-ink: #7c3aed;
+  --mh-kpi-rank-tint: #f5effe;
+  --mh-kpi-rank-tint-strong: #efe7fd;
+
+  /* 最新の動きアバター5色（PCの--mdb-avatar-*と同じ値） */
+  --mh-avatar-0: var(--accent);
+  --mh-avatar-1: #166534;
+  --mh-avatar-2: #9a3412;
+  --mh-avatar-3: #7c3aed;
+  --mh-avatar-4: #be185d;
+}
+
+/* ---- あいさつ行＋ベル ---- */
+.mhome-root .mh-greetrow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mhome-root .mh-greetrow .homegreet {
+  flex: 1;
+  min-width: 0;
+}
+.mhome-root .mh-bell {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-top: -2px;
+  border: 1px solid var(--outline);
+  border-radius: 50%;
+  background: var(--surface-lowest);
+  color: var(--ink);
+  cursor: pointer;
+}
+.mhome-root .mh-bell svg {
+  width: 22px;
+  height: 22px;
+}
+.mhome-root .mh-bellcount {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+/* ベルタップでインライン展開（PCのようなフローティングパネルにはしない） */
+.mhome-root .mh-bellrows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 4px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.mhome-root .mdb-bellrow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  text-align: left;
+  padding: 10px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.mhome-root .mdb-bellrow:active {
+  background: var(--surface-low);
+}
+.mhome-root .mdb-bellbadge {
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.mhome-root .mdb-bellbody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.mhome-root .mdb-belltitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.mhome-root .mdb-bellreason {
+  font-size: 12px;
+  color: var(--mut);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mhome-root .mdb-bellempty {
+  padding: 14px;
+  font-size: 12px;
+  color: var(--mut);
+  text-align: center;
+}
+
+/* ---- ヒーロー(次の予定) ---- */
+.mhome-root .mh-herothin {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  color: var(--mut);
+  font-size: 13px;
+}
+.mhome-root .mh-herothin-cta {
+  flex: none;
+  min-height: 44px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.mhome-root .mh-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 20px 18px 16px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(135deg, var(--mh-hero-1) 0%, var(--mh-hero-2) 100%);
+}
+/* PCの.mdb-hero::afterと同じ薄いピッチ風の斜線+円弧(不透明度0.05/0.08)を重ねる
+   （レビューPhase D-1 C1-minor。1440px実測のPC値をそのまま写す。新規hex色は追加しない） */
+.mhome-root .mh-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.05) 0px, rgba(255, 255, 255, 0.05) 2px, transparent 2px, transparent 42px),
+    radial-gradient(circle at 12% 92%, rgba(255, 255, 255, 0.08), transparent 60%);
+}
+.mhome-root .mh-herotop {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+/* VSカードは縦積みにして相手名に全幅を与える(レビューPhase D-1 C1-critical/C3-major:
+   横並びでは相手側の実効幅が144px程度しかなく、実データの長い相手名が省略されて読めなかった。
+   tools/vs_harness_fix.html で長い相手名5例が1行/2行クランプ内に収まることを実測済み) */
+.mhome-root .mh-vscard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.mhome-root .mh-vsteam {
+  flex: none;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.mhome-root .mh-vsteam-opp {
+  justify-content: center;
+}
+.mhome-root .mh-emblem {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.mhome-root .mh-emblem-fallback {
+  display: inline-grid;
+  place-items: center;
+  background: var(--mh-pill-bg);
+  color: var(--mh-pill-ink);
+  font-weight: 800;
+  font-size: 12px;
+}
+.mhome-root .mh-ownname {
+  min-width: 0;
+  max-width: 190px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 色・太さともPCの.mdb-vsの実測値(#ffffff/700)に合わせる(レビューPhase D-1 C1-major/C3-minor) */
+.mhome-root .mh-vs {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.mhome-root .mh-oppname {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #ffffff;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+  text-align: center;
+}
+.mhome-root .mh-eventcard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+.mhome-root .mh-eventtitle {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffffff;
+  text-align: center;
+}
+.mhome-root .mh-eventcat {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mh-pill-ink);
+  background: var(--mh-pill-bg);
+  border-radius: var(--r-full);
+  padding: 2px 10px;
+}
+.mhome-root .mh-countdown {
+  display: inline-block;
+  padding: 6px 16px;
+  border-radius: var(--r-full);
+  background: var(--mh-pill-bg);
+  color: var(--mh-pill-ink);
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.mhome-root .mh-metarow {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.28);
+}
+.mhome-root .mh-metaitem {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.mhome-root .mh-metalabel {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #d8e2f2;
+  font-weight: 700;
+}
+/* 会場等が長いときは2行まで折り返す(1行省略だと実在しうる長さの会場名が切れるため。
+   レビューPhase D-1 C1-minor) */
+.mhome-root .mh-metaval {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #ffffff;
+  overflow: hidden;
+  white-space: normal;
+  word-break: break-word;
+}
+.mhome-root .mh-cta {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: #ffffff;
+  color: var(--mh-hero-3);
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+/* ---- 指標タイル 2×2 ---- */
+.mhome-root .mh-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+.mhome-root .mh-kpis .kpitile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 100px;
+  padding: 14px;
+  text-align: left;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  overflow: hidden;
+  cursor: pointer;
+  font-family: var(--font-ui);
+}
+.mhome-root .mh-kpis .kpitile .kv {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.mhome-root .mh-kpis .kpitile .kl {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--mut);
+}
+.mhome-root .mh-kpis .kpitile.mdb-tile-notes::before,
+.mhome-root .mh-kpis .kpitile.mdb-tile-att::before,
+.mhome-root .mh-kpis .kpitile.mdb-tile-win::before,
+.mhome-root .mh-kpis .kpitile.mdb-tile-rank::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3px;
+}
+.mhome-root .mh-kpis .kpitile.mdb-tile-notes::before { background: var(--mh-kpi-notes); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-att::before { background: var(--mh-kpi-att); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-win::before { background: var(--mh-kpi-win); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-rank::before { background: var(--mh-kpi-rank); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-notes .kv { color: var(--mh-kpi-notes-ink); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-att .kv { color: var(--mh-kpi-att-ink); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-win .kv { color: var(--mh-kpi-win-ink); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-rank .kv { color: var(--mh-kpi-rank-ink); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-notes.on { background: var(--mh-kpi-notes-tint-strong); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-att.on { background: var(--mh-kpi-att-tint-strong); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-win.on { background: var(--mh-kpi-win-tint-strong); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-rank.on { background: var(--mh-kpi-rank-tint-strong); }
+.mhome-root .mh-kpis .kpitile.mdb-tile-att .mdb-ringval {
+  stroke: var(--mh-kpi-att);
+}
+.mhome-root .mh-ringrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mhome-root .mdb-ring {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  transform: rotate(-90deg);
+}
+.mhome-root .mdb-ringtrack {
+  fill: none;
+  stroke: var(--outline);
+  stroke-width: 3;
+}
+.mhome-root .mdb-ringval {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dasharray var(--dur-m) var(--ease-standard);
+}
+.mhome-root .mdb-kpidelta {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 6px;
+  border-radius: var(--r-full);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  color: var(--mut);
+}
+.mhome-root .mdb-kpidelta.up {
+  background: var(--primary-container);
+  color: var(--primary-dim);
+}
+.mhome-root .mdb-kpidelta.down {
+  background: rgba(217, 45, 32, 0.1);
+  color: var(--danger);
+}
+
+/* ---- 推移グラフ（MdbChartをそのまま再利用。.mdb-chart*はPCの値をそのまま写す） ---- */
+.mhome-root .mh-chart {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+.mhome-root .mh-charttitle {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.mhome-root .mdb-chartwrap {
+  width: 100%;
+}
+.mhome-root .mdb-chartsvg {
+  display: block;
+  width: 100%;
+  height: 90px;
+  overflow: visible;
+  color: var(--mh-kpi-notes);
+}
+.mhome-root .mh-chart.mh-metric-att .mdb-chartsvg { color: var(--mh-kpi-att); }
+.mhome-root .mh-chart.mh-metric-win .mdb-chartsvg { color: var(--mh-kpi-win); }
+.mhome-root .mdb-chartline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  transition: stroke-dashoffset var(--dur-chart-slow) var(--ease-decel);
+}
+.mhome-root .mdb-chartline.on {
+  stroke-dashoffset: 0;
+}
+.mhome-root .mdb-chartarea {
+  fill: url(#mdb-chart-grad);
+  stroke: none;
+  opacity: 0;
+  transition: opacity 400ms var(--ease-standard) 1200ms;
+}
+.mhome-root .mdb-chartarea.on {
+  opacity: 1;
+}
+.mhome-root .mdb-chartdot {
+  fill: currentColor;
+}
+.mhome-root .mdb-chartlabel {
+  font-size: 12px;
+  fill: var(--mut);
+}
+/* リーグ順位タイル選択時の簡易順位表（.ptableはPC専用のためここで自前定義する） */
+.mhome-root .mh-chart .ptable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.mhome-root .mh-chart .ptable td {
+  padding: 6px 4px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--outline);
+}
+.mhome-root .mh-chart .ptable tr:last-child td {
+  border-bottom: 0;
+}
+.mhome-root .mh-chart .ptable td.num {
+  text-align: right;
+}
+.mhome-root .mh-chart .ptable tr.own td {
+  background: var(--mh-kpi-rank-tint-strong);
+  font-weight: 700;
+}
+.mhome-root .mh-chart .ptable .leaguepts {
+  font-weight: 700;
+}
+.mhome-root .mh-chart .mdb-rankgap td {
+  padding: 2px 4px;
+  text-align: center;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+/* ---- 今月のトピック／最新の動き（白カード。.mdb-panel-*等の内側クラスはPCと共用） ---- */
+.mhome-root .mh-panel {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  padding: 16px;
+}
+.mhome-root .mdb-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.mhome-root .mdb-panel-h {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.mhome-root .mdb-panel-sub {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.mhome-root .mdb-topicempty,
+.mhome-root .mdb-feedempty {
+  font-size: 12px;
+  color: var(--mut);
+  padding: 8px 0;
+}
+.mhome-root .mdb-topicrows {
+  display: flex;
+  flex-direction: column;
+}
+.mhome-root .mdb-topicrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+}
+.mhome-root .mdb-topicrank {
+  flex: none;
+  width: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.mhome-root .mdb-topicname {
+  flex: 0 1 auto;
+  max-width: 104px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mhome-root .mdb-topicbartrack {
+  flex: 1 1 auto;
+  min-width: 90px;
+  height: 8px;
+  border-radius: var(--r-full);
+  background: var(--surface-low);
+  overflow: hidden;
+}
+.mhome-root .mdb-topicbar {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: var(--r-full);
+  background: var(--accent);
+  transition: width 1200ms var(--ease-decel);
+}
+.mhome-root .mdb-topicrows .mdb-topicrow:nth-child(1) .mdb-topicbar { background: var(--cat1); }
+.mhome-root .mdb-topicrows .mdb-topicrow:nth-child(2) .mdb-topicbar { background: var(--cat2); }
+.mhome-root .mdb-topicrows .mdb-topicrow:nth-child(3) .mdb-topicbar { background: var(--cat3); }
+.mhome-root .mdb-topicval {
+  flex: none;
+  width: 44px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.mhome-root .mdb-topicfallback {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--mut);
+}
+.mhome-root .mh-feedlist {
+  display: flex;
+  flex-direction: column;
+}
+.mhome-root .mdb-feeditem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 40px;
+  min-width: 0;
+}
+.mhome-root .mdb-feedicon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 800;
+}
+.mhome-root .mdb-feedicon.mdb-avatar-0 { background: var(--mh-avatar-0); color: #ffffff; }
+.mhome-root .mdb-feedicon.mdb-avatar-1 { background: var(--mh-avatar-1); color: #ffffff; }
+.mhome-root .mdb-feedicon.mdb-avatar-2 { background: var(--mh-avatar-2); color: #ffffff; }
+.mhome-root .mdb-feedicon.mdb-avatar-3 { background: var(--mh-avatar-3); color: #ffffff; }
+.mhome-root .mdb-feedicon.mdb-avatar-4 { background: var(--mh-avatar-4); color: #ffffff; }
+.mhome-root .mdb-feedtext {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mhome-root .mdb-feedtime {
+  flex: none;
+  font-size: 12px;
+  color: var(--mut);
+}
+
+/* ---- 今月のハイライト ---- */
+.mhome-root .mdb-highlights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.mhome-root .mdb-chip {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-radius: var(--r-full);
+  padding: 5px 12px;
+}
+.mhome-root .mdb-chip-att { background: var(--mh-kpi-att-tint); color: var(--mh-kpi-att-ink); }
+.mhome-root .mdb-chip-notes { background: var(--mh-kpi-win-tint); color: var(--mh-kpi-win-ink); }
+.mhome-root .mdb-chip-goal { background: var(--mh-kpi-rank-tint); color: var(--mh-kpi-rank-ink); }
+
+/* ---- 選手・保護者ホーム: 直近の試合(matchcard/mres/mmid/mopp/msub/mscoreはTeamHubと共用の基底クラス) ----
+   白カード(.mh-panel)の中にさらに枠線付きカードが入ると二重枠になるため、ここでは
+   border/paddingを外して見出し直下の行として置く(レビューPhase D-1 C1-minor) */
+.mhome-root .mh-panel .matchcard {
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+/* ---- 区画間の縦リズム(v1 §8-3-18: セクション間24px＞カード間12px) ---- */
+.mhome-root .mh-section {
+  margin-top: 24px;
 }
 
 /* =========================================================
