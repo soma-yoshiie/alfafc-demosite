@@ -566,6 +566,14 @@ export interface TeamEvent {
   seriesId?: string;
   /** この回だけ手動編集済み → シリーズ再生成から保護 */
   detached?: boolean;
+  /** 対象グループ。未定義または空＝全員対象 */
+  groupIds?: string[];
+}
+
+/** チームのグループ（学年・A/Bチームなど）。順序は配列順 */
+export interface TeamGroup {
+  id: string;
+  label: string;
 }
 
 export type AttendanceStatus = "yes" | "maybe" | "no";
@@ -1024,6 +1032,8 @@ export interface TeamData {
   competitions: Competition[];
   /** カスタムイベントカテゴリ（組込みの練習/試合は含まない） */
   categories?: EventCategory[];
+  /** グループのマスタ（学年・A/Bチームなど）。未定義＝グループなし */
+  groups?: TeamGroup[];
   /** 繰り返し予定のシリーズ（ルール保持） */
   series?: EventSeries[];
   /** 体力測定の種目マスタ（チーム共通登録）。旧データは未定義＝storage.ts でデフォルト種目を補完 */

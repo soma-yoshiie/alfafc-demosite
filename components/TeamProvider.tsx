@@ -19,6 +19,7 @@ import type {
   TeamData,
   TeamEvent,
   TeamEventKind,
+  TeamGroup,
   TeamViewer,
   ViewerRole,
 } from "@/lib/types";
@@ -101,6 +102,7 @@ function sampleTeam(): TeamData {
         endTime: "12:00",
         place: "青空G",
         competitionId: "cmp2",
+        groupIds: ["grp_a"],
       },
       {
         id: "ev_practice_next",
@@ -132,6 +134,7 @@ function sampleTeam(): TeamData {
         time: "19:00",
         endTime: "20:00",
         place: "公民館 会議室A",
+        groupIds: ["grp_low"],
       },
     ],
     attendance: {
@@ -176,6 +179,12 @@ function sampleTeam(): TeamData {
       // (特定hex一色だけをフィルタするのは不自然/脆い)無いため、Phase Dの範囲では見送り、
       // 元の色のまま据え置く。是正するならPC側の表示差分を許容する別タスクとして扱う
       { id: "cat_meet", label: "保護者会", color: "#7c5cbf" },
+    ],
+    groups: [
+      { id: "grp_a", label: "Aチーム" },
+      { id: "grp_b", label: "Bチーム" },
+      { id: "grp_low", label: "低学年" },
+      { id: "grp_high", label: "高学年" },
     ],
     competitions: [
       { id: "cmp1", name: "春季リーグ U-12", note: "4〜6月・市内リーグ" },
@@ -341,6 +350,12 @@ interface TeamContextValue {
   addCategory: (label: string, color: string) => string;
   updateCategory: (c: EventCategory) => void;
   removeCategory: (id: string) => void;
+  /** カレンダーのグループ（対象）マスタ */
+  groups: TeamGroup[];
+  addGroup: (label: string) => string;
+  updateGroup: (g: TeamGroup) => void;
+  /** グループを削除する。全予定の groupIds からもこのIDを外す */
+  removeGroup: (id: string) => void;
   /** 繰り返し予定込みの追加。ruleなしは1件（addEventと同じ）。戻り値は追加件数 */
   addEventWithRecurrence: (
     e: Omit<TeamEvent, "id">,
@@ -509,6 +524,42 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       events: t.events.map((e) =>
         e.categoryId === id ? { ...e, categoryId: undefined } : e
       ),
+    }));
+  }, []);
+
+  /** カレンダーのグループ（対象）マスタ */
+  const groups = useMemo<TeamGroup[]>(() => team.groups ?? [], [team.groups]);
+
+  const addGroup = useCallback(
+    (label: string) => {
+      // Phase D-1(C1-minor): 空ラベル時にidを先に発行して戻り値にしていたため、
+      // 呼び出し元が戻り値を信用すると「存在しないグループのID」を受け取ってしまっていた。
+      // 未作成のときは空文字を返し、戻り値が常に実在するIDになるようにする
+      const nm = label.trim();
+      if (!nm) return "";
+      const id = nid("grp");
+      const g: TeamGroup = { id, label: nm };
+      setTeam((t) => ({ ...t, groups: [...(t.groups ?? []), g] }));
+      board.toast(`グループ「${nm}」を追加しました`);
+      return id;
+    },
+    [board]
+  );
+  const updateGroup = useCallback((g: TeamGroup) => {
+    setTeam((t) => ({
+      ...t,
+      groups: (t.groups ?? []).map((x) => (x.id === g.id ? g : x)),
+    }));
+  }, []);
+  const removeGroup = useCallback((id: string) => {
+    setTeam((t) => ({
+      ...t,
+      groups: (t.groups ?? []).filter((g) => g.id !== id),
+      events: t.events.map((e) => {
+        if (!e.groupIds || !e.groupIds.includes(id)) return e;
+        const rest = e.groupIds.filter((x) => x !== id);
+        return { ...e, groupIds: rest.length > 0 ? rest : undefined };
+      }),
     }));
   }, []);
 
@@ -846,6 +897,10 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       addCategory,
       updateCategory,
       removeCategory,
+      groups,
+      addGroup,
+      updateGroup,
+      removeGroup,
       addEventWithRecurrence,
       updateEventOnly,
       updateSeriesFollowing,
@@ -880,6 +935,10 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       addCategory,
       updateCategory,
       removeCategory,
+      groups,
+      addGroup,
+      updateGroup,
+      removeGroup,
       addEventWithRecurrence,
       updateEventOnly,
       updateSeriesFollowing,

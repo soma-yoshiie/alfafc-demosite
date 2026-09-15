@@ -2668,6 +2668,45 @@ body:has(.mhead) .billtoggle button.on {
 .teamapp:has(.mhead) .pubnote {
   color: var(--mut);
 }
+/* カレンダーのグループ機能§5: 対象バッジ。全員=薄い地(--surface-low+--mut)、
+   グループ指定=--accent-tint地+--accent文字。長い場合は1行で省略する。
+   Phase D-1(C1/C2-major): display:inline-flexだとテキストが匿名フレックスアイテムに
+   なりtext-overflow:ellipsisが効かない(グリフ途中で切れる)ため、inline-blockへ変更する
+   （align-items:centerは不要になるため削除。vertical-align:middleは残す） */
+.evgroups {
+  display: inline-block;
+  line-height: 18px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+.evgroups.targeted {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+/* 予定詳細（eventView）用: 省略せず全文を表示する */
+.evgroups.full {
+  max-width: none;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+/* .agbar内は agtitle を優先し、対象バッジは狭い幅まで縮めてから省略する。
+   Phase D-1(C2-major): 92pxだと一般的な2グループ名でも省略前に切迫していたため120pxへ緩める
+   （切れる場合はEvGroupsBadgeのtitle属性で全文を補う） */
+.agbar .evgroups {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 120px;
+}
 .evsummary {
   display: flex;
   align-items: center;
@@ -2941,6 +2980,9 @@ body:has(.mhead) .billtoggle button.on {
   margin-bottom: 3px;
   flex-wrap: wrap;
   justify-content: center;
+  /* Phase D-1(C1-minor): 点(.caldot、固定サイズなので見た目は不変)と「+n」の
+     ベースラインを揃える */
+  align-items: center;
 }
 .caldot {
   width: 10px;
@@ -2954,6 +2996,13 @@ body:has(.mhead) .billtoggle button.on {
 }
 .caldot.match {
   background: var(--match);
+}
+/* カレンダーのグループ機能§4: 点は最大3つ＋4件以上は「+n」（12px未満は使わない） */
+.caldotmore {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--mut);
+  font-weight: 700;
 }
 /* 凡例の丸は本文サイズに合わせて少し小さく */
 .callegend .caldot {
@@ -2980,6 +3029,27 @@ body:has(.mhead) .billtoggle button.on {
 .callegend .calhint {
   margin-left: auto;
   color: var(--mut);
+}
+
+/* カレンダーのグループ機能§3: 絞り込み行。チップ自体は.mseg-itemを共用する
+   （非選択=白地+outline／選択=accent-tint+accent・高さ36px）。グループが無ければ描画しない */
+.calfilter {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 8px;
+}
+.calfilter::-webkit-scrollbar {
+  display: none;
+}
+/* 絞り込み中の補助文（行の右端）。12px未満は使わない */
+.calfilterhint {
+  text-align: right;
+  font-size: 12px;
+  color: var(--mut);
+  margin: -2px 0 10px;
 }
 
 /* ---------- Match stats ---------- */
@@ -10475,7 +10545,10 @@ body:has(.mhead) .billtoggle button.on {
 .catpick,
 .nlexrow,
 .cmpbar,
-.cl-scrollchips {
+.cl-scrollchips,
+/* Phase D-1(C2-minor): カレンダーの絞り込み行(.calfilter)も同じ横スクロール帯のため、
+   同じ右端フェードを付ける（.catpickと同様PC専用のリセットは不要） */
+.calfilter {
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent 100%);
 }
@@ -11002,9 +11075,53 @@ body:has(.mhead) .billtoggle button.on {
   border-width: 1.5px;
   background: var(--panel);
 }
+/* Phase D-1(C1-minor): 対象欄(grouppick-item.manage、下記)の「＋ 管理」がaccentなのに対し
+   カテゴリ欄のこちらは--lime-dim(濃緑)のままで、同じ予定フォーム内で2色に割れていた。
+   mobile-redesign §2の青1色に合わせる（PC(15419行)は既に同じvar(--accent)へ上書き済み
+   のためこの変更でPCの見た目は変わらない） */
 .evcatchip.catmanage {
-  color: var(--lime-dim);
+  color: var(--accent);
   border-style: dashed;
+}
+
+/* 対象グループチップ（予定フォーム・複数選択・折り返し）。カテゴリ機能§6:
+   .catpick/.evcatchipと同じ見た目で、選択状態は--accent-tint地+--accent文字 */
+.grouppick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 2px 2px 4px;
+}
+.grouppick-item {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--mut);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.grouppick-item.on {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
+}
+.grouppick-item.manage {
+  color: var(--accent);
+  border-style: dashed;
+}
+/* Phase D-1(C2-minor): 35px(.evcatchipに合わせた高さ)はv1 §8の44pxタップ領域を満たさない。
+   対象欄は複数選択でタップ回数が増えるため、スマホ限定で底上げする
+   （.teamapp:has(.mhead)で自然にスマホ限定になり、PCは.evcatchipと同じ高さのまま不変） */
+.teamapp:has(.mhead) .grouppick-item {
+  min-height: 44px;
 }
 
 /* パレットスウォッチ（カテゴリの色選択） */

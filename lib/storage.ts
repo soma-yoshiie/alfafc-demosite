@@ -34,6 +34,7 @@ const NOTEBOOK_KEY = "soccer_tactics_notebook_v1";
 const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
 const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
+const CALGROUP_KEY = "soccer_tactics_calgroup_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
 const COACHLAB_KEY = "soccer_tactics_coachlab_v1";
@@ -301,6 +302,7 @@ export function loadTeam(): TeamData | null {
     if (!Array.isArray(data.coaches)) data.coaches = [];
     if (!Array.isArray(data.matches)) data.matches = [];
     if (!Array.isArray(data.competitions)) data.competitions = [];
+    if (!Array.isArray(data.groups)) data.groups = [];
     // 旧データ（種目マスタ未導入）は初回のみデフォルト種目を補完する。
     // 空配列（スタッフが全種目を削除した状態）は意図的な状態として上書きしない。
     if (!Array.isArray(data.fitnessTests)) data.fitnessTests = DEFAULT_FITNESS_TESTS;
@@ -333,6 +335,26 @@ export function saveLastEventCategory(id: string): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(LAST_EVENT_CATEGORY_KEY, id);
+  } catch {
+    /* 無視 */
+  }
+}
+
+/** カレンダーの絞り込み中グループ（次回も同じ絞り込みで開くための記憶。nullは「すべて」） */
+export function loadCalGroup(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(CALGROUP_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveCalGroup(id: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (id) window.localStorage.setItem(CALGROUP_KEY, id);
+    else window.localStorage.removeItem(CALGROUP_KEY);
   } catch {
     /* 無視 */
   }

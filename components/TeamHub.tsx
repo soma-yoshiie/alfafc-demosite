@@ -18,6 +18,7 @@ import type {
   RecurrenceRule,
   TeamEvent,
   TeamEventKind,
+  TeamGroup,
 } from "@/lib/types";
 import { GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL } from "@/lib/types";
 import { ALL_POSITIONS, groupOf } from "@/lib/formations";
@@ -29,6 +30,7 @@ import {
   categoryOf,
   diffDays,
   eventEndDate,
+  eventTargetsGroup,
   gmapsDirUrl,
   gmapsEmbedUrl,
   gmapsSearchUrl,
@@ -36,8 +38,14 @@ import {
   isOngoing,
   isUpcomingOrOngoing,
   occursOn,
+  targetLabel,
 } from "@/lib/calendarUtils";
-import { loadLastEventCategory, saveLastEventCategory } from "@/lib/storage";
+import {
+  loadCalGroup,
+  loadLastEventCategory,
+  saveCalGroup,
+  saveLastEventCategory,
+} from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
 import { attendanceRate } from "@/lib/teamStats";
 import { aggregateTech, matchSummary, perMatchTech, perPlayerTech } from "@/lib/teamStatsAgg";
@@ -285,7 +293,12 @@ type SheetState =
     }
   | { type: "matchView"; id: string }
   | { type: "competitions" }
-  | { type: "categories" }
+  // Phase D-1(C1-major): 予定フォームからの「＋ 管理」を挟んでも編集中の入力(title/date/
+  // evGroupIdsなど)を失わないよう、呼び出し元(from=編集中のev、date=新規時の初期日)を
+  // 保持する。sheetKey()で予定フォームと同じキーを返すことでSheetHostの再マウントを防ぎ、
+  // paneBack()/モバイルのonCloseで元の予定フォームへ戻す
+  | { type: "categories"; from?: TeamEvent; date?: string }
+  | { type: "groups"; from?: TeamEvent; date?: string }
   | { type: "playerDetail"; playerId: string }
   | { type: "playerForm"; player?: Player }
   /** 体力測定の種目管理。playerForm(選手編集)から開いた場合、戻り先の選手を保持する */
@@ -312,6 +325,19 @@ function Inner() {
   const now = new Date();
   const [calYm, setCalYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [calView, setCalView] = useState<"month" | "list">("month");
+  // カレンダーの絞り込み（グループ）もタブを跨いで保持し、次回起動時も復元する（§3）
+  const [calGroup, setCalGroup] = useState<string | null>(() => loadCalGroup());
+  // Phase D-1(C1-minor): 復元直後は掃除がuseEffect後(=描画1回分遅れ)になるため、
+  // 存在しないグループIDを描画に使う前にここで無効化する派生値を用意する
+  // （useEffectのsetCalGroup(null)はlocalStorage掃除用としてそのまま残す）
+  const calGroupEff = calGroup && team.groups.some((g) => g.id === calGroup) ? calGroup : null;
+  useEffect(() => {
+    // 保存済みのグループが削除済みなら「すべて」に戻す
+    if (calGroup && !team.groups.some((g) => g.id === calGroup)) setCalGroup(null);
+  }, [calGroup, team.groups]);
+  useEffect(() => {
+    saveCalGroup(calGroup);
+  }, [calGroup]);
 
   // PC右ペイン(マスター・ディテール)の選択状態。タブを跨いで保持するためInnerで持つ
   const [recSel, setRecSel] = useState<RecSel>({ kind: "summary" });
@@ -585,6 +611,7 @@ function Inner() {
                   setSheet={setSheet}
                   players={players}
                   isCoach={isCoach}
+                  calGroup={calGroupEff}
                 />
               ) : (
                 <>
@@ -604,6 +631,8 @@ function Inner() {
                       setYm={setCalYm}
                       view={calView}
                       setView={setCalView}
+                      calGroup={calGroupEff}
+                      setCalGroup={setCalGroup}
                     />
                   )}
                   {activeTab === "rec" && (
@@ -638,6 +667,7 @@ function Inner() {
                     setSheet={setSheet}
                     players={players}
                     isCoach={isCoach}
+                    calGroup={calGroupEff}
                   />
                 ) : (
                   <>
@@ -693,6 +723,7 @@ function Inner() {
           setSheet={setSheet}
           players={players}
           isCoach={isCoach}
+          calGroup={calGroupEff}
         />
       )}
     </div>
@@ -702,6 +733,10 @@ function Inner() {
 function sheetKey(s: SheetState): string {
   if (!s) return "none";
   if (s.type === "event") return "event-" + (s.event?.id ?? s.date ?? "new");
+  // Phase D-1(C1-major): 予定フォームから開く管理シート(カテゴリ/グループ)は予定フォーム
+  // 自体と同じキーを返し、SheetHostの再マウント(=入力全消失)を防ぐ
+  if (s.type === "groups" || s.type === "categories")
+    return "event-" + (s.from?.id ?? s.date ?? "new");
   if (s.type === "attendance") return "att-" + s.eventId;
   if (s.type === "day") return "day-" + s.date;
   if (s.type === "eventView") return "ev-" + s.id;
@@ -874,6 +909,34 @@ function AttendanceTab({
   );
 }
 
+/* 対象バッジ（カレンダーのグループ機能§5）。全員=薄い地、グループ指定=accent地。
+   full=true（予定詳細）は省略せず全文表示する */
+function EvGroupsBadge({
+  ev,
+  groups,
+  full,
+}: {
+  ev: TeamEvent;
+  groups: TeamGroup[];
+  full?: boolean;
+}) {
+  // Phase D-1(C2-minor): グループを1つも作っていないチームでは対象バッジ自体を出さない
+  // （絞り込み行と同じ「グループが無ければ出さない」扱いに揃える）
+  if (groups.length === 0) return null;
+  const label = targetLabel(ev, groups);
+  // Phase D-1(C2-minor): 色分けの判定基準をisAllTargets(groupIdsの有無)ではなく
+  // 表示ラベルに揃える。削除済み/存在しないグループIDだけの予定は、ラベルが「全員」なのに
+  // accent色になる食い違いを防ぐ
+  return (
+    <span
+      className={`evgroups${label === "全員" ? "" : " targeted"}${full ? " full" : ""}`}
+      title={full ? undefined : label}
+    >
+      {label}
+    </span>
+  );
+}
+
 /* 予定1件のカード（出欠タブ用） */
 function EventCard({
   ev,
@@ -948,6 +1011,9 @@ function EventCard({
         {ev.place ? ` ・ ${ev.place}` : ""}
       </div>
       {ev.note && <div className="evnote">{ev.note}</div>}
+      <div style={{ marginTop: 6 }}>
+        <EvGroupsBadge ev={ev} groups={team.groups} />
+      </div>
       {isCoach && (
         <div
           className="evsummary"
@@ -978,6 +1044,8 @@ function CalendarTab({
   setYm,
   view,
   setView,
+  calGroup,
+  setCalGroup,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
@@ -985,6 +1053,9 @@ function CalendarTab({
   setYm: (v: { y: number; m: number }) => void;
   view: "month" | "list";
   setView: (v: "month" | "list") => void;
+  /** カレンダーの絞り込み中グループ。null=すべて */
+  calGroup: string | null;
+  setCalGroup: (v: string | null) => void;
 }) {
   const team = useTeam();
   const pc = usePc();
@@ -999,9 +1070,13 @@ function CalendarTab({
 
   const dateStr = (d: number) =>
     `${ym.y}-${String(ym.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  // §3: 絞り込み中グループの対象予定(全員対象含む)のみを月表示・リスト表示・凡例へ通す
   const eventsOn = (d: number) =>
-    team.team.events.filter((e) => occursOn(e, dateStr(d))).sort(byStartAsc);
+    team.team.events
+      .filter((e) => occursOn(e, dateStr(d)) && eventTargetsGroup(e, calGroup))
+      .sort(byStartAsc);
   const today = todayStr();
+  const calGroupLabel = calGroup ? team.groups.find((g) => g.id === calGroup)?.label ?? null : null;
 
   const shift = (delta: number) => {
     const nm = ym.m + delta;
@@ -1053,6 +1128,7 @@ function CalendarTab({
                     {cat.label}
                   </span>
                   <span className="agtitle">{e.title}</span>
+                  <EvGroupsBadge ev={e} groups={team.groups} />
                   {timeLabel && <span className="agtime">{timeLabel}</span>}
                 </div>
               );
@@ -1064,6 +1140,28 @@ function CalendarTab({
 
   return (
     <div className="cal">
+      {/* §3: グループの絞り込み行（.mseg-itemと同じチップ文法）。グループが無ければ出さない */}
+      {team.groups.length > 0 && (
+        <>
+          <MobileSegments
+            wrapClassName="calfilter"
+            ariaLabel="カレンダーの絞り込み"
+            items={[
+              { key: "all", label: "すべて", on: calGroup == null, onSelect: () => setCalGroup(null) },
+              ...team.groups.map((g) => ({
+                key: g.id,
+                label: g.label,
+                on: calGroup === g.id,
+                onSelect: () => setCalGroup(g.id),
+              })),
+            ]}
+          />
+          {calGroupLabel && (
+            <div className="calfilterhint">{calGroupLabel}の予定と全員の予定を表示中</div>
+          )}
+        </>
+      )}
+
       <div className="calnav">
         <button onClick={() => shift(-1)}>‹</button>
         <b>
@@ -1099,12 +1197,8 @@ function CalendarTab({
                 <div
                   key={i}
                   className={`calcell${ds === today ? " today" : ""}`}
-                  onClick={() =>
-                    // 予定が1件だけの日は日別シートを飛ばして直接詳細へ
-                    evs.length === 1
-                      ? setSheet({ type: "eventView", id: evs[0].id })
-                      : setSheet({ type: "day", date: ds })
-                  }
+                  // §4: 予定が1件以上ある日も含め、常に日別シートを開く（予定が無い日は従来どおり）
+                  onClick={() => setSheet({ type: "day", date: ds })}
                 >
                   <span className={`caldate${i % 7 === 0 ? " sun" : i % 7 === 6 ? " sat" : ""}`}>{d}</span>
                   <div className="calevs">
@@ -1127,13 +1221,18 @@ function CalendarTab({
                     {evs.length > 2 && <span className="calmore">＋{evs.length - 2}件</span>}
                   </div>
                   <div className="caldots">
-                    {evs.slice(0, 3).map((e) => (
+                    {/* Phase D-1(C1-minor): スマホ390pxのセル幅では点3つ+「+n」が1行に
+                        収まらず2行目へ折り返してレイアウトが崩れるため、4件以上のときは
+                        点を2つに減らして「+n」と1行で収める（3件以下は従来どおり点3つ） */}
+                    {evs.slice(0, evs.length > 3 ? 2 : 3).map((e) => (
                       <span
                         key={e.id}
                         className="caldot"
                         style={{ background: categoryOf(e, team.categories).color }}
                       />
                     ))}
+                    {/* §4: 4件以上は点2つ＋「+n」（12px未満は使わない） */}
+                    {evs.length > 3 && <span className="caldotmore">+{evs.length - 2}</span>}
                   </div>
                 </div>
               );
@@ -2925,6 +3024,7 @@ function SheetHost({
   players,
   isCoach,
   pane,
+  calGroup = null,
 }: {
   sheet: SheetState;
   setSheet: (s: SheetState) => void;
@@ -2932,16 +3032,19 @@ function SheetHost({
   isCoach: boolean;
   /** PC専用: 配下の全Sheetをモーダルでなく.teammain内の1ペインとして描画する */
   pane?: boolean;
+  /** カレンダーの絞り込み中グループ。日別シートの一覧に適用する（§3） */
+  calGroup?: string | null;
 }) {
   const board = useBoard();
   const team = useTeam();
   const close = () => setSheet(null);
   // tm-sheetpane(PCペイン)の「戻る」用: 最小限の親復帰マップ。
-  // categoriesは呼び出し元のevent編集シートへ、prefill.eventId付きのmatchは
+  // categories/groupsは呼び出し元のevent編集シートへ、prefill.eventId付きのmatchは
   // 呼び出し元のeventView(試合結果を記録)へ戻し、それ以外はモーダル同様に閉じる
   const paneBack = () => {
-    if (sheet?.type === "categories") {
-      setSheet({ type: "event" });
+    // Phase D-1(C1-major): from/dateを引き継いで元の予定フォームへ戻す(編集中断ではなく復帰)
+    if (sheet?.type === "categories" || sheet?.type === "groups") {
+      setSheet({ type: "event", event: sheet.from, date: sheet.date });
       return;
     }
     if (sheet?.type === "match" && sheet.prefill?.eventId) {
@@ -2981,6 +3084,8 @@ function SheetHost({
   const [applyScope, setApplyScope] = useState<"only" | "following">("only");
   const editSeries = !!(ev && ev.seriesId && !ev.detached);
   const kind: TeamEventKind = categoryId === "match" ? "match" : "practice";
+  // 対象グループ（複数選択。空＝全員対象）
+  const [evGroupIds, setEvGroupIds] = useState<string[]>(ev?.groupIds ?? []);
 
   const onChangeStartDate = (v: string) => {
     const span = diffDays(date, endDate);
@@ -2995,6 +3100,11 @@ function SheetHost({
   const [catEditId, setCatEditId] = useState<string | null>(null);
   const [catEditLabel, setCatEditLabel] = useState("");
   const [catEditColor, setCatEditColor] = useState("");
+
+  // グループ管理（カテゴリ管理と同じ構造。色は持たない）
+  const [newGroupLabel, setNewGroupLabel] = useState("");
+  const [groupEditId, setGroupEditId] = useState<string | null>(null);
+  const [groupEditLabel, setGroupEditLabel] = useState("");
 
   // announce
   const [text, setText] = useState("");
@@ -3102,7 +3212,47 @@ function SheetHost({
             <button
               type="button"
               className="evcatchip catmanage"
-              onClick={() => setSheet({ type: "categories" })}
+              // Phase D-1(C1-major): 編集中の予定フォームの内容(from/date)を引き継ぎ、
+              // 管理シートから戻ったときに入力が消えないようにする
+              onClick={() => setSheet({ type: "categories", from: ev, date: evDefaultDate })}
+            >
+              ＋ 管理
+            </button>
+          </div>
+        </div>
+        {/* §2: 対象（グループの複数選択）。「全員」＝選択中のグループを全部外す */}
+        <div className="formfield">
+          <label>対象</label>
+          <div className="grouppick">
+            <button
+              type="button"
+              className={`grouppick-item${evGroupIds.length === 0 ? " on" : ""}`}
+              aria-pressed={evGroupIds.length === 0}
+              onClick={() => setEvGroupIds([])}
+            >
+              全員
+            </button>
+            {team.groups.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className={`grouppick-item${evGroupIds.includes(g.id) ? " on" : ""}`}
+                aria-pressed={evGroupIds.includes(g.id)}
+                onClick={() =>
+                  setEvGroupIds((cur) =>
+                    cur.includes(g.id) ? cur.filter((x) => x !== g.id) : [...cur, g.id]
+                  )
+                }
+              >
+                {g.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="grouppick-item manage"
+              aria-label="グループを管理"
+              // Phase D-1(C1-major): 編集中の予定フォームの内容(from/date)を引き継ぐ
+              onClick={() => setSheet({ type: "groups", from: ev, date: evDefaultDate })}
             >
               ＋ 管理
             </button>
@@ -3270,6 +3420,8 @@ function SheetHost({
               note: note.trim() || undefined,
               // 大会は種別=試合のときのみ保存（種別を練習へ変更した場合は付け直さずクリアする）
               competitionId: kind === "match" && evCompId ? evCompId : undefined,
+              // §2: 選択0件（全員）は groupIds を保存しない
+              groupIds: evGroupIds.length > 0 ? [...evGroupIds] : undefined,
             };
             saveLastEventCategory(categoryId);
             if (!ev) {
@@ -3300,7 +3452,9 @@ function SheetHost({
       </Sheet>
 
       {/* カテゴリ管理 */}
-      <Sheet open={sheet?.type === "categories"} onClose={pane ? paneBack : close} pane={pane}>
+      {/* Phase D-1(C1-major): 予定フォームから開いた場合はPC/モバイル共通でpaneBackへ戻す
+          (=編集中の予定フォームへ復帰。paneBackはfrom/dateが無いとき安全にnullへ落ちる) */}
+      <Sheet open={sheet?.type === "categories"} onClose={paneBack} pane={pane}>
         <h2>カテゴリ管理</h2>
         <div className="list">
           {team.categories.map((c) => (
@@ -3437,6 +3591,105 @@ function SheetHost({
             team.addCategory(newCatLabel, newCatColor);
             setNewCatLabel("");
             setNewCatColor(CATEGORY_PALETTE[0].color);
+          }}
+        >
+          追加する
+        </button>
+      </Sheet>
+
+      {/* グループ管理（カレンダーの対象§2）。カテゴリ管理と同じ構造（色は持たない）。
+          削除時は team.removeGroup 内で全予定の groupIds からも外す */}
+      <Sheet open={sheet?.type === "groups"} onClose={paneBack} pane={pane}>
+        <h2>グループ管理</h2>
+        <div className="list">
+          {team.groups.length === 0 && (
+            <div className="empty-msg">登録されたグループはありません。</div>
+          )}
+          {team.groups.map((g) => (
+            <div key={g.id} className="catrow">
+              {groupEditId === g.id ? (
+                <div style={{ flex: 1 }}>
+                  <input
+                    value={groupEditLabel}
+                    onChange={(e) => setGroupEditLabel(e.target.value)}
+                    style={{ marginBottom: 8 }}
+                    autoFocus
+                  />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className="bigbtn"
+                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                      onClick={() => {
+                        if (!groupEditLabel.trim()) {
+                          board.toast("名前を入力してください");
+                          return;
+                        }
+                        team.updateGroup({ id: g.id, label: groupEditLabel.trim() });
+                        setGroupEditId(null);
+                      }}
+                    >
+                      保存する
+                    </button>
+                    <button
+                      className="bigbtn ghost"
+                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                      onClick={() => setGroupEditId(null)}
+                    >
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="cmpinfo">
+                    <div className="cmpnm">{g.label}</div>
+                  </div>
+                  <button
+                    className="msgdel"
+                    aria-label="編集"
+                    onClick={() => {
+                      setGroupEditId(g.id);
+                      setGroupEditLabel(g.label);
+                    }}
+                  >
+                    <IconEdit />
+                  </button>
+                  <button
+                    className="msgdel"
+                    aria-label="削除"
+                    onClick={() => {
+                      if (
+                        window.confirm(`「${g.label}」を削除しますか？（予定からもこのグループが外れます）`)
+                      )
+                        team.removeGroup(g.id);
+                    }}
+                  >
+                    <E n="trash" />
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="formfield">
+          <label>新しいグループを追加</label>
+          <input
+            value={newGroupLabel}
+            onChange={(e) => setNewGroupLabel(e.target.value)}
+            placeholder="例）1年生 / Aチーム"
+          />
+        </div>
+        <button
+          // Phase D-1(C2-minor): 新設シートがスマホの緑bigbtnを増やさないよう、他の主要CTA
+          // (§3-4対応済み箇所)と同じ流儀でモバイルはaccent(青)にする。PC(pane)は不変
+          className={`bigbtn${pane ? "" : " accent"}`}
+          onClick={() => {
+            if (!newGroupLabel.trim()) {
+              board.toast("名前を入力してください");
+              return;
+            }
+            team.addGroup(newGroupLabel);
+            setNewGroupLabel("");
           }}
         >
           追加する
@@ -3658,11 +3911,13 @@ function SheetHost({
           <>
             <h2>{fmtDate(sheet.date)} の予定</h2>
             <div className="list">
-              {team.team.events.filter((e) => occursOn(e, sheet.date)).length === 0 ? (
+              {team.team.events.filter(
+                (e) => occursOn(e, sheet.date) && eventTargetsGroup(e, calGroup)
+              ).length === 0 ? (
                 <div className="empty-msg">この日に予定はありません。</div>
               ) : (
                 team.team.events
-                  .filter((e) => occursOn(e, sheet.date))
+                  .filter((e) => occursOn(e, sheet.date) && eventTargetsGroup(e, calGroup))
                   .sort(byStartAsc)
                   .map((e) => {
                     const cat = categoryOf(e, team.categories);
@@ -3692,6 +3947,9 @@ function SheetHost({
                         </div>
                         <div className="evmeta">
                           {[timeLabel, e.place, compName].filter(Boolean).join(" ・ ")}
+                        </div>
+                        <div style={{ marginTop: 6 }}>
+                          <EvGroupsBadge ev={e} groups={team.groups} />
                         </div>
                       </div>
                     );
@@ -3772,6 +4030,14 @@ function SheetHost({
                     {e.note && (
                       <div className="dline">
                         <E n="note" /> {e.note}
+                      </div>
+                    )}
+                    {/* §5: 対象行（全員 / グループ名の「・」連結）。詳細では省略せず全文表示。
+                        Phase D-1(C2-minor): グループが1つも無いチームでは行ごと出さない
+                        （絞り込み行・バッジ本体と同じ扱い） */}
+                    {team.groups.length > 0 && (
+                      <div className="dline">
+                        <E n="users" /> 対象: <EvGroupsBadge ev={e} groups={team.groups} full />
                       </div>
                     )}
                   </div>

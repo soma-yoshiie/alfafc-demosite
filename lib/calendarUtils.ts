@@ -1,6 +1,6 @@
 // カレンダー機能拡張のヘルパー集約（パレット・カテゴリ・日付・繰り返し展開・地図URL）
 
-import type { EventCategory, RecurrenceRule, TeamEvent } from "./types";
+import type { EventCategory, RecurrenceRule, TeamEvent, TeamGroup } from "./types";
 
 /** プリセットパレット（これ以外の色は使わせない） */
 export const CATEGORY_PALETTE: { color: string; name: string }[] = [
@@ -42,6 +42,26 @@ export function categoryOf(e: TeamEvent, cats: EventCategory[]): EventCategory {
     BUILTIN_CATEGORIES.find((c) => c.id === e.kind) ??
     BUILTIN_CATEGORIES[0]
   );
+}
+
+/* ===== カレンダーのグループ（対象）絞り込み ===== */
+
+/** 全員対象（groupIds未指定または空）かどうか */
+export const isAllTargets = (e: TeamEvent): boolean =>
+  !e.groupIds || e.groupIds.length === 0;
+
+/** groupId(絞り込み中のグループ。nullは「すべて」)がこの予定の対象に含まれるか。
+ *  全員対象の予定はどのグループを選んでいても表示する */
+export const eventTargetsGroup = (e: TeamEvent, groupId: string | null): boolean =>
+  groupId == null || isAllTargets(e) || e.groupIds!.includes(groupId);
+
+/** 対象表示ラベル。全員対象、または削除済みIDのみなら「全員」。それ以外は「・」連結 */
+export function targetLabel(e: TeamEvent, groups: TeamGroup[]): string {
+  if (isAllTargets(e)) return "全員";
+  const labels = e.groupIds!
+    .map((id) => groups.find((g) => g.id === id)?.label)
+    .filter((l): l is string => !!l);
+  return labels.length > 0 ? labels.join("・") : "全員";
 }
 
 /* ===== 日付ユーティリティ（Dateのタイムゾーン事故を避けるため文字列⇔数値変換を自前で） ===== */
