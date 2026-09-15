@@ -3329,6 +3329,109 @@ body:has(.mhead) .billtoggle button.on {
   opacity: 0;
   animation: sp-fadein 0.6s ease 1.6s forwards;
 }
+/* ---------- 今日の予定ゲート（スプラッシュ直後、タップでホームへ） ----------
+   色はスマホホームのヒーロー（.mhome-root の --mh-hero-1 / --accent-strong）と同じ紺のグラデーション。
+   スプラッシュ(300)の下、シート(.scrim 50/.sheet 60)・下部タブ(40)の上に置く */
+.todaygate {
+  position: fixed;
+  inset: 0;
+  z-index: 290;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #0b1f4d 0%, var(--accent-strong) 100%);
+  color: #ffffff;
+  cursor: pointer;
+  text-align: center;
+  transition: opacity 0.25s ease;
+  -webkit-user-select: none;
+  user-select: none;
+  outline: none;
+}
+.todaygate.leave {
+  opacity: 0;
+  pointer-events: none;
+}
+.todaygate-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 640px;
+  animation: sp-up 0.5s ease both;
+}
+.todaygate-date {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+.todaygate-label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.7);
+}
+.todaygate-off {
+  font-family: var(--font-display);
+  font-size: 104px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 4px;
+  margin: 10px 0 4px;
+}
+.todaygate-sub {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.5;
+}
+.todaygate-list {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+  margin-top: 6px;
+}
+.todaygate-ev {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.todaygate-cat {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+.todaygate-title {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.todaygate-time {
+  font-family: var(--font-display);
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+}
+.todaygate-place {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.todaygate-hint {
+  position: absolute;
+  bottom: calc(env(safe-area-inset-bottom) + 28px);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  animation: sp-fadein 0.6s ease 0.6s both;
+}
 @keyframes sp-pop {
   0% { transform: scale(0.6); opacity: 0; }
   60% { transform: scale(1.05); }
