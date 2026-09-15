@@ -3431,6 +3431,275 @@ body:has(.mhead) .billtoggle button.on {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.7);
   animation: sp-fadein 0.6s ease 0.6s both;
+  z-index: 1;
+}
+.todaygate-body {
+  position: relative;
+  z-index: 1;
+}
+.todaygate-title,
+.todaygate-opp,
+.todaygate-off,
+.todaygate-time {
+  text-shadow: 0 2px 20px rgba(0, 0, 0, 0.3);
+}
+.todaygate-cat.match {
+  background: #d9731f; /* 試合カテゴリの既存色（--match） */
+  color: #ffffff;
+}
+.todaygate-time {
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.25);
+}
+/* 段階的な登場（日付→見出し→本体→状態） */
+.todaygate-body > * {
+  animation: tg-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.todaygate-body > *:nth-child(1) { animation-delay: 0.05s; }
+.todaygate-body > *:nth-child(2) { animation-delay: 0.15s; }
+.todaygate-body > *:nth-child(3) { animation-delay: 0.3s; }
+.todaygate-body > *:nth-child(4) { animation-delay: 0.45s; }
+.todaygate-body > *:nth-child(5) { animation-delay: 0.55s; }
+.todaygate-off {
+  animation: tg-pop 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.3s both;
+}
+.todaygate-next {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 6px;
+}
+/* 試合: 対戦カード */
+.todaygate-vs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.todaygate-own {
+  font-size: 15px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.85);
+}
+.todaygate-vsmark {
+  font-family: var(--font-display);
+  font-size: 56px;
+  line-height: 1;
+  letter-spacing: 4px;
+  color: #ffb36b;
+  text-shadow: 0 0 24px rgba(217, 115, 31, 0.6);
+  animation: tg-pop 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) 0.4s both;
+}
+.todaygate-opp {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+/* 状態ピル（キックオフまで／試合中／終了） */
+.todaygate-status {
+  margin-top: 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0b1f4d;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+  animation: tg-rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) 0.6s both;
+}
+/* 質感（粒子）。単色のベタに見えないようにする */
+.tg-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+/* 中央の文字の裏に薄い影を敷いて、飾りと重なっても読めるようにする */
+.tg-shade {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 60% 38% at 50% 50%, rgba(0, 0, 0, 0.38), transparent 100%);
+}
+/* 飾りのゆっくりした寄り */
+.tg-zoom {
+  animation: tg-zoom 9s ease-out both;
+  transform-origin: center;
+}
+/* 流れ星（オフ） */
+.tg-shoot {
+  position: absolute;
+  top: 14%;
+  left: -12%;
+  width: 140px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.95));
+  transform: rotate(22deg);
+  opacity: 0;
+  animation: tg-shoot 7s ease-in 1.2s infinite;
+}
+@keyframes tg-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes tg-pop {
+  0% { opacity: 0; transform: scale(0.6); }
+  70% { transform: scale(1.06); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes tg-zoom {
+  from { transform: scale(1.08); }
+  to { transform: scale(1); }
+}
+@keyframes tg-shoot {
+  0% { transform: translate(0, 0) rotate(22deg); opacity: 0; }
+  4% { opacity: 1; }
+  18% { transform: translate(70vw, 32vh) rotate(22deg); opacity: 0; }
+  100% { transform: translate(70vw, 32vh) rotate(22deg); opacity: 0; }
+}
+/* 飾りの層（背景の上・文字の下）。読み上げ対象外・タップは親へ */
+.tg-art {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.tg-art svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+/* --- 試合: 濃紺の夜のスタジアム。右下に試合色（橙）の熱、左右に照明 --- */
+.todaygate.theme-match {
+  background:
+    radial-gradient(circle at 85% 105%, rgba(217, 115, 31, 0.55), transparent 42%),
+    radial-gradient(circle at 10% -10%, rgba(255, 255, 255, 0.12), transparent 35%),
+    linear-gradient(160deg, #06112b 0%, #0f2f6e 58%, #123a86 100%);
+}
+.tg-light {
+  position: absolute;
+  top: -35%;
+  width: 75%;
+  height: 95%;
+  background: radial-gradient(ellipse at top, rgba(255, 255, 255, 0.22), transparent 62%);
+  filter: blur(14px);
+  animation: tg-sweep 7s ease-in-out infinite alternate;
+}
+.tg-light-l {
+  left: -25%;
+}
+.tg-light-r {
+  right: -25%;
+  animation-delay: -3.5s;
+}
+.tg-pitch {
+  color: rgba(255, 255, 255, 0.28);
+}
+.tg-lines > * {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: tg-draw 1.4s ease-out forwards;
+}
+.tg-lines > *:nth-child(2) { animation-delay: 0.15s; }
+.tg-lines > *:nth-child(3) { animation-delay: 0.3s; }
+.tg-lines > *:nth-child(4) { animation-delay: 0.45s; }
+.tg-lines > *:nth-child(5) { animation-delay: 0.45s; }
+.tg-lines > *:nth-child(6) { animation-delay: 0.6s; }
+.tg-lines > *:nth-child(7) { animation-delay: 0.6s; }
+.tg-ball {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: tg-roll 2.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.5s both;
+}
+/* --- 練習: 芝の緑。縦の芝目、コーンとドリブルの点線 --- */
+.todaygate.theme-practice {
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.14), transparent 40%),
+    linear-gradient(165deg, #0a3b28 0%, #116b3f 55%, #1a8c52 100%);
+}
+.tg-grass {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.045) 0 44px, transparent 44px 88px);
+}
+.tg-path {
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-dasharray: 8 12;
+  animation: tg-dash 1.2s linear infinite;
+}
+.tg-cone {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: tg-cone 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.tg-dball {
+  filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.35));
+}
+/* --- オフ: 夜空。星のまたたき、月、丘の影 --- */
+.todaygate.theme-off {
+  background:
+    radial-gradient(circle at 76% 16%, rgba(244, 231, 176, 0.2), transparent 20%),
+    linear-gradient(180deg, #071433 0%, #0d2557 55%, #1a3f7a 100%);
+}
+.tg-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #ffffff;
+  opacity: 0.35;
+  animation: tg-twinkle 2.6s ease-in-out infinite;
+}
+.tg-moon {
+  position: absolute !important;
+  inset: auto !important;
+  top: 9% !important;
+  right: 12% !important;
+  width: 96px !important;
+  height: 96px !important;
+  filter: drop-shadow(0 0 22px rgba(244, 231, 176, 0.55));
+  animation: sp-up 0.9s ease both;
+}
+.tg-hill {
+  position: absolute;
+  left: -20%;
+  right: -20%;
+  bottom: -18%;
+  height: 42%;
+  border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  background: #061029;
+  opacity: 0.85;
+}
+/* --- その他（保護者会など）: 紺に斜めの光 --- */
+.todaygate.theme-other {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0 18px, transparent 18px 46px),
+    linear-gradient(135deg, #0b1f4d 0%, var(--accent-strong) 100%);
+}
+@keyframes tg-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes tg-roll {
+  from { transform: translate(-60px, 585px) rotate(0deg); opacity: 0; }
+  20% { opacity: 1; }
+  to { transform: translate(110px, 585px) rotate(540deg); opacity: 1; }
+}
+@keyframes tg-sweep {
+  from { transform: rotate(-8deg) translateX(-4%); opacity: 0.7; }
+  to { transform: rotate(8deg) translateX(4%); opacity: 1; }
+}
+@keyframes tg-dash {
+  to { stroke-dashoffset: -20; }
+}
+@keyframes tg-cone {
+  from { opacity: 0; transform: translateY(18px) scale(0.6); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes tg-twinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.25); }
 }
 @keyframes sp-pop {
   0% { transform: scale(0.6); opacity: 0; }
