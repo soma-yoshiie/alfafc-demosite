@@ -1010,6 +1010,9 @@ interface BoardContextValue {
   updateDeliverable: (d: CoachDeliverable) => void;
   removeDeliverable: (id: string) => void;
   respondDeliverable: (id: string, playerId: string, response: CoachDeliverable["responses"][string]) => void;
+  /** groups-everywhere Phase D-1(C1-major): グループ削除／学校区分変更で消える学年グループの
+   *  後始末用。全配信のtargetGroupIdsからgroupIdを外す（空になればundefinedに戻す） */
+  removeDeliverableTargetGroup: (groupId: string) => void;
   currentPlayId: string | null;
   currentPlayTitle: string | null;
   canSaveNew: boolean;
@@ -2530,6 +2533,16 @@ export function BoardProvider({
     },
     [showToast]
   );
+  // groups-everywhere Phase D-1(C1-major): removeGroup/setSchoolStageの後始末用
+  const removeDeliverableTargetGroup = useCallback((groupId: string) => {
+    setDeliverables((list) =>
+      list.map((d) => {
+        if (!d.targetGroupIds?.includes(groupId)) return d;
+        const rest = d.targetGroupIds.filter((x) => x !== groupId);
+        return { ...d, targetGroupIds: rest.length > 0 ? rest : undefined } as CoachDeliverable;
+      })
+    );
+  }, []);
 
   // ---- コーチラボ（ユーザー投稿記事） ----
   const addUserArticle = useCallback(
@@ -3220,6 +3233,7 @@ export function BoardProvider({
       updateDeliverable,
       removeDeliverable,
       respondDeliverable,
+      removeDeliverableTargetGroup,
       currentPlayId,
       currentPlayTitle:
         library.plays.find((p) => p.id === currentPlayId)?.title ?? null,
@@ -3345,6 +3359,7 @@ export function BoardProvider({
       updateDeliverable,
       removeDeliverable,
       respondDeliverable,
+      removeDeliverableTargetGroup,
       currentPlayId,
       savePlay,
       saveCurrent,

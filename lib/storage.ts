@@ -35,6 +35,7 @@ const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
 const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
 const CALGROUP_KEY = "soccer_tactics_calgroup_v1";
+const GROUPFILTER_KEY = "soccer_tactics_groupfilter_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
 const COACHLAB_KEY = "soccer_tactics_coachlab_v1";
@@ -103,9 +104,16 @@ export function loadState(): BoardState | null {
     const data = JSON.parse(raw) as BoardState;
     if (!data || !Array.isArray(data.slots)) return null;
     if (Array.isArray(data.players)) {
-      data.players = data.players.map((p) =>
-        p && Array.isArray(p.fitness) ? { ...p, fitness: migrateFitness(p.fitness) } : p
-      );
+      data.players = data.players.map((p) => {
+        if (!p) return p;
+        let next = p;
+        if (Array.isArray(p.fitness)) next = { ...next, fitness: migrateFitness(p.fitness) };
+        // groups-everywhere §1: groupIdsが配列でなければ（旧データ・壊れたデータ）除去する
+        if (p.groupIds !== undefined && !Array.isArray(p.groupIds)) {
+          next = { ...next, groupIds: undefined };
+        }
+        return next;
+      });
     }
     return data;
   } catch {
@@ -306,6 +314,21 @@ export function loadTeam(): TeamData | null {
     // 旧データ（種目マスタ未導入）は初回のみデフォルト種目を補完する。
     // 空配列（スタッフが全種目を削除した状態）は意図的な状態として上書きしない。
     if (!Array.isArray(data.fitnessTests)) data.fitnessTests = DEFAULT_FITNESS_TESTS;
+    // groups-everywhere §1: 読み込み正規化
+    // schoolStage未定義（旧データ）は"elementary"とみなす
+    if (!data.schoolStage) data.schoolStage = "elementary";
+    // groups の kind 未定義（旧データ）は "custom" とみなす
+    data.groups = data.groups.map((g) => (g.kind ? g : { ...g, kind: "custom" as const }));
+    // events の optInPlayerIds が配列でなければ除去する
+    data.events = data.events.map((e) =>
+      e.optInPlayerIds !== undefined && !Array.isArray(e.optInPlayerIds)
+        ? { ...e, optInPlayerIds: undefined }
+        : e
+    );
+    // announcements の groupIds が配列でなければ除去する
+    data.announcements = data.announcements.map((a) =>
+      a.groupIds !== undefined && !Array.isArray(a.groupIds) ? { ...a, groupIds: undefined } : a
+    );
     return data;
   } catch {
     return null;
@@ -355,6 +378,36 @@ export function saveCalGroup(id: string | null): void {
   try {
     if (id) window.localStorage.setItem(CALGROUP_KEY, id);
     else window.localStorage.removeItem(CALGROUP_KEY);
+  } catch {
+    /* 無視 */
+  }
+}
+
+/**
+ * 画面ごとのグループ絞り込み選択（groups-everywhere §5: GroupChips共通フックuseGroupFilter用）。
+ * 1つのlocalStorageキー配下に画面key（例: "roster"）ごとの選択（グループIDの配列）を持つ。
+ */
+export function loadGroupFilter(key: string): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(GROUPFILTER_KEY);
+    if (!raw) return [];
+    const data = JSON.parse(raw);
+    const v = data && typeof data === "object" ? data[key] : undefined;
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveGroupFilter(key: string, ids: string[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(GROUPFILTER_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    const map = data && typeof data === "object" ? data : {};
+    map[key] = ids;
+    window.localStorage.setItem(GROUPFILTER_KEY, JSON.stringify(map));
   } catch {
     /* 無視 */
   }
@@ -455,14 +508,21 @@ export function loadDeliverables(): CoachDeliverable[] | null {
     const data = JSON.parse(raw);
     if (!Array.isArray(data)) return null;
     // 廃止済みkind（過去に配信していた種別など）の過去データが残っていても安全に無視する互換ガード
-    return (data as CoachDeliverable[]).filter(
-      (d) =>
-        d &&
-        (d.kind === "menu" ||
-          d.kind === "assignment" ||
-          d.kind === "meeting" ||
-          d.kind === "setpiece")
-    );
+    return (data as CoachDeliverable[])
+      .filter(
+        (d) =>
+          d &&
+          (d.kind === "menu" ||
+            d.kind === "assignment" ||
+            d.kind === "meeting" ||
+            d.kind === "setpiece")
+      )
+      // groups-everywhere §1: targetGroupIdsが配列でなければ除去する
+      .map((d) =>
+        d.targetGroupIds !== undefined && !Array.isArray(d.targetGroupIds)
+          ? { ...d, targetGroupIds: undefined }
+          : d
+      );
   } catch {
     return null;
   }

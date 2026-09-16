@@ -10,8 +10,8 @@ import type {
   SoloNote,
   TeamData,
 } from "./types";
-import { deliverTargets } from "./types";
 import { localDateStr, longestWeeklyStreak } from "./dates";
+import { deliverableTargetsPlayer, eventTargetsPlayer } from "./groups";
 import { buildSlots } from "./formations";
 
 export interface SeasonRange {
@@ -70,20 +70,23 @@ export function buildSeasonReport(
   });
   const positions = Object.entries(posCounts).sort((a, b) => b[1] - a[1]);
 
-  // 出席（期間内の予定）
+  // 出席（期間内の予定。groups-everywhere §4: この選手が対象の予定だけを母数にする）
   let yes = 0;
   let total = 0;
   if (team) {
-    team.events.filter((e) => inRange(e.date, range)).forEach((e) => {
-      total++;
-      if (team.attendance[e.id]?.[player.id]?.status === "yes") yes++;
-    });
+    const groups = team.groups ?? [];
+    team.events
+      .filter((e) => inRange(e.date, range) && eventTargetsPlayer(e, player, groups))
+      .forEach((e) => {
+        total++;
+        if (team.attendance[e.id]?.[player.id]?.status === "yes") yes++;
+      });
   }
 
-  // 個人課題（期間内の回答）
+  // 個人課題（期間内の回答。グループ宛の配信も対象に含める）
   const assignments = deliverables.filter(
     (d): d is Extract<CoachDeliverable, { kind: "assignment" }> =>
-      d.kind === "assignment" && deliverTargets(d, player.id)
+      d.kind === "assignment" && deliverableTargetsPlayer(d, player, team?.groups ?? [])
   );
   const assignmentDone = assignments.filter((d) => {
     const r = d.responses[player.id];

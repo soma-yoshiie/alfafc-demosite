@@ -10,9 +10,9 @@ import type {
   SoloNote,
   TeamData,
 } from "./types";
-import { deliverTargets } from "./types";
 import { localDateStr, weekStart, weeklyStreak } from "./dates";
 import { attendanceRate } from "./teamStats";
+import { deliverableTargetsPlayer } from "./groups";
 
 export type AlertLevel = "warn" | "info" | "good";
 export interface PlayerAlert {
@@ -85,13 +85,15 @@ export function computePlayerKpi(
   team: TeamData | null
 ): PlayerKpi {
   const mine = notebook.filter((n) => n.playerId === player.id);
-  const att = attendanceRate(team, player.id);
+  // groups-everywhere §4: 対象の予定だけを母数にする（playerIdの一致先を[player]の1人に限定すれば十分）
+  const att = attendanceRate(team, player.id, [player]);
   const solo = mine.filter((n): n is SoloNote => n.kind === "solo");
   const lastTs = mine.reduce((m, n) => Math.max(m, n.ts), 0);
 
-  // 個人課題
+  // 個人課題（グループ宛の配信も対象に含める）
   const assignments = deliverables.filter(
-    (d): d is AssignmentDeliver => d.kind === "assignment" && deliverTargets(d, player.id)
+    (d): d is AssignmentDeliver =>
+      d.kind === "assignment" && deliverableTargetsPlayer(d, player, team?.groups ?? [])
   );
   const assignmentDone = assignments.filter((d) => d.responses[player.id]?.status === "done").length;
 

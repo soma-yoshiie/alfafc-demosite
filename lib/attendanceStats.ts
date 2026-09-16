@@ -4,8 +4,9 @@
 // （未来の予定・未記録の予定を欠席扱いにしないのは attendanceRate と同じ理由）。
 // 期間フィルタ(AttPeriod)はこれに加えて「イベント開始日が期間の起点日以降」で絞り込む。
 
-import type { Player, TeamData } from "./types";
+import type { Player, TeamData, TeamGroup } from "./types";
 import { localDateStr } from "./dates";
+import { eventTargetsPlayer, playerInGroup } from "./groups";
 
 export type AttPeriod = "all" | "m1" | "m3" | "m6";
 
@@ -31,7 +32,11 @@ export interface PlayerAttendanceRow {
   pct: number;
 }
 
-/** 選手ごとの出欠集計（期間フィルタ適用・名簿の並び順のまま） */
+/**
+ * 選手ごとの出欠集計（期間フィルタ適用・名簿の並び順のまま）。
+ * groups-everywhere §4: 分母は「その選手が対象の予定」だけ（対象外の予定はカウントしない）。
+ * team.groups（学年＋カスタム。ensureGradeGroups済み）を使って判定する。
+ */
 export function perPlayerAttendance(
   team: TeamData,
   players: Player[],
@@ -39,6 +44,7 @@ export function perPlayerAttendance(
 ): PlayerAttendanceRow[] {
   const today = localDateStr();
   const start = periodStartDate(period, today);
+  const groups = team.groups ?? [];
   return players.map((p) => {
     let yes = 0;
     let maybe = 0;
@@ -47,6 +53,7 @@ export function perPlayerAttendance(
     team.events.forEach((e) => {
       if (e.date > today) return;
       if (start && e.date < start) return;
+      if (!eventTargetsPlayer(e, p, groups)) return;
       const entry = team.attendance[e.id]?.[p.id];
       if (!entry?.status) return;
       recorded++;
@@ -82,6 +89,7 @@ export function monthlyAttendance(
 ): MonthlyAttendanceRow[] {
   const today = localDateStr();
   const [ty, tm] = today.split("-").map(Number);
+  const groups = team.groups ?? [];
   const rows: MonthlyAttendanceRow[] = [];
   for (let i = months - 1; i >= 0; i--) {
     const dt = new Date(ty, tm - 1 - i, 1);
@@ -98,6 +106,8 @@ export function monthlyAttendance(
       if (!e.date.startsWith(ym)) return;
       let evHasEntry = false;
       players.forEach((p) => {
+        // groups-everywhere §4: 対象外の選手のエントリはこの予定の集計に含めない
+        if (!eventTargetsPlayer(e, p, groups)) return;
         const entry = team.attendance[e.id]?.[p.id];
         if (!entry?.status) return;
         recorded++;
@@ -111,63 +121,57 @@ export function monthlyAttendance(
   return rows;
 }
 
-export interface GradeAttendanceRow {
-  /** 学年(1-6)。未設定は null */
-  grade: number | null;
+export interface GroupAttendanceRow {
+  groupId: string;
+  kind: TeamGroup["kind"];
   label: string;
   yes: number;
   recorded: number;
   /** 出席率(%)。recorded=0のときは0 */
   pct: number;
-  /** その学年に所属する選手数（出欠記録の有無に関わらずカウント） */
+  /** そのグループに所属する選手数（出欠記録の有無に関わらずカウント） */
   playerCount: number;
 }
 
 /**
- * 学年別の出席率（期間フィルタ適用）。
- * 母数は学年内の選手のみで数え直す（TeamProvider.summary の「全選手」母数は流用しない）。
- * grade未設定の選手は「学年未設定」としてまとめる。
+ * グループ別の出席率（期間フィルタ適用。groups-everywhere §4：学年別→グループ別に拡張）。
+ * team.groups（学年グループが先、カスタムグループが後）をそのまま順に列挙する。
+ * 各グループの母数は「そのグループの選手のうち、その予定が対象の選手」だけ（perPlayerAttendance
+ * と同じeventTargetsPlayer判定）に絞る（2年生の出席率が3年生の練習で下がらない）。
+ * どのグループにも属さない選手（学年未設定・カスタム未所属）は集計に含まれない
+ * （個人別ランキング側には引き続き全員出る）。
  */
-export function gradeAttendance(
+export function groupAttendance(
   team: TeamData,
   players: Player[],
   period: AttPeriod
-): GradeAttendanceRow[] {
+): GroupAttendanceRow[] {
   const today = localDateStr();
   const start = periodStartDate(period, today);
-  const groups = new Map<number | null, Player[]>();
-  players.forEach((p) => {
-    const g = p.grade ?? null;
-    const list = groups.get(g);
-    if (list) list.push(p);
-    else groups.set(g, [p]);
-  });
-  const rows: GradeAttendanceRow[] = [];
-  groups.forEach((list, grade) => {
+  const groups = team.groups ?? [];
+  return groups.map((g) => {
+    const members = players.filter((p) => playerInGroup(p, g));
     let yes = 0;
     let recorded = 0;
     team.events.forEach((e) => {
       if (e.date > today) return;
       if (start && e.date < start) return;
-      list.forEach((p) => {
+      members.forEach((p) => {
+        if (!eventTargetsPlayer(e, p, groups)) return;
         const entry = team.attendance[e.id]?.[p.id];
         if (!entry?.status) return;
         recorded++;
         if (entry.status === "yes") yes++;
       });
     });
-    rows.push({
-      grade,
-      label: grade != null ? `${grade}年` : "学年未設定",
+    return {
+      groupId: g.id,
+      kind: g.kind,
+      label: g.label,
       yes,
       recorded,
       pct: recorded ? Math.round((yes / recorded) * 100) : 0,
-      playerCount: list.length,
-    });
-  });
-  return rows.sort((a, b) => {
-    if (a.grade == null) return b.grade == null ? 0 : 1;
-    if (b.grade == null) return -1;
-    return a.grade - b.grade;
+      playerCount: members.length,
+    };
   });
 }

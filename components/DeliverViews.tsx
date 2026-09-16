@@ -15,11 +15,13 @@ import type {
 import {
   ASSIGNMENT_STATUS_LABEL,
   DELIVER_KIND_LABEL,
-  deliverTargets,
 } from "@/lib/types";
+import { deliverableTargetsPlayer, deliverableVisibleToPlayer } from "@/lib/groups";
 import { renderTacticPng } from "@/lib/exportImage";
 import { useBoard } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
+import { GroupChips } from "./GroupChips";
 
 /* ====== 一覧ブロック（ホーム・配信タブに埋め込む） ====== */
 export function DeliverBlock({
@@ -38,16 +40,21 @@ export function DeliverBlock({
   selectedId?: string | null;
 }) {
   const board = useBoard();
+  const team = useTeam();
   const isCoach = board.auth.role === "coach";
   const me = board.auth.playerId ?? "";
+  const meP = board.state.players.find((p) => p.id === me);
 
   const items = useMemo(() => {
     let list = board.deliverables.filter((d) => kinds.includes(d.kind));
-    if (!isCoach) list = list.filter((d) => deliverTargets(d, me));
+    // groups-everywhere §4: グループ宛の配信も対象なら表示する。Phase D-1(C1-minor):
+    // 選手が名簿に見つからない場合のフォールバックはdeliverableVisibleToPlayer()に集約
+    // （宛先指定の無い配信だけ通す。旧`: true`は他人宛・他グループ宛まで見えてしまっていた）
+    if (!isCoach) list = list.filter((d) => deliverableVisibleToPlayer(d, meP, team.groups));
     // 選手は未回答を上に（要対応が埋もれないように）
     const undone = (d: CoachDeliverable) => (!isCoach && !d.responses[me] ? 0 : 1);
     return [...list].sort((a, b) => undone(a) - undone(b) || b.ts - a.ts);
-  }, [board.deliverables, kinds, isCoach, me]);
+  }, [board.deliverables, kinds, isCoach, me, meP, team.groups]);
 
   return (
     <div className="dlvblock">
@@ -99,8 +106,9 @@ function DeliverCard({
   onClick: () => void;
 }) {
   const board = useBoard();
+  const team = useTeam();
   const respondedCount = Object.keys(d.responses).length;
-  const targets = board.state.players.filter((p) => deliverTargets(d, p.id)).length;
+  const targets = board.state.players.filter((p) => deliverableTargetsPlayer(d, p, team.groups)).length;
   const mineDone = !!d.responses[me];
   return (
     <button className={`dlvcard${selected ? " sel" : ""}`} onClick={onClick}>
@@ -133,12 +141,18 @@ export function DeliverComposer({
   onSaved?: (id: string) => void;
 }) {
   const board = useBoard();
+  const team = useTeam();
   const [title, setTitle] = useState(edit?.title ?? "");
-  // target
-  const [targetMode, setTargetMode] = useState<"team" | "one">(
-    edit?.targetPlayerIds && edit.targetPlayerIds.length ? "one" : "team"
+  // target（groups-everywhere §4: 全員／グループ（複数選択）／個人）
+  const [targetMode, setTargetMode] = useState<"team" | "group" | "one">(
+    edit?.targetPlayerIds && edit.targetPlayerIds.length
+      ? "one"
+      : edit?.targetGroupIds && edit.targetGroupIds.length
+        ? "group"
+        : "team"
   );
   const [targetId, setTargetId] = useState(edit?.targetPlayerIds?.[0] ?? board.state.players[0]?.id ?? "");
+  const [targetGroupIds, setTargetGroupIds] = useState<string[]>(edit?.targetGroupIds ?? []);
 
   // menu
   const [category, setCategory] = useState((edit as PracticeMenuDeliver)?.category ?? "");
@@ -156,6 +170,7 @@ export function DeliverComposer({
   const [spMemo, setSpMemo] = useState((edit as SetPieceDeliver)?.memo ?? "");
 
   const targetPlayerIds = targetMode === "one" && targetId ? [targetId] : undefined;
+  const targetGroupIdsOut = targetMode === "group" && targetGroupIds.length > 0 ? [...targetGroupIds] : undefined;
 
   const submit = () => {
     if (!title.trim()) {
@@ -166,7 +181,16 @@ export function DeliverComposer({
       board.toast("セットプレーを選んでください");
       return;
     }
-    const base = { title: title.trim(), targetPlayerIds, responses: edit?.responses ?? {} };
+    if (targetMode === "group" && targetGroupIds.length === 0) {
+      board.toast("グループを選んでください");
+      return;
+    }
+    const base = {
+      title: title.trim(),
+      targetPlayerIds,
+      targetGroupIds: targetGroupIdsOut,
+      responses: edit?.responses ?? {},
+    };
     let data: Omit<CoachDeliverable, "id" | "ts">;
     if (kind === "menu") {
       data = { kind, ...base, category: category.trim() || undefined, desc: desc.trim() || undefined } as Omit<PracticeMenuDeliver, "id" | "ts">;
@@ -212,11 +236,20 @@ export function DeliverComposer({
             <input type="radio" checked={targetMode === "team"} onChange={() => setTargetMode("team")} />
             チーム全員
           </label>
+          {team.groups.length > 0 && (
+            <label className={targetMode === "group" ? "on" : ""}>
+              <input type="radio" checked={targetMode === "group"} onChange={() => setTargetMode("group")} />
+              グループ
+            </label>
+          )}
           <label className={targetMode === "one" ? "on" : ""}>
             <input type="radio" checked={targetMode === "one"} onChange={() => setTargetMode("one")} />
             個人
           </label>
         </div>
+        {targetMode === "group" && (
+          <GroupChips groups={team.groups} value={targetGroupIds} onChange={setTargetGroupIds} multi />
+        )}
         {targetMode === "one" && (
           <select style={{ marginTop: 8 }} value={targetId} onChange={(e) => setTargetId(e.target.value)}>
             {board.state.players.map((p) => (
@@ -329,9 +362,14 @@ export function DeliverDetail({
   onWritePractice?: (menuId: string) => void;
 }) {
   const board = useBoard();
+  const team = useTeam();
   const d = board.deliverables.find((x) => x.id === id);
   const isCoach = board.auth.role === "coach";
   if (!d) return <div className="empty-msg">配信が見つかりません。</div>;
+  // groups-everywhere §4: 宛先の表示にグループ宛（targetGroupIds）も含める
+  const targetGroupLabels = (d.targetGroupIds ?? [])
+    .map((gid) => team.groups.find((g) => g.id === gid)?.label)
+    .filter((l): l is string => !!l);
   return (
     <div className="notedetail">
       <div className="notedhead">
@@ -342,6 +380,8 @@ export function DeliverDetail({
             <div className="notedate">
               宛: {d.targetPlayerIds.map((pid) => board.state.players.find((p) => p.id === pid)?.name ?? "選手").join("、")}
             </div>
+          ) : targetGroupLabels.length > 0 ? (
+            <div className="notedate">宛: {targetGroupLabels.join("・")}</div>
           ) : (
             <div className="notedate">チーム全員</div>
           )}

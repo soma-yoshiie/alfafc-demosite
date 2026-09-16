@@ -55,8 +55,11 @@ export interface Player {
   /** 体重kg */
   weight?: number | null;
   dominantFoot?: DominantFoot;
-  /** 学年（1〜6年。出欠の学年別集計・名簿表示に使用。未設定可） */
+  /** 学年（範囲とラベルはTeamData.schoolStageとSTAGE_GRADES/gradeLabelで決まる。
+   *  学年グループの所属判定・名簿表示に使用。未設定可） */
   grade?: number | null;
+  /** 所属するカスタムグループ（TeamGroup の kind="custom" の id）。学年グループは grade から自動判定するためここには含めない */
+  groupIds?: string[];
   /** 体力測定の記録（種目はTeamData.fitnessTestsのFitnessTest.idで参照） */
   fitness?: FitnessRecord[];
   /** 怪我履歴（スタッフ管理） */
@@ -568,12 +571,32 @@ export interface TeamEvent {
   detached?: boolean;
   /** 対象グループ。未定義または空＝全員対象 */
   groupIds?: string[];
+  /** 対象外の選手が自分で「参加する」にした選手ID（選手側のカスタマイズ。groups-everywhere §3） */
+  optInPlayerIds?: string[];
 }
+
+/** 学校区分（学年の範囲とラベルを決める。groups-everywhere §1） */
+export type SchoolStage = "elementary" | "junior" | "high"; // 小学1〜6 / 中学1〜3 / 高校1〜3
+
+export const STAGE_GRADES: Record<SchoolStage, number[]> = {
+  elementary: [1, 2, 3, 4, 5, 6],
+  junior: [1, 2, 3],
+  high: [1, 2, 3],
+};
+
+/** 学年の表示ラベル（例「中2」） */
+export const gradeLabel = (stage: SchoolStage, g: number): string =>
+  stage === "elementary" ? `小${g}` : stage === "junior" ? `中${g}` : `高${g}`;
 
 /** チームのグループ（学年・A/Bチームなど）。順序は配列順 */
 export interface TeamGroup {
   id: string;
   label: string;
+  /** "grade"＝学年グループ（所属は Player.grade から自動）／"custom"＝スタッフが作るグループ（所属は Player.groupIds）。
+   *  旧データ（kind未定義）は storage.ts の読み込み正規化で "custom" とみなす */
+  kind: "grade" | "custom";
+  /** kind="grade" のときの学年 */
+  grade?: number;
 }
 
 export type AttendanceStatus = "yes" | "maybe" | "no";
@@ -591,6 +614,8 @@ export interface Announcement {
   /** 添付した保存戦術 */
   playId?: string;
   playTitle?: string;
+  /** 宛先グループ。未定義または空＝全員（groups-everywhere §4） */
+  groupIds?: string[];
 }
 
 /* ===== チャット / メッセージ（戦術・トレーニング・画像・動画の送信） ===== */
@@ -927,6 +952,8 @@ interface DeliverBase {
   title: string;
   /** 配信先の選手ID。未指定/空＝チーム全員 */
   targetPlayerIds?: string[];
+  /** 配信先グループ（targetPlayerIdsとOR併用可）。未定義/空かつtargetPlayerIdsも未指定＝チーム全員（groups-everywhere §4） */
+  targetGroupIds?: string[];
 }
 
 /** ③ 練習メニュー配信＋選手の理解度/難易度/感想 */
@@ -993,11 +1020,6 @@ export type CoachDeliverable =
   | MeetingDeliver
   | SetPieceDeliver;
 
-/** 配信物が対象選手に届くか */
-export function deliverTargets(d: CoachDeliverable, playerId: string): boolean {
-  return !d.targetPlayerIds || d.targetPlayerIds.length === 0 || d.targetPlayerIds.includes(playerId);
-}
-
 /** 怪我の状態 */
 export type InjuryStatus = "out" | "recovering" | "ok";
 
@@ -1038,6 +1060,8 @@ export interface TeamData {
   series?: EventSeries[];
   /** 体力測定の種目マスタ（チーム共通登録）。旧データは未定義＝storage.ts でデフォルト種目を補完 */
   fitnessTests?: FitnessTest[];
+  /** 学校区分（学年グループの範囲・ラベルを決める）。旧データは未定義＝"elementary"（groups-everywhere §1） */
+  schoolStage?: SchoolStage;
 }
 
 /** デモ用の閲覧者ロール。coach=管理 / member=選手・保護者 */

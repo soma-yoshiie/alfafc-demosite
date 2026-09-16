@@ -8,8 +8,9 @@ import type {
   Player,
   TeamData,
 } from "./types";
-import { NOTE_KIND_LABEL, deliverTargets, DELIVER_KIND_LABEL } from "./types";
+import { NOTE_KIND_LABEL, DELIVER_KIND_LABEL } from "./types";
 import { computePlayerKpi } from "./coaching";
+import { deliverableTargetsPlayer, deliverableVisibleToPlayer } from "./groups";
 
 export type NotifLevel = "warn" | "info" | "good";
 export type NotifTarget =
@@ -39,7 +40,8 @@ const nameOf = (players: Player[], pid: string) =>
 
 /** 実tsを持つイベント通知（未読判定の対象） */
 export function buildEventNotifications(input: NotifInput): Notification[] {
-  const { role, playerId, notebook, deliverables, players } = input;
+  const { role, playerId, notebook, deliverables, players, team } = input;
+  const groups = team?.groups ?? [];
   const list: Notification[] = [];
 
   if (role === "coach") {
@@ -66,9 +68,12 @@ export function buildEventNotifications(input: NotifInput): Notification[] {
       });
     });
   } else if (playerId) {
-    // 自分宛/全員宛の配信（廃止済みkindの過去データが残っていた場合はスキップ）
+    const me = players.find((p) => p.id === playerId);
+    // 自分宛/グループ宛/全員宛の配信（廃止済みkindの過去データが残っていた場合はスキップ）
+    // Phase D-1(C1-minor): 選手が名簿に見つからない場合のフォールバックは
+    // deliverableVisibleToPlayer()に集約（宛先指定の無い配信だけ通す。旧`: true`は緩すぎた）
     deliverables
-      .filter((d) => deliverTargets(d, playerId) && d.kind in DELIVER_KIND_LABEL)
+      .filter((d) => deliverableVisibleToPlayer(d, me, groups) && d.kind in DELIVER_KIND_LABEL)
       .forEach((d) => {
         const answered = !!d.responses[playerId];
         list.push({
@@ -99,6 +104,7 @@ export function buildEventNotifications(input: NotifInput): Notification[] {
 /** 状況ダイジェスト（しきい値ベース・常時再計算。未読対象外＝「今日のまとめ」） */
 export function buildDigest(input: NotifInput): Notification[] {
   const { role, playerId, notebook, deliverables, players, team } = input;
+  const groups = team?.groups ?? [];
   const out: Notification[] = [];
 
   if (role === "coach") {
@@ -120,7 +126,7 @@ export function buildDigest(input: NotifInput): Notification[] {
     });
     // 未回答の配信
     deliverables.forEach((d) => {
-      const targets = players.filter((p) => deliverTargets(d, p.id)).length;
+      const targets = players.filter((p) => deliverableTargetsPlayer(d, p, groups)).length;
       const answered = Object.keys(d.responses).length;
       if (targets - answered > 0)
         out.push({
@@ -134,8 +140,14 @@ export function buildDigest(input: NotifInput): Notification[] {
   } else if (playerId) {
     const player = players.find((p) => p.id === playerId);
     // 未回答の配信（廃止済みkindの過去データが残っていた場合はスキップ）
+    // Phase D-1(C1-minor): フォールバックはdeliverableVisibleToPlayer()に集約（上記と同じ理由）
     deliverables
-      .filter((d) => deliverTargets(d, playerId) && !d.responses[playerId] && d.kind in DELIVER_KIND_LABEL)
+      .filter(
+        (d) =>
+          deliverableVisibleToPlayer(d, player, groups) &&
+          !d.responses[playerId] &&
+          d.kind in DELIVER_KIND_LABEL
+      )
       .forEach((d) =>
         out.push({
           id: "dg-todo-" + d.id,

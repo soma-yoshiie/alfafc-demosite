@@ -1717,7 +1717,10 @@ header {
 }
 .formfield label {
   display: block;
-  font-size: 11px;
+  /* Phase D-1(C1-minor): 11pxはmobile-redesign v1 §8「12px未満禁止」に抵触。
+     §4/§5で新設した「宛先」「グループ」ラベルもこのスタイルを使うため基底で12pxへ引き上げる
+     （--fs-body-sと同値。全フォームに効くがPC差分はpc_baselineで別途確認する） */
+  font-size: var(--fs-body-s);
   letter-spacing: 1px;
   color: var(--mut);
   text-transform: uppercase;
@@ -1739,14 +1742,18 @@ header {
 .formfield textarea {
   resize: vertical;
 }
+/* Phase D-1(C2-minor): 以前は.formrow自体にマージンが無く、2カラム行(背番号/ポジション等)の
+   子.formfieldだけ左右マージンを0にしていたため、行が画面左右端に密着してmobile-redesign v1
+   §8の左右16pxガターが失われていた。.formrow単体の.formfieldと同じ外側マージンを持たせ、
+   子は完全に0にする（縦の間隔も単体の.formfieldと揃える） */
 .formrow {
   display: flex;
   gap: 10px;
+  margin: 0 16px 12px;
 }
 .formrow .formfield {
   flex: 1;
-  margin-left: 0;
-  margin-right: 0;
+  margin: 0;
 }
 .emblemrow {
   display: flex;
@@ -11119,8 +11126,11 @@ body:has(.mhead) .billtoggle button.on {
 }
 /* Phase D-1(C2-minor): 35px(.evcatchipに合わせた高さ)はv1 §8の44pxタップ領域を満たさない。
    対象欄は複数選択でタップ回数が増えるため、スマホ限定で底上げする
-   （.teamapp:has(.mhead)で自然にスマホ限定になり、PCは.evcatchipと同じ高さのまま不変） */
-.teamapp:has(.mhead) .grouppick-item {
+   （:has(.mhead)で自然にスマホ限定になり、PCは.evcatchipと同じ高さのまま不変）。
+   Phase D-1(C1-major): 当初は.teamapp配下限定だったが、GroupChips(grouppick-item)は
+   配信作成(.noteapp、DeliverViews.tsx)でも使われており、そちらは44px未達のままだった。
+   共通の親クラス.appで画面横断に効かせる（.teamapp/.noteappはどちらも"app"を併記） */
+.app:has(.mhead) .grouppick-item {
   min-height: 44px;
 }
 
@@ -17479,6 +17489,50 @@ body:has(.mhead) .billtoggle button.on {
     border: 0;
     background: transparent;
     color: var(--mut);
+  }
+  /* groups-everywhere §5: 名簿PC表（.ptable）の学年見出し行。行自体はホバー・選択の
+     対象ではない（クリック不可）ため.ptable-rowとは別クラスにし、こちらだけカーソルを戻す */
+  .ptable-heading {
+    cursor: default;
+  }
+  .ptable-heading td {
+    padding: 14px 10px 4px;
+    font-size: var(--fs-body-s);
+    font-weight: 700;
+    color: var(--mut);
+    border-bottom: none;
+    white-space: normal;
+  }
+  .ptable tbody tr.ptable-heading:hover td {
+    background: transparent;
+  }
+  /* 最終修正: 名簿(PC)の所属バッジは専用列だと左ペインで切れるため、氏名の下に折り返して置く */
+  .ptable .ptable-sub {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 3px;
+  }
+  .ptable .ptable-sub:empty {
+    display: none;
+  }
+  /* Phase D-2(major review): C3(16844)の.evsummaryは.att×4+evopenを1行5列gridに
+     詰めていたが、左ペイン実測259pxに対しminmax(0,1fr)×4+auto+column-gap40pxの
+     合計もほぼ259pxしかなく、1桁の数字でさえ収まらない(実測: 「出席 0」scrollWidth
+     39px>clientWidth 38px、「未記録 1」は50px>38pxで隣のevopenへ12px重なる)。
+     70人化後は2桁の人数も現実的で(実測: 出席/未定/欠席=46px,未記録=57px,
+     evopen=68pxの計263px>259px)、列幅の配分だけでは5個を1行に収め切れない。
+     evopenを2行目へ折り返し、1行目を.att×4だけのgridにすると1列あたり約65pxとれ、
+     2桁でも重ならない。桁位置を揃える元の意図(C3コメント)は1行目内で維持したまま
+     はみ出しを解消する。git diff未変更の1つ目のPCブロック(16844)自体は触らず、
+     同一詳細度の本ルールで後勝ちさせるだけに留める */
+  .teamapp .evsummary {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    row-gap: 4px;
+  }
+  .teamapp .evsummary .evopen {
+    grid-column: 1 / -1;
+    justify-self: end;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }

@@ -19,6 +19,7 @@ import type { TrendPoint } from "@/lib/homeStats";
 import { LEAGUE_STANDINGS, leaguePosition } from "@/lib/sampleLeague";
 import { NOTE_KIND_LABEL } from "@/lib/types";
 import type { EventCategory, MatchRecord, Player, TeamData, TeamEvent } from "@/lib/types";
+import { eventTargetsPlayer } from "@/lib/groups";
 import type { useBoard } from "./BoardProvider";
 import type { useTeam } from "./TeamProvider";
 
@@ -366,17 +367,23 @@ function useFeedItems(board: BoardCtx, team: TeamCtx) {
  * MatchdayBoard固有のUI状態(自動切替・カウントアップ演出・フィード自動送り等)はこのフックに含めず、
  * 呼び出し側(MatchdayBoard/MobileHome)がそれぞれ持つ。
  */
-export function useMatchdayData(board: BoardCtx, team: TeamCtx) {
+/**
+ * forPlayerId: 選手のホームから渡すと「次の予定」を自分の予定（eventTargetsPlayer）だけから
+ * 選ぶ（groups-everywhere §3）。未指定（コーチのホーム）は従来どおり全件から選ぶ。
+ */
+export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: string | null) {
   const todayISO = localDateStr();
   const players = board.state.players;
+  const mePlayer = forPlayerId ? players.find((p) => p.id === forPlayerId) ?? null : null;
 
   /* ---------------- 区画1: ヒーロー(次の予定/試合) ---------------- */
   const nextEvent = useMemo<TeamEvent | null>(() => {
     const list = [...team.team.events]
       .filter((e) => e.date >= todayISO)
+      .filter((e) => !mePlayer || eventTargetsPlayer(e, mePlayer, team.groups))
       .sort((a, b) => (`${a.date} ${a.time ?? ""}` < `${b.date} ${b.time ?? ""}` ? -1 : 1));
     return list[0] ?? null;
-  }, [team.team.events, todayISO]);
+  }, [team.team.events, todayISO, mePlayer, team.groups]);
 
   const isMatch = nextEvent?.kind === "match";
   // タイトルから対戦相手を抽出できた試合予定だけを対戦カード表示にする。抽出できなければ非試合と同じ「タイトル+カテゴリ」表示にフォールバック
@@ -440,7 +447,7 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx) {
   // 出席率タイルの値: 既存の意味論(lib/coaching.ts の avgAttendance)に合わせ、
   // attendanceRate(team,p.id).total>0 の選手だけで平均する。対象者が0人なら null(「—」表示)
   const attPctAvg = useMemo(() => {
-    const rates = players.map((p) => attendanceRate(team.team, p.id)).filter((r) => r.total > 0);
+    const rates = players.map((p) => attendanceRate(team.team, p.id, players)).filter((r) => r.total > 0);
     if (rates.length === 0) return null;
     return Math.round(rates.reduce((s, r) => s + r.pct, 0) / rates.length);
   }, [players, team.team]);

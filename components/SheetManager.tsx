@@ -15,6 +15,7 @@ import type {
   SavedDrill,
   SavedPlay,
   SavedSetPiece,
+  SchoolStage,
   SetPieceKind,
 } from "@/lib/types";
 import { INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER } from "@/lib/types";
@@ -966,7 +967,10 @@ function PlayerDetail({ playerId }: { playerId: string }) {
   const team = useTeam();
   const p = board.state.players.find((x) => x.id === playerId);
   // 出席率は保存済みのチームデータから読み取り（読み取り専用）
-  const att = useMemo(() => attendanceRate(loadTeam(), playerId), [playerId]);
+  const att = useMemo(
+    () => attendanceRate(loadTeam(), playerId, board.state.players),
+    [playerId, board.state.players]
+  );
   if (!p) return null;
   const fitness = p.fitness ?? [];
   const fitnessTests = team.team.fitnessTests ?? [];
@@ -1850,6 +1854,7 @@ export function SettingsBody({
   pc?: boolean;
 } = {}) {
   const board = useBoard();
+  const team = useTeam();
   const cur = board.plan;
   const [annual, setAnnual] = useState(false);
   const [name, setName] = useState(board.state.teamName ?? "");
@@ -1944,6 +1949,25 @@ export function SettingsBody({
         />
         <div className="fieldhint">
           選手は「自分のメールアドレス＋この共通パスワード」でログインします。
+        </div>
+      </div>
+      {/* groups-everywhere §5: 学校区分（学年グループの範囲・ラベルを決める）。
+          変更時はensureGradeGroups(TeamProvider.setSchoolStage内)で学年グループを整え直す。
+          Phase 2: 範囲外の学年の選手がいるときはsetSchoolStage側がwindow.confirmで確認し、
+          キャンセル時は状態を変えないので、この制御されたselectは元の値に戻る */}
+      <div className="formfield">
+        <label>学校区分</label>
+        <select
+          value={team.schoolStage}
+          onChange={(e) => team.setSchoolStage(e.target.value as SchoolStage)}
+        >
+          <option value="elementary">小学生（小1〜小6）</option>
+          <option value="junior">中学生（中1〜中3）</option>
+          <option value="high">高校生（高1〜高3）</option>
+        </select>
+        <div className="fieldhint">
+          {/* JSXの改行は半角スペースになり和文に隙間が出るため1行で書く */}
+          学年グループ（名簿・出欠・配信などの学年区分）の範囲とラベルを決めます。変更すると、新しい区分の範囲外になる学年（例：中学生に変えたときの小4〜小6）は未設定に戻ります（変更前に対象人数を確認します）。
         </div>
       </div>
       <div className="setsec-h">公開設定</div>

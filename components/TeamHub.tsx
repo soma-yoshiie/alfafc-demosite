@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type React from "react";
 import type {
   Announcement,
@@ -20,7 +20,7 @@ import type {
   TeamEventKind,
   TeamGroup,
 } from "@/lib/types";
-import { GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL } from "@/lib/types";
+import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL, STAGE_GRADES } from "@/lib/types";
 import { ALL_POSITIONS, groupOf } from "@/lib/formations";
 import { LEAGUE_STANDINGS } from "@/lib/sampleLeague";
 import {
@@ -34,6 +34,7 @@ import {
   gmapsDirUrl,
   gmapsEmbedUrl,
   gmapsSearchUrl,
+  isAllTargets,
   isMultiDay,
   isOngoing,
   isUpcomingOrOngoing,
@@ -57,13 +58,15 @@ import {
   SHOT_PCT_MIN_ATTEMPTS,
 } from "@/lib/playerStats";
 import type { AttPeriod } from "@/lib/attendanceStats";
-import { gradeAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
+import { groupAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
+import { announcementTargetsPlayer, eventTargetsPlayer, playerInGroup } from "@/lib/groups";
 import { LineChart } from "./Charts";
 import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import { IconEdit, IconPlus } from "./icons";
+import { GroupChips, useGroupFilter } from "./GroupChips";
 import { fmtFitnessValue } from "@/lib/fitness";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
@@ -298,7 +301,9 @@ type SheetState =
   // 保持する。sheetKey()で予定フォームと同じキーを返すことでSheetHostの再マウントを防ぎ、
   // paneBack()/モバイルのonCloseで元の予定フォームへ戻す
   | { type: "categories"; from?: TeamEvent; date?: string }
-  | { type: "groups"; from?: TeamEvent; date?: string }
+  // groups-everywhere §5: 選手フォームの「グループ」欄「＋ 管理」から開いた場合の戻り先。
+  // 予定フォーム経由(from/date)とは別軸のため独立したフィールドにする
+  | { type: "groups"; from?: TeamEvent; date?: string; returnToPlayerForm?: Player | null }
   | { type: "playerDetail"; playerId: string }
   | { type: "playerForm"; player?: Player }
   /** 体力測定の種目管理。playerForm(選手編集)から開いた場合、戻り先の選手を保持する */
@@ -327,6 +332,9 @@ function Inner() {
   const [calView, setCalView] = useState<"month" | "list">("month");
   // カレンダーの絞り込み（グループ）もタブを跨いで保持し、次回起動時も復元する（§3）
   const [calGroup, setCalGroup] = useState<string | null>(() => loadCalGroup());
+  // 選手・保護者のカレンダー絞り込み（groups-everywhere §3）: 既定「自分の予定」。
+  // コーチ向けのcalGroupとは別軸（選手にはグループ絞り込み自体を出さない）
+  const [calMine, setCalMine] = useState(true);
   // Phase D-1(C1-minor): 復元直後は掃除がuseEffect後(=描画1回分遅れ)になるため、
   // 存在しないグループIDを描画に使う前にここで無効化する派生値を用意する
   // （useEffectのsetCalGroup(null)はlocalStorage掃除用としてそのまま残す）
@@ -376,6 +384,12 @@ function Inner() {
     if (isCoach) tabs.push(["att", "出欠"]);
     tabs.push(["cal", "カレンダー"], ["rec", "試合記録"]);
     if (showRos) tabs.push(["ros", "名簿"]);
+    // Phase D-2(critical): PCレールの「チャット」(ChatScreen.tsx)はメッセージ専用で
+    // 連絡(announcement)を一切描画しないため、グループ宛の連絡がPCのどこにも表示・
+    // 送信できなかった。チーム運営のサブメニューに「連絡」タブを追加し、下のchat
+    // レンダリング分岐(ChatTab)を共用する。メッセージ一覧は既存のPC専用チャット画面と
+    // 重複するためpc向けには出さない(ChatTabのpc props参照)
+    tabs.push(["chat", "連絡"]);
   } else {
     tabs = [["cal", "カレンダー"], ["rec", "試合記録"]];
     if (showRos) tabs.push(["ros", "名簿"]);
@@ -402,10 +416,11 @@ function Inner() {
   // PC専用コンソールシェルの左レール：チーム運営項目の直下にタブ帯と同じ一覧を出す。
   // レールはスクリム(left:208px)の外にあるため、シートを開いたままタブ切替できてしまう。
   // 従来(画面内タブ帯)はスクリム配下で切替不可能だった挙動に合わせ、切替時にシートを閉じる
-  // PCサブメニューは「ホーム」「出欠」を出さず、カレンダー/試合記録/名簿の順で登録する。
+  // PCサブメニューは「ホーム」「出欠」を出さず、カレンダー/試合記録/名簿/連絡の順で登録する。
   // 出欠タブ自体（AttendanceTab等）は削除せず残すが、PCでの入口はカレンダーの予定詳細
   // 「記録を見る・編集」経由のみに一本化する（タブとしての入口だけを外す）
-  const subnavTabs: Tab[] = ["cal", "rec", "ros"];
+  // Phase D-2(critical): 「連絡」をサブメニュー末尾に追加（tabsに無ければfilterで自然に消える）
+  const subnavTabs: Tab[] = ["cal", "rec", "ros", "chat"];
   const consoleSubnav = useMemo(
     () => ({
       anchor: "team" as const,
@@ -497,7 +512,8 @@ function Inner() {
             </div>
           </div>
           {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
-              カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加。他タブでは出さない */}
+              カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加 /
+              連絡=連絡を送る(Phase D-2 critical)。他タブでは出さない */}
           {board.auth.role === "coach" && activeTab === "cal" && (
             <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
               ＋ 予定を追加
@@ -511,6 +527,11 @@ function Inner() {
           {board.auth.role === "coach" && activeTab === "ros" && (
             <button className="teamcta" type="button" onClick={() => setSheet({ type: "playerForm" })}>
               ＋ 新規選手を追加
+            </button>
+          )}
+          {board.auth.role === "coach" && activeTab === "chat" && (
+            <button className="teamcta" type="button" onClick={() => setSheet({ type: "announce" })}>
+              ＋ 連絡を送る
             </button>
           )}
         </header>
@@ -612,6 +633,7 @@ function Inner() {
                   players={players}
                   isCoach={isCoach}
                   calGroup={calGroupEff}
+                  calMine={calMine}
                 />
               ) : (
                 <>
@@ -633,6 +655,8 @@ function Inner() {
                       setView={setCalView}
                       calGroup={calGroupEff}
                       setCalGroup={setCalGroup}
+                      calMine={calMine}
+                      setCalMine={setCalMine}
                     />
                   )}
                   {activeTab === "rec" && (
@@ -649,7 +673,7 @@ function Inner() {
                   {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
                     <RosterTab players={players} setSheet={setSheet} rosSel={rosSel} setRosSel={setRosSel} />
                   )}
-                  {activeTab === "chat" && <ChatTab isCoach={isCoach} setSheet={setSheet} />}
+                  {activeTab === "chat" && <ChatTab isCoach={isCoach} setSheet={setSheet} pc={pc} />}
                 </>
               )}
             </div>
@@ -668,6 +692,7 @@ function Inner() {
                     players={players}
                     isCoach={isCoach}
                     calGroup={calGroupEff}
+                    calMine={calMine}
                   />
                 ) : (
                   <>
@@ -724,6 +749,7 @@ function Inner() {
           players={players}
           isCoach={isCoach}
           calGroup={calGroupEff}
+          calMine={calMine}
         />
       )}
     </div>
@@ -733,6 +759,11 @@ function Inner() {
 function sheetKey(s: SheetState): string {
   if (!s) return "none";
   if (s.type === "event") return "event-" + (s.event?.id ?? s.date ?? "new");
+  // Phase D-1(C1-major): 選手フォームの「グループ」欄から開いたグループ管理シートは選手フォーム
+  // 自体と同じキーを返し、SheetHostの再マウント(=入力全消失)を防ぐ。type==="groups"||"categories"の
+  // 分岐より前段で判定する必要がある（そちらは常に"event-"キーを返してしまうため）
+  if (s.type === "groups" && s.returnToPlayerForm !== undefined)
+    return "pf-" + (s.returnToPlayerForm?.id ?? "new");
   // Phase D-1(C1-major): 予定フォームから開く管理シート(カテゴリ/グループ)は予定フォーム
   // 自体と同じキーを返し、SheetHostの再マウント(=入力全消失)を防ぐ
   if (s.type === "groups" || s.type === "categories")
@@ -756,19 +787,33 @@ function sheetKey(s: SheetState): string {
 function ChatTab({
   isCoach,
   setSheet,
+  pc,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
+  /** Phase D-2(critical): PC(チーム運営)から呼ぶときはtrue。PCには別途チャット専用の
+   * レール項目(ChatScreen.tsx)があるため、会話一覧はそちらと重複しないよう出さない */
+  pc?: boolean;
 }) {
+  const board = useBoard();
   const team = useTeam();
-  const anns = team.team.announcements;
+  // groups-everywhere §4: 選手・保護者のチャットタブの「連絡」は自分宛（全員 or 所属グループ）だけ
+  const me = !isCoach
+    ? board.state.players.find((p) => p.id === team.viewer.memberPlayerId) ?? null
+    : null;
+  const anns = team.team.announcements.filter(
+    (a) => isCoach || !me || announcementTargetsPlayer(a, me, team.groups)
+  );
+  // Phase D-2(critical): PCの「連絡」タブはこの一覧そのものが目的の画面なので全件を出し、
+  // 「すべて見る ›」(annListシートへの迂回)は挟まない。モバイルは従来どおり2件＋すべて見る
+  const shown = pc ? anns : anns.slice(0, 2);
 
   return (
     <>
       {/* 旧ホームタブの「連絡」をそのまま上部へ移設 */}
       <div className="sech">
         連絡
-        {anns.length > 2 && (
+        {!pc && anns.length > 2 && (
           <span className="seclink" onClick={() => setSheet({ type: "annList" })}>
             すべて見る ›
           </span>
@@ -784,7 +829,7 @@ function ChatTab({
           連絡はまだありません。
         </div>
       ) : (
-        anns.slice(0, 2).map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} />)
+        shown.map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} groups={team.groups} />)
       )}
 
       {/* ChatScreen.tsx の会話一覧／自分のスレッドをそのままタブ本体として描画する
@@ -792,23 +837,39 @@ function ChatTab({
           Phase D-1(C2 major): isCoachは閲覧ロール(viewer.role)なので、コーチが選手
           プレビュー中(isCoach=false)はPlayerChatが出る。その際board.auth.playerIdは
           コーチアカウントのためnullになり送信が無言で失敗するので、プレビュー対象の
-          selectedPlayerIdをそのまま渡す */}
+          selectedPlayerIdをそのまま渡す。
+          Phase D-2(critical): PCには専用の「チャット」レール項目(ChatScreen.tsx)が別に
+          あるため、ここで同じ会話一覧を二重に出すと表示が割れる。PCでは連絡だけに絞る */}
       {/* v2 目視レビュー(major-5): 「連絡」と会話の境界が無かったため見出しを1本入れる */}
-      <div className="sech">メッセージ</div>
-      {isCoach ? (
-        <CoachConversations selected={null} onSelect={() => {}} />
-      ) : (
-        <div className="teamchatthread">
-          <PlayerChat playerId={team.viewer.memberPlayerId} />
-        </div>
+      {!pc && (
+        <>
+          <div className="sech">メッセージ</div>
+          {isCoach ? (
+            <CoachConversations selected={null} onSelect={() => {}} />
+          ) : (
+            <div className="teamchatthread">
+              <PlayerChat playerId={team.viewer.memberPlayerId} />
+            </div>
+          )}
+        </>
       )}
     </>
   );
 }
 
+/** 連絡の宛先ラベル（groups-everywhere §4）。全員なら「全員」、そうでなければグループ名を「・」連結 */
+function announcementLabel(a: Announcement, groups: TeamGroup[]): string {
+  if (!a.groupIds || a.groupIds.length === 0) return "全員";
+  const labels = a.groupIds
+    .map((id) => groups.find((g) => g.id === id)?.label)
+    .filter((l): l is string => !!l);
+  return labels.length > 0 ? labels.join("・") : "全員";
+}
+
 /* 連絡1件の表示カード */
-function AnnCard({ a, isCoach }: { a: Announcement; isCoach: boolean }) {
+function AnnCard({ a, isCoach, groups }: { a: Announcement; isCoach: boolean; groups: TeamGroup[] }) {
   const team = useTeam();
+  const label = announcementLabel(a, groups);
   return (
     <div className="msgcard">
       <div className="msgtop">
@@ -825,6 +886,12 @@ function AnnCard({ a, isCoach }: { a: Announcement; isCoach: boolean }) {
           </button>
         )}
       </div>
+      {/* groups-everywhere §4: 宛先バッジ（学年グループ・カスタムグループが無ければ出さない） */}
+      {groups.length > 0 && (
+        <div style={{ marginBottom: 6 }}>
+          <span className={`evgroups${label === "全員" ? "" : " targeted"}`}>{label}</span>
+        </div>
+      )}
       <div className="msgtext">{a.text}</div>
       {a.playTitle && (
         <div className="evnote">
@@ -933,6 +1000,24 @@ function EvGroupsBadge({
       title={full ? undefined : label}
     >
       {label}
+    </span>
+  );
+}
+
+/* 選手の所属カスタムグループのバッジ（groups-everywhere §5。名簿の行に表示。最大2個＋「+n」） */
+function PlayerGroupBadges({ p, groups }: { p: Player; groups: TeamGroup[] }) {
+  const custom = groups.filter((g) => g.kind === "custom" && playerInGroup(p, g));
+  if (custom.length === 0) return null;
+  const shown = custom.slice(0, 2);
+  const extra = custom.length - shown.length;
+  return (
+    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
+      {shown.map((g) => (
+        <span key={g.id} className="evgroups targeted">
+          {g.label}
+        </span>
+      ))}
+      {extra > 0 && <span className="evgroups">+{extra}</span>}
     </span>
   );
 }
@@ -1046,6 +1131,8 @@ function CalendarTab({
   setView,
   calGroup,
   setCalGroup,
+  calMine,
+  setCalMine,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
@@ -1053,12 +1140,20 @@ function CalendarTab({
   setYm: (v: { y: number; m: number }) => void;
   view: "month" | "list";
   setView: (v: "month" | "list") => void;
-  /** カレンダーの絞り込み中グループ。null=すべて */
+  /** カレンダーの絞り込み中グループ（コーチ向け）。null=すべて */
   calGroup: string | null;
   setCalGroup: (v: string | null) => void;
+  /** 選手・保護者向けの絞り込み: true=自分の予定だけ／false=すべて（groups-everywhere §3） */
+  calMine: boolean;
+  setCalMine: (v: boolean) => void;
 }) {
+  const board = useBoard();
   const team = useTeam();
   const pc = usePc();
+  // isCoach=false（選手・保護者、またはコーチの選手プレビュー）のときの「自分」
+  const me = !isCoach ? board.state.players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
+  const passesFilter = (e: TeamEvent) =>
+    isCoach ? eventTargetsGroup(e, calGroup) : !calMine || !me || eventTargetsPlayer(e, me, team.groups);
 
   const first = new Date(ym.y, ym.m, 1);
   const startWd = first.getDay();
@@ -1070,11 +1165,10 @@ function CalendarTab({
 
   const dateStr = (d: number) =>
     `${ym.y}-${String(ym.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  // §3: 絞り込み中グループの対象予定(全員対象含む)のみを月表示・リスト表示・凡例へ通す
+  // §3: 絞り込み中グループ（コーチ）／自分の予定（選手。groups-everywhere §3）の対象予定
+  // (全員対象含む)のみを月表示・リスト表示・凡例へ通す
   const eventsOn = (d: number) =>
-    team.team.events
-      .filter((e) => occursOn(e, dateStr(d)) && eventTargetsGroup(e, calGroup))
-      .sort(byStartAsc);
+    team.team.events.filter((e) => occursOn(e, dateStr(d)) && passesFilter(e)).sort(byStartAsc);
   const today = todayStr();
   const calGroupLabel = calGroup ? team.groups.find((g) => g.id === calGroup)?.label ?? null : null;
 
@@ -1140,26 +1234,41 @@ function CalendarTab({
 
   return (
     <div className="cal">
-      {/* §3: グループの絞り込み行（.mseg-itemと同じチップ文法）。グループが無ければ出さない */}
-      {team.groups.length > 0 && (
-        <>
+      {/* groups-everywhere §3: 選手・保護者には既存のグループ絞り込みは出さず、代わりに
+          「自分の予定／すべて」の2択（既定=自分の予定）を出す */}
+      {isCoach ? (
+        // §3: グループの絞り込み行（.mseg-itemと同じチップ文法）。グループが無ければ出さない
+        team.groups.length > 0 && (
+          <>
+            <MobileSegments
+              wrapClassName="calfilter"
+              ariaLabel="カレンダーの絞り込み"
+              items={[
+                { key: "all", label: "すべて", on: calGroup == null, onSelect: () => setCalGroup(null) },
+                ...team.groups.map((g) => ({
+                  key: g.id,
+                  label: g.label,
+                  on: calGroup === g.id,
+                  onSelect: () => setCalGroup(g.id),
+                })),
+              ]}
+            />
+            {calGroupLabel && (
+              <div className="calfilterhint">{calGroupLabel}の予定と全員の予定を表示中</div>
+            )}
+          </>
+        )
+      ) : (
+        me && (
           <MobileSegments
             wrapClassName="calfilter"
             ariaLabel="カレンダーの絞り込み"
             items={[
-              { key: "all", label: "すべて", on: calGroup == null, onSelect: () => setCalGroup(null) },
-              ...team.groups.map((g) => ({
-                key: g.id,
-                label: g.label,
-                on: calGroup === g.id,
-                onSelect: () => setCalGroup(g.id),
-              })),
+              { key: "mine", label: "自分の予定", on: calMine, onSelect: () => setCalMine(true) },
+              { key: "all", label: "すべて", on: !calMine, onSelect: () => setCalMine(false) },
             ]}
           />
-          {calGroupLabel && (
-            <div className="calfilterhint">{calGroupLabel}の予定と全員の予定を表示中</div>
-          )}
-        </>
+        )
       )}
 
       <div className="calnav">
@@ -1535,11 +1644,33 @@ function RosterTab({
   const board = useBoard();
   const team = useTeam();
   const pc = usePc();
+  const schoolStage = team.team.schoolStage ?? "elementary";
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
+  // groups-everywhere §5: グループ絞り込み（単一選択・localStorageに保存）
+  const [filterIds, setFilterIds] = useGroupFilter("roster");
+  const filterGroup = filterIds[0] ? team.groups.find((g) => g.id === filterIds[0]) ?? null : null;
   const list = players.filter(
-    (p) => !kw || p.name.toLowerCase().includes(kw) || p.position.toLowerCase().includes(kw)
+    (p) =>
+      (!kw || p.name.toLowerCase().includes(kw) || p.position.toLowerCase().includes(kw)) &&
+      (!filterGroup || playerInGroup(p, filterGroup))
   );
+  // 学年ごとの見出しで区切る（「中3（23）」）。学年未設定は末尾にまとめる
+  const buckets: { grade: number | null; label: string; players: Player[] }[] = [];
+  list.forEach((p) => {
+    const key = p.grade ?? null;
+    let bucket = buckets.find((b) => b.grade === key);
+    if (!bucket) {
+      bucket = { grade: key, label: key != null ? gradeLabel(schoolStage, key) : "学年未設定", players: [] };
+      buckets.push(bucket);
+    }
+    bucket.players.push(p);
+  });
+  buckets.sort((a, b) => {
+    if (a.grade == null) return b.grade == null ? 0 : 1;
+    if (b.grade == null) return -1;
+    return a.grade - b.grade;
+  });
   const onRowClick = (id: string) => {
     if (setRosSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
       setRosSel(id);
@@ -1557,6 +1688,16 @@ function RosterTab({
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+      {/* groups-everywhere §5: すべて／学年／カスタムの絞り込み。グループが無ければ出さない */}
+      {team.groups.length > 0 && (
+        <GroupChips
+          groups={team.groups}
+          value={filterIds}
+          onChange={setFilterIds}
+          allowAll
+          onManage={() => setSheet({ type: "groups" })}
+        />
+      )}
       {list.length === 0 ? (
         <div className="empty-msg">
           <b>選手がいません</b>
@@ -1576,62 +1717,83 @@ function RosterTab({
               </tr>
             </thead>
             <tbody>
-              {list.map((p) => {
-                const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
-                return (
-                  <tr
-                    key={p.id}
-                    className={`ptable-row${rosSel === p.id ? " sel" : ""}`}
-                    tabIndex={0}
-                    onClick={() => onRowClick(p.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onRowClick(p.id);
-                      }
-                    }}
-                  >
-                    <td className="num">{p.number ?? "—"}</td>
-                    <td className="ptable-nm col-name">
-                      {p.name}
-                      {board.state.captain === p.id ? " (C)" : ""}
+              {buckets.map((b) => (
+                <Fragment key={String(b.grade)}>
+                  <tr className="ptable-heading">
+                    <td colSpan={5}>
+                      {b.label}（{b.players.length}）
                     </td>
-                    <td><span className={`pos ${groupOf(p.position)}`}>{p.position}</span></td>
-                    <td>{p.grade ? `${p.grade}年` : "—"}</td>
-                    <td>{inj ? <span className={`injbadge ${inj.status}`}>{INJURY_STATUS_LABEL[inj.status]}</span> : "—"}</td>
                   </tr>
-                );
-              })}
+                  {b.players.map((p) => {
+                    const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
+                    return (
+                      <tr
+                        key={p.id}
+                        className={`ptable-row${rosSel === p.id ? " sel" : ""}`}
+                        tabIndex={0}
+                        onClick={() => onRowClick(p.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            onRowClick(p.id);
+                          }
+                        }}
+                      >
+                        <td className="num">{p.number ?? "—"}</td>
+                        <td className="ptable-nm col-name">
+                          {p.name}
+                          {board.state.captain === p.id ? " (C)" : ""}
+                          {/* 最終修正: 左ペインが狭く「グループ」列だとバッジが右端で切れるため、氏名の下に置く */}
+                          <div className="ptable-sub">
+                            <PlayerGroupBadges p={p} groups={team.groups} />
+                          </div>
+                        </td>
+                        <td><span className={`pos ${groupOf(p.position)}`}>{p.position}</span></td>
+                        <td>{p.grade ? gradeLabel(schoolStage, p.grade) : "—"}</td>
+                        <td>{inj ? <span className={`injbadge ${inj.status}`}>{INJURY_STATUS_LABEL[inj.status]}</span> : "—"}</td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>
       ) : (
         <div className="roslist">
-        {list.map((p) => {
-          const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
-          return (
-            <div
-              key={p.id}
-              className={`prow${rosSel === p.id ? " sel" : ""}`}
-              onClick={() => onRowClick(p.id)}
-            >
-              <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
-              <div className="meta">
-                <div className="nm">
-                  {p.name}
-                  {board.state.captain === p.id ? " (C)" : ""}
-                </div>
-                <div className="sub">
-                  背番号 {p.number ?? "—"}
-                  {p.grade ? ` ・ ${p.grade}年` : ""}
-                  {inj ? ` ・ ${INJURY_STATUS_LABEL[inj.status]}` : ""}
-                </div>
-              </div>
-              {inj && <span className={`injbadge ${inj.status}`}>{INJURY_STATUS_LABEL[inj.status]}</span>}
-              <div className="num">{p.number ?? "–"}</div>
+        {buckets.map((b) => (
+          <div key={String(b.grade)}>
+            <div className="sech">
+              {b.label}（{b.players.length}）
             </div>
-          );
-        })}
+            {b.players.map((p) => {
+              const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
+              return (
+                <div
+                  key={p.id}
+                  className={`prow${rosSel === p.id ? " sel" : ""}`}
+                  onClick={() => onRowClick(p.id)}
+                >
+                  <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
+                  <div className="meta">
+                    <div className="nm">
+                      {p.name}
+                      {board.state.captain === p.id ? " (C)" : ""}
+                    </div>
+                    <div className="sub">
+                      背番号 {p.number ?? "—"}
+                      {p.grade ? ` ・ ${gradeLabel(schoolStage, p.grade)}` : ""}
+                      {inj ? ` ・ ${INJURY_STATUS_LABEL[inj.status]}` : ""}
+                    </div>
+                    <PlayerGroupBadges p={p} groups={team.groups} />
+                  </div>
+                  {inj && <span className={`injbadge ${inj.status}`}>{INJURY_STATUS_LABEL[inj.status]}</span>}
+                  <div className="num">{p.number ?? "–"}</div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
         </div>
       )}
       {/* mobile-redesign-v2 §3-3: 名簿の全幅緑ボタンはスマホでは描画しない
@@ -1687,18 +1849,61 @@ function AttendanceRecordBody({ eventId, players }: { eventId: string; players: 
   const ev = team.team.events.find((e) => e.id === eventId);
   const att = team.team.attendance[eventId] ?? {};
   const s = team.summary(eventId);
+  const [showOut, setShowOut] = useState(false);
   const order: { key: AttendanceStatus | "none"; label: string }[] = [
     { key: "none", label: "未記録" },
     { key: "no", label: "欠席" },
     { key: "maybe", label: "未定" },
     { key: "yes", label: "出席" },
   ];
+  // groups-everywhere §4: 一覧は対象選手だけ（対象外は末尾の折りたたみへ）
+  const targetPlayers = ev ? players.filter((p) => eventTargetsPlayer(ev, p, team.groups)) : players;
+  const nonTargetPlayers = ev ? players.filter((p) => !eventTargetsPlayer(ev, p, team.groups)) : [];
   const groups = order
     .map((g) => ({
       ...g,
-      list: players.filter((p) => (att[p.id]?.status ?? "none") === g.key),
+      list: targetPlayers.filter((p) => (att[p.id]?.status ?? "none") === g.key),
     }))
     .filter((g) => g.list.length > 0);
+  // 記録した対象外選手はoptInPlayerIdsへ追加する（以後「自分の予定」・出欠の対象になる）
+  const recordAttendance = (p: Player, status: AttendanceStatus, comment: string | undefined, isOut: boolean) => {
+    team.setAttendance(eventId, p.id, status, comment);
+    if (isOut && ev && !(ev.optInPlayerIds ?? []).includes(p.id)) {
+      team.updateEvent({ ...ev, optInPlayerIds: [...(ev.optInPlayerIds ?? []), p.id] });
+    }
+  };
+  const renderRow = (p: Player, isOut: boolean) => {
+    const cur = att[p.id];
+    return (
+      <div key={p.id} className="attrow">
+        <div className="attname">
+          {p.name}
+          <small>背番号 {p.number ?? "—"}</small>
+          {/* 理由・メモ: 選手の回答UI廃止に伴い、スタッフがここで記録する */}
+          {cur?.status && (
+            <input
+              key={`${eventId}_${p.id}`}
+              className="attreason"
+              placeholder="メモ（遅刻・欠席理由など）"
+              defaultValue={cur.comment ?? ""}
+              onBlur={(e) => recordAttendance(p, cur.status, e.target.value.trim() || undefined, isOut)}
+            />
+          )}
+        </div>
+        <div className="attpick">
+          {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
+            <button
+              key={st}
+              className={`attbtn ${st}${cur?.status === st ? " on" : ""}`}
+              onClick={() => recordAttendance(p, st, cur?.comment, isOut)}
+            >
+              {STATUS_MARK[st]}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
   return (
     <>
       <h2>出欠の記録</h2>
@@ -1713,58 +1918,40 @@ function AttendanceRecordBody({ eventId, players }: { eventId: string; players: 
         <span className="att no">欠席 {s.no}</span>
         <span className="att none">未記録 {s.none}</span>
       </div>
-      <div className="list">
-        {players.length === 0 ? (
-          <div className="empty-msg">選手がいません。</div>
+      {/* Phase D-1(C2-major): 対象外を展開したとき、この.list(flex:1 1 0%)がもう一方の
+          .list(旧実装ではflex:1、今はflex:0 0 auto)と高さを奪い合っていた。flex:0 0 autoは
+          「縮まない」指定のため、対象外側だけをflex:0 0 autoにすると内容の合計が.sheetBodyの
+          高さを超えた分の縮小(flex-shrink)がすべて対象側(唯一の可縮小要素)に掛かってしまい、
+          対象一覧が数行どころか十数px相当まで潰れてしまう問題が残っていた。対象外を表示中は
+          こちらもflex:0 0 autoにして両方を自然な高さで縦に並べ、外側の.sheetBody
+          （overflow-y:autoを既に持つ）のスクロール1本に統一する（折りたたみ時は従来どおり
+          flex:1で残り領域いっぱいに表示） */}
+      <div className="list" style={showOut ? { flex: "0 0 auto" } : undefined}>
+        {targetPlayers.length === 0 ? (
+          <div className="empty-msg">対象の選手がいません。</div>
         ) : (
           groups.map((g) => (
             <div key={g.key}>
               <div className={`attgh ${g.key}`}>
                 {g.label} {g.list.length}人
               </div>
-              {g.list.map((p) => {
-                const cur = att[p.id];
-                return (
-                  <div key={p.id} className="attrow">
-                    <div className="attname">
-                      {p.name}
-                      <small>背番号 {p.number ?? "—"}</small>
-                      {/* 理由・メモ: 選手の回答UI廃止に伴い、スタッフがここで記録する */}
-                      {cur?.status && (
-                        <input
-                          key={`${eventId}_${p.id}`}
-                          className="attreason"
-                          placeholder="メモ（遅刻・欠席理由など）"
-                          defaultValue={cur.comment ?? ""}
-                          onBlur={(e) =>
-                            team.setAttendance(
-                              eventId,
-                              p.id,
-                              cur.status,
-                              e.target.value.trim() || undefined
-                            )
-                          }
-                        />
-                      )}
-                    </div>
-                    <div className="attpick">
-                      {(["yes", "maybe", "no"] as AttendanceStatus[]).map((st) => (
-                        <button
-                          key={st}
-                          className={`attbtn ${st}${cur?.status === st ? " on" : ""}`}
-                          onClick={() => team.setAttendance(eventId, p.id, st, cur?.comment)}
-                        >
-                          {STATUS_MARK[st]}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
+              {g.list.map((p) => renderRow(p, false))}
             </div>
           ))
         )}
       </div>
+      {nonTargetPlayers.length > 0 && (
+        <>
+          <button className="dynadd" style={{ margin: "10px 0" }} onClick={() => setShowOut((v) => !v)}>
+            {showOut ? "対象外の選手を隠す" : `対象外の選手（${nonTargetPlayers.length}）`}
+          </button>
+          {showOut && (
+            <div className="list" style={{ flex: "0 0 auto" }}>
+              {nonTargetPlayers.map((p) => renderRow(p, true))}
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 }
@@ -2502,7 +2689,7 @@ function RecPlayerPane({
   const techRow = perPlayerTech(board.notebook, players).find((r) => r.playerId === id);
   // perMatchTechは新しい順のため、時系列グラフ用に古い順へ反転する
   const matchTech = [...perMatchTech(board.notebook, id)].reverse();
-  const rate = attendanceRate(team.team, id);
+  const rate = attendanceRate(team.team, id, players);
 
   return (
     <div className="tmdetail screenbody">
@@ -2791,7 +2978,28 @@ function AttOverviewPane({
   }).length;
 
   const monthly = monthlyAttendance(team.team, players, 6);
-  const grades = gradeAttendance(team.team, players, attPeriod);
+  // groups-everywhere §4: 「学年別」→「グループ別」（学年グループ＋カスタムグループ）に拡張。
+  // Phase D-1(C1-minor): groupAttendanceは所属0人のグループ(旧データで自動生成される
+  // 学年1〜6等)も含めて返すため、そのまま並べると「小1（0人）0%」のような空行が並ぶ。
+  // 表示側で除外し、代わりにどのグループにも属さない選手がいる場合だけ末尾に「未所属」行を
+  // 足す（旧gradeAttendanceの「学年未設定」行に相当する情報量を保つ）
+  const groupRows = groupAttendance(team.team, players, attPeriod).filter((g) => g.playerCount > 0);
+  const unassignedPlayers = players.filter((p) => !team.groups.some((g) => playerInGroup(p, g)));
+  if (unassignedPlayers.length > 0) {
+    const unassignedIds = new Set(unassignedPlayers.map((p) => p.id));
+    const unassignedRows = rows.filter((r) => unassignedIds.has(r.playerId));
+    const recorded = unassignedRows.reduce((s, r) => s + r.recorded, 0);
+    const yes = unassignedRows.reduce((s, r) => s + r.yes, 0);
+    groupRows.push({
+      groupId: "__unassigned",
+      kind: "custom",
+      label: "未所属",
+      yes,
+      recorded,
+      pct: recorded ? Math.round((yes / recorded) * 100) : 0,
+      playerCount: unassignedPlayers.length,
+    });
+  }
   const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
   const ranking = [...rows].sort((a, b) => b.pct - a.pct || b.recorded - a.recorded);
 
@@ -2850,13 +3058,13 @@ function AttOverviewPane({
         </div>
       </div>
 
-      <div className="sech">学年別出席率</div>
-      {grades.length === 0 ? (
-        <div className="empty-msg">選手がいません。</div>
+      <div className="sech">グループ別出席率</div>
+      {groupRows.length === 0 ? (
+        <div className="empty-msg">グループがありません。</div>
       ) : (
         <div className="list">
-          {grades.map((g) => (
-            <div key={String(g.grade)} className="attbarrow">
+          {groupRows.map((g) => (
+            <div key={g.groupId} className="attbarrow">
               <span className="attbarlabel">
                 {g.label}（{g.playerCount}人）
               </span>
@@ -3005,6 +3213,79 @@ function AttPlayerPane({
 }
 
 /**
+ * カスタムグループのメンバー編集（groups-everywhere §5）。検索付きのチェックリストで
+ * Player.groupIdsを一括編集する。学年グループ（kind:"grade"）はここから呼ばれない
+ * （所属はPlayer.gradeから自動のため編集不可）。
+ */
+function GroupMembersEditor({
+  group,
+  players,
+  onBack,
+}: {
+  group: TeamGroup;
+  players: Player[];
+  onBack: () => void;
+}) {
+  const board = useBoard();
+  const team = useTeam();
+  const schoolStage = team.team.schoolStage ?? "elementary";
+  const [q, setQ] = useState("");
+  const kw = q.trim().toLowerCase();
+  const list = players.filter((p) => !kw || p.name.toLowerCase().includes(kw));
+  // Phase D-1(C2-minor): 70人が学年区切りなし・学年表示なしの一列だと「中3の誰か」を
+  // 背番号だけで探すことになるため、行に学年ラベルを足す。選択中の人数も表示する
+  const selectedCount = players.filter((p) => p.groupIds?.includes(group.id)).length;
+  const toggle = (p: Player) => {
+    const has = p.groupIds?.includes(group.id) ?? false;
+    const next = has
+      ? (p.groupIds ?? []).filter((x) => x !== group.id)
+      : [...(p.groupIds ?? []), group.id];
+    board.updatePlayer({ ...p, groupIds: next.length > 0 ? next : undefined });
+  };
+  return (
+    <>
+      <div className="tmback" onClick={onBack}>
+        ‹ グループ管理
+      </div>
+      <h2>{group.label}のメンバー</h2>
+      <div className="controls">
+        <input
+          className="search"
+          placeholder="名前で検索"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+      {/* mobile-redesign v1 §8: 12px未満禁止のため.fieldhint(11px)は使わずvar(--fs-body-s)にする */}
+      <div style={{ margin: "0 16px 8px", fontSize: "var(--fs-body-s)", color: "var(--mut)" }}>
+        {selectedCount}人を選択中
+      </div>
+      <div className="list">
+        {list.length === 0 ? (
+          <div className="empty-msg">該当する選手がいません。</div>
+        ) : (
+          list.map((p) => {
+            const checked = p.groupIds?.includes(group.id) ?? false;
+            return (
+              <label key={p.id} className="attrow" style={{ cursor: "pointer" }}>
+                <input type="checkbox" checked={checked} onChange={() => toggle(p)} />
+                <div className="attname">
+                  {p.name}
+                  <small>
+                    背番号 {p.number ?? "—"}
+                    {p.grade != null ? ` ・ ${gradeLabel(schoolStage, p.grade)}` : ""}
+                  </small>
+                </div>
+              </label>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
+
+/**
  * 試合結果フォーム専用のスタメン枠定義（8人制）。pos文字列にGK/DF/MF/FWを明記し、
  * MatchRecord.lineupのposへそのまま保存する。lib/formations.tsのFORMATIONS
  * （ピッチ座標つき・戦術ボード用）とは別に、フォームの選手選択セレクト群だけに使う軽量定義
@@ -3025,6 +3306,7 @@ function SheetHost({
   isCoach,
   pane,
   calGroup = null,
+  calMine = true,
 }: {
   sheet: SheetState;
   setSheet: (s: SheetState) => void;
@@ -3032,19 +3314,45 @@ function SheetHost({
   isCoach: boolean;
   /** PC専用: 配下の全Sheetをモーダルでなく.teammain内の1ペインとして描画する */
   pane?: boolean;
-  /** カレンダーの絞り込み中グループ。日別シートの一覧に適用する（§3） */
+  /** カレンダーの絞り込み中グループ（コーチ）。日別シートの一覧に適用する（§3） */
   calGroup?: string | null;
+  /** 選手・保護者向け「自分の予定」絞り込み中か（groups-everywhere §3）。日別シートに適用する */
+  calMine?: boolean;
 }) {
   const board = useBoard();
   const team = useTeam();
   const close = () => setSheet(null);
+  // isCoach=falseのときの「自分」（選手・保護者、またはコーチの選手プレビュー）
+  const me = !isCoach ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
+  const dayPassesFilter = (e: TeamEvent) =>
+    isCoach ? eventTargetsGroup(e, calGroup) : !calMine || !me || eventTargetsPlayer(e, me, team.groups);
+  // グループ管理シート内でメンバー編集中のグループID（custom限定）。sheetがgroups以外に
+  // 変わったらリセットする
+  const [groupMembersId, setGroupMembersId] = useState<string | null>(null);
+  useEffect(() => {
+    if (sheet?.type !== "groups") setGroupMembersId(null);
+  }, [sheet]);
   // tm-sheetpane(PCペイン)の「戻る」用: 最小限の親復帰マップ。
   // categories/groupsは呼び出し元のevent編集シートへ、prefill.eventId付きのmatchは
   // 呼び出し元のeventView(試合結果を記録)へ戻し、それ以外はモーダル同様に閉じる
   const paneBack = () => {
-    // Phase D-1(C1-major): from/dateを引き継いで元の予定フォームへ戻す(編集中断ではなく復帰)
+    // groups-everywhere §5: メンバー編集中なら、まずグループ一覧へ戻すだけ（シートは閉じない）
+    if (sheet?.type === "groups" && groupMembersId) {
+      setGroupMembersId(null);
+      return;
+    }
+    // Phase D-1(C1-major): from/dateを引き継いで元の予定フォームへ戻す(編集中断ではなく復帰)。
+    // groups-everywhere §5: 選手フォームの「グループ」欄から開いた場合は選手フォームへ戻す。
+    // 名簿など他の入口はfrom/date/returnToPlayerFormのいずれも無いため、単に閉じる
+    // （空の予定フォームへ迷い込ませない）
     if (sheet?.type === "categories" || sheet?.type === "groups") {
-      setSheet({ type: "event", event: sheet.from, date: sheet.date });
+      if (sheet.type === "groups" && sheet.returnToPlayerForm !== undefined) {
+        setSheet({ type: "playerForm", player: sheet.returnToPlayerForm ?? undefined });
+      } else if (sheet.from || sheet.date) {
+        setSheet({ type: "event", event: sheet.from, date: sheet.date });
+      } else {
+        setSheet(null);
+      }
       return;
     }
     if (sheet?.type === "match" && sheet.prefill?.eventId) {
@@ -3106,9 +3414,10 @@ function SheetHost({
   const [groupEditId, setGroupEditId] = useState<string | null>(null);
   const [groupEditLabel, setGroupEditLabel] = useState("");
 
-  // announce
+  // announce（groups-everywhere §4: 宛先グループ。複数選択・未選択＝全員）
   const [text, setText] = useState("");
   const [playId, setPlayId] = useState("");
+  const [annGroupIds, setAnnGroupIds] = useState<string[]>([]);
 
   // match form
   const mr = sheet?.type === "match" ? sheet.record : undefined;
@@ -3158,8 +3467,11 @@ function SheetHost({
   const [pfWeight, setPfWeight] = useState(pf?.weight != null ? String(pf.weight) : "");
   const [pfFoot, setPfFoot] = useState<"" | DominantFoot>(pf?.dominantFoot ?? "");
   const [pfEmail, setPfEmail] = useState(pf?.email ?? "");
-  // 学年（出欠の学年別集計・名簿表示用。""=未設定）
+  // 学年（範囲とラベルはschoolStageとSTAGE_GRADES/gradeLabelで決まる。学年グループの
+  // 所属判定・名簿表示用。""=未設定）
   const [pfGrade, setPfGrade] = useState(pf?.grade != null ? String(pf.grade) : "");
+  // 所属カスタムグループ（groups-everywhere §5。学年グループはgradeから自動のためここには含めない）
+  const [pfGroupIds, setPfGroupIds] = useState<string[]>(pf?.groupIds ?? []);
 
   // 体力測定：記録一覧は保存中のplayers(常に最新)から読む(pfはシート起動時点のスナップショットのため、
   // 追加/削除の直後は反映されない)。新規作成時(pf未定義)はまだ選手idが無いため対象外
@@ -3597,103 +3909,157 @@ function SheetHost({
         </button>
       </Sheet>
 
-      {/* グループ管理（カレンダーの対象§2）。カテゴリ管理と同じ構造（色は持たない）。
-          削除時は team.removeGroup 内で全予定の groupIds からも外す */}
+      {/* グループ管理（カレンダーの対象§2 / groups-everywhere §5）。カテゴリ管理と同じ構造
+          （色は持たない）。削除時は team.removeGroup 内で全予定の groupIds からも外す。
+          学年グループ（kind:"grade"）は改名のみ・削除不可・メンバー編集不可（所属はgradeから自動）。
+          カスタムグループは「メンバー（n人）」から所属選手を一括編集できる */}
       <Sheet open={sheet?.type === "groups"} onClose={paneBack} pane={pane}>
-        <h2>グループ管理</h2>
-        <div className="list">
-          {team.groups.length === 0 && (
-            <div className="empty-msg">登録されたグループはありません。</div>
-          )}
-          {team.groups.map((g) => (
-            <div key={g.id} className="catrow">
-              {groupEditId === g.id ? (
-                <div style={{ flex: 1 }}>
-                  <input
-                    value={groupEditLabel}
-                    onChange={(e) => setGroupEditLabel(e.target.value)}
-                    style={{ marginBottom: 8 }}
-                    autoFocus
-                  />
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button
-                      className="bigbtn"
-                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                      onClick={() => {
-                        if (!groupEditLabel.trim()) {
-                          board.toast("名前を入力してください");
-                          return;
-                        }
-                        team.updateGroup({ id: g.id, label: groupEditLabel.trim() });
-                        setGroupEditId(null);
-                      }}
-                    >
-                      保存する
-                    </button>
-                    <button
-                      className="bigbtn ghost"
-                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                      onClick={() => setGroupEditId(null)}
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="cmpinfo">
-                    <div className="cmpnm">{g.label}</div>
-                  </div>
-                  <button
-                    className="msgdel"
-                    aria-label="編集"
-                    onClick={() => {
-                      setGroupEditId(g.id);
-                      setGroupEditLabel(g.label);
-                    }}
-                  >
-                    <IconEdit />
-                  </button>
-                  <button
-                    className="msgdel"
-                    aria-label="削除"
-                    onClick={() => {
-                      if (
-                        window.confirm(`「${g.label}」を削除しますか？（予定からもこのグループが外れます）`)
-                      )
-                        team.removeGroup(g.id);
-                    }}
-                  >
-                    <E n="trash" />
-                  </button>
-                </>
+        {groupMembersId ? (
+          (() => {
+            const g = team.groups.find((x) => x.id === groupMembersId);
+            if (!g) return null;
+            return (
+              <GroupMembersEditor group={g} players={players} onBack={() => setGroupMembersId(null)} />
+            );
+          })()
+        ) : (
+          <>
+            <h2>グループ管理</h2>
+            <div className="list">
+              {team.groups.length === 0 && (
+                <div className="empty-msg">登録されたグループはありません。</div>
               )}
+              {team.groups.map((g) => {
+                const isGrade = g.kind === "grade";
+                const memberCount = players.filter((p) => playerInGroup(p, g)).length;
+                return (
+                  <div key={g.id} className="catrow">
+                    {groupEditId === g.id ? (
+                      <div style={{ flex: 1 }}>
+                        <input
+                          value={groupEditLabel}
+                          onChange={(e) => setGroupEditLabel(e.target.value)}
+                          style={{ marginBottom: 8 }}
+                          autoFocus
+                        />
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            className="bigbtn"
+                            style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                            onClick={() => {
+                              if (!groupEditLabel.trim()) {
+                                board.toast("名前を入力してください");
+                                return;
+                              }
+                              team.updateGroup({ ...g, label: groupEditLabel.trim() });
+                              setGroupEditId(null);
+                            }}
+                          >
+                            保存する
+                          </button>
+                          <button
+                            className="bigbtn ghost"
+                            style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
+                            onClick={() => setGroupEditId(null)}
+                          >
+                            キャンセル
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Phase D-1(C2-minor): サブテキストが非タップで、メンバー編集の入口が
+                            右側の人型アイコン(次のbutton)だけだと初見で気づきにくい。
+                            仕様§5「『メンバー（n人）』→ 選手のチェックリスト」どおり、
+                            サブテキスト自体もタップ可能にする（既存アイコンは残す） */}
+                        <div
+                          className="cmpinfo"
+                          style={isGrade ? undefined : { cursor: "pointer" }}
+                          onClick={isGrade ? undefined : () => setGroupMembersId(g.id)}
+                          role={isGrade ? undefined : "button"}
+                          tabIndex={isGrade ? undefined : 0}
+                          onKeyDown={
+                            isGrade
+                              ? undefined
+                              : (e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setGroupMembersId(g.id);
+                                  }
+                                }
+                          }
+                        >
+                          <div className="cmpnm">{g.label}</div>
+                          <div className="cmpsub">
+                            {isGrade ? "学年グループ（改名のみ）" : `メンバー ${memberCount}人 ›`}
+                          </div>
+                        </div>
+                        {!isGrade && (
+                          <button
+                            className="msgdel"
+                            aria-label="メンバーを編集"
+                            onClick={() => setGroupMembersId(g.id)}
+                          >
+                            <E n="users" />
+                          </button>
+                        )}
+                        <button
+                          className="msgdel"
+                          aria-label="編集"
+                          onClick={() => {
+                            setGroupEditId(g.id);
+                            setGroupEditLabel(g.label);
+                          }}
+                        >
+                          <IconEdit />
+                        </button>
+                        {!isGrade && (
+                          <button
+                            className="msgdel"
+                            aria-label="削除"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  `「${g.label}」を削除しますか？（予定からもこのグループが外れます）`
+                                )
+                              )
+                                team.removeGroup(g.id);
+                            }}
+                          >
+                            <E n="trash" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
-        <div className="formfield">
-          <label>新しいグループを追加</label>
-          <input
-            value={newGroupLabel}
-            onChange={(e) => setNewGroupLabel(e.target.value)}
-            placeholder="例）1年生 / Aチーム"
-          />
-        </div>
-        <button
-          // Phase D-1(C2-minor): 新設シートがスマホの緑bigbtnを増やさないよう、他の主要CTA
-          // (§3-4対応済み箇所)と同じ流儀でモバイルはaccent(青)にする。PC(pane)は不変
-          className={`bigbtn${pane ? "" : " accent"}`}
-          onClick={() => {
-            if (!newGroupLabel.trim()) {
-              board.toast("名前を入力してください");
-              return;
-            }
-            team.addGroup(newGroupLabel);
-            setNewGroupLabel("");
-          }}
-        >
-          追加する
-        </button>
+            <div className="formfield">
+              <label>新しいグループを追加</label>
+              <input
+                value={newGroupLabel}
+                onChange={(e) => setNewGroupLabel(e.target.value)}
+                placeholder="例）Aチーム / Bチーム"
+              />
+            </div>
+            <button
+              // Phase D-1(C2-minor): 新設シートがスマホの緑bigbtnを増やさないよう、他の主要CTA
+              // (§3-4対応済み箇所)と同じ流儀でモバイルはaccent(青)にする。PC(pane)は不変
+              className={`bigbtn${pane ? "" : " accent"}`}
+              onClick={() => {
+                if (!newGroupLabel.trim()) {
+                  board.toast("名前を入力してください");
+                  return;
+                }
+                team.addGroup(newGroupLabel);
+                setNewGroupLabel("");
+              }}
+            >
+              追加する
+            </button>
+          </>
+        )}
       </Sheet>
 
       {/* 体力測定：種目管理（R4b）。カテゴリ管理と同じ構造(一覧+インライン編集+追加フォーム)。
@@ -3853,6 +4219,19 @@ function SheetHost({
             placeholder="例）明日の練習は雨天中止の場合あり。朝7時に判断します。"
           />
         </div>
+        {/* groups-everywhere §4: 宛先グループ（複数選択・未選択＝全員） */}
+        {team.groups.length > 0 && (
+          <div className="formfield">
+            <label>宛先</label>
+            <GroupChips
+              groups={team.groups}
+              value={annGroupIds}
+              onChange={setAnnGroupIds}
+              allowAll
+              onManage={() => setSheet({ type: "groups" })}
+            />
+          </div>
+        )}
         {board.library.plays.length > 0 && (
           <div className="formfield">
             <label>戦術を添付（任意・選手が閲覧できます）</label>
@@ -3867,16 +4246,20 @@ function SheetHost({
           </div>
         )}
         <button
-          className="bigbtn"
+          // Phase D-1(C2-minor): §4で追加した「宛先」チップ(青)の直下で送信ボタンだけ緑のまま
+          // だったため、グループ管理シートの「追加する」と同じ流儀でモバイルはaccent(青)にする。
+          // PC(pane)は不変
+          className={`bigbtn${pane ? "" : " accent"}`}
           onClick={() => {
             if (!text.trim()) {
               board.toast("本文を入力してください");
               return;
             }
             const pt = playId ? board.library.plays.find((p) => p.id === playId)?.title : undefined;
-            team.addAnnouncement(text, playId || undefined, pt);
+            team.addAnnouncement(text, playId || undefined, pt, annGroupIds);
             setText("");
             setPlayId("");
+            setAnnGroupIds([]);
             close();
           }}
         >
@@ -3884,7 +4267,7 @@ function SheetHost({
         </button>
       </Sheet>
 
-      {/* 連絡の一覧 */}
+      {/* 連絡の一覧。groups-everywhere §4: 選手・保護者には自分宛（全員 or 所属グループ）だけ表示する */}
       <Sheet open={sheet?.type === "annList"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>連絡</h2>
         {isCoach && (
@@ -3897,11 +4280,16 @@ function SheetHost({
           </button>
         )}
         <div className="list">
-          {team.team.announcements.length === 0 ? (
-            <div className="empty-msg">連絡はまだありません。</div>
-          ) : (
-            team.team.announcements.map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} />)
-          )}
+          {(() => {
+            const anns = team.team.announcements.filter(
+              (a) => isCoach || !me || announcementTargetsPlayer(a, me, team.groups)
+            );
+            return anns.length === 0 ? (
+              <div className="empty-msg">連絡はまだありません。</div>
+            ) : (
+              anns.map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} groups={team.groups} />)
+            );
+          })()}
         </div>
       </Sheet>
 
@@ -3912,12 +4300,12 @@ function SheetHost({
             <h2>{fmtDate(sheet.date)} の予定</h2>
             <div className="list">
               {team.team.events.filter(
-                (e) => occursOn(e, sheet.date) && eventTargetsGroup(e, calGroup)
+                (e) => occursOn(e, sheet.date) && dayPassesFilter(e)
               ).length === 0 ? (
                 <div className="empty-msg">この日に予定はありません。</div>
               ) : (
                 team.team.events
-                  .filter((e) => occursOn(e, sheet.date) && eventTargetsGroup(e, calGroup))
+                  .filter((e) => occursOn(e, sheet.date) && dayPassesFilter(e))
                   .sort(byStartAsc)
                   .map((e) => {
                     const cat = categoryOf(e, team.categories);
@@ -4038,6 +4426,17 @@ function SheetHost({
                     {team.groups.length > 0 && (
                       <div className="dline">
                         <E n="users" /> 対象: <EvGroupsBadge ev={e} groups={team.groups} full />
+                        {/* groups-everywhere §3: 対象外から「参加する」した選手をスタッフに表示。
+                            Phase D-1(C2-minor): 対象バッジ(EvGroupsBadge full)と同じく、詳細では
+                            省略せず全文表示する（evgroups.fullで折り返し・省略解除） */}
+                        {isCoach && (e.optInPlayerIds ?? []).length > 0 && (
+                          <span className="evgroups full" style={{ marginLeft: 6 }}>
+                            ＋参加：
+                            {(e.optInPlayerIds ?? [])
+                              .map((pid) => players.find((p) => p.id === pid)?.name ?? "選手")
+                              .join("、")}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -4055,6 +4454,38 @@ function SheetHost({
                       </button>
                     </div>
                   )}
+                  {/* groups-everywhere §3: 選手・保護者が対象外の予定を開いたときの「参加する」/
+                      「参加をやめる」。対象（全員 or 所属グループ）の予定には出さない */}
+                  {!isCoach &&
+                    me &&
+                    (() => {
+                      const coreTarget =
+                        isAllTargets(e) ||
+                        (e.groupIds ?? []).some((gid) => {
+                          const g = team.groups.find((x) => x.id === gid);
+                          return g ? playerInGroup(me, g) : false;
+                        });
+                      if (coreTarget) return null;
+                      const optedIn = e.optInPlayerIds?.includes(me.id) ?? false;
+                      return (
+                        <div className="dsec">
+                          <button
+                            className={optedIn ? "bigbtn ghost" : `bigbtn${pane ? "" : " accent"}`}
+                            onClick={() => {
+                              const next = optedIn
+                                ? (e.optInPlayerIds ?? []).filter((id) => id !== me.id)
+                                : [...(e.optInPlayerIds ?? []), me.id];
+                              team.updateEvent({
+                                ...e,
+                                optInPlayerIds: next.length > 0 ? next : undefined,
+                              });
+                            }}
+                          >
+                            {optedIn ? "参加をやめる" : "この予定に参加する"}
+                          </button>
+                        </div>
+                      );
+                    })()}
                 </div>
                 {mapQuery && (
                   <div className="mapframe">
@@ -4638,12 +5069,26 @@ function SheetHost({
           <label>学年</label>
           <select value={pfGrade} onChange={(e) => setPfGrade(e.target.value)}>
             <option value="">未設定</option>
-            {[1, 2, 3, 4, 5, 6].map((n) => (
+            {STAGE_GRADES[team.team.schoolStage ?? "elementary"].map((n) => (
               <option key={n} value={n}>
-                {n}年
+                {gradeLabel(team.team.schoolStage ?? "elementary", n)}
               </option>
             ))}
           </select>
+        </div>
+        {/* groups-everywhere §5: 所属カスタムグループ（学年グループはgradeから自動のため出さない） */}
+        <div className="formfield">
+          <label>グループ</label>
+          <GroupChips
+            groups={team.groups.filter((g) => g.kind === "custom")}
+            value={pfGroupIds}
+            onChange={setPfGroupIds}
+            multi
+            onManage={() => setSheet({ type: "groups", returnToPlayerForm: pf ?? null })}
+          />
+          {team.groups.filter((g) => g.kind === "custom").length === 0 && (
+            <div className="fieldhint">カスタムグループがありません。「＋ 管理」から追加できます。</div>
+          )}
         </div>
         <div className="formfield">
           <label>メール（任意）</label>
@@ -4755,6 +5200,21 @@ function SheetHost({
             const dominantFoot = pfFoot === "" ? undefined : pfFoot;
             const email = pfEmail.trim() || undefined;
             const grade = pfGrade.trim() === "" ? null : parseInt(pfGrade, 10);
+            // Phase D-1(C1-major): pfGroupIdsはフォームを開いた時点のpf.groupIdsを初期値とする
+            // 独立したstateのため、「＋管理」からグループ管理シートのメンバー編集で同じ選手の
+            // 所属を変えてから戻ると、保存時にその変更が古い値で上書きされてしまう。フォームを
+            // 開いた時点(base)・フォーム内でのチップ操作(pfGroupIds)・保存直前の最新値(remote)の
+            // 3-wayマージで、フォーム内の追加/削除だけを反映しつつフォーム外での変更を保持する
+            const baseGroupIds = pf?.groupIds ?? [];
+            const remoteGroupIds = pf ? players.find((x) => x.id === pf.id)?.groupIds ?? [] : [];
+            const mergedGroupIds = new Set(remoteGroupIds);
+            new Set([...baseGroupIds, ...pfGroupIds]).forEach((id) => {
+              const inBase = baseGroupIds.includes(id);
+              const inLocal = pfGroupIds.includes(id);
+              if (inLocal && !inBase) mergedGroupIds.add(id);
+              if (!inLocal && inBase) mergedGroupIds.delete(id);
+            });
+            const groupIds = mergedGroupIds.size > 0 ? [...mergedGroupIds] : undefined;
             if (pf) {
               // ...pf は選手フォームを開いた時点のスナップショットのため、同フォーム内で
               // team.addFitnessRecord/removeFitnessRecordが保存した最新のfitnessを含まない。
@@ -4769,6 +5229,7 @@ function SheetHost({
                 dominantFoot,
                 email,
                 grade,
+                groupIds,
               });
             } else {
               board.addPlayer({
@@ -4780,6 +5241,7 @@ function SheetHost({
                 dominantFoot,
                 email,
                 grade,
+                groupIds,
               });
             }
             close();

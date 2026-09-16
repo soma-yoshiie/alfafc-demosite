@@ -16,6 +16,7 @@ import type {
   FitnessTest,
   MatchRecord,
   RecurrenceRule,
+  SchoolStage,
   TeamData,
   TeamEvent,
   TeamEventKind,
@@ -23,6 +24,7 @@ import type {
   TeamViewer,
   ViewerRole,
 } from "@/lib/types";
+import { gradeLabel, STAGE_GRADES } from "@/lib/types";
 import {
   loadTeam,
   loadViewer,
@@ -30,13 +32,19 @@ import {
   saveViewer,
 } from "@/lib/storage";
 import { addDaysStr, localDateStr } from "@/lib/dates";
-import { DEFAULT_FITNESS_TESTS, SAMPLE_PLAYERS } from "@/lib/sampleTeam";
+import {
+  DEFAULT_FITNESS_TESTS,
+  SAMPLE_CUSTOM_GROUPS,
+  SAMPLE_GROUP_A_ID,
+  SAMPLE_PLAYERS,
+} from "@/lib/sampleTeam";
 import {
   addDays,
   BUILTIN_CATEGORIES,
   diffDays,
   expandRule,
 } from "@/lib/calendarUtils";
+import { ensureGradeGroups, eventTargetPlayers, gradeGroupsFor, membersOf } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
 
 let seq = 0;
@@ -45,16 +53,28 @@ function nid(p: string) {
   return `${p}_${Date.now().toString(36)}_${seq}`;
 }
 
-/** デモ用の出欠シード（大半が「出席」・空っぽ状態を避ける。unanswered は未回答のまま残す） */
+/** 学校区分の表示名（setSchoolStageの確認ダイアログ用。設定画面のselectの選択肢と揃える） */
+const STAGE_NAME: Record<SchoolStage, string> = {
+  elementary: "小学生",
+  junior: "中学生",
+  high: "高校生",
+};
+
+/**
+ * デモ用の出欠シード（大半が「出席」・空っぽ状態を避ける。unanswered は未回答のまま残す）。
+ * targetIds は出欠エントリを生成する母集団（groups-everywhere §4: グループ対象の予定は
+ * 対象外の選手にダミーの出欠が付かないよう、呼び出し側でその予定の対象選手だけに絞って渡す）。
+ */
 function sampleAttendance(
+  targetIds: string[],
   overrides: Record<string, AttendanceStatus>,
   comments: Record<string, string> = {},
   unanswered: string[] = []
 ): Record<string, { status: AttendanceStatus; comment?: string }> {
   const rec: Record<string, { status: AttendanceStatus; comment?: string }> = {};
-  SAMPLE_PLAYERS.forEach((p) => {
-    if (unanswered.includes(p.id)) return;
-    rec[p.id] = { status: overrides[p.id] ?? "yes", comment: comments[p.id] };
+  targetIds.forEach((id) => {
+    if (unanswered.includes(id)) return;
+    rec[id] = { status: overrides[id] ?? "yes", comment: comments[id] };
   });
   return rec;
 }
@@ -62,6 +82,10 @@ function sampleAttendance(
 function sampleTeam(): TeamData {
   // ノートのカレンダー連動デモに合わせ「今日=練習日」を含める（localDateStr=ローカル日付でUTCズレなし）
   const today = localDateStr();
+  // グループ対象のサンプル予定の分母計算用（学年グループの雛形＋カスタムグループ）
+  const sampleGroups: TeamGroup[] = [...gradeGroupsFor("junior", []), ...SAMPLE_CUSTOM_GROUPS];
+  const allPlayerIds = SAMPLE_PLAYERS.map((p) => p.id);
+  const teamAIds = membersOf(SAMPLE_GROUP_A_ID, SAMPLE_PLAYERS, sampleGroups).map((p) => p.id);
   return {
     events: [
       {
@@ -113,6 +137,37 @@ function sampleTeam(): TeamData {
         endTime: "19:00",
         place: "市民グラウンド",
       },
+      // groups-everywhere §2: 学年グループ対象の練習（週2回のうち1件ずつ）
+      {
+        id: "ev_practice_g3",
+        kind: "practice",
+        title: "中3 練習",
+        date: addDaysStr(today, 1),
+        time: "17:00",
+        endTime: "18:30",
+        place: "市民グラウンド",
+        groupIds: ["grp_grade_3"],
+      },
+      {
+        id: "ev_practice_g2",
+        kind: "practice",
+        title: "中2 練習",
+        date: addDaysStr(today, 1),
+        time: "18:30",
+        endTime: "20:00",
+        place: "市民グラウンド",
+        groupIds: ["grp_grade_2"],
+      },
+      {
+        id: "ev_practice_g1",
+        kind: "practice",
+        title: "中1 練習",
+        date: addDaysStr(today, 3),
+        time: "17:00",
+        endTime: "18:30",
+        place: "市民グラウンド",
+        groupIds: ["grp_grade_1"],
+      },
       {
         id: "ev_practice_camp",
         kind: "practice",
@@ -134,31 +189,39 @@ function sampleTeam(): TeamData {
         time: "19:00",
         endTime: "20:00",
         place: "公民館 会議室A",
-        groupIds: ["grp_low"],
+        // 保護者会は全員対象（groups-everywhere §2）。学年/A・B/GKに限定しない
       },
     ],
     attendance: {
+      // 全体練習は全員対象なので全選手ぶんの出欠を生成する
       ev_practice_pastA: sampleAttendance(
+        allPlayerIds,
         { p09: "maybe", p14: "maybe", p04: "no", p12: "no" },
         {},
         ["p07"]
       ),
       ev_practice_pastB: sampleAttendance(
+        allPlayerIds,
         { p11: "maybe", p06: "no" },
         {},
         ["p02"]
       ),
       ev_practice_today: sampleAttendance(
+        allPlayerIds,
         { p13: "maybe", p05: "no" },
         { p05: "怪我のためお休みします" },
         ["p16"]
       ),
+      // 練習試合はAチーム対象なので、出欠もAチームのメンバーだけに生成する
+      // （groups-everywhere §4: 対象外の選手にダミーの出欠を付けない）
       ev_match_next: sampleAttendance(
+        teamAIds,
         { p03: "maybe", p10: "no" },
         { p10: "所用のため参加できません" },
         ["p07", "p09"] // 未回答のまま（催促UIのデモ用）
       ),
-      // ev_practice_camp / ev_practice_meeting は未回答のまま（未回答デモを兼ねる）
+      // ev_practice_camp / ev_practice_meeting / ev_practice_g1・g2・g3 は
+      // 未回答のまま（未回答デモを兼ねる）
     },
     announcements: [
       {
@@ -180,12 +243,10 @@ function sampleTeam(): TeamData {
       // 元の色のまま据え置く。是正するならPC側の表示差分を許容する別タスクとして扱う
       { id: "cat_meet", label: "保護者会", color: "#7c5cbf" },
     ],
-    groups: [
-      { id: "grp_a", label: "Aチーム" },
-      { id: "grp_b", label: "Bチーム" },
-      { id: "grp_low", label: "低学年" },
-      { id: "grp_high", label: "高学年" },
-    ],
+    // 学年グループ（中1/中2/中3）はTeamProvider初期化時のensureGradeGroupsで自動追加される
+    // （groups-everywhere §1）ため、ここではカスタムグループのみ持たせる
+    groups: [...SAMPLE_CUSTOM_GROUPS],
+    schoolStage: "junior",
     competitions: [
       { id: "cmp1", name: "春季リーグ U-12", note: "4〜6月・市内リーグ" },
       { id: "cmp2", name: "練習試合", note: "" },
@@ -350,11 +411,16 @@ interface TeamContextValue {
   addCategory: (label: string, color: string) => string;
   updateCategory: (c: EventCategory) => void;
   removeCategory: (id: string) => void;
-  /** カレンダーのグループ（対象）マスタ */
+  /** グループ（学年＋カスタム）マスタ。学年グループは常にensureGradeGroups済み */
   groups: TeamGroup[];
+  /** 学年グループの範囲・ラベルを決める学校区分。未設定＝"elementary" */
+  schoolStage: SchoolStage;
+  /** 学校区分を変更する。学年グループをensureGradeGroupsで整え直す（改名は保持・範囲外は削除） */
+  setSchoolStage: (stage: SchoolStage) => void;
+  /** カスタムグループを追加する（kind:"custom"） */
   addGroup: (label: string) => string;
   updateGroup: (g: TeamGroup) => void;
-  /** グループを削除する。全予定の groupIds からもこのIDを外す */
+  /** カスタムグループを削除する（学年グループは削除不可）。全予定の groupIds・全選手の Player.groupIds からもこのIDを外す */
   removeGroup: (id: string) => void;
   /** 繰り返し予定込みの追加。ruleなしは1件（addEventと同じ）。戻り値は追加件数 */
   addEventWithRecurrence: (
@@ -379,7 +445,7 @@ interface TeamContextValue {
     status: AttendanceStatus,
     comment?: string
   ) => void;
-  addAnnouncement: (text: string, playId?: string, playTitle?: string) => void;
+  addAnnouncement: (text: string, playId?: string, playTitle?: string, groupIds?: string[]) => void;
   removeAnnouncement: (id: string) => void;
   addCoach: (name: string) => void;
   removeCoach: (name: string) => void;
@@ -423,8 +489,13 @@ export function useTeam(): TeamContextValue {
 export function TeamProvider({ children }: { children: React.ReactNode }) {
   const board = useBoard();
   const isPlayerAccount = board.auth.role === "player";
-  // lazy初期化で保存データを直接読む（mount後のsetStateによる競合・上書きを防ぐ）
-  const [team, setTeam] = useState<TeamData>(() => loadTeam() ?? sampleTeam());
+  // lazy初期化で保存データを直接読む（mount後のsetStateによる競合・上書きを防ぐ）。
+  // 初期化時にensureGradeGroupsで学年グループ（中1/中2/…）を整える（groups-everywhere §1）
+  const [team, setTeam] = useState<TeamData>(() => {
+    const t = loadTeam() ?? sampleTeam();
+    const stage: SchoolStage = t.schoolStage ?? "elementary";
+    return { ...t, schoolStage: stage, groups: ensureGradeGroups(stage, t.groups ?? []) };
+  });
   const [viewer, setViewerState] = useState<TeamViewer>(() =>
     isPlayerAccount
       ? { role: "member", memberPlayerId: board.auth.playerId ?? null }
@@ -527,8 +598,72 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  /** カレンダーのグループ（対象）マスタ */
+  /** グループ（学年＋カスタム）マスタ */
   const groups = useMemo<TeamGroup[]>(() => team.groups ?? [], [team.groups]);
+  const schoolStage: SchoolStage = team.schoolStage ?? "elementary";
+
+  /**
+   * 学校区分を変更する。学年グループをensureGradeGroupsで整え直す（改名は保持・範囲外は削除）。
+   * Phase D-1(C1-major): 削除される学年グループを対象にしていた予定・連絡・配信の
+   * groupIds/targetGroupIdsを残したままだと、解決できないIDとして「全員」表示のまま
+   * 対象選手0人になってしまうため、removeGroupと同様に後始末する。また範囲外になった
+   * 学年の選手はgradeをクリアする（「中5」等の存在しないラベル表示・学年別集計からの
+   * 欠落を防ぐ）。
+   * groups-everywhere Phase 2: この学年クリアは全選手一括で元に戻せないため、対象選手が
+   * いるときは人数と名前（現在の学年つき）を示して確認し、キャンセルなら区分ごと変更しない
+   * （このアプリの破壊的操作の作法）。適用後はトーストで人数を知らせる
+   */
+  const setSchoolStage = useCallback(
+    (stage: SchoolStage) => {
+      const allowed = STAGE_GRADES[stage];
+      const affected = board.state.players.filter(
+        (p) => p.grade != null && !allowed.includes(p.grade)
+      );
+      if (affected.length > 0) {
+        const names = affected
+          .slice(0, 3)
+          .map((p) => `${p.name}（${p.grade != null ? gradeLabel(schoolStage, p.grade) : ""}）`)
+          .join("、");
+        const more = affected.length > 3 ? ` ほか${affected.length - 3}人` : "";
+        const ok = window.confirm(
+          `学校区分を「${STAGE_NAME[stage]}」に変更すると、学年が範囲外になる${affected.length}人` +
+            `（${names}${more}）の学年が未設定になります。` +
+            `この操作は元に戻せません（学年はあとから選手ごとに設定し直せます）。\n変更しますか？`
+        );
+        if (!ok) return;
+      }
+      const prevGroups = team.groups ?? [];
+      const nextGroups = ensureGradeGroups(stage, prevGroups);
+      const removedIds = prevGroups
+        .filter((g) => g.kind === "grade" && !nextGroups.some((x) => x.id === g.id))
+        .map((g) => g.id);
+      setTeam((t) => ({
+        ...t,
+        schoolStage: stage,
+        groups: nextGroups,
+        events:
+          removedIds.length === 0
+            ? t.events
+            : t.events.map((e) => {
+                if (!e.groupIds || !e.groupIds.some((id) => removedIds.includes(id))) return e;
+                const rest = e.groupIds.filter((id) => !removedIds.includes(id));
+                return { ...e, groupIds: rest.length > 0 ? rest : undefined };
+              }),
+        announcements:
+          removedIds.length === 0
+            ? t.announcements
+            : t.announcements.map((a) => {
+                if (!a.groupIds || !a.groupIds.some((id) => removedIds.includes(id))) return a;
+                const rest = a.groupIds.filter((id) => !removedIds.includes(id));
+                return { ...a, groupIds: rest.length > 0 ? rest : undefined };
+              }),
+      }));
+      removedIds.forEach((id) => board.removeDeliverableTargetGroup(id));
+      affected.forEach((p) => board.updatePlayer({ ...p, grade: null }));
+      if (affected.length > 0) board.toast(`${affected.length}人の学年を未設定にしました`);
+    },
+    [team.groups, schoolStage, board]
+  );
 
   const addGroup = useCallback(
     (label: string) => {
@@ -538,7 +673,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       const nm = label.trim();
       if (!nm) return "";
       const id = nid("grp");
-      const g: TeamGroup = { id, label: nm };
+      const g: TeamGroup = { id, label: nm, kind: "custom" };
       setTeam((t) => ({ ...t, groups: [...(t.groups ?? []), g] }));
       board.toast(`グループ「${nm}」を追加しました`);
       return id;
@@ -551,17 +686,41 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       groups: (t.groups ?? []).map((x) => (x.id === g.id ? g : x)),
     }));
   }, []);
-  const removeGroup = useCallback((id: string) => {
-    setTeam((t) => ({
-      ...t,
-      groups: (t.groups ?? []).filter((g) => g.id !== id),
-      events: t.events.map((e) => {
-        if (!e.groupIds || !e.groupIds.includes(id)) return e;
-        const rest = e.groupIds.filter((x) => x !== id);
-        return { ...e, groupIds: rest.length > 0 ? rest : undefined };
-      }),
-    }));
-  }, []);
+  /**
+   * カスタムグループを削除する（学年グループは削除不可）。全予定のgroupIds・全選手の
+   * Player.groupIdsからもこのIDを外す。Phase D-1(C1-major): 連絡(announcements)のgroupIdsと
+   * 配信(deliverables)のtargetGroupIdsは放置されていたため、そのグループ宛の過去の連絡・配信が
+   * 「解決できないID」問題と合わさって選手側から一斉に消える不具合があった。あわせて掃除する
+   */
+  const removeGroup = useCallback(
+    (id: string) => {
+      const target = (team.groups ?? []).find((g) => g.id === id);
+      if (!target || target.kind !== "custom") return;
+      setTeam((t) => ({
+        ...t,
+        groups: (t.groups ?? []).filter((g) => g.id !== id),
+        events: t.events.map((e) => {
+          if (!e.groupIds || !e.groupIds.includes(id)) return e;
+          const rest = e.groupIds.filter((x) => x !== id);
+          return { ...e, groupIds: rest.length > 0 ? rest : undefined };
+        }),
+        announcements: t.announcements.map((a) => {
+          if (!a.groupIds || !a.groupIds.includes(id)) return a;
+          const rest = a.groupIds.filter((x) => x !== id);
+          return { ...a, groupIds: rest.length > 0 ? rest : undefined };
+        }),
+      }));
+      // Player.groupIdsと配信(deliverables)のtargetGroupIdsはBoardStateが保持するため、
+      // BoardProvider経由で除去する
+      board.state.players.forEach((p) => {
+        if (p.groupIds?.includes(id)) {
+          board.updatePlayer({ ...p, groupIds: p.groupIds.filter((x) => x !== id) });
+        }
+      });
+      board.removeDeliverableTargetGroup(id);
+    },
+    [board, team.groups]
+  );
 
   const addEventWithRecurrence = useCallback(
     (e: Omit<TeamEvent, "id">, rule?: RecurrenceRule): number => {
@@ -721,13 +880,20 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addAnnouncement = useCallback(
-    (text: string, playId?: string, playTitle?: string) => {
+    (text: string, playId?: string, playTitle?: string, groupIds?: string[]) => {
       const msg = text.trim();
       if (!msg) return;
       setTeam((t) => ({
         ...t,
         announcements: [
-          { id: nid("a"), ts: Date.now(), text: msg, playId, playTitle },
+          {
+            id: nid("a"),
+            ts: Date.now(),
+            text: msg,
+            playId,
+            playTitle,
+            groupIds: groupIds && groupIds.length > 0 ? [...groupIds] : undefined,
+          },
           ...t.announcements,
         ],
       }));
@@ -868,21 +1034,28 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     [board]
   );
 
+  // groups-everywhere §4: 分母を「その予定の対象選手」に。Phase D-1(C1-major):
+  // 内訳(yes/maybe/no)は従来どおりObject.values(att)を全件走査していたため、対象外選手の
+  // 出欠記録まで混ざりyes+maybe+no>totalになり得た（noneがMath.maxで0に潰れ「未回答」の
+  // 催促が機能しなくなる）。内訳も対象選手の集合だけを数えるように揃える
   const summary = useCallback(
     (eventId: string) => {
       const att = team.attendance[eventId] ?? {};
-      const total = board.state.players.length;
+      const event = team.events.find((e) => e.id === eventId);
+      const targets = event ? eventTargetPlayers(event, board.state.players, groups) : board.state.players;
+      const total = targets.length;
       let yes = 0,
         maybe = 0,
         no = 0;
-      Object.values(att).forEach((e) => {
-        if (e.status === "yes") yes++;
-        else if (e.status === "maybe") maybe++;
-        else no++;
+      targets.forEach((p) => {
+        const st = att[p.id]?.status;
+        if (st === "yes") yes++;
+        else if (st === "maybe") maybe++;
+        else if (st === "no") no++;
       });
       return { yes, maybe, no, none: Math.max(0, total - yes - maybe - no) };
     },
-    [team.attendance, board.state.players.length]
+    [team.attendance, team.events, board.state.players, groups]
   );
 
   const value = useMemo<TeamContextValue>(
@@ -898,6 +1071,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       updateCategory,
       removeCategory,
       groups,
+      schoolStage,
+      setSchoolStage,
       addGroup,
       updateGroup,
       removeGroup,
@@ -936,6 +1111,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       updateCategory,
       removeCategory,
       groups,
+      schoolStage,
+      setSchoolStage,
       addGroup,
       updateGroup,
       removeGroup,

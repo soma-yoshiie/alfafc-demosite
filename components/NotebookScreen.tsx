@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CoachDeliverable,
   DeliverKind,
@@ -24,7 +24,6 @@ import type {
   TeamEvent,
 } from "@/lib/types";
 import {
-  deliverTargets,
   MATCH_PHASE_LABEL,
   NOTE_CONDITION_LABEL,
   NOTE_KIND_LABEL,
@@ -35,6 +34,7 @@ import {
 } from "@/lib/types";
 import { FORMATION_KEYS, buildSlots } from "@/lib/formations";
 import { useBoard, type KpiMetric } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
 import { E, ConditionIcon, type EmojiName } from "./Emoji";
 import { FormationPitch, GoalCourseView, isInGoalFrame, PlayAreaPitch, type PlayTool } from "./MiniPitch";
 import { LineChart, Sparkline } from "./Charts";
@@ -48,6 +48,7 @@ import {
   saveNotifSeen,
 } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
+import { deliverableTargetsPlayer } from "@/lib/groups";
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
 import { DeliverBlock, DeliverComposer, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, CoachDashboard, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
@@ -728,7 +729,10 @@ function PlayerHome({
   }, [myNotes]);
 
   // バイタル: 出席率（データが無ければ行を出さない）
-  const attendance = useMemo(() => attendanceRate(loadTeam(), me), [me, board.notebook]);
+  const attendance = useMemo(
+    () => attendanceRate(loadTeam(), me, board.state.players),
+    [me, board.notebook, board.state.players]
+  );
 
   // 曜日タップの展開状態（モーダルではなくインラインで開閉する）
   const [openDay, setOpenDay] = useState<string | null>(null);
@@ -1426,7 +1430,20 @@ type PracticeDraft = {
 
 function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; initialMenuId?: string; onDone: () => void }) {
   const board = useBoard();
+  const team = useTeam();
   const me = board.auth.playerId ?? "";
+  // groups-everywhere §4: グループ宛の配信メニューも候補に含める
+  const meP = board.state.players.find((p) => p.id === me);
+  // Phase D-1(C1-minor): 以前はloadTeam()を毎レンダー直読みしていたため、(1) TeamProviderの
+  // saveTeamはuseEffect(子の初回描画後)なので初回シード直後の最初の描画ではgroupsが[]になり
+  // グループ宛の練習メニュー配信を取りこぼす、(2) 返り値が毎回別配列でmenuOptionsのuseMemo
+  // 依存にも入っていないためグループ変更が反映されない、という不具合があった。
+  // useTeam()のgroups(ensureGradeGroups済みの正本)を使う
+  const myGroups = team.groups;
+  const targetsMe = useCallback(
+    (d: PracticeMenuDeliver) => (meP ? deliverableTargetsPlayer(d, meP, myGroups) : false),
+    [meP, myGroups]
+  );
   const [date, setDate] = useState(edit?.date ?? todayStr());
   const [condition, setCondition] = useState<NoteCondition | undefined>(edit?.condition);
   const [goalPre, setGoalPre] = useState(edit?.goalPre ?? "");
@@ -1441,7 +1458,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     // 新規作成時のみ：自分宛の練習メニュー配信のうち直近14日以内で最新の1件を自動選択する
     const cutoff = daysAgoStr(14);
     const recent = board.deliverables
-      .filter((d): d is PracticeMenuDeliver => d.kind === "menu" && deliverTargets(d, me))
+      .filter((d): d is PracticeMenuDeliver => d.kind === "menu" && targetsMe(d))
       .filter((d) => localDateStr(new Date(d.ts)) >= cutoff)
       .sort((a, b) => b.ts - a.ts);
     return recent[0]?.id;
@@ -1453,7 +1470,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
   // 選択中のメニューが5件から漏れる場合は先頭に含めて、選択解除が常にできるようにする
   const menuOptions = useMemo(() => {
     const all = board.deliverables
-      .filter((d): d is PracticeMenuDeliver => d.kind === "menu" && deliverTargets(d, me))
+      .filter((d): d is PracticeMenuDeliver => d.kind === "menu" && targetsMe(d))
       .sort((a, b) => b.ts - a.ts);
     const top = all.slice(0, 5);
     if (menuId && !top.some((d) => d.id === menuId)) {
@@ -1461,7 +1478,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       if (sel) return [sel, ...top.slice(0, 4)];
     }
     return top;
-  }, [board.deliverables, me, menuId]);
+  }, [board.deliverables, me, menuId, targetsMe]);
   // 選択中メニューの内容表示は候補5件に絞らず全配信から探す（古い配信を選び直した場合も表示できるように）
   const selectedMenu = menuId
     ? board.deliverables.find((d): d is PracticeMenuDeliver => d.kind === "menu" && d.id === menuId)

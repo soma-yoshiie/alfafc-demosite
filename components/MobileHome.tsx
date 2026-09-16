@@ -517,8 +517,9 @@ function MobilePlayerHome({
 
   // ヒーロー（次の予定）・最新の動き: スタッフと同じ useMatchdayData を使う(Phase D-1 C1-major/
   // C3-major修正。以前は選手ホーム独自にnextEventを取り直していたため、次の予定が試合でも
-  // VSカード・カウントダウンが出ない不整合があった)。次の予定の抽出条件自体はPCと同一のまま。
-  const d = useMatchdayData(board, team);
+  // VSカード・カウントダウンが出ない不整合があった)。
+  // groups-everywhere §3: forPlayerId(=me)を渡し、「次の予定」を自分の予定だけから選ぶ
+  const d = useMatchdayData(board, team, me);
   const myAttendance = d.nextEvent ? team.team.attendance[d.nextEvent.id]?.[me]?.status : undefined;
   const attLabel =
     myAttendance === "yes" ? "出席" : myAttendance === "no" ? "欠席" : myAttendance === "maybe" ? "未定" : "未回答";
