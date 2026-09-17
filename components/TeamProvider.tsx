@@ -384,6 +384,8 @@ function sampleTeam(): TeamData {
         date: addDaysStr(today, -11),
         opponent: "高砂フットボールクラブ",
         competitionId: "cmp2",
+        // groups-phase2 §3-1: サンプル試合のうち1件（練習試合）をAチーム対象にする
+        groupIds: [SAMPLE_GROUP_A_ID],
         ourScore: 4,
         theirScore: 2,
         goals: [
@@ -657,6 +659,15 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
                 const rest = a.groupIds.filter((id) => !removedIds.includes(id));
                 return { ...a, groupIds: rest.length > 0 ? rest : undefined };
               }),
+        // groups-phase2 §3-1: 試合記録のgroupIdsも同様に後始末する
+        matches:
+          removedIds.length === 0
+            ? t.matches
+            : t.matches.map((m) => {
+                if (!m.groupIds || !m.groupIds.some((id) => removedIds.includes(id))) return m;
+                const rest = m.groupIds.filter((id) => !removedIds.includes(id));
+                return { ...m, groupIds: rest.length > 0 ? rest : undefined };
+              }),
       }));
       removedIds.forEach((id) => board.removeDeliverableTargetGroup(id));
       affected.forEach((p) => board.updatePlayer({ ...p, grade: null }));
@@ -708,6 +719,12 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
           if (!a.groupIds || !a.groupIds.includes(id)) return a;
           const rest = a.groupIds.filter((x) => x !== id);
           return { ...a, groupIds: rest.length > 0 ? rest : undefined };
+        }),
+        // groups-phase2 §3-1: 試合記録のgroupIdsも同様に後始末する
+        matches: t.matches.map((m) => {
+          if (!m.groupIds || !m.groupIds.includes(id)) return m;
+          const rest = m.groupIds.filter((x) => x !== id);
+          return { ...m, groupIds: rest.length > 0 ? rest : undefined };
         }),
       }));
       // Player.groupIdsと配信(deliverables)のtargetGroupIdsはBoardStateが保持するため、

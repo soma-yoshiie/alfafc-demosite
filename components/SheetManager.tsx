@@ -18,7 +18,7 @@ import type {
   SchoolStage,
   SetPieceKind,
 } from "@/lib/types";
-import { INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER } from "@/lib/types";
+import { dmThreadKey, INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER, threadGroupId } from "@/lib/types";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
 import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
@@ -44,13 +44,16 @@ import {
 } from "@/lib/articles";
 import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
 import { localDateStr, weekStart } from "@/lib/dates";
+import { planAutoAssign, type AssignPair } from "@/lib/autoAssign";
+import { membersOf, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { useBoard, type KpiMetric, type StatMetric } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
+import { GroupChips, useGroupFilter } from "./GroupChips";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
 import { MobileHeader } from "./MobileHeader";
-import { SendTargetField, targetThreadKey, type SendTarget } from "./SendTarget";
+import { SendTargetField, targetThreadKeys, type SendTarget } from "./SendTarget";
 import { fmtFitnessValue } from "@/lib/fitness";
 import {
   IconCalendarCheck,
@@ -172,8 +175,12 @@ function Sheet({
 /* ---------------- Assign player to slot ---------------- */
 export function AssignBody({ slot }: { slot: number }) {
   const board = useBoard();
+  const team = useTeam();
   const pc = usePc();
   const [q, setQ] = useState("");
+  // groups-phase2 §2: 配置シート・名簿シート・ベンチで共有する絞り込み(key "board")
+  const [filterIds, setFilterIds] = useGroupFilter("board");
+  const filterGroup = resolveFilterGroup(filterIds, team.groups);
   const { slots, players } = board.state;
   const inXi = new Set(slots.map((s) => s.pid).filter(Boolean));
   const role = slots[slot].role;
@@ -181,6 +188,7 @@ export function AssignBody({ slot }: { slot: number }) {
     const kw = q.trim().toLowerCase();
     return players
       .filter((p) => !inXi.has(p.id))
+      .filter((p) => !filterGroup || playerInGroup(p, filterGroup))
       .filter(
         (p) =>
           !kw ||
@@ -194,7 +202,76 @@ export function AssignBody({ slot }: { slot: number }) {
         const gb = groupOf(b.position) === groupOf(role) ? 0 : 1;
         return ga - gb;
       });
-  }, [players, inXi, q, role]);
+  }, [players, inXi, q, role, filterGroup]);
+
+  // グループ選択中の補助文（「中3：23人（配置済み8人）」）用の集計
+  const groupTotal = filterGroup ? players.filter((p) => playerInGroup(p, filterGroup)).length : 0;
+  const groupUnassigned = filterGroup
+    ? players.filter((p) => !inXi.has(p.id) && playerInGroup(p, filterGroup)).length
+    : 0;
+
+  // 自動配置の結果（実行後はシートを閉じずここへ切り替える。シート再オープンでAssignBody
+  // 自体が作り直されるため、閉じて開き直せば自然に通常の一覧へ戻る）
+  const [autoResult, setAutoResult] = useState<{
+    pairs: AssignPair[];
+    groupLabel: string;
+    leftover: number;
+  } | null>(null);
+
+  const runAutoAssign = () => {
+    if (!filterGroup) return;
+    const candidates = players.filter((p) => !inXi.has(p.id) && playerInGroup(p, filterGroup));
+    const emptyBefore = slots.filter((s) => s.pid == null).length;
+    const pairs = planAutoAssign(slots, candidates);
+    if (pairs.length === 0) {
+      board.toast("配置できる選手がいません");
+      return;
+    }
+    board.assignMany(pairs);
+    setAutoResult({ pairs, groupLabel: filterGroup.label, leftover: emptyBefore - pairs.length });
+  };
+
+  if (autoResult) {
+    return (
+      <>
+        <h2>自動配置しました</h2>
+        <div className="assignresult">
+          {`${autoResult.groupLabel} から ${autoResult.pairs.length}人を空き枠に配置しました。`}
+          {autoResult.leftover > 0 &&
+            `${autoResult.leftover}枠は合う選手がいないため空きのままです。`}
+        </div>
+        <div className="list">
+          {autoResult.pairs.map((pair) => {
+            const p = board.state.players.find((pl) => pl.id === pair.pid);
+            const r = board.state.slots[pair.slot]?.role ?? role;
+            return (
+              <div key={pair.slot} className="prow" style={{ cursor: "default" }}>
+                <div className={`pos ${groupOf(r)}`}>{r}</div>
+                <div className="meta">
+                  <div className="nm">→ {p?.name ?? ""}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <button
+          className="bigbtn ghost"
+          onClick={() => {
+            board.unassignMany(autoResult.pairs);
+            setAutoResult(null);
+          }}
+        >
+          元に戻す
+        </button>
+        {/* groups-phase2 review #2回目: 両方ghostだと取り消し操作と確定操作の主従が消える。
+            §2-1どおり「閉じる」は.bigbtn(既定の緑地)にして戻す（他画面の完了系ボタン
+            = NotebookScreenのonClose等と同じ作法。新規CSSは不要） */}
+        <button className="bigbtn" onClick={board.closeSheet}>
+          閉じる
+        </button>
+      </>
+    );
+  }
 
   return (
     <>
@@ -209,12 +286,35 @@ export function AssignBody({ slot }: { slot: number }) {
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+      {team.groups.length > 0 && (
+        <div className="assignfilter">
+          <GroupChips groups={team.groups} value={filterIds} onChange={setFilterIds} allowAll />
+        </div>
+      )}
+      {filterGroup && (
+        <div className="assignhint">
+          <span>
+            {filterGroup.label}：{groupTotal}人（配置済み {groupTotal - groupUnassigned}人）
+          </span>
+          <button type="button" className="assignauto" onClick={runAutoAssign}>
+            このグループで自動配置
+          </button>
+        </div>
+      )}
       <div className="list">
         {list.length === 0 ? (
           <div className="empty-msg">
-            配置できる控え選手がいません。
-            <br />
-            下のボタンから新しい選手を追加できます。
+            {filterGroup && groupTotal === 0 ? (
+              "このグループの選手がいません。"
+            ) : filterGroup && groupUnassigned === 0 ? (
+              "このグループの選手は全員配置済みです。"
+            ) : (
+              <>
+                配置できる控え選手がいません。
+                <br />
+                下のボタンから新しい選手を追加できます。
+              </>
+            )}
           </div>
         ) : (
           list.map((p) => (
@@ -420,16 +520,22 @@ function OppMenu({ index }: { index: number }) {
 /* ---------------- Roster list ---------------- */
 function RosterSheet() {
   const board = useBoard();
+  const team = useTeam();
   const [q, setQ] = useState("");
+  // groups-phase2 §2-2: 配置シート・ベンチと共有する絞り込み(key "board")
+  const [filterIds, setFilterIds] = useGroupFilter("board");
+  const filterGroup = resolveFilterGroup(filterIds, team.groups);
   const { players } = board.state;
   const kw = q.trim().toLowerCase();
   const list = players.filter(
-    (p) => !kw || p.name.toLowerCase().includes(kw) || p.position.toLowerCase().includes(kw)
+    (p) =>
+      (!kw || p.name.toLowerCase().includes(kw) || p.position.toLowerCase().includes(kw)) &&
+      (!filterGroup || playerInGroup(p, filterGroup))
   );
   return (
     <>
       <h2>
-        名簿 <span>{players.length}人</span>
+        名簿 <span>{list.length}人</span>
       </h2>
       <div className="controls">
         <input
@@ -439,6 +545,11 @@ function RosterSheet() {
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
+      {team.groups.length > 0 && (
+        <div className="assignfilter">
+          <GroupChips groups={team.groups} value={filterIds} onChange={setFilterIds} allowAll />
+        </div>
+      )}
       <div className="list">
         {list.length === 0 ? (
           <div className="empty-msg">選手がいません。下のボタンから追加してください。</div>
@@ -495,25 +606,40 @@ const KPI_HINT: Record<KpiMetric, string> = {
 
 export function KpiBody({ metric }: { metric: KpiMetric }) {
   const board = useBoard();
+  // groups-phase2 §4: 提出一覧・ダッシュボードと同じ"notebook"キーを読み、同じ母集合で計算する
+  const team = useTeam();
+  const [filterIds] = useGroupFilter("notebook");
+  const filterGroup = resolveFilterGroup(filterIds, team.groups);
+  const targetPlayers = useMemo(
+    () => (filterGroup ? board.state.players.filter((p) => playerInGroup(p, filterGroup)) : board.state.players),
+    [board.state.players, filterGroup]
+  );
+  const targetNotebook = useMemo(() => {
+    if (!filterGroup) return board.notebook;
+    const ids = new Set(targetPlayers.map((p) => p.id));
+    return board.notebook.filter((n) => ids.has(n.playerId));
+  }, [board.notebook, filterGroup, targetPlayers]);
+
   const kpis = useMemo(() => {
-    const team = loadTeam();
-    return board.state.players.map((p) =>
-      computePlayerKpi(p, board.notebook, board.deliverables, team)
+    return targetPlayers.map((p) =>
+      computePlayerKpi(p, targetNotebook, board.deliverables, team.team)
     );
-  }, [board.state.players, board.notebook, board.deliverables]);
+  }, [targetPlayers, targetNotebook, board.deliverables, team.team]);
 
   const monday = weekStart(localDateStr());
   const notesThisWeekOf = (pid: string) =>
-    board.notebook.filter((n) => n.playerId === pid && n.date >= monday).length;
+    targetNotebook.filter((n) => n.playerId === pid && n.date >= monday).length;
 
   // ダッシュボードのカードと同じ関数で集計する（式をコピーすると集計側の修正に追随できない）
-  const summary = useMemo(() => computeTeamSummary(kpis, board.notebook), [kpis, board.notebook]);
+  const summary = useMemo(() => computeTeamSummary(kpis, targetNotebook), [kpis, targetNotebook]);
   // 名簿から削除された選手のノートは残るため、選手別合計と全体件数がズレうる。
   // その差分を「名簿外」として1行で出し、カード＝見出し＝行の合計を必ず閉じさせる
+  // （絞り込み中は対象選手の集合が名簿全体ではないため、この行自体を出さない＝「すべて」のときだけ）
   const orphanNotes = useMemo(() => {
+    if (filterGroup) return 0;
     const known = new Set(board.state.players.map((p) => p.id));
     return board.notebook.filter((n) => n.date >= monday && !known.has(n.playerId)).length;
-  }, [board.notebook, board.state.players, monday]);
+  }, [board.notebook, board.state.players, monday, filterGroup]);
 
   let rows = [...kpis];
   if (metric === "attendance") {
@@ -545,11 +671,13 @@ export function KpiBody({ metric }: { metric: KpiMetric }) {
     solo: { title: "自主練継続", badge: `${summary.soloActive}人` },
   };
   const h = heading[metric];
+  // groups-phase2 §4: 絞り込み中は見出しに「（中3）」を添える
+  const titleSuffix = filterGroup ? `（${filterGroup.label}）` : "";
 
   return (
     <>
       <h2>
-        {h.title} <span>{h.badge}</span>
+        {h.title}{titleSuffix} <span>{h.badge}</span>
       </h2>
       <div className="list">
         {rows.length === 0 ? (
@@ -1301,10 +1429,14 @@ function MoreSheet() {
 /* ---------------- Chat（戦術・トレーニング・画像・動画の送信） ---------------- */
 function ChatSheet({ to }: { to: string }) {
   const board = useBoard();
-  const title =
-    to === "team"
-      ? "チーム全員"
-      : board.state.players.find((p) => "p:" + p.id === to)?.name ?? "メッセージ";
+  const team = useTeam();
+  const gid = threadGroupId(to);
+  const grp = gid ? team.groups.find((g) => g.id === gid) : null;
+  const title = grp
+    ? `${grp.label}（${membersOf(grp.id, board.state.players, team.groups).length}人）`
+    : to === "team"
+    ? "チーム全員"
+    : board.state.players.find((p) => dmThreadKey(p.id) === to)?.name ?? "メッセージ";
   return (
     <div className="chatsheet">
       {/* mobile-redesign Phase D-2(major §1-6): 「‹ 戻る」バー＋大見出しの2段構成を、
@@ -1317,6 +1449,7 @@ function ChatSheet({ to }: { to: string }) {
 
 export function SaveBody() {
   const board = useBoard();
+  const team = useTeam();
   // 文書種別分岐: screen==="setpiece" のときはセットプレーとして保存・送信する
   // （出力系はBoardState渡しのため無改造だが、保存/送信先のライブラリ・添付種別はここで切替）
   const isSetPiece = board.screen === "setpiece";
@@ -1328,28 +1461,40 @@ export function SaveBody() {
   );
   const [folderId, setFolderId] = useState<string | null>(null);
   const [target, setTarget] = useState<SendTarget>({ mode: "none" });
-  const threadKey = targetThreadKey(target);
+  const wantsSend = target.mode !== "none";
+  const keys = targetThreadKeys(target);
 
-  const sendAttachment = () => {
-    if (!threadKey) return;
+  // groups-phase2 §5-4: グループ宛を選んだのに未選択のまま送信しようとしたらtoastで気づかせる。
+  // falseを返したとき(バリデーション失敗)は呼び出し側でシートを閉じない
+  const sendAttachment = (): boolean => {
+    if (target.mode === "group" && keys.length === 0) {
+      board.toast("グループを選んでください");
+      return false;
+    }
+    if (keys.length === 0) return false;
     if (isSetPiece) {
       const item = board.snapshotSetPiece(title);
-      if (!item) return;
-      board.sendMessage({
-        to: threadKey,
-        from: "coach",
-        fromName: "スタッフ",
-        attachments: [{ kind: "setpiece", title: item.title, setpiece: item }],
-      });
+      if (!item) return false;
+      keys.forEach((to) =>
+        board.sendMessage({
+          to,
+          from: "coach",
+          fromName: "スタッフ",
+          attachments: [{ kind: "setpiece", title: item.title, setpiece: item }],
+        })
+      );
     } else {
       const play = board.snapshotPlay(title);
-      board.sendMessage({
-        to: threadKey,
-        from: "coach",
-        fromName: "スタッフ",
-        attachments: [{ kind: "play", title: play.title, play }],
-      });
+      keys.forEach((to) =>
+        board.sendMessage({
+          to,
+          from: "coach",
+          fromName: "スタッフ",
+          attachments: [{ kind: "play", title: play.title, play }],
+        })
+      );
     }
+    return true;
   };
 
   return (
@@ -1380,6 +1525,7 @@ export function SaveBody() {
 
       <SendTargetField
         players={board.state.players}
+        groups={team.groups}
         value={target}
         onChange={setTarget}
       />
@@ -1387,23 +1533,28 @@ export function SaveBody() {
       <button
         className="bigbtn"
         onClick={() => {
-          const ok = isSetPiece ? board.saveSetPiece(title, null) : board.savePlay(title, folderId);
-          if (ok) {
-            if (threadKey) sendAttachment();
-            board.closeSheet();
+          // 送信バリデーション(グループ未選択)は保存の前に行う。保存後に弾くと
+          // 「失敗した」と思ったユーザーが選び直して再送し、savePlay/saveSetPieceが
+          // 毎回新規保存するため戦術がライブラリに二重保存されてしまう
+          if (wantsSend && keys.length === 0) {
+            board.toast("グループを選んでください");
+            return;
           }
+          const ok = isSetPiece ? board.saveSetPiece(title, null) : board.savePlay(title, folderId);
+          if (!ok) return;
+          if (wantsSend && !sendAttachment()) return;
+          board.closeSheet();
         }}
       >
-        {threadKey ? "保存して送信する" : "新しく保存する"}
+        {wantsSend ? "保存して送信する" : "新しく保存する"}
       </button>
 
-      {threadKey && (
+      {wantsSend && (
         <button
           className="bigbtn ghost"
           style={{ marginTop: 8 }}
           onClick={() => {
-            sendAttachment();
-            board.closeSheet();
+            if (sendAttachment()) board.closeSheet();
           }}
         >
           保存せずに送信する

@@ -6,6 +6,7 @@
 import type {
   Announcement,
   CoachDeliverable,
+  MatchRecord,
   Player,
   SchoolStage,
   TeamEvent,
@@ -132,6 +133,50 @@ export function deliverableVisibleToPlayer(
 ): boolean {
   if (meP) return deliverableTargetsPlayer(d, meP, groups);
   return !(d.targetPlayerIds?.length) && !(d.targetGroupIds?.length);
+}
+
+/**
+ * 絞り込みで選択中のグループID配列をgroupsで解決する（単一選択用）。groups-phase2 §1:
+ * 保存されているIDが現在のgroupsに無ければ「すべて」とみなす、という各画面共通の作法をここに集約する。
+ * 先頭のID以外は見ない（単一選択の値は常に0〜1件のため）。
+ */
+export function resolveFilterGroup(ids: string[], groups: TeamGroup[]): TeamGroup | null {
+  const id = ids[0];
+  if (!id) return null;
+  return groups.find((g) => g.id === id) ?? null;
+}
+
+/** 絞り込みで選択中のグループID配列をgroupsで解決する（複数選択用）。削除済みIDは除外する。 */
+export function resolveFilterGroups(ids: string[], groups: TeamGroup[]): TeamGroup[] {
+  return resolveGroups(ids, groups);
+}
+
+/**
+ * 試合記録mの対象表示ラベル（groups-phase2 §3-1）。calendarUtils.targetLabel()と同じ作法だが、
+ * 予定の「全員」に対し試合記録は「全体」を使う（仕様§3の文言に合わせる）。
+ * 解決できるIDが無ければ（未設定・全て削除済み）「全体」にフォールバックする。
+ */
+export function matchTargetLabel(m: MatchRecord, groups: TeamGroup[]): string {
+  if (!m.groupIds || m.groupIds.length === 0) return "全体";
+  const labels = resolveGroups(m.groupIds, groups).map((g) => g.label);
+  return labels.length > 0 ? labels.join("・") : "全体";
+}
+
+/**
+ * groupId(絞り込み中のグループ。nullは「すべて」)が試合記録mの対象に含まれるか。
+ * calendarUtils.eventTargetsGroup()と同じ考え方：全体対象の記録はどのグループを選んでいても表示する。
+ */
+export function matchTargetsGroup(m: MatchRecord, groupId: string | null): boolean {
+  return groupId == null || !m.groupIds || m.groupIds.length === 0 || m.groupIds.includes(groupId);
+}
+
+/**
+ * グループの短縮ラベル（チャットの会話一覧・スレッド見出しのアバター用。groups-phase2 §5-2/5-3）。
+ * 末尾の「チーム」を外してから先頭2文字を取る（「Aチーム」→「A」、「中3」→「中3」、「GK」→「GK」）。
+ */
+export function groupAvatarLabel(label: string): string {
+  const base = label.endsWith("チーム") ? label.slice(0, -3) : label;
+  return base.slice(0, 2);
 }
 
 /**

@@ -1,8 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import { dmThreadKey } from "@/lib/types";
+import { dmThreadKey, groupThreadKey, threadGroupId } from "@/lib/types";
+import { groupAvatarLabel, membersOf, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
+import { GroupChips, useGroupFilter } from "./GroupChips";
 import ChatThread from "./ChatThread";
 import { E } from "./Emoji";
 import { MobileHeader } from "./MobileHeader";
@@ -33,6 +37,8 @@ let lastCoachThread: string | null = null;
 
 export default function ChatScreen() {
   const board = useBoard();
+  const team = useTeam();
+  const groups = team.groups;
   const isCoach = board.auth.role === "coach";
   // PCでは前回のスレッド（無ければチーム全員）を初期選択。モバイルは常に null。
   // ChatScreen はクライアント側の画面遷移でのみマウントされる（プリレンダーはホームのみ）
@@ -44,6 +50,10 @@ export default function ChatScreen() {
     if (to) lastCoachThread = to;
     setSelectedState(to);
   };
+  // groups-phase2 §5-2: グループが削除済みならそのスレッドは選択済みでも未選択扱いに戻す
+  // （PCの選択復元(lastCoachThread)も含め、存在しないグループのキーなら誰にも表示しない）
+  const gid = selected ? threadGroupId(selected) : null;
+  const effectiveSelected = gid && !groups.some((g) => g.id === gid) ? null : selected;
 
   // ブレークポイントを跨いだときの整合:
   // - PC→モバイル: 選択を捨てる(隠れた ChatThread の二重マウントとスクロール停滞を防ぐ)
@@ -79,8 +89,12 @@ export default function ChatScreen() {
   }, [isCoach, board.sheet]);
 
   const players = board.state.players;
-  const threadTitle = (to: string): string =>
-    to === "team" ? "チーム全員" : players.find((p) => dmThreadKey(p.id) === to)?.name ?? "会話";
+  const threadTitle = (to: string): string => {
+    if (to === "team") return "チーム全員";
+    const tgid = threadGroupId(to);
+    if (tgid) return groups.find((g) => g.id === tgid)?.label ?? "会話";
+    return players.find((p) => dmThreadKey(p.id) === to)?.name ?? "会話";
+  };
   // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
   const pc = usePc();
 
@@ -107,21 +121,32 @@ export default function ChatScreen() {
       {isCoach ? (
         <>
           <div className="scroll">
-            <CoachConversations selected={selected} onSelect={setSelected} />
+            <CoachConversations selected={effectiveSelected} onSelect={setSelected} />
           </div>
           {/* PC専用の第2ペイン(スレッド本文)。モバイルでは selected が常に null のためマウントされない */}
           <div className="chatmain">
-            {selected ? (
+            {effectiveSelected ? (
               <div className="chattab" style={{ flex: 1 }}>
                 {/* どの会話を開いているかを常に明示する(個人DMへの取り違え送信を防ぐ) */}
                 <div className="chatpanehead">
                   <div className="convavatar">
-                    {selected === "team" ? <E n="users" /> : threadTitle(selected).slice(0, 1)}
+                    {effectiveSelected === "team" ? (
+                      <E n="users" />
+                    ) : gid ? (
+                      groupAvatarLabel(threadTitle(effectiveSelected))
+                    ) : (
+                      threadTitle(effectiveSelected).slice(0, 1)
+                    )}
                   </div>
-                  <span className="chatpanename">{threadTitle(selected)}</span>
-                  {selected === "team" && <span className="chatpaneall">全員</span>}
+                  <span className="chatpanename">{threadTitle(effectiveSelected)}</span>
+                  {effectiveSelected === "team" && <span className="chatpaneall">全員</span>}
+                  {gid && (
+                    <span className="chatpaneall">
+                      {membersOf(gid, players, groups).length}人
+                    </span>
+                  )}
                 </div>
-                <ChatThread to={selected} />
+                <ChatThread to={effectiveSelected} />
               </div>
             ) : (
               <div className="chatempty">会話を選んでください</div>
@@ -146,7 +171,12 @@ export function CoachConversations({
   onSelect: (to: string) => void;
 }) {
   const board = useBoard();
+  const team = useTeam();
   const players = board.state.players;
+  const groups = team.groups;
+  // groups-phase2 §5-2: 個人の絞り込み（単一選択・「すべて」あり）
+  const [filterIds, setFilterIds] = useGroupFilter("chat");
+  const filterGroup = resolveFilterGroup(filterIds, groups);
 
   const preview = (key: string): { text: string; ts: number | null } => {
     const list = board.messages.filter((m) => m.to === key).sort((a, b) => b.ts - a.ts);
@@ -169,7 +199,29 @@ export function CoachConversations({
     return { text: t, ts: m.ts };
   };
 
-  const Row = ({ title, team, to }: { title: string; team?: boolean; to: string }) => {
+  // groups-phase2 §5-2: 個人の行は「メッセージがある相手を新しい順」を先に、無い相手は名簿順のまま後ろへ
+  const personPlayers = (filterGroup ? players.filter((p) => playerInGroup(p, filterGroup)) : players)
+    .map((p) => ({ p, ts: preview(dmThreadKey(p.id)).ts }))
+    .sort((a, b) => {
+      if (a.ts == null && b.ts == null) return 0;
+      if (a.ts == null) return 1;
+      if (b.ts == null) return -1;
+      return b.ts - a.ts;
+    })
+    .map((x) => x.p);
+
+  const Row = ({
+    title,
+    to,
+    avatar,
+    count,
+  }: {
+    title: string;
+    to: string;
+    avatar: ReactNode;
+    /** グループ行の人数表示（例:「23人」） */
+    count?: string;
+  }) => {
     const pv = preview(to);
     const onClick = () => {
       if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
@@ -184,10 +236,11 @@ export function CoachConversations({
         aria-current={selected === to ? "true" : undefined}
         onClick={onClick}
       >
-        <div className="convavatar">{team ? <E n="users" /> : title.slice(0, 1)}</div>
+        <div className="convavatar">{avatar}</div>
         <div className="convmain">
           <div className="convtop">
             <span className="convname">{title}</span>
+            {count && <span className="convcount">{count}</span>}
             {pv.ts && (
               <span className="convdate">
                 {new Date(pv.ts).toLocaleString("ja-JP", { month: "numeric", day: "numeric" })}
@@ -203,9 +256,30 @@ export function CoachConversations({
 
   return (
     <div className="convlist">
-      <Row title="チーム全員" team to="team" />
-      {players.map((p) => (
-        <Row key={p.id} title={p.name} to={dmThreadKey(p.id)} />
+      <Row title="チーム全員" to="team" avatar={<E n="users" />} />
+      {/* groups-phase2 §5-2: グループが1つも無ければ小見出しごと出さない */}
+      {groups.length > 0 && (
+        <>
+          <div className="convsec">グループ</div>
+          {groups.map((g) => (
+            <Row
+              key={g.id}
+              title={g.label}
+              to={groupThreadKey(g.id)}
+              avatar={groupAvatarLabel(g.label)}
+              count={`${membersOf(g.id, players, groups).length}人`}
+            />
+          ))}
+        </>
+      )}
+      <div className="convsec">個人</div>
+      {groups.length > 0 && (
+        <div className="convfilter">
+          <GroupChips groups={groups} value={filterIds} onChange={setFilterIds} allowAll />
+        </div>
+      )}
+      {personPlayers.map((p) => (
+        <Row key={p.id} title={p.name} to={dmThreadKey(p.id)} avatar={p.name.slice(0, 1)} />
       ))}
     </div>
   );

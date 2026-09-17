@@ -16,9 +16,10 @@ import { simplify } from "@/lib/animation";
 import { ITEM_LABEL, LINE_COLORS, LINE_LABEL } from "@/lib/drillDraw";
 import { renderDrillThumbPng } from "@/lib/exportDrill";
 import { useBoard } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
 import { DrillProvider, ITEM_TOOLS, LINE_TOOLS, useDrill } from "./DrillProvider";
 import type { DrillSheet } from "./DrillProvider";
-import { SendTargetField, targetThreadKey, type SendTarget } from "./SendTarget";
+import { SendTargetField, targetThreadKeys, type SendTarget } from "./SendTarget";
 import DrillItemView from "./DrillItemView";
 import DrillLines from "./DrillLines";
 import {
@@ -250,6 +251,7 @@ function LineHandle({ line, index }: { line: DrillLine; index: number }) {
 
 function Inner() {
   const board = useBoard();
+  const team = useTeam();
   const drill = useDrill();
   const pc = usePc();
   const { doc, tool, selection, stampLock, scene } = drill;
@@ -278,9 +280,14 @@ function Inner() {
   const isItem = tool !== null && (ITEM_TOOLS as string[]).includes(tool);
 
   /* ---- 送信 ---- */
-  const drillThreadKey = targetThreadKey(drillTarget);
+  const drillThreadKeys = targetThreadKeys(drillTarget);
   const sendDrill = () => {
-    if (!drillThreadKey) return;
+    // groups-phase2 §5-4: グループ宛を選んだのに未選択のまま送信しようとしたらtoastで気づかせる
+    if (drillTarget.mode === "group" && drillThreadKeys.length === 0) {
+      board.toast("グループを選んでください");
+      return;
+    }
+    if (drillThreadKeys.length === 0) return;
     const d: SavedDrill = {
       id: "drill_snap_" + Date.now().toString(36),
       title: (asTitle || doc.title).trim() || "練習メニュー",
@@ -293,12 +300,14 @@ function Inner() {
       sceneIntents: doc.sceneIntents ? [...doc.sceneIntents] : undefined,
       updatedAt: Date.now(),
     };
-    board.sendMessage({
-      to: drillThreadKey,
-      from: "coach",
-      fromName: "スタッフ",
-      attachments: [{ kind: "drill", title: d.title, drill: d }],
-    });
+    drillThreadKeys.forEach((to) =>
+      board.sendMessage({
+        to,
+        from: "coach",
+        fromName: "スタッフ",
+        attachments: [{ kind: "drill", title: d.title, drill: d }],
+      })
+    );
     board.toast("送信しました");
     drill.openSheet(null);
   };
@@ -554,11 +563,16 @@ function Inner() {
       </div>
       <SendTargetField
         players={board.state.players}
+        groups={team.groups}
         value={drillTarget}
         onChange={setDrillTarget}
         allowNone={false}
       />
-      <button className="bigbtn" disabled={!drillThreadKey} onClick={sendDrill}>
+      <button
+        className="bigbtn"
+        disabled={drillTarget.mode !== "group" && drillThreadKeys.length === 0}
+        onClick={sendDrill}
+      >
         送信する
       </button>
     </>

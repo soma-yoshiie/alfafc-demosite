@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChatAttachment } from "@/lib/types";
-import { dmThreadKey } from "@/lib/types";
+import { dmThreadKey, groupThreadKey, threadGroupId } from "@/lib/types";
 import { loadDrills } from "@/lib/storage";
 import { fileToAttachment } from "@/lib/media";
+import { groupsOfPlayer } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import { IconSend } from "./icons";
 
@@ -23,9 +25,14 @@ export default function ChatThread({
   as?: { role: "coach" | "member"; playerId: string | null };
 }) {
   const board = useBoard();
+  const team = useTeam();
   const isCoach = as ? as.role === "coach" : board.auth.role === "coach";
   const myPlayerId = as ? as.playerId : board.auth.playerId ?? null;
   const myDm = myPlayerId ? dmThreadKey(myPlayerId) : null;
+  const me = myPlayerId ? board.state.players.find((p) => p.id === myPlayerId) ?? null : null;
+  // groups-phase2 §5-1: 選手のタイムラインに合流させる所属グループ。所属は毎回 playerInGroup
+  // （groupsOfPlayer内部で使用）で評価するため、外れた選手には過去分も自然に見えなくなる
+  const myGroups = me ? groupsOfPlayer(me, team.groups) : [];
 
   const [text, setText] = useState("");
   const [pending, setPending] = useState<ChatAttachment[]>([]);
@@ -36,11 +43,24 @@ export default function ChatThread({
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const msgs = useMemo(() => {
-    const list = isCoach
-      ? board.messages.filter((m) => m.to === to)
-      : board.messages.filter((m) => m.to === "team" || m.to === myDm);
+    if (isCoach) {
+      return [...board.messages.filter((m) => m.to === to)].sort((a, b) => a.ts - b.ts);
+    }
+    // グループが削除済みならmyGroupsに現れないため、そのグループ宛の過去メッセージも
+    // ここで自然に対象外になる（groups-phase2 §5-1「誰にも表示しない」）
+    const myGroupKeys = new Set(myGroups.map((g) => groupThreadKey(g.id)));
+    const list = board.messages.filter(
+      (m) => m.to === "team" || m.to === myDm || myGroupKeys.has(m.to)
+    );
     return [...list].sort((a, b) => a.ts - b.ts);
-  }, [board.messages, isCoach, to, myDm]);
+  }, [board.messages, isCoach, to, myDm, myGroups]);
+
+  /** グループ宛の会話キーならグループ名を返す（グループが無ければnull） */
+  const groupLabelOf = (key: string): string | null => {
+    const gid = threadGroupId(key);
+    if (!gid) return null;
+    return team.groups.find((g) => g.id === gid)?.label ?? null;
+  };
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "end" });
@@ -86,13 +106,22 @@ export default function ChatThread({
     setAttachOpen(false);
   }
 
+  // groups-phase2 §5-1: 選手・保護者のタイムライン上部の説明文（所属グループ名を並べる）
+  const scopeHint =
+    myGroups.length > 0
+      ? `チーム全員・${myGroups.map((g) => g.label).join("・")}宛てと、スタッフとの個別メッセージが表示されます`
+      : "チーム全員宛てと、スタッフとの個別メッセージが表示されます";
+
   return (
     <div className="chatwrap">
+      {!isCoach && <div className="chatscopehint">{scopeHint}</div>}
       <div className="chatscroll">
         {msgs.length === 0 ? (
           <div className="empty-msg">メッセージはまだありません。</div>
         ) : (
-          msgs.map((m) => (
+          msgs.map((m) => {
+            const groupLabel = groupLabelOf(m.to);
+            return (
             <div key={m.id} className={`chatrow${isMine(m.from) ? " mine" : ""}`}>
               <div className="chatbubble">
                 {!isMine(m.from) && (
@@ -104,6 +133,7 @@ export default function ChatThread({
                 ))}
                 <div className="chatmeta">
                   {m.to === "team" && <span className="chatbadge">全員</span>}
+                  {groupLabel && <span className="chatbadge">{groupLabel}</span>}
                   <span className="chatdate">
                     {new Date(m.ts).toLocaleString("ja-JP", {
                       month: "numeric",
@@ -120,7 +150,8 @@ export default function ChatThread({
                 </div>
               </div>
             </div>
-          ))
+            );
+          })
         )}
         <div ref={endRef} />
       </div>

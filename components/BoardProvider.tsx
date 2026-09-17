@@ -42,10 +42,11 @@ import type {
   ShapePatch,
   Slot,
 } from "@/lib/types";
-import { isOppActor, migratePlan, oppIndex } from "@/lib/types";
+import { groupThreadKey, isOppActor, migratePlan, oppIndex } from "@/lib/types";
 import type { UserArticle } from "@/lib/articles";
 import { daysAgoStr } from "@/lib/dates";
 import { buildSlots } from "@/lib/formations";
+import type { AssignPair } from "@/lib/autoAssign";
 import {
   actorPos,
   animTotal,
@@ -84,7 +85,7 @@ import {
   decodeSnapshot,
   snapshotToBoard,
 } from "@/lib/share";
-import { SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
+import { SAMPLE_GROUP_A_ID, SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
 import {
   buildSetPieceState,
   DEFAULT_SETPIECE_PRESET_ID,
@@ -100,6 +101,11 @@ type Action =
   | { type: "SET_FORMATION"; key: string }
   | { type: "ASSIGN"; slot: number; pid: string }
   | { type: "REMOVE"; slot: number }
+  /** groups-phase2 §2-1: 自動配置の一括反映。空き枠へまとめてASSIGNするのと同じ規則
+   * （同じpidが他の枠に居れば先に外す）だが1回のdispatchで済ませる */
+  | { type: "ASSIGN_MANY"; pairs: AssignPair[] }
+  /** 自動配置結果の「元に戻す」用。各枠のpidがpairsのpidと一致する枠だけnullへ戻す */
+  | { type: "UNASSIGN_MANY"; pairs: AssignPair[] }
   | { type: "SWAP"; a: number; b: number }
   | { type: "MOVE_SLOT"; slot: number; x: number; y: number; role: Position }
   | { type: "SET_BALL"; x: number; y: number }
@@ -305,6 +311,33 @@ function reducer(state: BoardState, action: Action): BoardState {
         slots,
         holder: state.holder === action.slot ? null : state.holder,
       };
+    }
+
+    case "ASSIGN_MANY": {
+      const slots = state.slots.map((s) => ({ ...s }));
+      const pids = new Set(action.pairs.map((pr) => pr.pid));
+      // ASSIGNと同じ規則（既に他の枠に居れば外す）をpairsぶんまとめて適用してから配置する
+      slots.forEach((s) => {
+        if (s.pid && pids.has(s.pid)) s.pid = null;
+      });
+      action.pairs.forEach(({ slot, pid }) => {
+        slots[slot].pid = pid;
+      });
+      return { ...state, slots };
+    }
+
+    case "UNASSIGN_MANY": {
+      const slots = state.slots.map((s) => ({ ...s }));
+      let holder = state.holder;
+      action.pairs.forEach(({ slot, pid }) => {
+        // その枠が今もpairsのpidを保持している場合だけ戻す（戻すまでの間に手動で
+        // 変更された枠は上書きしない）
+        if (slots[slot] && slots[slot].pid === pid) {
+          slots[slot].pid = null;
+          if (holder === slot) holder = null;
+        }
+      });
+      return { ...state, slots, holder };
     }
 
     case "SWAP": {
@@ -802,6 +835,10 @@ interface BoardContextValue {
   setFormation: (key: string) => void;
   assignPlayer: (slot: number, pid: string) => void;
   removePlayer: (slot: number) => void;
+  /** groups-phase2 §2-1: 自動配置の一括反映（1回のdispatchで複数枠に配置） */
+  assignMany: (pairs: AssignPair[]) => void;
+  /** 自動配置結果の「元に戻す」。各枠のpidがpairsのpidと一致する枠だけ空きに戻す */
+  unassignMany: (pairs: AssignPair[]) => void;
   swapSlots: (a: number, b: number) => void;
   moveSlot: (slot: number, x: number, y: number, role: Position) => void;
   setBall: (x: number, y: number) => void;
@@ -1110,6 +1147,23 @@ function sampleMessages(): ChatMessage[] {
       from: "coach",
       fromName: "スタッフ",
       text: "今週末は練習試合です。集合8時45分・忘れ物に注意！スパイクの手入れも忘れずに。",
+    },
+    // groups-phase2 §5-5: グループ宛サンプル（初回シード時のみ）
+    {
+      id: "msg_sample_grp_grade3",
+      ts: Date.now() - 3000_000,
+      to: groupThreadKey("grp_grade_3"),
+      from: "coach",
+      fromName: "スタッフ",
+      text: "中3は土曜の公式戦に向けて、木曜はセットプレーの確認をします。",
+    },
+    {
+      id: "msg_sample_grp_a",
+      ts: Date.now() - 2400_000,
+      to: groupThreadKey(SAMPLE_GROUP_A_ID),
+      from: "coach",
+      fromName: "スタッフ",
+      text: "Aチームは金曜の練習試合、9時15分キックオフです。集合は8時30分。",
     },
   ];
 }
@@ -2962,6 +3016,8 @@ export function BoardProvider({
       setFormation: (key) => dispatch({ type: "SET_FORMATION", key }),
       assignPlayer: (slot, pid) => dispatch({ type: "ASSIGN", slot, pid }),
       removePlayer: (slot) => dispatch({ type: "REMOVE", slot }),
+      assignMany: (pairs) => dispatch({ type: "ASSIGN_MANY", pairs }),
+      unassignMany: (pairs) => dispatch({ type: "UNASSIGN_MANY", pairs }),
       swapSlots: (a, b) => dispatch({ type: "SWAP", a, b }),
       moveSlot: (slot, x, y, role) =>
         dispatch({ type: "MOVE_SLOT", slot, x, y, role }),

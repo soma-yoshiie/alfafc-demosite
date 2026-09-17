@@ -82,6 +82,11 @@ export function useGroupFilter(key: string): [string[], (ids: string[]) => void]
   const [value, setValue] = useState<string[]>(() => loadGroupFilter(key));
   useEffect(() => {
     setValue(loadGroupFilter(key));
+    // saveGroupFilterはlocalStorage直書きのみで状態が変わらないため、発火するイベントを
+    // 購読して同じkeyの値を読み直す（同じkeyの部品が複数出ていても揃う。alfa-notifseenと同じ作法）
+    const onFilterChange = () => setValue(loadGroupFilter(key));
+    window.addEventListener("alfa-groupfilter", onFilterChange);
+    return () => window.removeEventListener("alfa-groupfilter", onFilterChange);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const setAndSave = (ids: string[]) => {

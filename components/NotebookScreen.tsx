@@ -48,11 +48,12 @@ import {
   saveNotifSeen,
 } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
-import { deliverableTargetsPlayer } from "@/lib/groups";
+import { deliverableTargetsPlayer, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
 import { DeliverBlock, DeliverComposer, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, CoachDashboard, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
 import { KpiBody } from "./SheetManager";
+import { GroupChips, useGroupFilter } from "./GroupChips";
 import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { MobileHeader } from "./MobileHeader";
@@ -166,6 +167,7 @@ type View =
 
 export default function NotebookScreen() {
   const board = useBoard();
+  const team = useTeam();
   const isCoach = board.auth.role === "coach";
   const [tab, setTab] = useState<Tab>("home");
   const [noteKind, setNoteKind] = useState<NoteKind | "all">(isCoach ? "all" : "practice");
@@ -179,6 +181,27 @@ export default function NotebookScreen() {
   const [selNotif, setSelNotif] = useState<{ target: NotifTarget; notifId?: string } | null>(null);
   // PC: ホームのコーチ・ダッシュボードのサマリーカードから開いた内訳指標（右ペイン表示用）
   const [selKpi, setSelKpi] = useState<KpiMetric | null>(null);
+  // groups-phase2 §4: サッカーノート（コーチ）のグループ絞り込み。ホーム/提出タブで共有し、
+  // 提出一覧・ダッシュボード・KPI内訳・検索は各自 useGroupFilter("notebook") で読み直す
+  const [filterIds, setFilterIds] = useGroupFilter("notebook");
+  const filterGroup = isCoach ? resolveFilterGroup(filterIds, team.groups) : null;
+  // review #1回目: 絞り込み中のグループが削除されても、保存値([grp_a]等)がlocalStorageに
+  // 残ったままだとチップ行はどれもonにならず(filterGroupはnullで描画に使う前に無効化されて
+  // いるが、チップの選択表示はfilterIdsそのものを見るため)絞り込みが読めない状態になる。
+  // TeamHub.tsxのcalGroupEff/matchGroupEffと同じ作法で保存値自体も[]に戻す
+  useEffect(() => {
+    if (isCoach && filterIds.length > 0 && !filterGroup) setFilterIds([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterIds, filterGroup, isCoach]);
+  const targetPlayers = useMemo(
+    () => (filterGroup ? board.state.players.filter((p) => playerInGroup(p, filterGroup)) : board.state.players),
+    [board.state.players, filterGroup]
+  );
+  const targetNotebook = useMemo(() => {
+    if (!filterGroup) return board.notebook;
+    const ids = new Set(targetPlayers.map((p) => p.id));
+    return board.notebook.filter((n) => ids.has(n.playerId));
+  }, [board.notebook, filterGroup, targetPlayers]);
   // PC×コーチのときだけ選択state経路を使う。それ以外(モバイル/選手)は従来のview遷移のまま
   const isPcCoach = () => isCoach && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches;
   // 戻りラベル: 押下先がホームのとき、PCでは「‹ ホーム」に(モバイルの「‹ メニュー」は現状維持)
@@ -371,6 +394,21 @@ export default function NotebookScreen() {
         </div>
       )}
 
+      {/* groups-phase2 §4: ホーム(ダッシュボード)と提出タブでグループ絞り込み。配信・通知タブでは出さない */}
+      {isRoot && isCoach && (tab === "home" || tab === "notes") && team.groups.length > 0 && (
+        <div className="nbgroupbar">
+          <GroupChips
+            groups={team.groups}
+            value={filterIds}
+            onChange={(ids) => {
+              setFilterIds(ids);
+              setSelNote(null); // 絞り込みで一覧から消えたノートを右ペインに残さない（種別チップと同じ）
+            }}
+            allowAll
+          />
+        </div>
+      )}
+
       <div className="scroll">
         {isRoot && tab === "home" && (
           isCoach ? (
@@ -380,6 +418,9 @@ export default function NotebookScreen() {
                 onReport={(playerId) => setView({ mode: "report", playerId })}
                 onOpenNote={(id) => setView({ mode: "detail", id })}
                 onOpenKpi={(metric) => setSelKpi(metric)}
+                players={targetPlayers}
+                notebook={targetNotebook}
+                filterGroup={filterGroup}
               />
               {/* KPI内訳: .nbmain(コーチ×notes/deliver/notifsの3ペイン専用)は使わず、
                   homeタブの内容としてCoachDashboard直下にインライン展開する */}
@@ -1060,18 +1101,28 @@ function NoteList({
   const me = board.auth.playerId;
   // 練習ノートは「自分 / チーム共有」を切替（⑪）
   const [scope, setScope] = useState<"mine" | "team">("mine");
+  // groups-phase2 §4: コーチのグループ絞り込み（"notebook"キーを他部品と共有。selfで読み直す）
+  const team = useTeam();
+  const [filterIds] = useGroupFilter("notebook");
+  const filterGroup = isCoach ? resolveFilterGroup(filterIds, team.groups) : null;
 
   const entries = useMemo(() => {
     let list = kind === "all" ? board.notebook : board.notebook.filter((n) => n.kind === kind);
     if (isCoach) {
-      // コーチは全員分
+      // 絞り込み中は対象グループ所属の選手のノートだけ（名簿外の選手のノートは「すべて」のときだけ出る）
+      if (filterGroup) {
+        list = list.filter((n) => {
+          const p = board.state.players.find((pl) => pl.id === n.playerId);
+          return !!p && playerInGroup(p, filterGroup);
+        });
+      }
     } else if (kind === "practice" && scope === "team") {
       list = list.filter((n) => (n as PracticeNote).isPublic);
     } else {
       list = list.filter((n) => n.playerId === me);
     }
     return [...list].sort((a, b) => b.ts - a.ts);
-  }, [board.notebook, kind, isCoach, scope, me]);
+  }, [board.notebook, board.state.players, kind, isCoach, scope, me, filterGroup]);
 
   const nameOf = (pid: string) => board.state.players.find((p) => p.id === pid)?.name ?? "選手";
 

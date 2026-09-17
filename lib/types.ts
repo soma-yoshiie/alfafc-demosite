@@ -640,7 +640,8 @@ export interface ChatAttachment {
 
 /**
  * 会話の宛先キー。
- * "team" = チーム全員 / "p:<playerId>" = 個人（その選手とスタッフのDM）
+ * "team" = チーム全員 / "p:<playerId>" = 個人（その選手とスタッフのDM）/
+ * "grp:<groupId>" = グループ宛（groups-phase2 §5。所属は毎回 playerInGroup で評価する）
  */
 export type ChatThreadKey = string;
 
@@ -665,6 +666,14 @@ export function dmThreadKey(playerId: string): ChatThreadKey {
 /** 会話キーが個人DMなら playerId を返す（チームなら null） */
 export function threadPlayerId(key: ChatThreadKey): string | null {
   return key.startsWith("p:") ? key.slice(2) : null;
+}
+/** グループ宛の会話キーを作る（groups-phase2 §5-1） */
+export function groupThreadKey(groupId: string): ChatThreadKey {
+  return "grp:" + groupId;
+}
+/** 会話キーがグループ宛なら groupId を返す（それ以外は null） */
+export function threadGroupId(key: ChatThreadKey): string | null {
+  return key.startsWith("grp:") ? key.slice(4) : null;
 }
 
 /**
@@ -740,6 +749,8 @@ export interface MatchRecord {
   lineup?: { pos: string; playerId: string }[];
   /** 失点の記録（時刻・起点）。任意 */
   conceded?: MatchConceded[];
+  /** groups-phase2 §3: 対象グループ。未定義または空＝チーム全体 */
+  groupIds?: string[];
 }
 
 /* ===== サッカーノート（選手が提出する振り返り） ===== */

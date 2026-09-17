@@ -688,6 +688,10 @@ header {
   color: var(--ink);
   letter-spacing: 1px;
 }
+/* groups-phase2 §2-3: ベンチのグループ絞り込み(.grouppickは既存流用、余白だけここで足す) */
+.benchfilter {
+  margin: 0 0 10px;
+}
 .bgrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
@@ -1545,6 +1549,45 @@ header {
   font-size: 18px;
   color: var(--ink);
   letter-spacing: 0.5px;
+}
+/* ---------- 戦術ボード: 配置シート・名簿シートのグループ絞り込み(groups-phase2 review #1回目)
+   .grouppick自身の余白(2px)しか無いと.controls/.list/h2(いずれも16px)と左右がずれる
+   （PCの.bpanelでは14px+2px=16pxとさらに目立つ）。.nbgroupbarと同じ作法で16pxを足す ---------- */
+.assignfilter {
+  padding: 0 16px;
+}
+/* ---------- 戦術ボード: 配置シートのグループ絞り込み・自動配置(groups-phase2 §2-1) ---------- */
+.assignhint {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 16px 8px;
+}
+.assignhint span {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.assignauto {
+  flex: 0 0 auto;
+  height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+/* 自動配置の結果表示（見出し直下の説明文。.kpihintと同じ文法だがinkで通常の強さにする） */
+.assignresult {
+  margin: 0 16px 10px;
+  font-size: var(--fs-body-s);
+  line-height: 1.6;
+  color: var(--ink);
 }
 /* KPI内訳(選手別)の数値。.num と同じ数値文法だがジャージ番号色(lime)は使わない */
 /* KPI内訳の説明文。.fieldhint(フォーム直下用・左余白2px)では
@@ -3281,8 +3324,19 @@ body:has(.mhead) .billtoggle button.on {
   font-family: var(--font-ui);
   min-width: 0;
 }
+/* groups-phase2 review #1回目: min-width:0のままだと選手select(選手/アシスト/交代)が
+   他要素(分の数値入力・×ボタン)に押されて83px程度まで潰れ、選手名＋「・外」マーカーは
+   おろか名前すら全部読めなくなる。床を設けてそれ未満まで潰れる前に折り返す
+   （既存の.originsel(形態select)と同じ考え方）
+   groups-phase2 review #2回目: 128pxの床はPC(select 3〜4本の行)では効果が無いまま
+   ×ボタンだけを2行目に落として行高を倍にする副作用が出ていた。スマホ(.mhead分岐)限定にする
+   groups-phase2 統括の最終調整: body:has(.mhead) だけだと詳細度が .noteapp .dynrow select
+   (min-width:0) に勝ち、選手の自主練ノートの行幅まで変わる。試合記録フォーム(.teamapp)に限定する */
 .dynrow select {
   flex: 1;
+}
+body:has(.mhead) .teamapp .dynrow select {
+  min-width: 128px;
 }
 .dynrow input[type="number"] {
   width: 54px;
@@ -5773,13 +5827,21 @@ body:has(.mhead) .billtoggle button.on {
    チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
    ========================================================= */
 /* 送信先セレクタ（保存シート内） */
+/* groups-phase2 §5-4 review #1回目: 「グループ」追加で選択肢が4本になり、nowrap+flex:1のままだと
+   各ラベルが縮んで語中で2行に折り返す（「送信しな/い」）。flex-basisに床(100px)を持たせたが、
+   #2回目review: 床に対して幅がいくつ入るかは実際の横幅次第で揃わず(スマホでは3+1、
+   .dxの狭いパネルでは2+1になり、あぶれた最後の1本だけflex-growで行いっぱいに伸びて
+   3倍近い幅になっていた)。列数を横幅に左右されないgridに変えて常に2列にする。
+   あぶれた最後の1本は2列目にはみ出さず(gridはflexと違い自動で幅を伸ばさない)、
+   他の項目と同じ列幅のまま1段だけになる（3本なら2+1・4本なら2+2、幅は常に揃う）。
+   .dx .sendtgt label(このファイル内で別途上書き)のflexプロパティはgridの子には
+   効かないため、そちらを触らなくても崩れは解消する */
 .sendtgt {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
-  flex-wrap: nowrap;
 }
 .sendtgt label {
-  flex: 1;
   min-width: 0;
   position: relative;
   display: flex;
@@ -5921,6 +5983,35 @@ body:has(.mhead) .billtoggle button.on {
   color: var(--mut);
   font-size: 20px;
 }
+/* groups-phase2 §5-2: 会話一覧の小見出し（「グループ」「個人」）。
+   review #1回目: 横paddingが.convrow(12px)と揃っておらず、.convrow(アバター左端)基準で
+   見出しテキストが4pxずれていた。同じ12pxに揃える */
+.convsec {
+  padding: 10px 12px 4px;
+  font-size: 12px;
+  color: var(--mut);
+}
+/* グループの行の人数表示（例:「23人」）。convdateと同じ並び(convtop内)。
+   review #1回目: nowrapが無く、グループ名が長い(.convname/.convmainが折り返す)行では
+   人数側の「16人」も「16 / 人」のように語中で2行に割れていた */
+.convcount {
+  font-size: 12px;
+  color: var(--mut);
+  white-space: nowrap;
+}
+/* review #1回目: 長い名前で.convtopが折り返すと.convcount/.convdateの位置も崩れるため、
+   会話名は1行に収めて省略する（.convmainは既にmin-width:0） */
+.convname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 会話一覧「個人」セクションの絞り込み(.grouppickは既存流用、余白だけここで足す。
+   .benchfilterと同じ作法)。review #1回目: .grouppick自身の左余白(2px)を差し引いて
+   .convrow(アバター左端)に揃える */
+.convfilter {
+  padding: 2px 10px 8px;
+}
 
 /* チャット本体 */
 .chatsheet {
@@ -5951,6 +6042,14 @@ body:has(.mhead) .billtoggle button.on {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+/* groups-phase2 §5-1: 選手・保護者のタイムライン上部の説明文（表示範囲の案内）。
+   .chatwrap(flex column)の1項目として.chatscrollの前に置く（flex:noneで高さは内容なり） */
+.chatscopehint {
+  flex: none;
+  padding: 6px 2px 0;
+  font-size: 12px;
+  color: var(--mut);
 }
 .chatscroll {
   flex: 1;
@@ -6669,6 +6768,12 @@ body:has(.mhead) .billtoggle button.on {
 }
 .noteapp .chip:active {
   transform: scale(0.97);
+}
+
+/* groups-phase2 §4: サッカーノート（コーチ）のグループ絞り込み行。.fbarと同じく.scrollより
+   外側に出すため、.noteapp .fbarと同じ横paddingを付ける（.grouppick自体の余白は最小限のため） */
+.nbgroupbar {
+  padding: 0 16px 10px;
 }
 
 /* ---------- 検索入力 ---------- */
@@ -10815,7 +10920,10 @@ body:has(.mhead) .billtoggle button.on {
   height: 15px;
 }
 
-/* 送信先ラジオの折り返し崩れ対策 */
+/* 送信先ラジオの折り返し崩れ対策
+   groups-phase2 review #2回目: .sendtgtをgrid化したためflexプロパティはこのgridの
+   子には効かなくなった（無害化されるだけで削除不要）。white-space:nowrapだけが
+   ラベル内の文字折り返し防止として引き続き効く */
 .dx .sendtgt label {
   flex: 1 1 auto;
   white-space: nowrap;
@@ -11055,6 +11163,30 @@ body:has(.mhead) .billtoggle button.on {
   transform: translateX(17px);
 }
 
+/* groups-phase2 review #1回目: 試合記録フォーム「対象外の選手も候補に出す」用。
+   .daytoggleは終日トグル専用でON時--lime(=--primary)固定のため流用せず(緑は主CTAだけの
+   規約§6に反する・他画面の退行にもなる)、label+ネイティブcheckboxの専用クラスにする。
+   タップ領域は§6の44px以上を満たす */
+.formfield label.formcheck {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+  margin: 0;
+  cursor: pointer;
+}
+.formfield label.formcheck input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
 /* カテゴリチップ（予定フォーム・横スクロール） */
 .catpick {
   display: flex;
@@ -11129,8 +11261,13 @@ body:has(.mhead) .billtoggle button.on {
    （:has(.mhead)で自然にスマホ限定になり、PCは.evcatchipと同じ高さのまま不変）。
    Phase D-1(C1-major): 当初は.teamapp配下限定だったが、GroupChips(grouppick-item)は
    配信作成(.noteapp、DeliverViews.tsx)でも使われており、そちらは44px未達のままだった。
-   共通の親クラス.appで画面横断に効かせる（.teamapp/.noteappはどちらも"app"を併記） */
-.app:has(.mhead) .grouppick-item {
+   共通の親クラス.appで画面横断に効かせる（.teamapp/.noteappはどちらも"app"を併記）。
+   groups-phase2 review #1回目: 戦術ボードの保存・送信シート(SaveBody)や配置・名簿シートは
+   SheetManagerが.appの外(bodyの直下)へsiblingとして描画するため.app:has(.mhead)が
+   当たらず44px未達のままだった。.appを.bodyへ広げてシートも含める（.appはbody配下なので
+   このルールが当たる範囲は変わらず広がるだけ） */
+.app:has(.mhead) .grouppick-item,
+body:has(.mhead) .grouppick-item {
   min-height: 44px;
 }
 
@@ -17533,6 +17670,59 @@ body:has(.mhead) .billtoggle button.on {
   .teamapp .evsummary .evopen {
     grid-column: 1 / -1;
     justify-self: end;
+  }
+  /* groups-phase2 §4: サッカーノート(コーチ)の.nbgroupbar(グループ絞り込み行)は.fbarの
+     直下(基底のDOM順)に置いているが、提出/配信/通知タブでは.coachapp:has(.nbmain)が
+     header/.fbar/.scroll+.nbmainの3行gridに組んでいて(16528付近、既存PCブロック)、
+     どの行にも属さない要素は自動配置でgrid末尾に新しい行を作ってしまい、一覧・詳細の
+     下に幅いっぱいの帯としてはみ出す。1つ目・元のgrid定義(16517-16552)は触らず、
+     同一詳細度の本ルールで行を1本増やして.nbgroupbar専用行に収める（.fbarが無い配信・
+     通知タブでは.nbgroupbar自体が存在せずこの行は0高に潰れるだけで済む） */
+  .coachapp:has(.nbmain) {
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+  }
+  /* groups-phase2 review #1回目: ホーム(ダッシュボード)タブは.nbmainを持たないため上の
+     :has(.nbmain)ルールが当たらず、.nbgroupbarが基底のpadding(16px)のまま.scroll(32px)と
+     揃わずチップ行だけ左にずれていた。詳細度がここより低い(0,2,0)ので提出タブ側の18pxは
+     上のルール(0,3,0)が優先されて変わらない */
+  /* 統括の最終調整: ホームタブは上に種別チップ(.fbar)が無く、チップ行がヘッダーの罫線に
+     張り付いていた。上に14px空ける（提出タブは.fbarの直下なので下の0のまま） */
+  .coachapp .nbgroupbar {
+    padding: 14px 32px 10px;
+  }
+  .coachapp:has(.nbmain) .nbgroupbar {
+    grid-row: 3;
+    grid-column: 1 / -1;
+    padding: 0 18px 10px;
+  }
+  .coachapp:has(.nbmain) .scroll {
+    grid-row: 4;
+  }
+  .coachapp .nbmain {
+    grid-row: 4;
+  }
+  /* groups-phase2 統括の最終調整: PCの提出タブの左ペインで、.notecardsの1frトラックが
+     カード内の折り返さない本文のmin-contentに押されてペイン幅(約280px)を超え、カードの右側
+     （本文の末尾・種別/日付のバッジ）が右ペインの下に隠れていた（Phase 2以前からの崩れ。
+     グループのチップを足した画面なので併せて直す）。トラックの最小幅を0にしてペインに収める */
+  .coachapp:has(.nbmain) .scroll .notecards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* 左ペイン(約280px)はスマホと同じ狭さなので、上の「PCではnowrap」をこのペインだけ戻す。
+     氏名を潰さず、種別・日付・バッジを2行目へ折り返す（基底のスマホ用の文法と同じ） */
+  .coachapp:has(.nbmain) .scroll .notecard .notetop,
+  .coachapp:has(.nbmain) .scroll .notecard .notetop:has(.notewho) {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    row-gap: 2px;
+  }
+  .coachapp:has(.nbmain) .scroll .notecard .notewho {
+    flex: 1 1 100%;
+  }
+  /* 氏名が1行を占めるので、バッジは右寄せにせず日付の後ろへ左から流す
+     （2個目が3行目へ折り返しても行頭が揃う） */
+  .coachapp:has(.nbmain) .scroll .notecard .notetag {
+    margin-left: 0;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }

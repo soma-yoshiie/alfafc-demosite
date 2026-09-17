@@ -43,8 +43,10 @@ import {
 } from "@/lib/calendarUtils";
 import {
   loadCalGroup,
+  loadGroupFilter,
   loadLastEventCategory,
   saveCalGroup,
+  saveGroupFilter,
   saveLastEventCategory,
 } from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
@@ -59,7 +61,15 @@ import {
 } from "@/lib/playerStats";
 import type { AttPeriod } from "@/lib/attendanceStats";
 import { groupAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
-import { announcementTargetsPlayer, eventTargetsPlayer, playerInGroup } from "@/lib/groups";
+import {
+  announcementTargetsPlayer,
+  eventTargetsPlayer,
+  matchTargetLabel,
+  matchTargetsGroup,
+  playerInGroup,
+  resolveFilterGroup,
+  resolveFilterGroups,
+} from "@/lib/groups";
 import { LineChart } from "./Charts";
 import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
@@ -361,6 +371,15 @@ function Inner() {
       setCmp("all");
     }
   }, [cmp, team.team.competitions, team.team.matches]);
+  // groups-phase2 §3-3: 試合記録のグループ絞り込み（単一選択。大会フィルタと同じくInnerへ持ち上げ、
+  // 左右ペイン(MatchesTab/RecSummaryPane)で共有する）。保存済みIDが削除済みなら「すべて」とみなす
+  // （calGroupEffと同じ作法）
+  const [matchGroupIds, setMatchGroupIds] = useGroupFilter("matches");
+  const matchGroupEff = resolveFilterGroup(matchGroupIds, team.groups)?.id ?? null;
+  useEffect(() => {
+    if (matchGroupIds.length > 0 && !matchGroupEff) setMatchGroupIds([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchGroupIds, matchGroupEff]);
   const [rosSel, setRosSel] = useState<string | null>(null);
   const [attSel, setAttSel] = useState<AttSel>({ kind: "overview" });
   const [attPeriod, setAttPeriod] = useState<AttPeriod>("all");
@@ -668,6 +687,8 @@ function Inner() {
                       setRecSel={setRecSel}
                       cmp={cmp}
                       setCmp={setCmp}
+                      matchGroup={matchGroupEff}
+                      setMatchGroupIds={setMatchGroupIds}
                     />
                   )}
                   {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
@@ -698,7 +719,7 @@ function Inner() {
                   <>
                     {activeTab === "rec" &&
                       (recSel.kind === "summary" ? (
-                        <RecSummaryPane cmp={cmp} players={players} setRecSel={setRecSel} />
+                        <RecSummaryPane cmp={cmp} matchGroup={matchGroupEff} players={players} setRecSel={setRecSel} />
                       ) : recSel.kind === "match" ? (
                         <RecMatchPane id={recSel.id} players={players} setRecSel={setRecSel} setSheet={setSheet} isCoach={isCoach} />
                       ) : (
@@ -775,7 +796,8 @@ function sheetKey(s: SheetState): string {
     return (
       "match-" +
       (s.record?.id ??
-        (s.prefill ? `pf-${s.prefill.date ?? ""}-${s.prefill.opponent ?? ""}` : "new"))
+        // groups-phase2 §3-2: prefill.eventIdをキーに含める（別の予定から開いたら作り直す）
+        (s.prefill ? `pf-${s.prefill.date ?? ""}-${s.prefill.opponent ?? ""}-${s.prefill.eventId ?? ""}` : "new"))
     );
   if (s.type === "matchView") return "mv-" + s.id;
   if (s.type === "playerDetail") return "pd-" + s.playerId;
@@ -999,6 +1021,21 @@ function EvGroupsBadge({
       className={`evgroups${label === "全員" ? "" : " targeted"}${full ? " full" : ""}`}
       title={full ? undefined : label}
     >
+      {label}
+    </span>
+  );
+}
+
+/**
+ * 試合記録の対象バッジ（groups-phase2 §3-3。EvGroupsBadgeと同じ文法）。
+ * 全体（対象グループ未設定・全て削除済み）のときは何も描画しない（カード・詳細どちらも「全体のときは出さない」仕様）。
+ */
+function MatchGroupsBadge({ m, groups, full }: { m: MatchRecord; groups: TeamGroup[]; full?: boolean }) {
+  if (groups.length === 0) return null;
+  const label = matchTargetLabel(m, groups);
+  if (label === "全体") return null;
+  return (
+    <span className={`evgroups targeted${full ? " full" : ""}`} title={full ? undefined : label}>
       {label}
     </span>
   );
@@ -1422,6 +1459,8 @@ function MatchesTab({
   setRecSel,
   cmp,
   setCmp,
+  matchGroup,
+  setMatchGroupIds,
 }: {
   isCoach: boolean;
   players: Player[];
@@ -1430,6 +1469,9 @@ function MatchesTab({
   setRecSel?: (s: RecSel) => void;
   cmp: string;
   setCmp: (v: string) => void;
+  /** groups-phase2 §3-3: 絞り込み中グループ（単一選択。nullは「すべて」） */
+  matchGroup: string | null;
+  setMatchGroupIds: (ids: string[]) => void;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -1442,8 +1484,11 @@ function MatchesTab({
 
   const allMatches = [...team.team.matches].sort((a, b) => (a.date < b.date ? 1 : -1));
   const hasOther = allMatches.some((m) => !m.competitionId);
-  const matches = allMatches.filter((m) =>
-    cmp === "all" ? true : cmp === "none" ? !m.competitionId : m.competitionId === cmp
+  // groups-phase2 §3-3: 選択グループが対象、または対象が全体の記録に絞る（カレンダーと同じ考え方）
+  const matches = allMatches.filter(
+    (m) =>
+      (cmp === "all" ? true : cmp === "none" ? !m.competitionId : m.competitionId === cmp) &&
+      matchTargetsGroup(m, matchGroup)
   );
   const filterLabel =
     cmp === "all" ? null : cmp === "none" ? "その他" : comps.find((c) => c.id === cmp)?.name ?? null;
@@ -1534,6 +1579,15 @@ function MatchesTab({
           ＋ 大会を登録・管理
         </button>
       )}
+      {/* groups-phase2 §3-3: グループ絞り込み（単一選択。選手・保護者の公開表示にも出す。onManageは付けない） */}
+      {team.groups.length > 0 && (
+        <GroupChips
+          groups={team.groups}
+          value={matchGroup ? [matchGroup] : []}
+          onChange={setMatchGroupIds}
+          allowAll
+        />
+      )}
 
       {matches.length > 0 && (
         <div className="statcard">
@@ -1587,7 +1641,12 @@ function MatchesTab({
           ため、ページ内の全幅緑ボタンは出さない（PCは元々!pcで非表示だったため変更なし） */}
 
       {matches.length === 0 ? (
-        <div className="empty-msg">まだ試合記録がありません。</div>
+        <div className="empty-msg">
+          {/* review #1回目: グループ絞り込みで0件になっても既存文言のままだと「記録が
+              無い」と誤読される（記録自体は他に存在する）。大会フィルタは既存のまま
+              （組み合わせだと原因が曖昧になるため） */}
+          {matchGroup && cmp === "all" ? "このグループの試合記録はありません。" : "まだ試合記録がありません。"}
+        </div>
       ) : (
         <div className="reclist">
           {matches.map((m) => {
@@ -1608,7 +1667,11 @@ function MatchesTab({
               >
                 <div className={`mres ${win ? "w" : draw ? "d" : "l"}`}>{win ? "勝" : draw ? "分" : "敗"}</div>
                 <div className="mmid">
-                  <div className="mopp">vs {m.opponent}</div>
+                  <div className="mopp">
+                    vs {m.opponent}
+                    {/* groups-phase2 §3-3: 対象バッジ（全体のときは出さない） */}
+                    <MatchGroupsBadge m={m} groups={team.groups} />
+                  </div>
                   <div className="msub">
                     {fmtDate(m.date)}
                     {cmpName(m) ? ` ・ ${cmpName(m)}` : ""}
@@ -1998,6 +2061,14 @@ function MatchDetailBody({
         {halfLabel(m) ? <> ・ {halfLabel(m)}</> : ""}
       </div>
       <div className="detail">
+        {/* groups-phase2 §3-2: 対象行（全体のときは出さない。グループが1つも無いチームでも出さない） */}
+        {team.groups.length > 0 && matchTargetLabel(m, team.groups) !== "全体" && (
+          <div className="dsec">
+            <div className="dline">
+              <E n="users" /> 対象: <MatchGroupsBadge m={m} groups={team.groups} full />
+            </div>
+          </div>
+        )}
         {(m.formation || (m.lineup && m.lineup.length > 0)) && (
           <div className="dsec">
             <div className="dsec-h"><E n="clipboard" /> フォーメーション</div>
@@ -2196,10 +2267,13 @@ type RecSummaryMode = "team" | "player";
     先頭の.tsegセグメントで切り替える */
 function RecSummaryPane({
   cmp,
+  matchGroup,
   players,
   setRecSel,
 }: {
   cmp: string;
+  /** groups-phase2 §3-3: 絞り込み中グループ（単一選択。nullは「すべて」） */
+  matchGroup: string | null;
   players: Player[];
   setRecSel: (s: RecSel) => void;
 }) {
@@ -2208,7 +2282,8 @@ function RecSummaryPane({
   const [mode, setMode] = useState<RecSummaryMode>("team");
   const [recMetric, setRecMetric] = useState<RecKpiMetric>("winPct");
   const comps = team.team.competitions;
-  const allMatches = team.team.matches;
+  // groups-phase2 §3-3: グループ絞り込みを先に適用し、大会別成績(byComp)もこの母集合から計算する
+  const allMatches = team.team.matches.filter((m) => matchTargetsGroup(m, matchGroup));
   const matches = allMatches.filter((m) =>
     cmp === "all" ? true : cmp === "none" ? !m.competitionId : m.competitionId === cmp
   );
@@ -2296,7 +2371,9 @@ function RecSummaryPane({
 
           <div className="recside">
             {matches.length === 0 ? (
-              <div className="empty-msg">まだ試合記録がありません。</div>
+              <div className="empty-msg">
+                {matchGroup && cmp === "all" ? "このグループの試合記録はありません。" : "まだ試合記録がありません。"}
+              </div>
             ) : (
               <>
                 {/* KPIタイル×グラフ(GSC型)。タイル1枚が選択中の指標=グラフの系列を兼ねる(既定=勝率) */}
@@ -3455,6 +3532,40 @@ function SheetHost({
   const ourScoreNum = Math.max(0, Math.floor(Number(ourScore) || 0));
   const theirScoreNum = Math.max(0, Math.floor(Number(theirScore) || 0));
 
+  // groups-phase2 §3-2: 対象グループ（複数選択・空＝全体）。初期値：編集＝mr.groupIds、
+  // 予定から開いた新規(mpf.eventId)＝その予定のgroupIdsのうち現存するもの、それ以外の新規＝
+  // loadGroupFilter("matchForm")（前回の選択。無効IDは除く）
+  const [mGroupIds, setMGroupIdsState] = useState<string[]>(() => {
+    if (mr) return resolveFilterGroups(mr.groupIds ?? [], team.groups).map((g) => g.id);
+    if (mpf?.eventId) {
+      const srcEv = team.team.events.find((e) => e.id === mpf.eventId);
+      return resolveFilterGroups(srcEv?.groupIds ?? [], team.groups).map((g) => g.id);
+    }
+    return resolveFilterGroups(loadGroupFilter("matchForm"), team.groups).map((g) => g.id);
+  });
+  // 変更のたびにsaveGroupFilterへ保存する（編集時は前回の選択を上書きしない）
+  const setMGroupIds = (ids: string[]) => {
+    setMGroupIdsState(ids);
+    if (!mr) saveGroupFilter("matchForm", ids);
+  };
+  // 「対象外の選手も候補に出す」（既定オフ）
+  const [mShowAll, setMShowAll] = useState(false);
+  const mGroups = resolveFilterGroups(mGroupIds, team.groups);
+  // 選手選択selectの候補ベース：対象が空、または「対象外も候補に出す」ONなら全選手、
+  // それ以外は対象グループのいずれかに所属する選手（OR）
+  const mBase =
+    mGroups.length === 0 || mShowAll ? players : players.filter((p) => mGroups.some((g) => playerInGroup(p, g)));
+  const mBaseIds = new Set(mBase.map((p) => p.id));
+  // 各selectの候補：mBaseの末尾に、現在選択中で対象外の選手がいれば追加する
+  // （選択済みの値が候補から消えて表示とstateがずれる事故を防ぐ。ラベルは呼び出し側で「・外」を足す。
+  // review #1回目: 「（対象外）」は幅の狭いselect(特にスマホの得点者欄)でテキストが隠れて
+  // マーカーが見えなくなるため短い接尾辞にした）
+  const matchOptionPlayers = (selectedId: string | undefined): Player[] => {
+    if (!selectedId || mBaseIds.has(selectedId)) return mBase;
+    const extra = players.find((p) => p.id === selectedId);
+    return extra ? [...mBase, extra] : mBase;
+  };
+
   // 大会管理
   const [mgrComp, setMgrComp] = useState("");
 
@@ -3490,7 +3601,8 @@ function SheetHost({
   const [testEditUnit, setTestEditUnit] = useState("");
   const [testEditLower, setTestEditLower] = useState(false);
 
-  const firstPid = players[0]?.id ?? "";
+  // groups-phase2 §3-2: 「＋ 得点者を追加」「＋ 交代を追加」の既定選手はbaseの先頭
+  const firstPid = mBase[0]?.id ?? "";
 
   return (
     <>
@@ -4660,6 +4772,26 @@ function SheetHost({
           </div>
         </div>
 
+        {/* groups-phase2 §3-2: 対象（複数選択・未選択＝全体）。onManageは付けない
+            （グループ管理シートへ行くとフォームが作り直されて入力が消えるため） */}
+        {team.groups.length > 0 && (
+          <>
+            <div className="formfield">
+              <label>対象</label>
+              <GroupChips groups={team.groups} value={mGroupIds} onChange={setMGroupIds} multi allowAll allLabel="全体" />
+            </div>
+            <div className="formfield">
+              {/* review #1回目: 既存の.daytoggleはON時に--lime(=--primary)を使うが、
+                  緑は主CTAだけの規約(§6)のためこの画面では使わない。§6が挙げる.formcheck
+                  （label+checkbox、ON時--accent）を新設してここだけで使う */}
+              <label className="formcheck">
+                <input type="checkbox" checked={mShowAll} onChange={(e) => setMShowAll(e.target.checked)} />
+                対象外の選手も候補に出す
+              </label>
+            </div>
+          </>
+        )}
+
         <div className="formfield">
           <label>フォーメーション</label>
           <select value={formation} onChange={(e) => setFormation(e.target.value)}>
@@ -4683,16 +4815,17 @@ function SheetHost({
                   .filter((v): v is string => !!v)
               );
               return (
-              <div key={pos} className="formfield" style={{ flex: "1 1 130px", margin: 0 }}>
+              <div key={pos} className="formfield" style={{ flex: "1 1 130px", minWidth: 140, margin: 0 }}>
                 <label>{pos}</label>
                 <select
                   value={lineupMap[pos] ?? ""}
                   onChange={(e) => setLineupMap((cur) => ({ ...cur, [pos]: e.target.value }))}
                 >
                   <option value="">未選択</option>
-                  {players.map((p) => (
+                  {matchOptionPlayers(lineupMap[pos]).map((p) => (
                     <option key={p.id} value={p.id} disabled={selectedElsewhere.has(p.id)}>
                       {p.name}
+                      {mBaseIds.has(p.id) ? "" : "・外"}
                     </option>
                   ))}
                 </select>
@@ -4709,9 +4842,10 @@ function SheetHost({
           {goals.map((g, i) => (
             <div key={i} className="dynrow">
               <select value={g.playerId} onChange={(e) => setGoals(upd(goals, i, { playerId: e.target.value }))}>
-                {players.map((p) => (
+                {matchOptionPlayers(g.playerId).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
+                    {mBaseIds.has(p.id) ? "" : "・外"}
                   </option>
                 ))}
               </select>
@@ -4723,9 +4857,10 @@ function SheetHost({
               />
               <select value={g.assistPlayerId ?? ""} onChange={(e) => setGoals(upd(goals, i, { assistPlayerId: e.target.value || undefined }))}>
                 <option value="">アシスト無</option>
-                {players.map((p) => (
+                {matchOptionPlayers(g.assistPlayerId).map((p) => (
                   <option key={p.id} value={p.id}>
                     A: {p.name}
+                    {mBaseIds.has(p.id) ? "" : "・外"}
                   </option>
                 ))}
               </select>
@@ -4750,14 +4885,19 @@ function SheetHost({
           ))}
           <button
             className="dynadd"
-            disabled={goals.length >= ourScoreNum}
-            style={goals.length >= ourScoreNum ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
+            disabled={goals.length >= ourScoreNum || !firstPid}
+            style={goals.length >= ourScoreNum || !firstPid ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
             onClick={() => firstPid && setGoals([...goals, { playerId: firstPid }])}
           >
             ＋ 得点者を追加
           </button>
           <div className="fieldhint">
-            {ourScoreNum === 0
+            {/* groups-phase2 review #1回目: メンバー0人のグループが対象だとmBaseが空になり
+                firstPidが""になるため、ボタンがdisabledに見えないまま無反応になっていた。
+                理由を出してdisabledにする（戦術ボード§2-1の空メッセージと同じ考え方） */}
+            {!firstPid
+              ? "この対象に選手がいません。「対象外の選手も候補に出す」で選べます"
+              : ourScoreNum === 0
               ? "得点を入力すると得点者を追加できます"
               : goals.length >= ourScoreNum
               ? `得点数（${ourScoreNum}）に達しました。増やすにはスコアを変更してください`
@@ -4816,16 +4956,18 @@ function SheetHost({
           {subs.map((s, i) => (
             <div key={i} className="dynrow">
               <select value={s.outPlayerId} onChange={(e) => setSubs(upd(subs, i, { outPlayerId: e.target.value }))}>
-                {players.map((p) => (
+                {matchOptionPlayers(s.outPlayerId).map((p) => (
                   <option key={p.id} value={p.id}>
                     OUT {p.name}
+                    {mBaseIds.has(p.id) ? "" : "・外"}
                   </option>
                 ))}
               </select>
               <select value={s.inPlayerId} onChange={(e) => setSubs(upd(subs, i, { inPlayerId: e.target.value }))}>
-                {players.map((p) => (
+                {matchOptionPlayers(s.inPlayerId).map((p) => (
                   <option key={p.id} value={p.id}>
                     IN {p.name}
+                    {mBaseIds.has(p.id) ? "" : "・外"}
                   </option>
                 ))}
               </select>
@@ -4842,10 +4984,17 @@ function SheetHost({
           ))}
           <button
             className="dynadd"
+            disabled={!firstPid}
+            style={!firstPid ? { opacity: 0.5, cursor: "not-allowed" } : undefined}
             onClick={() => firstPid && setSubs([...subs, { outPlayerId: firstPid, inPlayerId: firstPid }])}
           >
             ＋ 交代を追加
           </button>
+          {!firstPid && (
+            <div className="fieldhint">
+              この対象に選手がいません。「対象外の選手も候補に出す」で選べます
+            </div>
+          )}
         </div>
 
         <div className="formfield">
@@ -4909,6 +5058,8 @@ function SheetHost({
               subs,
               conceded,
               note: mnote.trim() || undefined,
+              // groups-phase2 §3-2: 対象グループ（0件＝チーム全体）
+              groupIds: mGroupIds.length > 0 ? mGroupIds : undefined,
             };
             if (mr) team.updateMatch({ ...mr, ...data });
             else team.addMatch(data);

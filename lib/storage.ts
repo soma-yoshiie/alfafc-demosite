@@ -329,6 +329,10 @@ export function loadTeam(): TeamData | null {
     data.announcements = data.announcements.map((a) =>
       a.groupIds !== undefined && !Array.isArray(a.groupIds) ? { ...a, groupIds: undefined } : a
     );
+    // groups-phase2 §3-1: matches の groupIds が配列でなければ除去する
+    data.matches = data.matches.map((m) =>
+      m.groupIds !== undefined && !Array.isArray(m.groupIds) ? { ...m, groupIds: undefined } : m
+    );
     return data;
   } catch {
     return null;
@@ -408,6 +412,10 @@ export function saveGroupFilter(key: string, ids: string[]): void {
     const map = data && typeof data === "object" ? data : {};
     map[key] = ids;
     window.localStorage.setItem(GROUPFILTER_KEY, JSON.stringify(map));
+    // groups-phase2 §1: localStorage直書きのみで状態が変わらないため、
+    // 同じkeyを使う複数の部品(useGroupFilter)が揃って読み直せるようイベントを発火する
+    // （alfa-notifseenと同じ作法）
+    window.dispatchEvent(new Event("alfa-groupfilter"));
   } catch {
     /* 無視 */
   }

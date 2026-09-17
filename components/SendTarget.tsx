@@ -1,28 +1,39 @@
 "use client";
 
 import { useId } from "react";
-import type { Player } from "@/lib/types";
+import type { Player, TeamGroup } from "@/lib/types";
+import { dmThreadKey, groupThreadKey } from "@/lib/types";
+import { GroupChips } from "./GroupChips";
 
 export interface SendTarget {
-  mode: "none" | "team" | "player";
+  mode: "none" | "team" | "player" | "group";
   playerId?: string;
+  /** mode==="group" のときの宛先グループ（複数可。groups-phase2 §5-4） */
+  groupIds?: string[];
 }
 
-/** 送信先を会話キー（"team" / "p:<id>"）に変換。送信しないなら null */
-export function targetThreadKey(t: SendTarget): string | null {
-  if (t.mode === "team") return "team";
-  if (t.mode === "player" && t.playerId) return "p:" + t.playerId;
-  return null;
+/**
+ * 送信先を会話キーの配列に変換（groups-phase2 §5-4）。グループは選んだ各グループ宛へ複数キーになる。
+ * 送信しない・宛先未確定（グループ未選択など）なら空配列。
+ */
+export function targetThreadKeys(t: SendTarget): string[] {
+  if (t.mode === "team") return ["team"];
+  if (t.mode === "player" && t.playerId) return [dmThreadKey(t.playerId)];
+  if (t.mode === "group" && t.groupIds && t.groupIds.length > 0) return t.groupIds.map(groupThreadKey);
+  return [];
 }
 
 /** 戦術/トレーニング保存時の「送信先」セレクタ */
 export function SendTargetField({
   players,
+  groups,
   value,
   onChange,
   allowNone = true,
 }: {
   players: Player[];
+  /** groups-phase2 §5-4: 宛先「グループ」の選択肢。グループが1つも無ければ選択肢ごと出さない */
+  groups: TeamGroup[];
   value: SendTarget;
   onChange: (t: SendTarget) => void;
   /** false のとき「送信しない」を出さない（送信専用シート向け） */
@@ -65,6 +76,17 @@ export function SendTargetField({
           />
           個人
         </label>
+        {groups.length > 0 && (
+          <label className={value.mode === "group" ? "on" : ""}>
+            <input
+              type="radio"
+              name={groupName}
+              checked={value.mode === "group"}
+              onChange={() => onChange({ mode: "group", groupIds: value.groupIds ?? [] })}
+            />
+            グループ
+          </label>
+        )}
       </div>
       {value.mode === "player" && (
         <select
@@ -79,6 +101,16 @@ export function SendTargetField({
             </option>
           ))}
         </select>
+      )}
+      {value.mode === "group" && (
+        <div style={{ marginTop: 8 }}>
+          <GroupChips
+            groups={groups}
+            value={value.groupIds ?? []}
+            onChange={(ids) => onChange({ mode: "group", groupIds: ids })}
+            multi
+          />
+        </div>
       )}
     </div>
   );

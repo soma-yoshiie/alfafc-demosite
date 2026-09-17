@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MatchNote, NoteKind, NotebookEntry, PracticeNote, SoloNote } from "@/lib/types";
+import type { MatchNote, NoteKind, NotebookEntry, Player, PracticeNote, SoloNote, TeamGroup } from "@/lib/types";
 import { NOTE_KIND_LABEL, SOLO_KIND_LABEL } from "@/lib/types";
 import { E, ConditionIcon } from "./Emoji";
 import { MultiLine, Sparkline } from "./Charts";
 import { loadTeam } from "@/lib/storage";
 import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
+import { playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { addDaysStr, localDateStr, weekStart, weeklyCounts } from "@/lib/dates";
 import {
   buildDigest,
@@ -15,6 +16,8 @@ import {
   type NotifTarget,
 } from "@/lib/notifications";
 import { useBoard, type KpiMetric } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
+import { useGroupFilter } from "./GroupChips";
 
 const PC_MQ = "(min-width: 1024px)";
 
@@ -157,12 +160,22 @@ export function NoteSearch({
   onOpen: (id: string) => void;
 }) {
   const board = useBoard();
+  const team = useTeam();
   const [q, setQ] = useState("");
   const [kind, setKind] = useState<NoteKind | "all">("all");
   const [playerId, setPlayerId] = useState<string>(initialPlayerId ?? "all");
 
   const me = board.auth.playerId;
   const kw = q.trim().toLowerCase();
+
+  // groups-phase2 §4: コーチのグループ絞り込み（"notebook"キーを他部品と共有。selfで読み直す）
+  const [filterIds] = useGroupFilter("notebook");
+  const filterGroup = isCoach ? resolveFilterGroup(filterIds, team.groups) : null;
+  // 選手selectの候補: 絞り込み中は対象選手だけ ∪ 現在の選択（選んだ選手が候補から消えない）
+  const playerOptions = useMemo(() => {
+    if (!filterGroup) return board.state.players;
+    return board.state.players.filter((p) => playerInGroup(p, filterGroup) || p.id === playerId);
+  }, [board.state.players, filterGroup, playerId]);
 
   const results = useMemo(() => {
     let list = board.notebook;
@@ -200,7 +213,7 @@ export function NoteSearch({
             <label>選手で絞り込み</label>
             <select value={playerId} onChange={(e) => setPlayerId(e.target.value)}>
               <option value="all">全員</option>
-              {board.state.players.map((p) => (
+              {playerOptions.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
@@ -209,6 +222,15 @@ export function NoteSearch({
       </div>
 
       <div className="searchcount">{results.length}件</div>
+      {/* review #1回目: 仕様§4は選手selectの候補だけを絞り込み対象にする設計のため、resultsは
+          意図的にfilterGroupを見ていない。ただし選手select(全員)のままだと結果に他グループの
+          選手が混じる理由が画面から分からないため、絞り込み中だけ一言添える
+          （resultsの母集合自体は変えない＝仕様どおり） */}
+      {isCoach && filterGroup && playerId === "all" && (
+        <div className="fieldhint">
+          「{filterGroup.label}」で絞り込み中ですが、結果は選手を指定するまで全員が対象です
+        </div>
+      )}
       {results.length === 0 ? (
         <div className="empty-msg">該当するノートがありません。</div>
       ) : (
@@ -239,33 +261,42 @@ export function CoachDashboard({
   onReport,
   onOpenNote,
   onOpenKpi,
+  players,
+  notebook,
+  filterGroup,
 }: {
   onOpenPlayer: (playerId: string) => void;
   onReport: (playerId: string) => void;
   onOpenNote: (id: string) => void;
   /** PC: サマリーカードの内訳をペイン表示するコールバック（未指定/モバイルは従来のシート） */
   onOpenKpi?: (metric: KpiMetric) => void;
+  /** groups-phase2 §4: 絞り込み中の対象選手一覧（呼び出し側でグループ絞り込み済み。未絞り込みは全選手） */
+  players: Player[];
+  /** 対象選手のノートだけにしたnotebook（呼び出し側で絞り込み済み） */
+  notebook: NotebookEntry[];
+  /** 絞り込み中のグループ（nullは「すべて」。AnalyticsPanelの静的チップ・KPI集計の母集合表示に使う） */
+  filterGroup: TeamGroup | null;
 }) {
   const board = useBoard();
+  const team = useTeam(); // groups-phase2 §4: loadTeam()直読みをやめてuseTeam()から
   const [showHeat, setShowHeat] = useState(false);
   // 選手別レポート(kpigrid/kpicard)をPCのみ<table class="ptable">へ切替える(C1)。モバイルは従来のカード描画のまま
   const pc = usePc();
 
   const { kpis, summary } = useMemo(() => {
-    const team = loadTeam();
-    const ks = board.state.players.map((p) =>
-      computePlayerKpi(p, board.notebook, board.deliverables, team)
+    const ks = players.map((p) =>
+      computePlayerKpi(p, notebook, board.deliverables, team.team)
     );
     // 警告の多い順 → 名前順
     const sev = (lvl: string) => (lvl === "warn" ? 0 : lvl === "info" ? 1 : 2);
     ks.sort((a, b) => sev(a.alerts[0].level) - sev(b.alerts[0].level));
-    return { kpis: ks, summary: computeTeamSummary(ks, board.notebook) };
-  }, [board.notebook, board.deliverables, board.state.players]);
+    return { kpis: ks, summary: computeTeamSummary(ks, notebook) };
+  }, [players, notebook, board.deliverables, team.team]);
 
   const nameOf = (pid: string) => board.state.players.find((p) => p.id === pid)?.name ?? "選手";
   const unseenAll = useMemo(
-    () => [...board.notebook].filter((n) => !n.staffSeenAt).sort((a, b) => b.ts - a.ts),
-    [board.notebook]
+    () => [...notebook].filter((n) => !n.staffSeenAt).sort((a, b) => b.ts - a.ts),
+    [notebook]
   );
   const unseen = unseenAll.slice(0, 5);
 
@@ -277,18 +308,18 @@ export function CoachDashboard({
   // 「今週のノート」の前週比デルタ（weekStart 基準のカレンダー週で今週/先週を集計）
   const weekNoteDiff = useMemo(() => {
     const lastMonday = addDaysStr(monday, -7);
-    const thisWeek = board.notebook.filter((n) => n.date >= monday).length;
-    const lastWeek = board.notebook.filter((n) => weekStart(n.date) === lastMonday).length;
+    const thisWeek = notebook.filter((n) => n.date >= monday).length;
+    const lastWeek = notebook.filter((n) => weekStart(n.date) === lastMonday).length;
     return thisWeek - lastWeek;
-  }, [board.notebook, monday]);
+  }, [notebook, monday]);
 
   // 選手別 提出ヒート（直近8週、月曜起点）：選手ID→週ごとの提出有無と8週合計
   const heatByPlayer = useMemo(() => {
     const thisMonday = weekStart(localDateStr());
     const weekMondays = Array.from({ length: 8 }, (_, k) => addDaysStr(thisMonday, -7 * (7 - k)));
     const map = new Map<string, { cells: boolean[]; total: number }>();
-    board.state.players.forEach((p) => {
-      const mine = board.notebook.filter((n) => n.playerId === p.id);
+    players.forEach((p) => {
+      const mine = notebook.filter((n) => n.playerId === p.id);
       const weekSet = new Set(mine.map((n) => weekStart(n.date)));
       map.set(p.id, {
         cells: weekMondays.map((mon) => weekSet.has(mon)),
@@ -296,13 +327,16 @@ export function CoachDashboard({
       });
     });
     return map;
-  }, [board.notebook, board.state.players]);
+  }, [notebook, players]);
 
   // チームの週別提出（直近8週・全選手合算）
   const teamWeeklyChart = useMemo(
-    () => weeklyCounts(board.notebook.map((n) => n.date)),
-    [board.notebook]
+    () => weeklyCounts(notebook.map((n) => n.date)),
+    [notebook]
   );
+
+  // groups-phase2 §4: AnalyticsPanelの静的チップ「選手 全員」→ 絞り込み中は「選手 中3（23人）」
+  const analyticsLabel = filterGroup ? `選手 ${filterGroup.label}（${players.length}人）` : undefined;
 
   // PCはモーダルを出さず onOpenKpi でペイン表示、モバイル(またはonOpenKpi未指定)は従来のシート
   const openKpi = (metric: KpiMetric) => {
@@ -343,7 +377,7 @@ export function CoachDashboard({
       </div>
 
       <div className="dashcol main">
-      <AnalyticsPanel mode="coach" />
+      <AnalyticsPanel mode="coach" notebook={notebook} filterLabel={analyticsLabel} />
 
       <button className="heattoggle" onClick={() => setShowHeat(!showHeat)}>
         {showHeat ? "選手別の提出ヒートを隠す ▴" : "詳細分析: 選手別の提出ヒートを表示 ▾"}
@@ -511,8 +545,20 @@ function seriesFrom(label: string, color: string, dates: string[], weeks: number
 }
 
 /** マイ分析 / チーム分析の共通パネル部品（案D: フィルタ→タブ→サマリー列→多系列チャート） */
-export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
+export function AnalyticsPanel({
+  mode,
+  notebook,
+  filterLabel,
+}: {
+  mode: "player" | "coach";
+  /** groups-phase2 §4: コーチのみ・絞り込み済みnotebook（省略時はboard.notebook全件。選手側は常に省略） */
+  notebook?: NotebookEntry[];
+  /** コーチのみ・静的チップの文言（絞り込み中は「選手 中3（23人）」。省略時は「選手 全員」） */
+  filterLabel?: string;
+}) {
   const board = useBoard();
+  // コーチ側の集計母数。propsで絞り込み済みが渡ればそれを使い、無指定(=選手側)はboard.notebook全件
+  const coachNotebook = notebook ?? board.notebook;
   const [weeks, setWeeks] = useState<8 | 12>(8);
   const [tab, setTab] = useState(0);
   // mobile-redesign Phase D-2(critical PC回帰): 見出しの区切りをEN DASH→中黒へ統一した
@@ -540,13 +586,13 @@ export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
 
   // コーチ: 種別タブ用（全ノートを種別ごとに週集計）
   const coachByKind = useMemo(() => {
-    const byKind = (k: NoteKind) => board.notebook.filter((n) => n.kind === k).map((n) => n.date);
+    const byKind = (k: NoteKind) => coachNotebook.filter((n) => n.kind === k).map((n) => n.date);
     return {
       practice: seriesFrom("練習", PRACTICE_COLOR, byKind("practice"), weeks),
       match: seriesFrom("試合", MATCH_COLOR, byKind("match"), weeks),
       solo: seriesFrom("自主練", SOLO_COLOR, byKind("solo"), weeks),
     };
-  }, [board.notebook, weeks]);
+  }, [coachNotebook, weeks]);
 
   // コーチ: 選手別タブ用（期間内件数の上位4選手＋その他）
   const coachByPlayer = useMemo(() => {
@@ -554,7 +600,7 @@ export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
     const weekMondays = Array.from({ length: weeks }, (_, k) => addDaysStr(thisMonday, -7 * (weeks - 1 - k)));
     const inPeriod = new Set(weekMondays);
     const periodCounts = new Map<string, number>();
-    board.notebook.forEach((n) => {
+    coachNotebook.forEach((n) => {
       if (inPeriod.has(weekStart(n.date))) periodCounts.set(n.playerId, (periodCounts.get(n.playerId) ?? 0) + 1);
     });
     const ranked = [...periodCounts.entries()].sort((a, b) => b[1] - a[1]);
@@ -565,7 +611,7 @@ export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
       seriesFrom(
         nameOf(pid),
         PLAYER_COLORS[i],
-        board.notebook.filter((n) => n.playerId === pid).map((n) => n.date),
+        coachNotebook.filter((n) => n.playerId === pid).map((n) => n.date),
         weeks
       )
     );
@@ -574,13 +620,13 @@ export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
         seriesFrom(
           "その他",
           OTHER_COLOR,
-          board.notebook.filter((n) => otherIds.has(n.playerId)).map((n) => n.date),
+          coachNotebook.filter((n) => otherIds.has(n.playerId)).map((n) => n.date),
           weeks
         )
       );
     }
     return series;
-  }, [board.notebook, board.state.players, weeks]);
+  }, [coachNotebook, board.state.players, weeks]);
 
   const tabs = isPlayer ? PLAYER_TABS : COACH_TABS;
   const current: AnalyticsSeries[] = isPlayer
@@ -610,7 +656,7 @@ export function AnalyticsPanel({ mode }: { mode: "player" | "coach" }) {
         <button type="button" className="afchip" onClick={() => setWeeks(weeks === 8 ? 12 : 8)}>
           期間 {weeks}週 ▾
         </button>
-        {!isPlayer && <span className="afchip static">選手 全員</span>}
+        {!isPlayer && <span className="afchip static">{filterLabel ?? "選手 全員"}</span>}
       </div>
       <div className="apanel-tabs">
         {tabs.map((t, i) => (

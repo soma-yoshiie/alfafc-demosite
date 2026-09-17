@@ -3,13 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import { groupOf } from "@/lib/formations";
+import { playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
+import { useTeam } from "./TeamProvider";
+import { GroupChips, useGroupFilter } from "./GroupChips";
 
 export default function Bench() {
   const board = useBoard();
+  const team = useTeam();
   const { slots, players } = board.state;
   const inXi = new Set(slots.map((s) => s.pid).filter(Boolean));
-  const bench = players.filter((p) => !inXi.has(p.id));
+  // groups-phase2 §2-3: 配置シート・名簿シートと共有する絞り込み(key "board")
+  const [filterIds, setFilterIds] = useGroupFilter("board");
+  const filterGroup = resolveFilterGroup(filterIds, team.groups);
+  const benchAll = players.filter((p) => !inXi.has(p.id));
+  const bench = filterGroup ? benchAll.filter((p) => playerInGroup(p, filterGroup)) : benchAll;
 
   // ---- ベンチ→ピッチ ドラッグ交代 ----
   const [ghost, setGhost] = useState<{ pid: string; x: number; y: number } | null>(null);
@@ -191,13 +199,24 @@ export default function Bench() {
     <div className="bench">
       <div className="bh">
         <b>ベンチ</b>
-        <span>控え {bench.length}人</span>
+        <span>控え {bench.length}人{filterGroup ? `（${filterGroup.label}）` : ""}</span>
         <i>タップで編集 ／ ピッチへドラッグで交代</i>
       </div>
+      {team.groups.length > 0 && (
+        <div className="benchfilter">
+          <GroupChips groups={team.groups} value={filterIds} onChange={setFilterIds} allowAll />
+        </div>
+      )}
       {bench.length === 0 ? (
         <div className="benchEmpty">
-          控え選手がいません。右上の <b>名簿</b> から選手を追加すると、
-          スタメン以外の選手がここに並びます。
+          {benchAll.length === 0 ? (
+            <>
+              控え選手がいません。右上の <b>名簿</b> から選手を追加すると、
+              スタメン以外の選手がここに並びます。
+            </>
+          ) : (
+            "このグループの控え選手はいません。"
+          )}
         </div>
       ) : (
         <div className="bgrid">
