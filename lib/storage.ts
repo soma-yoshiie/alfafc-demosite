@@ -108,7 +108,28 @@ function migrateFitness(fitness: unknown): FitnessRecord[] {
  * loadState()・loadTeam()の先頭でこの関数を呼び、旧デモの署名に一致するときだけ
  * 新デモへ書き換える（ユーザーが自分で選手を足した・学校区分を変えたチームには触らない）。 */
 const DEMO_SEED_KEY = "soccer_tactics_demo_seed_v1";
+/** 移行判定の版。判定条件を変えたら上げる（旧版のマーカーが残るブラウザで判定し直すため） */
+const DEMO_SEED_VERSION = "3";
 const OLD_DEMO_TEAM_NAME = "アルファラスFC U-12";
+
+/**
+ * 設定の「デモデータを入れ直す」用。このアプリの保存データ（soccer_tactics_* と alfa-* の
+ * 補助キー）をすべて消す。ログイン情報（alfa_coach_account_v1 / alfa_session_v1）は残す。
+ * 呼び出し側で location.reload() すると初回起動と同じ新しいデモが入る
+ */
+export function resetAppData(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i);
+      if (k && (k.startsWith("soccer_tactics_") || k.startsWith("alfa-"))) keys.push(k);
+    }
+    keys.forEach((k) => window.localStorage.removeItem(k));
+  } catch {
+    /* 無視 */
+  }
+}
 /** 旧デモにだけあったカスタムグループ（低学年・高学年）。新デモには存在しないため削除する */
 const OLD_DEMO_CUSTOM_GROUP_IDS = ["grp_low", "grp_high"];
 
@@ -154,21 +175,22 @@ function stripRemovedGroupIds(ids: unknown, removedIds: string[]): string[] | un
 export function migrateOldDemo(): void {
   if (typeof window === "undefined") return;
   try {
-    if (window.localStorage.getItem(DEMO_SEED_KEY) === "2") return;
-    window.localStorage.setItem(DEMO_SEED_KEY, "2");
+    // マーカーは"3"。"2"の時代は署名が厳しすぎて（人数16以下・全員が旧サンプルid・チーム名が
+    // 旧名のまま）、数週間デモを触って選手を足したりチーム名を変えたりしたブラウザでは
+    // 一度も移行されないまま"2"が書かれ、以後は再判定もされなかった。版を上げて判定し直す
+    if (window.localStorage.getItem(DEMO_SEED_KEY) === DEMO_SEED_VERSION) return;
+    window.localStorage.setItem(DEMO_SEED_KEY, DEMO_SEED_VERSION);
 
     const stateRaw = window.localStorage.getItem(KEY);
     if (!stateRaw) return;
     const state = JSON.parse(stateRaw) as { players?: unknown; teamName?: unknown } & Record<string, unknown>;
     const oldPlayers = state.players;
-    // 署名：playersが存在し、全員のidがp01〜p16の範囲（人数は1〜16）
-    if (!Array.isArray(oldPlayers) || oldPlayers.length === 0 || oldPlayers.length > 16) return;
+    // 署名：旧サンプルの選手（p01〜p16）が8人以上残っている名簿。自分で足した選手や
+    // チーム名の変更があっても「旧デモを使い続けているブラウザ」とみなす（実チームは未運用）
+    if (!Array.isArray(oldPlayers) || oldPlayers.length === 0) return;
     const isOldId = (id: unknown) => typeof id === "string" && /^p(0[1-9]|1[0-6])$/.test(id);
-    if (!(oldPlayers as Array<{ id?: unknown }>).every((p) => isOldId(p?.id))) return;
-    // 署名：teamNameが旧名または現在のSAMPLE_TEAM_NAME（未設定も可）
-    if (state.teamName != null && state.teamName !== OLD_DEMO_TEAM_NAME && state.teamName !== SAMPLE_TEAM_NAME) {
-      return;
-    }
+    const oldSampleCount = (oldPlayers as Array<{ id?: unknown }>).filter((p) => isOldId(p?.id)).length;
+    if (oldSampleCount < 8) return;
 
     const teamRaw = window.localStorage.getItem(TEAM_KEY);
     const team = teamRaw
@@ -204,12 +226,19 @@ export function migrateOldDemo(): void {
       const mergedGroupIds = [...new Set([...keptOwnGroupIds, ...(sample.groupIds ?? [])])];
       return { ...old, grade: sample.grade, groupIds: mergedGroupIds };
     });
+    // ユーザーが自分で足した選手（サンプル外のid）は末尾に残す。小学生の学年（4以上）は
+    // 中学年代では存在しないラベルになるため未設定に戻す（設定の区分変更と同じ扱い）
+    const sampleIds = new Set(SAMPLE_PLAYERS.map((p) => p.id));
+    const extraPlayers = (oldPlayers as Array<Record<string, unknown>>)
+      .filter((p) => typeof p?.id === "string" && !sampleIds.has(p.id as string))
+      .map((p) => (typeof p.grade === "number" && p.grade > 3 ? { ...p, grade: null } : p));
     window.localStorage.setItem(
       KEY,
       JSON.stringify({
         ...state,
-        players: newPlayers,
-        teamName: state.teamName === OLD_DEMO_TEAM_NAME ? SAMPLE_TEAM_NAME : state.teamName,
+        players: [...newPlayers, ...extraPlayers],
+        teamName:
+          state.teamName == null || state.teamName === OLD_DEMO_TEAM_NAME ? SAMPLE_TEAM_NAME : state.teamName,
       })
     );
 

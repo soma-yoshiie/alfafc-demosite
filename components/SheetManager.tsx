@@ -25,7 +25,7 @@ import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/export
 import { fileToEmblemDataUrl } from "@/lib/imageResize";
 import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
-import { loadDrills, loadTeam } from "@/lib/storage";
+import { loadDrills, loadTeam, resetAppData } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
 import {
   aggregateTech,
@@ -2131,6 +2131,33 @@ export function SettingsBody({
         />
         <i className="switch" />
       </label>
+      {/* デモデータの入れ直し。旧デモが残るブラウザは起動時に自動で中学年代の名簿へ移行するが
+          （lib/storage.ts の migrateOldDemo）、手で作ったデータが混ざって判定に掛からない場合の
+          逃げ道として、保存データを全部消して初回起動と同じ新しいデモに戻す入口を置く。
+          ログイン情報は残す。元に戻せないので window.confirm で確認する（このアプリの破壊的操作の作法） */}
+      <div className="setsec-h">デモデータ</div>
+      <div className="formfield">
+        <button
+          type="button"
+          className="bigbtn ghost"
+          // 設定シートの .bigbtn はプラン切替の大きな CTA 向けに文字が大きいので、補助操作のこのボタンは
+          // グループ管理シートの行内ボタンと同じ 14px に揃える
+          style={{ margin: 0, fontSize: 14, padding: 12 }}
+          onClick={() => {
+            const ok = window.confirm(
+              "保存されているチーム・名簿・予定・ノート・記録をすべて消して、最新のデモデータ（中学1〜3年・70人）に入れ直します。この操作は元に戻せません。\n実行しますか？"
+            );
+            if (!ok) return;
+            resetAppData();
+            window.location.reload();
+          }}
+        >
+          デモデータを入れ直す
+        </button>
+        <div className="fieldhint">
+          このブラウザに保存されたデータを消して、最新のデモ（中学1〜3年・70人）を入れ直します。ログイン情報は残ります。
+        </div>
+      </div>
       <div className="setsec-h">プラン</div>
       <div className="trialbanner"><E n="gift" /> 30日間の無料トライアル中（全機能をお試しいただけます）</div>
       <div className="planlede">
