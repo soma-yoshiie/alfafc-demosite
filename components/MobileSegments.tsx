@@ -16,6 +16,9 @@ export type MobileSegmentItem = {
   badge?: number;
   on: boolean;
   onSelect: () => void;
+  /** groups-editing-and-place-history §5: 選択トグルではなく単発の操作（例:「＋ 管理」）。
+   *  onは常にfalseで渡す想定。.mseg-item.actionクラスが付き、aria-currentは出さない */
+  kind?: "action";
 };
 
 export function MobileSegments({
@@ -51,9 +54,9 @@ export function MobileSegments({
           key={it.key}
           ref={it.on ? activeRef : undefined}
           type="button"
-          aria-current={it.on ? "true" : undefined}
+          aria-current={it.kind === "action" ? undefined : it.on ? "true" : undefined}
           aria-label={it.badge ? `${it.label} ${it.badge}件` : undefined}
-          className={`mseg-item${it.on ? " on" : ""}`}
+          className={`mseg-item${it.on ? " on" : ""}${it.kind === "action" ? " action" : ""}`}
           onClick={it.onSelect}
         >
           {it.label}

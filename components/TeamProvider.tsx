@@ -243,9 +243,10 @@ function sampleTeam(): TeamData {
       // 元の色のまま据え置く。是正するならPC側の表示差分を許容する別タスクとして扱う
       { id: "cat_meet", label: "保護者会", color: "#7c5cbf" },
     ],
-    // 学年グループ（中1/中2/中3）はTeamProvider初期化時のensureGradeGroupsで自動追加される
-    // （groups-everywhere §1）ため、ここではカスタムグループのみ持たせる
-    groups: [...SAMPLE_CUSTOM_GROUPS],
+    // groups-editing-and-place-history §3: 学年グループの生成元をTeamProvider初期化時の
+    // ensureGradeGroups呼び出し（廃止）から初回シードに一本化したため、ここで直接持たせる
+    // （sampleGroupsは冒頭で組み立て済みの「学年グループ＋カスタムグループ」）
+    groups: sampleGroups,
     schoolStage: "junior",
     competitions: [
       { id: "cmp1", name: "春季リーグ U-12", note: "4〜6月・市内リーグ" },
@@ -421,8 +422,10 @@ interface TeamContextValue {
   setSchoolStage: (stage: SchoolStage) => void;
   /** カスタムグループを追加する（kind:"custom"） */
   addGroup: (label: string) => string;
+  /** 学年グループを追加する（kind:"grade"）。既にその学年のグループがあれば何もしない */
+  addGradeGroup: (grade: number) => void;
   updateGroup: (g: TeamGroup) => void;
-  /** カスタムグループを削除する（学年グループは削除不可）。全予定の groupIds・全選手の Player.groupIds からもこのIDを外す */
+  /** グループを削除する（学年・カスタムいずれも可）。全予定の groupIds・全選手の Player.groupIds からもこのIDを外す */
   removeGroup: (id: string) => void;
   /** 繰り返し予定込みの追加。ruleなしは1件（addEventと同じ）。戻り値は追加件数 */
   addEventWithRecurrence: (
@@ -492,11 +495,13 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   const board = useBoard();
   const isPlayerAccount = board.auth.role === "player";
   // lazy初期化で保存データを直接読む（mount後のsetStateによる競合・上書きを防ぐ）。
-  // 初期化時にensureGradeGroupsで学年グループ（中1/中2/…）を整える（groups-everywhere §1）
+  // groups-editing-and-place-history §3: ここではensureGradeGroupsを呼ばない（毎回の起動で
+  // 呼ぶと、§4でユーザーが削除した学年グループが復活してしまうため）。学年グループの生成は
+  // 初回シード（sampleTeam）・loadTeam()の一度きりの補完・§2の移行・setSchoolStage・
+  // addGradeGroupに一本化した
   const [team, setTeam] = useState<TeamData>(() => {
     const t = loadTeam() ?? sampleTeam();
-    const stage: SchoolStage = t.schoolStage ?? "elementary";
-    return { ...t, schoolStage: stage, groups: ensureGradeGroups(stage, t.groups ?? []) };
+    return { ...t, schoolStage: t.schoolStage ?? "junior", groups: t.groups ?? [] };
   });
   const [viewer, setViewerState] = useState<TeamViewer>(() =>
     isPlayerAccount
@@ -602,7 +607,9 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
 
   /** グループ（学年＋カスタム）マスタ */
   const groups = useMemo<TeamGroup[]>(() => team.groups ?? [], [team.groups]);
-  const schoolStage: SchoolStage = team.schoolStage ?? "elementary";
+  // groups-editing-and-place-history §3: 既定を"junior"に変更（実際にはstate初期化で
+  // 常に埋まっているため、ここは万一未設定のときの保険）
+  const schoolStage: SchoolStage = team.schoolStage ?? "junior";
 
   /**
    * 学校区分を変更する。学年グループをensureGradeGroupsで整え直す（改名は保持・範囲外は削除）。
@@ -698,15 +705,38 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
   /**
-   * カスタムグループを削除する（学年グループは削除不可）。全予定のgroupIds・全選手の
-   * Player.groupIdsからもこのIDを外す。Phase D-1(C1-major): 連絡(announcements)のgroupIdsと
-   * 配信(deliverables)のtargetGroupIdsは放置されていたため、そのグループ宛の過去の連絡・配信が
+   * 学年グループを追加する（groups-editing-and-place-history §4）。§4でユーザーが学年グループを
+   * 削除できるようになったため、その「学年グループを戻す」操作用。既にその学年のグループが
+   * あれば何もしない。並びは「学年（学年順）→カスタム（追加順）」を保つため、学年グループの
+   * 末尾に学年順で挿入する
+   */
+  const addGradeGroup = useCallback(
+    (grade: number) => {
+      const gs = team.groups ?? [];
+      if (gs.some((g) => g.kind === "grade" && g.grade === grade)) return;
+      const stage: SchoolStage = team.schoolStage ?? "junior";
+      const g: TeamGroup = { id: `grp_grade_${grade}`, label: gradeLabel(stage, grade), kind: "grade", grade };
+      const gradeGroups = [...gs.filter((x) => x.kind === "grade"), g].sort(
+        (a, b) => (a.grade ?? 0) - (b.grade ?? 0)
+      );
+      const customGroups = gs.filter((x) => x.kind !== "grade");
+      setTeam((t) => ({ ...t, groups: [...gradeGroups, ...customGroups] }));
+      board.toast(`「${g.label}」を追加しました`);
+    },
+    [team.groups, team.schoolStage, board]
+  );
+  /**
+   * グループを削除する（groups-editing-and-place-history §4: 学年グループも含め、すべての
+   * グループを削除できる。学年グループを消しても選手のPlayer.gradeは変えない＝学年別の集計や
+   * 選手フォームの学年表示はそのまま）。全予定のgroupIds・全選手のPlayer.groupIdsからも
+   * このIDを外す。Phase D-1(C1-major): 連絡(announcements)のgroupIdsと配信(deliverables)の
+   * targetGroupIdsは放置されていたため、そのグループ宛の過去の連絡・配信が
    * 「解決できないID」問題と合わさって選手側から一斉に消える不具合があった。あわせて掃除する
    */
   const removeGroup = useCallback(
     (id: string) => {
       const target = (team.groups ?? []).find((g) => g.id === id);
-      if (!target || target.kind !== "custom") return;
+      if (!target) return;
       setTeam((t) => ({
         ...t,
         groups: (t.groups ?? []).filter((g) => g.id !== id),
@@ -1091,6 +1121,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       schoolStage,
       setSchoolStage,
       addGroup,
+      addGradeGroup,
       updateGroup,
       removeGroup,
       addEventWithRecurrence,
@@ -1131,6 +1162,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       schoolStage,
       setSchoolStage,
       addGroup,
+      addGradeGroup,
       updateGroup,
       removeGroup,
       addEventWithRecurrence,

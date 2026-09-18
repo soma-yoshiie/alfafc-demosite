@@ -64,6 +64,38 @@ export function targetLabel(e: TeamEvent, groups: TeamGroup[]): string {
   return labels.length > 0 ? labels.join("・") : "全員";
 }
 
+/* ===== 場所の履歴（groups-editing-and-place-history §6） ===== */
+
+/**
+ * 予定に入れた場所の履歴。同じ場所名（trim後）でまとめ、そのうち一番新しい日付の順に
+ * 最大8件返す。住所は「その場所名を持つ予定のうち、日付が最も新しくaddressがあるもの」
+ * のaddress（無ければ省略）。編集中の予定自身も含めて集計してよい（同じ場所ならそれでよい）
+ */
+export function placeHistory(events: TeamEvent[]): { place: string; address?: string }[] {
+  const byPlace = new Map<string, { lastDate: string; address?: string; addrDate?: string }>();
+  for (const e of events) {
+    const place = e.place?.trim();
+    if (!place) continue;
+    const addr = e.address?.trim() || undefined;
+    const cur = byPlace.get(place);
+    if (!cur) {
+      byPlace.set(place, { lastDate: e.date, address: addr, addrDate: addr ? e.date : undefined });
+      continue;
+    }
+    if (e.date > cur.lastDate) cur.lastDate = e.date;
+    if (addr && (!cur.addrDate || e.date > cur.addrDate)) {
+      cur.address = addr;
+      cur.addrDate = e.date;
+    }
+  }
+  return Array.from(byPlace.entries())
+    // レビュー指摘(minor): lastDateが同値のときも-1を返す比較関数だと、Array#sortが安定でも
+    // 同日の場所の並びが登録順の逆になってしまう。同値は0を返し、登録順（Map挿入順）を保つ
+    .sort((a, b) => (a[1].lastDate < b[1].lastDate ? 1 : a[1].lastDate > b[1].lastDate ? -1 : 0))
+    .slice(0, 8)
+    .map(([place, v]) => ({ place, address: v.address }));
+}
+
 /* ===== 日付ユーティリティ（Dateのタイムゾーン事故を避けるため文字列⇔数値変換を自前で） ===== */
 
 /** YYYY-MM-DD を {y,m,d}（mは1-12）に分解 */

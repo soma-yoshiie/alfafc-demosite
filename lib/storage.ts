@@ -7,18 +7,24 @@ import type {
   Library,
   NotebookEntry,
   SavedDrill,
+  SchoolStage,
   Settings,
   TeamData,
+  TeamGroup,
   TeamViewer,
 } from "./types";
 import type { UserArticle } from "./articles";
 import type { CoachLabState } from "./coachlab";
 import { emptyCoachLabState } from "./coachlab";
+import { ensureGradeGroups, gradeGroupsFor } from "./groups";
 import {
   DEFAULT_FITNESS_TESTS,
   FITNESS_TEST_1000M,
   FITNESS_TEST_50M,
   FITNESS_TEST_SIDESTEP,
+  SAMPLE_CUSTOM_GROUPS,
+  SAMPLE_PLAYERS,
+  SAMPLE_TEAM_NAME,
 } from "./sampleTeam";
 
 const KEY = "soccer_tactics_state_v1";
@@ -95,9 +101,178 @@ function migrateFitness(fitness: unknown): FitnessRecord[] {
   });
 }
 
+/* ---- 旧デモデータの移行（groups-editing-and-place-history §2） ----
+ * 新デモ名簿（70人・中学）は初回起動時（loadState()/loadTeam()がnullを返したとき）にしか
+ * 入らないため、以前から使っているブラウザには旧デモ（p01〜p16の16人・小5/6・
+ * 「アルファラスFC U-12」）がlocalStorageに残ったまま表示され続けてしまう。
+ * loadState()・loadTeam()の先頭でこの関数を呼び、旧デモの署名に一致するときだけ
+ * 新デモへ書き換える（ユーザーが自分で選手を足した・学校区分を変えたチームには触らない）。 */
+const DEMO_SEED_KEY = "soccer_tactics_demo_seed_v1";
+const OLD_DEMO_TEAM_NAME = "アルファラスFC U-12";
+/** 旧デモにだけあったカスタムグループ（低学年・高学年）。新デモには存在しないため削除する */
+const OLD_DEMO_CUSTOM_GROUP_IDS = ["grp_low", "grp_high"];
+
+/** kind未定義（旧データ）は"custom"とみなす（loadTeam()の読み込み正規化と同じ作法） */
+function rawGroupKind(g: { kind?: string }): "grade" | "custom" {
+  return g.kind === "grade" ? "grade" : "custom";
+}
+
+/**
+ * レビュー指摘(major・§3): schoolStage未設定（旧データ）の既定は当面"junior"だが、
+ * §2の移行対象外（ユーザーが選手を足していて移行しないデータ）ではPlayer.gradeが
+ * 小5/6のまま残っている。一律"junior"にすると学年表示が「中5」「中6」になり、
+ * メンバー0人の中1〜3まで増えてしまう（移行前の既定"elementary"からの退行）。
+ * gradeに4以上（中学・高校のgradeLabelには存在しない値）を持つ選手が1人でもいれば
+ * "elementary"と推定し、いなければ現在の既定どおり"junior"にする。
+ */
+function inferDefaultSchoolStage(): SchoolStage {
+  if (typeof window === "undefined") return "junior";
+  try {
+    const raw = window.localStorage.getItem(KEY);
+    if (!raw) return "junior";
+    const data = JSON.parse(raw) as { players?: unknown };
+    const players = Array.isArray(data.players) ? (data.players as Array<{ grade?: unknown }>) : [];
+    const hasElementaryGrade = players.some((p) => typeof p.grade === "number" && p.grade >= 4);
+    return hasElementaryGrade ? "elementary" : "junior";
+  } catch {
+    return "junior";
+  }
+}
+
+/** id配列からremovedIdsを取り除く。0件ならundefinedに戻す（TeamProvider.removeGroupと同じ後始末） */
+function stripRemovedGroupIds(ids: unknown, removedIds: string[]): string[] | undefined {
+  if (!Array.isArray(ids) || removedIds.length === 0) return Array.isArray(ids) ? (ids as string[]) : undefined;
+  const rest = (ids as string[]).filter((id) => !removedIds.includes(id));
+  return rest.length > 0 ? rest : undefined;
+}
+
+/**
+ * 旧デモ（p01〜p16・小5/6・「アルファラスFC U-12」）を中学年代の新デモ（70人）へ移行する。
+ * 完了マーカー(DEMO_SEED_KEY)に"2"を書いた後は、判定結果によらず以後は何もしない
+ * （loadState()/loadTeam()のどちらが先に呼ばれても実質1回だけ判定・移行する）。
+ */
+export function migrateOldDemo(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem(DEMO_SEED_KEY) === "2") return;
+    window.localStorage.setItem(DEMO_SEED_KEY, "2");
+
+    const stateRaw = window.localStorage.getItem(KEY);
+    if (!stateRaw) return;
+    const state = JSON.parse(stateRaw) as { players?: unknown; teamName?: unknown } & Record<string, unknown>;
+    const oldPlayers = state.players;
+    // 署名：playersが存在し、全員のidがp01〜p16の範囲（人数は1〜16）
+    if (!Array.isArray(oldPlayers) || oldPlayers.length === 0 || oldPlayers.length > 16) return;
+    const isOldId = (id: unknown) => typeof id === "string" && /^p(0[1-9]|1[0-6])$/.test(id);
+    if (!(oldPlayers as Array<{ id?: unknown }>).every((p) => isOldId(p?.id))) return;
+    // 署名：teamNameが旧名または現在のSAMPLE_TEAM_NAME（未設定も可）
+    if (state.teamName != null && state.teamName !== OLD_DEMO_TEAM_NAME && state.teamName !== SAMPLE_TEAM_NAME) {
+      return;
+    }
+
+    const teamRaw = window.localStorage.getItem(TEAM_KEY);
+    const team = teamRaw
+      ? (JSON.parse(teamRaw) as { schoolStage?: unknown; groups?: unknown } & Record<string, unknown>)
+      : null;
+    // 署名：team_v1が無い、またはschoolStageが未設定か"elementary"
+    if (team && team.schoolStage != null && team.schoolStage !== "elementary") return;
+
+    // ---- 署名一致：移行する ----
+    // レビュー指摘(minor・§2): 自作カスタムグループのid集合を先に出しておき、p01〜p16の
+    // groupIds上書き時にも使う（後段のグループ再構築と同じ「残す」判定）。これが無いと
+    // 「自作グループは一覧に残るが所属人数が0人になる」（グループを使い続けられない）
+    const prevGroups = team && Array.isArray(team.groups) ? (team.groups as Array<{ id: string; kind?: string }>) : [];
+    const keptCustomIds = prevGroups
+      .filter((g) => rawGroupKind(g) === "custom" && !OLD_DEMO_CUSTOM_GROUP_IDS.includes(g.id))
+      .map((g) => g.id);
+
+    const oldById = new Map<string, Record<string, unknown>>();
+    (oldPlayers as Array<Record<string, unknown>>).forEach((p) => {
+      if (typeof p?.id === "string") oldById.set(p.id, p);
+    });
+    const newPlayers = SAMPLE_PLAYERS.map((sample) => {
+      const old = oldById.get(sample.id);
+      if (!old) return sample; // p17〜p70はサンプルをそのまま追加
+      // p01〜p16：保存済みの項目（名前・背番号・ポジション・身長体重・体力測定・怪我など）を残し、
+      // gradeは新デモ（中学年代）の値に上書きする。groupIdsは新デモの所属（学年・A/B/GK）に
+      // 差し替えつつ、自作カスタムグループへの所属だけは残す（丸ごと上書きすると自作グループの
+      // 所属人数が0人になり、グループが使い続けられなくなるため）
+      const oldGroupIds = Array.isArray((old as { groupIds?: unknown }).groupIds)
+        ? ((old as { groupIds?: unknown }).groupIds as unknown[]).filter((id): id is string => typeof id === "string")
+        : [];
+      const keptOwnGroupIds = oldGroupIds.filter((id) => keptCustomIds.includes(id));
+      const mergedGroupIds = [...new Set([...keptOwnGroupIds, ...(sample.groupIds ?? [])])];
+      return { ...old, grade: sample.grade, groupIds: mergedGroupIds };
+    });
+    window.localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        ...state,
+        players: newPlayers,
+        teamName: state.teamName === OLD_DEMO_TEAM_NAME ? SAMPLE_TEAM_NAME : state.teamName,
+      })
+    );
+
+    let removedGroupIds: string[] = [];
+    if (team) {
+      const keptCustoms = prevGroups.filter((g) => keptCustomIds.includes(g.id));
+      const missingSampleCustoms = SAMPLE_CUSTOM_GROUPS.filter(
+        (g) => !keptCustoms.some((k) => k.id === g.id)
+      );
+      const nextGroups: TeamGroup[] = [
+        ...gradeGroupsFor("junior", []),
+        ...(keptCustoms as TeamGroup[]),
+        ...missingSampleCustoms,
+      ];
+      removedGroupIds = prevGroups.map((g) => g.id).filter((id) => !nextGroups.some((g) => g.id === id));
+
+      const stripField = <T extends { groupIds?: unknown }>(items: unknown): T[] | undefined =>
+        Array.isArray(items)
+          ? (items as T[]).map((x) =>
+              (x as { groupIds?: unknown }).groupIds !== undefined
+                ? { ...x, groupIds: stripRemovedGroupIds((x as { groupIds?: unknown }).groupIds, removedGroupIds) }
+                : x
+            )
+          : undefined;
+
+      window.localStorage.setItem(
+        TEAM_KEY,
+        JSON.stringify({
+          ...team,
+          schoolStage: "junior",
+          groups: nextGroups,
+          events: stripField(team.events) ?? team.events,
+          announcements: stripField(team.announcements) ?? team.announcements,
+          matches: stripField(team.matches) ?? team.matches,
+        })
+      );
+    }
+
+    if (removedGroupIds.length > 0) {
+      const deliverRaw = window.localStorage.getItem(DELIVER_KEY);
+      if (deliverRaw) {
+        const items = JSON.parse(deliverRaw);
+        if (Array.isArray(items)) {
+          const next = (items as Array<Record<string, unknown>>).map((d) =>
+            d.targetGroupIds !== undefined
+              ? { ...d, targetGroupIds: stripRemovedGroupIds(d.targetGroupIds, removedGroupIds) }
+              : d
+          );
+          window.localStorage.setItem(DELIVER_KEY, JSON.stringify(next));
+        }
+      }
+    }
+
+    console.info("[alfa] 旧デモデータを中学年代の名簿に更新しました");
+  } catch {
+    /* 壊れたデータで例外が出ても以後の読み込みを妨げない */
+  }
+}
+
 /** localStorage から状態を復元（SSR/未保存時は null） */
 export function loadState(): BoardState | null {
   if (typeof window === "undefined") return null;
+  migrateOldDemo();
   try {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return null;
@@ -300,6 +475,7 @@ export function saveSetPieceWork(state: BoardState, currentId: string | null): v
 /* ---- チーム（出欠・連絡） ---- */
 export function loadTeam(): TeamData | null {
   if (typeof window === "undefined") return null;
+  migrateOldDemo();
   try {
     const raw = window.localStorage.getItem(TEAM_KEY);
     if (!raw) return null;
@@ -314,11 +490,17 @@ export function loadTeam(): TeamData | null {
     // 旧データ（種目マスタ未導入）は初回のみデフォルト種目を補完する。
     // 空配列（スタッフが全種目を削除した状態）は意図的な状態として上書きしない。
     if (!Array.isArray(data.fitnessTests)) data.fitnessTests = DEFAULT_FITNESS_TESTS;
-    // groups-everywhere §1: 読み込み正規化
-    // schoolStage未定義（旧データ）は"elementary"とみなす
-    if (!data.schoolStage) data.schoolStage = "elementary";
+    // groups-editing-and-place-history §3: 読み込み正規化
+    // schoolStage未定義（旧データ）は"junior"とみなす（当面は中学年代から広めるため、
+    // 従来の既定"elementary"から変更）。未設定だったときだけ、一度きりensureGradeGroupsで
+    // 学年グループ（中1〜3）を補う（保存後はschoolStageが入るので二度と走らない。
+    // TeamProviderの初期化ではensureGradeGroupsを呼ばなくなったため、初回の補完はここに一本化した）
+    const schoolStageWasUnset = !data.schoolStage;
+    const stage: SchoolStage = data.schoolStage ?? inferDefaultSchoolStage();
+    data.schoolStage = stage;
     // groups の kind 未定義（旧データ）は "custom" とみなす
     data.groups = data.groups.map((g) => (g.kind ? g : { ...g, kind: "custom" as const }));
+    if (schoolStageWasUnset) data.groups = ensureGradeGroups(stage, data.groups);
     // events の optInPlayerIds が配列でなければ除去する
     data.events = data.events.map((e) =>
       e.optInPlayerIds !== undefined && !Array.isArray(e.optInPlayerIds)
@@ -510,6 +692,11 @@ export function saveNotebook(entries: NotebookEntry[]): void {
 /* ---- コーチからの配信物（練習メニュー/個人課題/ミーティング） ---- */
 export function loadDeliverables(): CoachDeliverable[] | null {
   if (typeof window === "undefined") return null;
+  // レビュー指摘(major): BoardProviderのdeliverables初期stateはlazy useStateでレンダー中に
+  // loadDeliverables()を呼ぶため、TeamProviderのloadTeam()（migrateOldDemo呼び出し元）より
+  // 先に走りうる。ここでも呼んでおかないと、移行前(掃除前)のtargetGroupIdsをそのまま読み、
+  // 直後のsaveDeliverablesで移行結果が上書きされてしまう（マーカーがあるので二重実行はしない）
+  migrateOldDemo();
   try {
     const raw = window.localStorage.getItem(DELIVER_KEY);
     if (!raw) return null;

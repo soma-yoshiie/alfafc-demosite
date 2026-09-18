@@ -3094,6 +3094,18 @@ body:has(.mhead) .billtoggle button.on {
 .calfilter::-webkit-scrollbar {
   display: none;
 }
+/* レビュー指摘(minor)＋ユーザー要望「カレンダーの一番上でもカテゴリー編集できるように」:
+   行はアクティブなチップ(既定は先頭の「すべて」)へ自動スクロールするため、グループ数が
+   多いスマホの既定デモ(6件)では末尾の「＋ 管理」が画面外に隠れ、横スクロールしないと
+   辿り着けなかった。当初は「＋ 管理」を行の右端にsticky固定していたが、スクロール位置0
+   （＝初期状態）では後続チップの上に不透明な地色で乗ってしまい、既定デモで「Aチーム」
+   等が隠れて文字が切れて見える指摘(major)を受けた。名簿タブの絞り込み(.grouppick)と
+   同じ折り返しに変え、横スクロール自体を無くして重なりを解消する
+   （PCは元々全チップが収まるため触らない） */
+.teamapp:has(.mhead) .calfilter {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
 /* 絞り込み中の補助文（行の右端）。12px未満は使わない */
 .calfilterhint {
   text-align: right;
@@ -10629,6 +10641,16 @@ body:has(.mhead) .teamapp .dynrow select {
 .mseg-item:active {
   opacity: 0.85;
 }
+/* groups-editing-and-place-history §5: カレンダー最上部の絞り込み行の末尾「＋ 管理」。
+   トグルの選択(.on)と紛れないよう地の色・枠は変えず、文字だけgrouppick-item.manageと
+   同じ--accentにする。
+   レビュー指摘(minor): このコメントは太字にする旨だったが、grouppick-item.manageは
+   font-weight:400・border-style:dashedで、太字ではなかった（色だけが同じaccent）。
+   予定フォームの見た目を変えるのは避け、こちら側をgrouppick-item.manageに合わせて
+   非太字にする（.on(太字)との区別は地色の違い＝白地 vs accent-tintで付く） */
+.mseg-item.action {
+  color: var(--accent);
+}
 /* mobile-redesign Phase D-1(C2-minor/major §8-2 #8): 12px未満は使わない */
 .mseg-badge {
   display: inline-flex;
@@ -11269,6 +11291,44 @@ body:has(.mhead) .teamapp .dynrow select {
 .app:has(.mhead) .grouppick-item,
 body:has(.mhead) .grouppick-item {
   min-height: 44px;
+}
+
+/* groups-editing-and-place-history §6-7: 場所の入力履歴の行。チップ自体は.grouppick-itemを
+   共用し(44pxタップ領域も含めてそのまま効く)、行の文法(.grouppick)に見出しラベル用の
+   align-items:centerだけ足す。
+   レビュー指摘(major): .formfieldの兄弟要素なのに.formfieldが持つ左右16pxのmarginが無く、
+   スマホでは画面端に密着・PCでも「場所」欄と16pxずれていた。左右16pxを持たせ、下も
+   8px(margin)+4px(padding)=12pxで他の.formfield間の余白(12px)に揃える */
+.placehist {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 16px 8px;
+  padding: 2px 2px 4px;
+}
+.placehist-l {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--mut);
+}
+/* レビュー指摘(minor): 場所は自由入力で長い施設名も入りうるが、.grouppick-itemは
+   white-space:nowrap・max-widthなしのため画面右端で文字が切れて読めなくなっていた。
+   履歴チップだけ最大幅を持たせ、はみ出す分は省略記号にする。
+   レビュー指摘(minor・第2回): .grouppick-itemはdisplay:inline-flexのフレックスコンテナ
+   自身であり、text-overflowはそのコンテナには効かず（子のテキストにも直接は効かない）
+   文字が枠線で切れたまま省略記号が出ていなかった。文字をTeamHub.tsx側で<span>に包み、
+   その子要素だけをブロック化してtext-overflowを効かせる（overflow:hiddenを子要素自身に
+   持たせることでflexアイテムの自動最小幅が0になり、親の幅に合わせて縮められる） */
+.placehist .grouppick-item {
+  max-width: 100%;
+}
+.placehist .grouppick-item > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 /* パレットスウォッチ（カテゴリの色選択） */
@@ -17723,6 +17783,13 @@ body:has(.mhead) .grouppick-item {
      （2個目が3行目へ折り返しても行頭が揃う） */
   .coachapp:has(.nbmain) .scroll .notecard .notetag {
     margin-left: 0;
+  }
+  /* カレンダーの絞り込み行（統括の最終調整）: スマホは折り返しにしたが PC は基底の横スクロール
+     （スクロールバー非表示）のままで、グループが 8 件を超えると末尾の「＋ 管理」が行の外に出て
+     マウスでは辿り着けなかった。PC も名簿タブの絞り込みと同じ折り返しにする（既定の 6 件は 1 行のまま） */
+  .calfilter {
+    flex-wrap: wrap;
+    overflow-x: visible;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }

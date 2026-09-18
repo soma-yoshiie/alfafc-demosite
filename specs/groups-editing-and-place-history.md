@@ -30,6 +30,7 @@
 - `teamName` が旧名なら `SAMPLE_TEAM_NAME` に。
 - team：`schoolStage: "junior"`。`groups` は、旧サンプルのカスタムグループ（id `grp_low`「低学年」・`grp_high`「高学年」）を削除し、`grp_a`／`grp_b`／`grp_gk` が無ければ `SAMPLE_CUSTOM_GROUPS` から追加、学年グループは `kind:"grade"` のものを全部消してから `gradeGroupsFor("junior", [])` の 3 つを先頭に入れる。ユーザーが自分で作ったカスタムグループ（上記以外の id）は残す。
 - 削除したグループ id（小1〜小6の `grp_grade_4`〜`grp_grade_6`、`grp_low`、`grp_high`）を予定・連絡・試合記録の `groupIds` と配信の `targetGroupIds` から外す（`removeGroup` と同じ後始末）。
+  宛先グループが全部消えて `targetGroupIds` が空（`undefined`）になった配信は、`targetPlayerIds` も無ければ「全員宛」として扱われる（`lib/groups.ts` の `deliverableTargetsPlayer`／`BoardProvider.tsx` の `removeDeliverableTargetGroup` の既存挙動どおりで、画面から `removeGroup` した場合と同じ。移行専用の別ルールは設けない。レビュー第2回で指摘、意図的な仕様として明記）。
 - ノート・試合記録・出欠が参照する `p01`〜`p16` は残るので壊れない。
 - 移行したら `console.info("[alfa] 旧デモデータを中学年代の名簿に更新しました")` を 1 行出す。
 
@@ -43,7 +44,7 @@
 
 ## 4. すべてのグループを削除・編集できる（`TeamProvider.removeGroup`・`TeamHub` のグループ管理シート）
 
-- `removeGroup` の `kind !== "custom"` ガードを外す。後始末は同じ（予定・連絡・試合記録・配信・`Player.groupIds`）。学年グループを消しても選手の `grade` は変えない。
+- `removeGroup` の `kind !== "custom"` ガードを外す。後始末は同じ（予定・連絡・試合記録・配信・`Player.groupIds`）。学年グループを消しても選手の `grade` は変えない。Phase 2 のチャットのグループスレッド（`to: "grp:<id>"` のメッセージ）は後始末の対象外とし、残す（学年グループは id が固定 `grp_grade_n` なので、同じ学年グループを「学年グループを追加」で戻すと過去のスレッドがそのまま再表示される。レビュー第1回で指摘、意図的な仕様として明記）。
 - グループ管理シート：
   - 学年グループの行にも「削除」ボタンを出す。確認文は「「中1」を削除しますか？（予定・連絡・試合記録からもこのグループが外れます。選手の学年は変わりません）」。
   - 学年グループの行のサブテキストを「学年グループ（改名のみ）」から「学年で自動 ・ メンバー n人 ›」に変え、タップでメンバー一覧を開く。学年グループのメンバー一覧は **閲覧のみ**（チェックは出さない）で、先頭に「学年グループのメンバーは選手の学年で自動的に決まります。学年は名簿の選手フォームで変更できます。」の 1 行（12px `--mut`）。

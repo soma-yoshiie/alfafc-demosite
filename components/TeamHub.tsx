@@ -39,6 +39,7 @@ import {
   isOngoing,
   isUpcomingOrOngoing,
   occursOn,
+  placeHistory,
   targetLabel,
 } from "@/lib/calendarUtils";
 import {
@@ -1274,27 +1275,47 @@ function CalendarTab({
       {/* groups-everywhere §3: 選手・保護者には既存のグループ絞り込みは出さず、代わりに
           「自分の予定／すべて」の2択（既定=自分の予定）を出す */}
       {isCoach ? (
-        // §3: グループの絞り込み行（.mseg-itemと同じチップ文法）。グループが無ければ出さない
-        team.groups.length > 0 && (
-          <>
-            <MobileSegments
-              wrapClassName="calfilter"
-              ariaLabel="カレンダーの絞り込み"
-              items={[
-                { key: "all", label: "すべて", on: calGroup == null, onSelect: () => setCalGroup(null) },
-                ...team.groups.map((g) => ({
-                  key: g.id,
-                  label: g.label,
-                  on: calGroup === g.id,
-                  onSelect: () => setCalGroup(g.id),
-                })),
-              ]}
-            />
-            {calGroupLabel && (
-              <div className="calfilterhint">{calGroupLabel}の予定と全員の予定を表示中</div>
-            )}
-          </>
-        )
+        // §3: グループの絞り込み行（.mseg-itemと同じチップ文法）。
+        // groups-editing-and-place-history §5: 末尾に「＋ 管理」を足し、カレンダーの一番上
+        // からもグループ管理シートを開けるようにする。グループが0件でも行自体は出し、
+        // その場合は「すべて」を出さず「＋ グループを管理」の1チップだけにする
+        <>
+          <MobileSegments
+            wrapClassName="calfilter"
+            ariaLabel="カレンダーの絞り込み"
+            items={
+              team.groups.length > 0
+                ? [
+                    { key: "all", label: "すべて", on: calGroup == null, onSelect: () => setCalGroup(null) },
+                    ...team.groups.map((g) => ({
+                      key: g.id,
+                      label: g.label,
+                      on: calGroup === g.id,
+                      onSelect: () => setCalGroup(g.id),
+                    })),
+                    {
+                      key: "manage",
+                      label: "＋ 管理",
+                      on: false,
+                      kind: "action" as const,
+                      onSelect: () => setSheet({ type: "groups" }),
+                    },
+                  ]
+                : [
+                    {
+                      key: "manage",
+                      label: "＋ グループを管理",
+                      on: false,
+                      kind: "action" as const,
+                      onSelect: () => setSheet({ type: "groups" }),
+                    },
+                  ]
+            }
+          />
+          {calGroupLabel && (
+            <div className="calfilterhint">{calGroupLabel}の予定と全員の予定を表示中</div>
+          )}
+        </>
       ) : (
         me && (
           <MobileSegments
@@ -3290,9 +3311,10 @@ function AttPlayerPane({
 }
 
 /**
- * カスタムグループのメンバー編集（groups-everywhere §5）。検索付きのチェックリストで
- * Player.groupIdsを一括編集する。学年グループ（kind:"grade"）はここから呼ばれない
- * （所属はPlayer.gradeから自動のため編集不可）。
+ * グループのメンバー一覧（groups-everywhere §5 / groups-editing-and-place-history §4）。
+ * カスタムグループ（kind:"custom"）は検索付きのチェックリストでPlayer.groupIdsを一括編集する。
+ * 学年グループ（kind:"grade"）は閲覧のみ（所属はPlayer.gradeから自動決定のため編集不可。
+ * チェックボックスは出さず、先頭に学年から自動である旨の説明を出す）。
  */
 function GroupMembersEditor({
   group,
@@ -3305,14 +3327,19 @@ function GroupMembersEditor({
 }) {
   const board = useBoard();
   const team = useTeam();
-  const schoolStage = team.team.schoolStage ?? "elementary";
+  const schoolStage = team.team.schoolStage ?? "junior";
+  const isGrade = group.kind === "grade";
   const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
-  const list = players.filter((p) => !kw || p.name.toLowerCase().includes(kw));
+  // レビュー指摘(major): 学年グループは閲覧のみ（チェックが無い）なので、絞り込まずに全員を
+  // 出すと所属の手がかりが無くなる。カスタムグループは一括編集のため全員を出すのが正しいまま
+  const base = isGrade ? players.filter((p) => playerInGroup(p, group)) : players;
+  const list = base.filter((p) => !kw || p.name.toLowerCase().includes(kw));
   // Phase D-1(C2-minor): 70人が学年区切りなし・学年表示なしの一列だと「中3の誰か」を
   // 背番号だけで探すことになるため、行に学年ラベルを足す。選択中の人数も表示する
-  const selectedCount = players.filter((p) => p.groupIds?.includes(group.id)).length;
+  const selectedCount = players.filter((p) => playerInGroup(p, group)).length;
   const toggle = (p: Player) => {
+    if (isGrade) return; // 閲覧のみ（所属はPlayer.gradeから自動）
     const has = p.groupIds?.includes(group.id) ?? false;
     const next = has
       ? (p.groupIds ?? []).filter((x) => x !== group.id)
@@ -3325,6 +3352,11 @@ function GroupMembersEditor({
         ‹ グループ管理
       </div>
       <h2>{group.label}のメンバー</h2>
+      {isGrade && (
+        <div style={{ margin: "0 16px 8px", fontSize: "12px", color: "var(--mut)" }}>
+          学年グループのメンバーは選手の学年で自動的に決まります。学年は名簿の選手フォームで変更できます。
+        </div>
+      )}
       <div className="controls">
         <input
           className="search"
@@ -3335,17 +3367,21 @@ function GroupMembersEditor({
       </div>
       {/* mobile-redesign v1 §8: 12px未満禁止のため.fieldhint(11px)は使わずvar(--fs-body-s)にする */}
       <div style={{ margin: "0 16px 8px", fontSize: "var(--fs-body-s)", color: "var(--mut)" }}>
-        {selectedCount}人を選択中
+        {isGrade ? `${selectedCount}人` : `${selectedCount}人を選択中`}
       </div>
       <div className="list">
         {list.length === 0 ? (
           <div className="empty-msg">該当する選手がいません。</div>
         ) : (
           list.map((p) => {
-            const checked = p.groupIds?.includes(group.id) ?? false;
+            const checked = playerInGroup(p, group);
             return (
-              <label key={p.id} className="attrow" style={{ cursor: "pointer" }}>
-                <input type="checkbox" checked={checked} onChange={() => toggle(p)} />
+              <label
+                key={p.id}
+                className="attrow"
+                style={{ cursor: isGrade ? "default" : "pointer" }}
+              >
+                {!isGrade && <input type="checkbox" checked={checked} onChange={() => toggle(p)} />}
                 <div className="attname">
                   {p.name}
                   <small>
@@ -3403,8 +3439,8 @@ function SheetHost({
   const me = !isCoach ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
   const dayPassesFilter = (e: TeamEvent) =>
     isCoach ? eventTargetsGroup(e, calGroup) : !calMine || !me || eventTargetsPlayer(e, me, team.groups);
-  // グループ管理シート内でメンバー編集中のグループID（custom限定）。sheetがgroups以外に
-  // 変わったらリセットする
+  // グループ管理シート内でメンバー一覧を開いているグループID（学年・カスタムどちらも可。
+  // groups-editing-and-place-history §4）。sheetがgroups以外に変わったらリセットする
   const [groupMembersId, setGroupMembersId] = useState<string | null>(null);
   useEffect(() => {
     if (sheet?.type !== "groups") setGroupMembersId(null);
@@ -3458,6 +3494,16 @@ function SheetHost({
   const [endTime, setEndTime] = useState(ev?.endTime ?? "");
   const [place, setPlace] = useState(ev?.place ?? "");
   const [address, setAddress] = useState(ev?.address ?? "");
+  // groups-editing-and-place-history §6: 場所の入力履歴（同じ場所で繰り返し練習することが
+  // 多いため、直近の場所名と住所をチップから選べるようにする）。入力中の文字があり、かつ
+  // 完全一致するチップが無いときだけ部分一致（大文字小文字を無視）で絞る
+  const placeHist = placeHistory(team.team.events);
+  const placeTrim = place.trim();
+  const placeExact = placeTrim !== "" && placeHist.some((h) => h.place === placeTrim);
+  const placeHistShown =
+    placeTrim && !placeExact
+      ? placeHist.filter((h) => h.place.toLowerCase().includes(placeTrim.toLowerCase()))
+      : placeHist;
   const [note, setNote] = useState(ev?.note ?? "");
   // 大会（種別=試合のときのみ表示。""=大会なし/練習試合など）
   const [evCompId, setEvCompId] = useState(ev?.competitionId ?? "");
@@ -3789,6 +3835,29 @@ function SheetHost({
           <label>場所</label>
           <input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="例）市営グラウンド" />
         </div>
+        {/* groups-editing-and-place-history §6: 過去に入れた場所の履歴。タップで場所と
+            (履歴に住所があれば)住所を一緒に入れる。履歴が無いチームでは行ごと出さない */}
+        {placeHistShown.length > 0 && (
+          <div className="placehist">
+            <span className="placehist-l">最近の場所</span>
+            {placeHistShown.map((h) => (
+              <button
+                key={h.place}
+                type="button"
+                className={`grouppick-item${h.place === placeTrim ? " on" : ""}`}
+                onClick={() => {
+                  setPlace(h.place);
+                  if (h.address) setAddress(h.address);
+                }}
+              >
+                {/* レビュー指摘(minor・第2回): 長い場所名で省略記号(…)が出ずに枠線で
+                    文字ごと切れていた。.grouppick-item自身(inline-flex)にはtext-overflow
+                    が効かないため、テキストをspanで包みそちらをブロック化して効かせる */}
+                <span>{h.place}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="formfield">
           <label>住所</label>
           <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="地図表示用（任意）" />
@@ -4021,9 +4090,10 @@ function SheetHost({
         </button>
       </Sheet>
 
-      {/* グループ管理（カレンダーの対象§2 / groups-everywhere §5）。カテゴリ管理と同じ構造
-          （色は持たない）。削除時は team.removeGroup 内で全予定の groupIds からも外す。
-          学年グループ（kind:"grade"）は改名のみ・削除不可・メンバー編集不可（所属はgradeから自動）。
+      {/* グループ管理（カレンダーの対象§2 / groups-everywhere §5 / groups-editing-and-place-history §4）。
+          カテゴリ管理と同じ構造（色は持たない）。削除時は team.removeGroup 内で全予定の groupIds からも外す。
+          §4: 学年グループ（kind:"grade"）も削除・改名できる（削除しても選手のgradeは変えない）。
+          メンバー一覧はどちらのkindでも開ける。学年グループは閲覧のみ（所属はgradeから自動）、
           カスタムグループは「メンバー（n人）」から所属選手を一括編集できる */}
       <Sheet open={sheet?.type === "groups"} onClose={paneBack} pane={pane}>
         {groupMembersId ? (
@@ -4083,38 +4153,34 @@ function SheetHost({
                         {/* Phase D-1(C2-minor): サブテキストが非タップで、メンバー編集の入口が
                             右側の人型アイコン(次のbutton)だけだと初見で気づきにくい。
                             仕様§5「『メンバー（n人）』→ 選手のチェックリスト」どおり、
-                            サブテキスト自体もタップ可能にする（既存アイコンは残す） */}
+                            サブテキスト自体もタップ可能にする（既存アイコンは残す）。
+                            groups-editing-and-place-history §4: 学年グループも同じ入口から
+                            メンバー一覧（閲覧のみ）を開けるようにする */}
                         <div
                           className="cmpinfo"
-                          style={isGrade ? undefined : { cursor: "pointer" }}
-                          onClick={isGrade ? undefined : () => setGroupMembersId(g.id)}
-                          role={isGrade ? undefined : "button"}
-                          tabIndex={isGrade ? undefined : 0}
-                          onKeyDown={
-                            isGrade
-                              ? undefined
-                              : (e) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    setGroupMembersId(g.id);
-                                  }
-                                }
-                          }
+                          style={{ cursor: "pointer" }}
+                          onClick={() => setGroupMembersId(g.id)}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setGroupMembersId(g.id);
+                            }
+                          }}
                         >
                           <div className="cmpnm">{g.label}</div>
                           <div className="cmpsub">
-                            {isGrade ? "学年グループ（改名のみ）" : `メンバー ${memberCount}人 ›`}
+                            {isGrade ? `学年で自動 ・ メンバー ${memberCount}人 ›` : `メンバー ${memberCount}人 ›`}
                           </div>
                         </div>
-                        {!isGrade && (
-                          <button
-                            className="msgdel"
-                            aria-label="メンバーを編集"
-                            onClick={() => setGroupMembersId(g.id)}
-                          >
-                            <E n="users" />
-                          </button>
-                        )}
+                        <button
+                          className="msgdel"
+                          aria-label={isGrade ? "メンバーを表示" : "メンバーを編集"}
+                          onClick={() => setGroupMembersId(g.id)}
+                        >
+                          <E n="users" />
+                        </button>
                         <button
                           className="msgdel"
                           aria-label="編集"
@@ -4125,28 +4191,52 @@ function SheetHost({
                         >
                           <IconEdit />
                         </button>
-                        {!isGrade && (
-                          <button
-                            className="msgdel"
-                            aria-label="削除"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  `「${g.label}」を削除しますか？（予定からもこのグループが外れます）`
-                                )
-                              )
-                                team.removeGroup(g.id);
-                            }}
-                          >
-                            <E n="trash" />
-                          </button>
-                        )}
+                        <button
+                          className="msgdel"
+                          aria-label="削除"
+                          onClick={() => {
+                            const msg = isGrade
+                              ? `「${g.label}」を削除しますか？（予定・連絡・試合記録からもこのグループが外れます。選手の学年は変わりません）`
+                              : `「${g.label}」を削除しますか？（予定からもこのグループが外れます）`;
+                            if (window.confirm(msg)) team.removeGroup(g.id);
+                          }}
+                        >
+                          <E n="trash" />
+                        </button>
                       </>
                     )}
                   </div>
                 );
               })}
             </div>
+            {/* groups-editing-and-place-history §4: 学年グループを削除した後に戻すための入口。
+                現在の学校区分の学年のうち、学年グループが無いものだけをチップで並べる
+                （全部そろっていれば行ごと出さない）。チップは対象欄の「＋管理」と同じ
+                .grouppick-item.manageを流用（新規CSSなし） */}
+            {(() => {
+              const stage = team.schoolStage ?? "junior";
+              const missingGrades = STAGE_GRADES[stage].filter(
+                (n) => !team.groups.some((x) => x.kind === "grade" && x.grade === n)
+              );
+              if (missingGrades.length === 0) return null;
+              return (
+                <div className="formfield">
+                  <label>学年グループを追加</label>
+                  <div className="grouppick">
+                    {missingGrades.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        className="grouppick-item manage"
+                        onClick={() => team.addGradeGroup(n)}
+                      >
+                        {gradeLabel(stage, n)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="formfield">
               <label>新しいグループを追加</label>
               <input
