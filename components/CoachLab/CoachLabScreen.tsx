@@ -113,10 +113,6 @@ export default function CoachLabScreen() {
   else if (current.kind === "profile") tag = "プロフィール編集";
 
   const isRoot = stack.length === 1;
-  // mobile-redesign Phase D-1(C2-minor 到達不能コード): backLabelはPC分岐の<header>内
-  // (160行以降)でのみ使われる(=pcがtrueのときしか参照されない)ため、pc?...:"メニュー"の
-  // false側は到達しない死にコードだった。「‹ メニュー」表記は他画面でも全廃済みのため簡約する
-  const backLabel = isRoot ? "ホーム" : "戻る";
   const handleBack = () => {
     if (isRoot) {
       if (!confirmLeaveWrite()) return;
@@ -164,10 +160,14 @@ export default function CoachLabScreen() {
     <div className="app clapp">
       {pc ? (
         <header>
-          <div className="fpback" onClick={handleBack}>
-            ‹ {backLabel}
-          </div>
-          <div className="brand" style={{ marginLeft: 4 }}>
+          {/* board-squad-and-pc-polish §1: 左レールがあるためルート(isRoot)の「‹ ホーム」は出さない。
+              画面内の戻る(記事・指導者ページから一覧へ)の「‹ 戻る」は残す */}
+          {!isRoot && (
+            <div className="fpback" onClick={handleBack}>
+              ‹ 戻る
+            </div>
+          )}
+          <div className="brand" style={!isRoot ? { marginLeft: 4 } : undefined}>
             <div className="logo">コーチラボ</div>
             <div className="tag team" style={{ marginTop: 4 }}>
               {tag}

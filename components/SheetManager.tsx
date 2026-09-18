@@ -17,8 +17,11 @@ import type {
   SavedSetPiece,
   SchoolStage,
   SetPieceKind,
+  TeamEvent,
 } from "@/lib/types";
 import { dmThreadKey, INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER, threadGroupId } from "@/lib/types";
+import { byStartAsc, isUpcomingOrOngoing, targetLabel } from "@/lib/calendarUtils";
+import { buildEventSquad } from "@/lib/squad";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
 import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
@@ -183,6 +186,8 @@ export function AssignBody({ slot }: { slot: number }) {
   const filterGroup = resolveFilterGroup(filterIds, team.groups);
   const { slots, players } = board.state;
   const inXi = new Set(slots.map((s) => s.pid).filter(Boolean));
+  // board-squad-and-pc-polish §2-3: 一覧はベンチの選手を先・メンバー外を後に並べる
+  const benchIdSet = new Set(board.state.benchIds ?? []);
   const role = slots[slot].role;
   const list = useMemo(() => {
     const kw = q.trim().toLowerCase();
@@ -197,12 +202,16 @@ export function AssignBody({ slot }: { slot: number }) {
           String(p.number ?? "").includes(kw)
       )
       .sort((a, b) => {
+        // ベンチの選手を先に（既存の並び＝役割の一致優先はその中で維持）
+        const ba = benchIdSet.has(a.id) ? 0 : 1;
+        const bb = benchIdSet.has(b.id) ? 0 : 1;
+        if (ba !== bb) return ba - bb;
         // 枠の役割と同グループを上位に
         const ga = groupOf(a.position) === groupOf(role) ? 0 : 1;
         const gb = groupOf(b.position) === groupOf(role) ? 0 : 1;
         return ga - gb;
       });
-  }, [players, inXi, q, role, filterGroup]);
+  }, [players, inXi, q, role, filterGroup, benchIdSet]);
 
   // グループ選択中の補助文（「中3：23人（配置済み8人）」）用の集計
   const groupTotal = filterGroup ? players.filter((p) => playerInGroup(p, filterGroup)).length : 0;
@@ -329,7 +338,10 @@ export function AssignBody({ slot }: { slot: number }) {
             >
               <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
               <div className="meta">
-                <div className="nm">{p.name}</div>
+                <div className="nm">
+                  {p.name}
+                  {benchIdSet.has(p.id) && <span className="assignbenchbadge">ベンチ</span>}
+                </div>
                 <div className="sub">背番号 {p.number ?? "—"}</div>
               </div>
               <div className="num">{p.number ?? "–"}</div>
@@ -444,7 +456,7 @@ export function SlotMenuBody({ slot }: { slot: number }) {
             board.toast(`${player.name} をスタメンから外しました`);
           }}
         >
-          <div className="mi"><E n="benchout" /></div> スタメンから外す（ベンチへ）
+          <div className="mi"><E n="benchout" /></div> スタメンから外す
         </div>
       </div>
     </>
@@ -953,6 +965,11 @@ function PlayerForm({
   assignSlot?: number;
 }) {
   const board = useBoard();
+  // レビュー指摘(第2回・major §3): 選手削除の後始末(squad/attendance)はTeamHub側の
+  // 名簿経路だけで呼ばれていたため、戦術ボード側の削除経路(この下のボタン)ではteamの
+  // 後始末が抜けていた。表示は存在チェックで壊れないが保存データにidが残り続けるため、
+  // TeamHub.tsx側の削除ハンドラと同じくremovePlayerAnswersを呼ぶ
+  const team = useTeam();
   const [name, setName] = useState(player?.name ?? "");
   const [number, setNumber] = useState(
     player?.number != null ? String(player.number) : ""
@@ -1078,6 +1095,7 @@ function PlayerForm({
           style={{ color: "var(--red)" }}
           onClick={() => {
             board.deletePlayer(player.id);
+            team.removePlayerAnswers(player.id);
             board.closeSheet();
             board.toast(`${player.name} を削除しました`);
           }}
@@ -2469,6 +2487,69 @@ function ImportSheet() {
   );
 }
 
+/* 予定の日付「YYYY-MM-DD」→「M/D」（squadToEventの一覧・toast表示用） */
+function fmtSqevDate(s: string): string {
+  const [, m, d] = s.split("-");
+  return m && d ? `${Number(m)}/${Number(d)}` : s;
+}
+
+/* ---------------- 試合予定にメンバーを登録 (board-squad-and-pc-polish §2-4) ---------------- */
+function SquadToEventSheet() {
+  const board = useBoard();
+  const team = useTeam();
+  const today = localDateStr();
+  const matches = useMemo(
+    () =>
+      team.team.events
+        .filter((e) => e.kind === "match" && isUpcomingOrOngoing(e, today))
+        .sort(byStartAsc)
+        .slice(0, 10),
+    [team.team.events, today]
+  );
+
+  const register = (ev: TeamEvent) => {
+    // Bench.tsx側のボタンで既に確認済みだが、シートを開いたまま盤面が変わる余地があるため二重に確認する
+    if (!board.state.slots.some((s) => s.pid)) {
+      board.toast("スタメンが1人も配置されていません");
+      return;
+    }
+    team.setEventSquad(ev.id, buildEventSquad(board.state));
+    board.closeSheet();
+    board.toast(`${fmtSqevDate(ev.date)} ${ev.title} にメンバーを登録しました`);
+  };
+
+  return (
+    <>
+      <h2>試合予定にメンバーを登録</h2>
+      {matches.length === 0 ? (
+        <div className="empty-msg">
+          今日以降の試合の予定がありません。カレンダーで試合の予定を作ってください。
+        </div>
+      ) : (
+        <div className="list">
+          {matches.map((ev) => {
+            const label = team.groups.length > 0 ? targetLabel(ev, team.groups) : null;
+            return (
+              <div key={ev.id} className="sqevrow" onClick={() => register(ev)}>
+                <div className="sqevmain">
+                  <span className="sqevdate">{fmtSqevDate(ev.date)}</span>
+                  <span className="sqevtitle">{ev.title}</span>
+                </div>
+                <div className="sqevsub">
+                  {label && (
+                    <span className={`evgroups${label === "全員" ? "" : " targeted"}`}>{label}</span>
+                  )}
+                  {ev.squad && <span className="sqevdone">登録済み</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
 /* ---------------- Manager ---------------- */
 export default function SheetManager() {
   const board = useBoard();
@@ -2544,6 +2625,9 @@ export default function SheetManager() {
       break;
     case "stat":
       content = <StatSheet metric={sheet.statMetric ?? "record"} />;
+      break;
+    case "squadToEvent":
+      content = <SquadToEventSheet />;
       break;
   }
 

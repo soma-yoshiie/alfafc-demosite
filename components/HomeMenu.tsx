@@ -742,6 +742,16 @@ function MatchdayBoard({
                   <span className="mdb-metaval">{nextEvent.note.split("\n")[0]}</span>
                 </div>
               )}
+              {/* board-squad-and-pc-polish §3: メンバー登録済みの試合バッジ。
+                  レビュー指摘(1回目): 濃紺グラデのヒーローカード内で.evgroups.targeted（薄青地に
+                  薄青文字）を使うとコントラスト比が約2.1:1しか無く読めなかった。隣の値と同じ
+                  .mdb-metaval（白文字）で出す */}
+              {nextEvent.kind === "match" && nextEvent.squad && (
+                <div className="mdb-metaitem">
+                  <span className="mdb-metalabel">メンバー</span>
+                  <span className="mdb-metaval">メンバー発表</span>
+                </div>
+              )}
               <div className="mdb-metaitem mdb-metaitem-att">
                 <span className="mdb-metalabel">出欠</span>
                 <span className="mdb-metaval">未回答 {unansweredNext}名</span>

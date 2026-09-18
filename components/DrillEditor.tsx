@@ -592,10 +592,7 @@ function Inner() {
     <div className="app drillapp dx">
       {pc ? (
         <header>
-          {/* 戻り先: PCは常にホーム(不変) */}
-          <div className="fpback" onClick={() => board.setScreen("home")}>
-            ‹ ホーム
-          </div>
+          {/* board-squad-and-pc-polish §1: 左にレール(.conrail)があるため「‹ ホーム」は不要 */}
           <button
             className="drilltitle"
             onClick={() => {

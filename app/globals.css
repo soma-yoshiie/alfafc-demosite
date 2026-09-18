@@ -760,6 +760,261 @@ header {
   opacity: 0.8;
 }
 
+/* ===== board-squad-and-pc-polish §2: スタメン／ベンチ／メンバー外 =====
+   グループ絞り込み中の右カラムの補足文（「中3の人数」）。新規の数値タイル系ではなく
+   ただの注記なので12px --mut（mobile-redesign B-2の数値強調規約はタイル本体側のみ対象） */
+.statbarhint {
+  padding: 4px 14px 0;
+  font-size: 12px;
+  color: var(--mut);
+}
+/* ベンチ見出し行にステッパーが増えた分、390px幅でも横はみ出ししないよう折り返しを許す
+   （右の説明文iはmargin-left:autoのまま＝あふれれば自分の行で右寄せに折り返る） */
+.bench .bh {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+/* ベンチの枠数ステッパー（−／枠数／＋）。新規部品のため丸めず最初から角丸トークンで作る
+   （§4の「今回足す新規の操作部品も四角で作る」）。分割ボタンの内側はr-sm、外枠はr-md */
+.benchstepper {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-lowest);
+}
+.benchstepbtn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+.benchstepbtn:disabled {
+  color: var(--mut);
+  cursor: default;
+  opacity: 0.5;
+}
+/* レビュー指摘(1回目): 素の.benchstepvalだと詳細度(0,1,0)が既存の.bench .bh span(0,2,1)に
+   負けて11px/--mutで描画されていた（現在値が「−」「＋」より薄く小さく見える）。
+   .bench .bh配下のセレクタで書いて13px/700/--inkを通す */
+.bench .bh .benchstepval {
+  min-width: 22px;
+  padding: 0 2px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+/* メンバー外の開閉見出し。タップで開閉するトグルボタン */
+.benchoutside {
+  margin-top: 14px;
+}
+.benchoutsidehead {
+  appearance: none;
+  border: 0;
+  background: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 2px;
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 1px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+/* レビュー指摘(1回目): margin-left:autoで見出し幅いっぱいの右端に置かれ、11px(12px未満で
+   §5違反)と相まって「折りたためる見出し」に見えなかった。ラベル直後へ寄せ（親.benchoutsidehead
+   のgap:6pxがそのまま隙間になる）、13pxへ広げる */
+.benchoutsidecar {
+  color: var(--mut);
+  font-size: 13px;
+}
+/* メンバー外のカードはベンチと同じ文法で背景だけ1段沈める */
+.bcard {
+  position: relative;
+}
+.bcard.outside {
+  background: var(--surface-low);
+}
+/* カード右上の操作ボタン（ベンチ=− → メンバー外へ／メンバー外=＋ → ベンチへ）。
+   見た目は小さく、タップ領域だけ::beforeで44×44pxへ広げる（.msgdelの逆版）。
+   pointerdownをstopPropagationしてカードのドラッグ開始を横取りしない */
+.bcardact {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-sm);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.bcardact::before {
+  content: "";
+  position: absolute;
+  /* レビュー指摘(1回目): box-sizing:border-boxの実寸(20px=22px-枠線2px)にinset:-11px×2だと
+     42pxにしかならず、スマホの44px下限に2px足りなかった。-12pxで20+24=44pxにする */
+  inset: -12px;
+}
+/* 配置シート（AssignBody）：ベンチの選手の行に付ける小さなバッジ */
+.assignbenchbadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: var(--r-sm);
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
+/* ===== board-squad-and-pc-polish §2-4: 試合予定にメンバーを登録 =====
+   ベンチ見出し下の「試合予定にメンバーを登録」ボタン。新規部品のため最初から
+   角丸トークンで作る（§4「今回足す新規の操作部品も四角で作る」） */
+.benchToEventBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin: 2px 0 12px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.benchToEventBtn:active {
+  background: var(--surface-low);
+}
+/* squadToEventシート：今日以降の試合の予定一覧（タップで登録） */
+/* 予定の詳細「メンバー」欄（統括の最終調整）: GK／DF／MF／FW／ベンチを行に分け、左にラベルの列。
+   選手名は1人分で折り返さない。自分の名前は --accent（選手・保護者の表示） */
+.sqlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 8px;
+}
+.sqline {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+/* .bench は戦術ボードのベンチ枠のクラス（padding/margin 付き）と衝突するので別名にする */
+.sqline.sqbench {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--outline);
+}
+.sqline-l {
+  flex: 0 0 44px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.sqline-v {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+.sqname {
+  white-space: nowrap;
+}
+.sqname.me {
+  color: var(--accent);
+  font-weight: 700;
+}
+.sqrole {
+  font-style: normal;
+  font-size: 12px;
+  color: var(--mut);
+  margin-right: 4px;
+}
+.sqevrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--outline);
+  cursor: pointer;
+}
+.sqevrow:active {
+  background: var(--surface-low);
+}
+/* レビュー指摘(1回目): 最終行にも罫線が残り、ダイアログ/シートの下端に宙に浮いた線が
+   出ていた（.convlist .convrow:last-child等、既存の一覧と同じく最終行は消す） */
+.sqevrow:last-child {
+  border-bottom: 0;
+}
+.sqevmain {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sqevdate {
+  flex: none;
+  font-size: 12px;
+  color: var(--mut);
+}
+.sqevtitle {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sqevsub {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sqevdone {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--r-sm);
+  background: var(--surface-low);
+  color: var(--mut);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* ---------- Animation studio ---------- */
 .app.anim .statbar,
 .app.anim .bench,
@@ -17808,6 +18063,75 @@ body:has(.mhead) .grouppick-item {
     flex: 1 1 0;
     min-height: 0;
     height: auto;
+  }
+  /* board-squad-and-pc-polish §4: PCの丸い操作部品(学年・グループのチップ/種別チップ/
+     コーチラボのカテゴリ/練習メニューの「＋ 場面」/ダッシュボードの「レポート」/
+     サッカーノートの検索バー)は「UIとして浮いて見える」ため、他のボタン類と同じ
+     角丸(--r-md)に揃える。アバター・状態バッジ(.notetag/.evgroups等)・トグル・
+     ピッチ上のトークンは対象外(丸のまま)。高さ・余白・色・選択状態は変えない */
+  .grouppick-item,
+  .chip,
+  .noteapp .chip,
+  .catchip,
+  .dxstepadd,
+  .noteapp .kpireport,
+  .noteapp .searchbar,
+  /* レビュー指摘(1回目): 洗い出しがbutton/a/[role=button]/label/[class*=chip]止まりで
+     取りこぼしていた丸い操作部品を追加。.evcatchip(予定フォームのカテゴリ)は直下の
+     .grouppick-item(対象)と同じ行で丸のままだった。.evcatchip.on/.catmanageは
+     border-radiusを持たないためこの1セレクタで足りる */
+  .evcatchip,
+  /* .cmpchip(サッカーノート検索・大会フィルタ・出欠タブの期間チップ)は提出一覧の
+     .chipと同じ役割なのに丸のまま。.noteapp .cmpchip(詳細度0,2,0)は別途必要 */
+  .cmpchip,
+  .noteapp .cmpchip,
+  /* .dxstep(練習メニューの場面チップ)はdivのonClickで、button等しか見ない洗い出しでは
+     見つからなかった。同じ行の.dxstepaddは既に四角なので揃える */
+  .dxstep,
+  /* .fpback(ヘッダーの「‹ 戻る」)と.stepchip(戦術アニメの場面チップ)も同じ文法の
+     操作部品として対象に含める。.noteapp .fpback(詳細度0,2,0)は別途必要。
+     .stepchip.addはborder-radiusを持たないため.stepchipのみで足りる */
+  .fpback,
+  .noteapp .fpback,
+  .stepchip,
+  /* レビュー指摘(2回目・minor): コーチラボ「フォロー中」の.cl-followbtnは普通の
+     操作ボタン(999px)で洗い出しから漏れていた。.on/.compactはborder-radiusを
+     持たず基底の999pxを継承するため、このセレクタ1つで両方とも四角になる */
+  .cl-followbtn {
+    border-radius: var(--r-md);
+  }
+  /* 分割ボタン(チーム成績｜個人成績)は外枠--r-md・内側ボタン--r-smの2段角丸にする */
+  .toolseg {
+    border-radius: var(--r-md);
+  }
+  .tseg {
+    border-radius: var(--r-sm);
+  }
+  /* board-squad-and-pc-polish §2-3: ベンチの枠数ステッパーはPCでは28pxへ縮める
+     （基底はスマホのタップ領域44px。PCはマウス操作のため小さくてよい） */
+  .benchstepbtn {
+    width: 28px;
+    height: 28px;
+    font-size: 13px;
+  }
+  /* レビュー指摘(1回目): .app.drillapp.dx(9177行)はmax-width:1220pxで、他画面が使う
+     .app(1232px、max-width指定なし)より12px狭く、中央寄せの結果ヘッダー自体が左右6pxずつ
+     内側へ入る（.dx headerがx=214〜、他画面はx=208〜）。.drilltitleは画面名を兼ねるボタン
+     なので、その分だけ左へ戻し、他画面の.brand .logoと同じx=226(ボックス左端)に揃える。
+     .dxbody側の余白(9185行)は変えない＝ピッチ等のレイアウトには影響しない */
+  .dx header .drilltitle {
+    margin-left: -6px;
+  }
+  /* 統括の最終調整: PCの予定の詳細の見出し(h2)内の種別ラベルが、24px・余白なし・角丸なしの塗りで
+     タイトルの末尾に密着していた（以前からの見た目）。今回この画面に「メンバー」欄を足したので、
+     他の場所の種別ラベルと同じ小さな四角いバッジにして、タイトルとの間を空ける */
+  .tmdetail.tm-sheetpane h2 .evkind {
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: var(--r-md);
+    margin-left: 10px;
+    vertical-align: middle;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }

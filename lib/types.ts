@@ -275,6 +275,16 @@ export interface BoardState {
   slots: Slot[];
   /** 登録選手（名簿）。スタメン・控え両方の母集団 */
   players: Player[];
+  /**
+   * ベンチ入りの選手 id（並び順＝表示順）。スタメン（slots の pid）とは重ならない。
+   * 旧データ（未定義）は読み込み時に1度だけ、スタメン以外を名簿順に先頭から benchSize 人
+   * 補う（lib/squad.ts の seedBenchIfMissing）。スタメンでもベンチでもない選手がメンバー外
+   * （lib/squad.ts の outsideOf）。セットプレー用の第2文書（setPiece 定義済み）はベンチの
+   * 概念を持たず、常に undefined のまま
+   */
+  benchIds?: string[];
+  /** ベンチの枠数（0〜20）。未定義＝7（lib/squad.ts の DEFAULT_BENCH_SIZE） */
+  benchSize?: number;
   ball: Point;
   moves: Move[];
   captain: string | null;
@@ -573,6 +583,21 @@ export interface TeamEvent {
   groupIds?: string[];
   /** 対象外の選手が自分で「参加する」にした選手ID（選手側のカスタマイズ。groups-everywhere §3） */
   optInPlayerIds?: string[];
+  /** 試合のスタメン・ベンチ（board-squad-and-pc-polish §3）。戦術ボードから登録。試合以外は常に未定義 */
+  squad?: EventSquad;
+}
+
+/**
+ * 試合の予定に登録するメンバー（board-squad-and-pc-polish §2-4/§3）。
+ * 戦術ボードの現在の状態（lib/squad.ts の buildEventSquad）から作る。
+ */
+export interface EventSquad {
+  formation: string;
+  /** slots の順（空き枠は入れない） */
+  starters: { role: string; playerId: string }[];
+  /** benchIds の順 */
+  bench: string[];
+  updatedAt: number;
 }
 
 /** 学校区分（学年の範囲とラベルを決める。groups-everywhere §1） */

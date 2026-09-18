@@ -77,7 +77,7 @@ function fmtDateTime(ts: number): string {
 
 export function LibraryScreen() {
   const board = useBoard();
-  // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
+  // board-squad-and-pc-polish §1: PCは左レールで戻れるため「‹ ホーム」は出さない(モバイルは「‹ メニュー」のまま)
   const pc = usePc();
   const [tab, setTabState] = useState<"plays" | "drills" | "setpieces">("plays");
   // 初期選択（マウント時のみ）: 戦術タブの先頭項目
@@ -216,12 +216,9 @@ export function LibraryScreen() {
   return (
     <div className="app libapp">
       {pc ? (
+        // board-squad-and-pc-polish §1: 左にレール(.conrail)があるため「‹ ホーム」は不要
         <header>
-          {/* 戻り先: PCは常にホーム(不変) */}
-          <div className="fpback" onClick={() => board.setScreen("home")}>
-            ‹ ホーム
-          </div>
-          <div className="brand" style={{ marginLeft: 4 }}>
+          <div className="brand">
             <div className="logo">ライブラリ</div>
             <div className="tag team" style={{ marginTop: 4 }}>
               {board.state.teamName ?? "マイチーム"}
@@ -672,18 +669,16 @@ function DrillPreview({ drill }: { drill: SavedDrill }) {
 
 export function SettingsScreen() {
   const board = useBoard();
-  // 戻りラベル: PCは常にホームへ「‹ ホーム」。モバイルはnavFromに従いhome/otherへ
-  // （ホームの行/その他ハブの行のどちらから開いたかで戻り先が変わる。mobile-redesign-v2 §2）
+  // board-squad-and-pc-polish §1: PCは左レールで戻れるため「‹ ホーム」は出さない。
+  // モバイルはnavFromに従いhome/otherへ（ホームの行/その他ハブの行のどちらから開いたかで戻り先が変わる。mobile-redesign-v2 §2）
   const pc = usePc();
 
   return (
     <div className="app setapp">
       {pc ? (
+        // board-squad-and-pc-polish §1: 左にレール(.conrail)があるため「‹ ホーム」は不要
         <header>
-          <div className="fpback" onClick={() => board.setScreen("home")}>
-            ‹ ホーム
-          </div>
-          <div className="brand" style={{ marginLeft: 4 }}>
+          <div className="brand">
             <div className="logo">設定</div>
             <div className="tag team" style={{ marginTop: 4 }}>
               {board.state.teamName ?? "マイチーム"}

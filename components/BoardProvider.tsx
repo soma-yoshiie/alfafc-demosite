@@ -60,6 +60,7 @@ import {
 } from "@/lib/animation";
 import { convexHull } from "@/lib/geometry";
 import { topToY, yToTop } from "@/lib/pitchView";
+import { benchOf, benchSizeOf, clampBenchSize, normalizeSquad, seedBenchIfMissing } from "@/lib/squad";
 import {
   loadDeliverables,
   loadLibrary,
@@ -106,6 +107,13 @@ type Action =
   | { type: "ASSIGN_MANY"; pairs: AssignPair[] }
   /** 自動配置結果の「元に戻す」用。各枠のpidがpairsのpidと一致する枠だけnullへ戻す */
   | { type: "UNASSIGN_MANY"; pairs: AssignPair[] }
+  /** board-squad-and-pc-polish §2-1: ベンチの枠数を変更する。縮めて溢れた分は
+   * normalizeSquad が末尾からメンバー外へ落とす */
+  | { type: "SET_BENCH_SIZE"; size: number }
+  /** メンバー外の選手をベンチへ入れる（枠が満杯なら何もしない。満員判定はAPI側=benchAdd で行う） */
+  | { type: "BENCH_ADD"; pid: string }
+  /** ベンチの選手をメンバー外へ出す */
+  | { type: "BENCH_REMOVE"; pid: string }
   | { type: "SWAP"; a: number; b: number }
   | { type: "MOVE_SLOT"; slot: number; x: number; y: number; role: Position }
   | { type: "SET_BALL"; x: number; y: number }
@@ -199,7 +207,9 @@ function makeInitial(): BoardState {
   SAMPLE_PLAYERS.slice(0, slots.length).forEach((p, i) => {
     slots[i].pid = p.id;
   });
-  return {
+  // board-squad-and-pc-polish §2-1: 初回シードもスタメン以外を名簿順にbenchSize人ベンチへ
+  // 入れる規則を、旧データの補完（seedBenchIfMissing）と共通化する
+  return seedBenchIfMissing({
     teamName: SAMPLE_TEAM_NAME,
     formation: "4-3-3",
     slots,
@@ -214,7 +224,7 @@ function makeInitial(): BoardState {
     stepCount: 1,
     guides: {},
     pitchView: "full",
-  };
+  });
 }
 
 /** 旧データ（opponents/drawings/shapes/step/guides/pitchView なし）を現行形式へ補完 */
@@ -232,7 +242,7 @@ function normalizeBoard(state: BoardState): BoardState {
   const drawings = (state.drawings ?? []).map((d) =>
     d.id ? d : { ...d, id: newStrokeId() }
   );
-  return {
+  const next = {
     ...state,
     moves,
     opponents: state.opponents ?? [],
@@ -242,6 +252,10 @@ function normalizeBoard(state: BoardState): BoardState {
     guides: state.guides ?? {},
     pitchView: state.pitchView ?? "full",
   };
+  // board-squad-and-pc-polish §2-1: 旧データ（benchIds未定義）の1度きりの補完はここ1箇所で行う。
+  // HYDRATE／LOAD_TACTIC／IMPORT_SHARED いずれもこの関数を通るため、読込経路すべてで
+  // ベンチの整合（スタメンとの重複・存在しないid・枠超過）も併せて取る
+  return normalizeSquad(seedBenchIfMissing(next));
 }
 
 /** 既定の線種（ボール=パス / それ以外=ラン） */
@@ -285,12 +299,25 @@ function reducer(state: BoardState, action: Action): BoardState {
     case "HYDRATE":
       return normalizeBoard(action.state);
 
-    case "SET_FORMATION":
-      return {
-        ...state,
-        formation: action.key,
-        slots: buildSlots(action.key, state.slots),
-      };
+    case "SET_FORMATION": {
+      const slots = buildSlots(action.key, state.slots);
+      // レビュー指摘(1回目): 枠が減って弾き出されたスタメンは、REMOVE/UNASSIGN_MANYと同じ
+      // 規則（ベンチに空きがあれば末尾へ、無ければメンバー外）で扱う。buildSlotsは新しい
+      // 枠数を超えるslotをそのまま切り捨てるため、その分のpidをここで拾う
+      const keptPids = new Set(slots.map((s) => s.pid).filter((x): x is string => !!x));
+      const droppedPids = state.slots
+        .map((s) => s.pid)
+        .filter((pid): pid is string => !!pid && !keptPids.has(pid));
+      let benchIds = state.benchIds;
+      if (droppedPids.length && benchIds && !state.setPiece) {
+        const size = benchSizeOf(state);
+        for (const pid of droppedPids) {
+          if (benchIds.length >= size) break;
+          benchIds = [...benchIds, pid];
+        }
+      }
+      return normalizeSquad({ ...state, formation: action.key, slots, benchIds });
+    }
 
     case "ASSIGN": {
       const slots = state.slots.map((s) => ({ ...s }));
@@ -298,19 +325,43 @@ function reducer(state: BoardState, action: Action): BoardState {
       slots.forEach((s) => {
         if (s.pid === action.pid) s.pid = null;
       });
+      // board-squad-and-pc-polish §2-1: 出る選手（枠に元々居た選手）の行き先を、
+      // 入る選手がベンチ出身かメンバー外出身かで分ける
+      const outgoing = state.slots[action.slot]?.pid ?? null;
       slots[action.slot].pid = action.pid;
-      return { ...state, slots };
+      let benchIds = state.benchIds;
+      if (benchIds && !state.setPiece) {
+        const idx = benchIds.indexOf(action.pid);
+        if (idx >= 0) {
+          // 入る選手がベンチに居た場合：出る選手はその同じベンチ枠に入る（無ければ空きが増える）
+          benchIds = outgoing
+            ? benchIds.map((id, i) => (i === idx ? outgoing : id))
+            : benchIds.filter((id) => id !== action.pid);
+        } else if (outgoing && benchIds.length < benchSizeOf(state)) {
+          // メンバー外から入った場合：出る選手はベンチに空きがあれば末尾へ（無ければメンバー外）
+          benchIds = [...benchIds, outgoing];
+        }
+      }
+      return normalizeSquad({ ...state, slots, benchIds });
     }
 
     case "REMOVE": {
+      const removedPid = state.slots[action.slot]?.pid ?? null;
       const slots = state.slots.map((s) => ({ ...s }));
       slots[action.slot].pid = null;
+      // board-squad-and-pc-polish §2-1: 外した選手はベンチに空きがあれば末尾へ、
+      // 無ければ何もしない（=メンバー外に現れる）
+      let benchIds = state.benchIds;
+      if (removedPid && benchIds && !state.setPiece && benchIds.length < benchSizeOf(state)) {
+        benchIds = [...benchIds, removedPid];
+      }
       // 外した slot が保持者なら保持解除する
-      return {
+      return normalizeSquad({
         ...state,
         slots,
+        benchIds,
         holder: state.holder === action.slot ? null : state.holder,
-      };
+      });
     }
 
     case "ASSIGN_MANY": {
@@ -323,21 +374,30 @@ function reducer(state: BoardState, action: Action): BoardState {
       action.pairs.forEach(({ slot, pid }) => {
         slots[slot].pid = pid;
       });
-      return { ...state, slots };
+      // 対象は空き枠だけ（groups-phase2 §2-1）＝出る選手は発生しないため、
+      // 枠に入った選手をベンチから外すだけでよい
+      const benchIds = state.benchIds?.filter((id) => !pids.has(id));
+      return normalizeSquad({ ...state, slots, benchIds });
     }
 
     case "UNASSIGN_MANY": {
       const slots = state.slots.map((s) => ({ ...s }));
       let holder = state.holder;
+      let benchIds = state.benchIds;
+      const size = benchSizeOf(state);
       action.pairs.forEach(({ slot, pid }) => {
         // その枠が今もpairsのpidを保持している場合だけ戻す（戻すまでの間に手動で
         // 変更された枠は上書きしない）
         if (slots[slot] && slots[slot].pid === pid) {
           slots[slot].pid = null;
           if (holder === slot) holder = null;
+          // REMOVEと同じ規則：ベンチに空きがあれば末尾へ（無ければメンバー外）
+          if (benchIds && !state.setPiece && benchIds.length < size) {
+            benchIds = [...benchIds, pid];
+          }
         }
       });
-      return { ...state, slots, holder };
+      return normalizeSquad({ ...state, slots, holder, benchIds });
     }
 
     case "SWAP": {
@@ -383,24 +443,49 @@ function reducer(state: BoardState, action: Action): BoardState {
       const slots = state.slots.map((s) =>
         s.pid === action.id ? { ...s, pid: null } : s
       );
-      return {
+      // 削除した選手のidはnormalizeSquadが players から消えたことで自動的にbenchIdsからも除く
+      return normalizeSquad({
         ...state,
         players: state.players.filter((p) => p.id !== action.id),
         slots,
         captain: state.captain === action.id ? null : state.captain,
-      };
+      });
     }
 
     case "SET_TEAM_NAME":
       return { ...state, teamName: action.name || null };
 
     case "SYNC_ROSTER":
-      return {
+      // playState側の名簿変更をspStateへ反映する経路（setPiece定義済み＝ベンチ概念なし）。
+      // normalizeSquadはsetPiece定義済みを素通しするため、通しても安全
+      return normalizeSquad({
         ...state,
         players: action.players,
         teamName: action.teamName,
         captain: action.captain,
-      };
+      });
+
+    case "SET_BENCH_SIZE": {
+      if (state.setPiece) return state;
+      return normalizeSquad({ ...state, benchSize: clampBenchSize(action.size) });
+    }
+
+    case "BENCH_ADD": {
+      if (state.setPiece) return state;
+      const benchIds = state.benchIds ?? [];
+      if (benchIds.includes(action.pid)) return state;
+      // レビュー指摘(1回目): 満杯判定はAPI層(benchAdd)のstateRef.current頼みで、同一tick内で
+      // 連続dispatchされると2回とも通過してしまう。仕様§2-1どおり reducer 側でも「枠が満杯なら
+      // 何もしない」を保証し、素通りでも normalizeSquad の後付けの切り捨てに頼らないようにする
+      if (benchIds.length >= benchSizeOf(state)) return state;
+      return normalizeSquad({ ...state, benchIds: [...benchIds, action.pid] });
+    }
+
+    case "BENCH_REMOVE": {
+      if (state.setPiece) return state;
+      const benchIds = (state.benchIds ?? []).filter((id) => id !== action.pid);
+      return normalizeSquad({ ...state, benchIds });
+    }
 
     case "RESET_POSITIONS":
       return { ...state, slots: buildSlots(state.formation, state.slots) };
@@ -780,6 +865,8 @@ export type SheetType =
   | "oppMenu"
   | "kpi"
   | "stat"
+  /** board-squad-and-pc-polish §2-4: 戦術ボードの現在のメンバーを試合予定へ登録する（スタッフのみ） */
+  | "squadToEvent"
   | null;
 
 /** コーチ・ダッシュボードのサマリーカードから選手別内訳を開く際の対象指標 */
@@ -839,6 +926,12 @@ interface BoardContextValue {
   assignMany: (pairs: AssignPair[]) => void;
   /** 自動配置結果の「元に戻す」。各枠のpidがpairsのpidと一致する枠だけ空きに戻す */
   unassignMany: (pairs: AssignPair[]) => void;
+  /** board-squad-and-pc-polish §2-1: ベンチの枠数を変更する（0〜20。縮めて溢れた分はメンバー外へ） */
+  setBenchSize: (n: number) => void;
+  /** メンバー外の選手をベンチへ入れる。枠が満杯なら何もせずtoastで知らせる */
+  benchAdd: (pid: string) => void;
+  /** ベンチの選手をメンバー外へ出す */
+  benchRemove: (pid: string) => void;
   swapSlots: (a: number, b: number) => void;
   moveSlot: (slot: number, x: number, y: number, role: Position) => void;
   setBall: (x: number, y: number) => void;
@@ -3018,6 +3111,18 @@ export function BoardProvider({
       removePlayer: (slot) => dispatch({ type: "REMOVE", slot }),
       assignMany: (pairs) => dispatch({ type: "ASSIGN_MANY", pairs }),
       unassignMany: (pairs) => dispatch({ type: "UNASSIGN_MANY", pairs }),
+      setBenchSize: (n) => dispatch({ type: "SET_BENCH_SIZE", size: n }),
+      benchAdd: (pid) => {
+        // 満杯判定はここ（API層）で行い、UI側は結果のtoastを見るだけでよくする
+        const st = stateRef.current;
+        const size = benchSizeOf(st);
+        if (benchOf(st).length >= size) {
+          showToast(`ベンチが満員です（${size}/${size}）。枠を増やすか、誰かを外してください`);
+          return;
+        }
+        dispatch({ type: "BENCH_ADD", pid });
+      },
+      benchRemove: (pid) => dispatch({ type: "BENCH_REMOVE", pid }),
       swapSlots: (a, b) => dispatch({ type: "SWAP", a, b }),
       moveSlot: (slot, x, y, role) =>
         dispatch({ type: "MOVE_SLOT", slot, x, y, role }),

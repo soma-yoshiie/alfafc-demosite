@@ -6,9 +6,11 @@ import type {
   Announcement,
   AttendanceStatus,
   DominantFoot,
+  EventSquad,
   FitnessRecord,
   FitnessTest,
   GoalOrigin,
+  Group,
   MatchConceded,
   MatchGoal,
   MatchRecord,
@@ -22,6 +24,7 @@ import type {
 } from "@/lib/types";
 import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL, STAGE_GRADES } from "@/lib/types";
 import { ALL_POSITIONS, groupOf } from "@/lib/formations";
+import { buildEventSquad } from "@/lib/squad";
 import { LEAGUE_STANDINGS } from "@/lib/sampleLeague";
 import {
   addDays,
@@ -131,6 +134,12 @@ function evWhenText(e: TeamEvent): string {
   if (isMultiDay(e)) return `${fmtDate(e.date)}〜${fmtDate(eventEndDate(e))}`;
   if (e.allDay) return `${fmtDate(e.date)} 終日`;
   return `${fmtDate(e.date)}${fmtTimeRange(e) ? ` ${fmtTimeRange(e)}` : ""}`;
+}
+/** board-squad-and-pc-polish §3: メンバー欄のスタメン表示順（GK→DF→MF→FW） */
+const SQUAD_ROLE_ORDER: Group[] = ["gk", "df", "mf", "fw"];
+function squadRoleOrder(role: string): number {
+  const idx = SQUAD_ROLE_ORDER.indexOf(groupOf(role as Position));
+  return idx === -1 ? SQUAD_ROLE_ORDER.length : idx;
 }
 function fmtTs(ts: number): string {
   const d = new Date(ts);
@@ -513,11 +522,8 @@ function Inner() {
     <div className="app teamapp">
       {pc ? (
         <header>
-          {/* 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に */}
-          <div className="fpback" onClick={() => board.setScreen("home")}>
-            ‹ ホーム
-          </div>
-          <div className="brand" style={{ marginLeft: 4 }}>
+          {/* board-squad-and-pc-polish §1: 左にレール(.conrail)があるため「‹ ホーム」は不要 */}
+          <div className="brand">
             <div className="logo">
               {board.auth.role === "coach" ? (
                 <>
@@ -1134,8 +1140,10 @@ function EventCard({
         {ev.place ? ` ・ ${ev.place}` : ""}
       </div>
       {ev.note && <div className="evnote">{ev.note}</div>}
-      <div style={{ marginTop: 6 }}>
+      <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
         <EvGroupsBadge ev={ev} groups={team.groups} />
+        {/* board-squad-and-pc-polish §3: メンバー登録済みの試合バッジ */}
+        {ev.kind === "match" && ev.squad && <span className="evgroups targeted">メンバー発表</span>}
       </div>
       {isCoach && (
         <div
@@ -1261,6 +1269,8 @@ function CalendarTab({
                   </span>
                   <span className="agtitle">{e.title}</span>
                   <EvGroupsBadge ev={e} groups={team.groups} />
+                  {/* board-squad-and-pc-polish §3: メンバー登録済みの試合バッジ */}
+                  {e.kind === "match" && e.squad && <span className="evgroups targeted">メンバー発表</span>}
                   {timeLabel && <span className="agtime">{timeLabel}</span>}
                 </div>
               );
@@ -3847,7 +3857,10 @@ function SheetHost({
                 className={`grouppick-item${h.place === placeTrim ? " on" : ""}`}
                 onClick={() => {
                   setPlace(h.place);
-                  if (h.address) setAddress(h.address);
+                  // レビュー指摘(第2回・minor): 住所が無い履歴を選んでも直前の住所欄が
+                  // 残ってしまい、別会場の住所が付いた予定ができてしまっていた。
+                  // その場所で設定されていた住所（無ければ空）に必ず揃える
+                  setAddress(h.address ?? "");
                 }}
               >
                 {/* レビュー指摘(minor・第2回): 長い場所名で省略記号(…)が出ずに枠線で
@@ -3915,6 +3928,11 @@ function SheetHost({
               competitionId: kind === "match" && evCompId ? evCompId : undefined,
               // §2: 選択0件（全員）は groupIds を保存しない
               groupIds: evGroupIds.length > 0 ? [...evGroupIds] : undefined,
+              // board-squad-and-pc-polish §3: squadは試合以外常に未定義（lib/types.ts）。
+              // 種別を試合から変更したら戦術ボードのメンバーも消し、試合に戻したら
+              // 消さずに残す（updateSeriesFollowingはこのsquadを引き継がないので
+              // シリーズの他の回には影響しない）
+              squad: kind === "match" ? ev?.squad : undefined,
             };
             saveLastEventCategory(categoryId);
             if (!ev) {
@@ -4538,8 +4556,12 @@ function SheetHost({
                         <div className="evmeta">
                           {[timeLabel, e.place, compName].filter(Boolean).join(" ・ ")}
                         </div>
-                        <div style={{ marginTop: 6 }}>
+                        <div style={{ marginTop: 6, display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <EvGroupsBadge ev={e} groups={team.groups} />
+                          {/* board-squad-and-pc-polish §3: メンバー登録済みの試合バッジ */}
+                          {e.kind === "match" && e.squad && (
+                            <span className="evgroups targeted">メンバー発表</span>
+                          )}
                         </div>
                       </div>
                     );
@@ -4642,6 +4664,140 @@ function SheetHost({
                       </div>
                     )}
                   </div>
+                  {/* board-squad-and-pc-polish §3: 試合のメンバー（スタメン／ベンチ）。
+                      選手・保護者は登録が無ければ欄ごと出さない */}
+                  {e.kind === "match" && (isCoach || e.squad) && (
+                    <div className="dsec">
+                      <div className="dsec-h">
+                        <E n="clipboard" /> メンバー
+                      </div>
+                      {(() => {
+                        const squad = e.squad;
+                        const registerFromBoard = (existing: EventSquad | undefined) => {
+                          if (!board.state.slots.some((s) => s.pid)) {
+                            board.toast("戦術ボードにスタメンが1人も配置されていません");
+                            return;
+                          }
+                          team.setEventSquad(e.id, buildEventSquad(board.state));
+                          board.toast(existing ? "戦術ボードのメンバーで更新しました" : "戦術ボードのメンバーを登録しました");
+                        };
+                        if (!squad) {
+                          // 上のガード（isCoach || e.squad）により、ここに来るのは常にisCoach
+                          return (
+                            <>
+                              <div className="dsec-e">まだメンバーが登録されていません。</div>
+                              {/* レビュー指摘(1回目): .planseote(設定>プランの注記用)を流用すると
+                                  11px・PCではtext-align:centerで上の行と揃わなかった。隣の行と
+                                  同じ.dsec-e(12px --mut・左揃え)で書く */}
+                              <div className="dsec-e" style={{ margin: "0 0 6px" }}>
+                                現在の戦術ボードのスタメン・ベンチをこの試合に登録します。
+                              </div>
+                              <button className="bigbtn ghost" onClick={() => registerFromBoard(undefined)}>
+                                戦術ボードのメンバーを登録
+                              </button>
+                            </>
+                          );
+                        }
+                        const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
+                        const numberOf = (id: string) => players.find((p) => p.id === id)?.number ?? null;
+                        const validStarters = squad.starters
+                          .filter((s) => players.some((p) => p.id === s.playerId))
+                          .slice()
+                          .sort((a, b) => squadRoleOrder(a.role) - squadRoleOrder(b.role));
+                        const validBench = squad.bench.filter((id) => players.some((p) => p.id === id));
+                        const myStart = !isCoach && me ? validStarters.find((s) => s.playerId === me.id) : undefined;
+                        const myStatus =
+                          !isCoach && me
+                            ? myStart
+                              ? `あなたはスタメンです（${myStart.role}）`
+                              : validBench.includes(me.id)
+                                ? "あなたはベンチです"
+                                : "あなたは今回メンバー外です"
+                            : null;
+                        return (
+                          <>
+                            {myStatus && (
+                              <div className="dline" style={{ color: "var(--accent)" }}>
+                                {myStatus}
+                              </div>
+                            )}
+                            <div className="dline">{squad.formation}</div>
+                            {/* 統括の最終調整: 「・」区切りの1文だと18人分が段落になって読みにくい。
+                                GK／DF／MF／FW／ベンチの行に分け、左にラベルの列を置く（選手名は1人分で
+                                折り返さない）。選手・保護者が見るときは自分の名前を --accent で強調する */}
+                            {validStarters.length === 0 ? (
+                              <div className="dline">スタメンがいません。</div>
+                            ) : (
+                              <div className="sqlist">
+                                {(
+                                  [
+                                    { key: "gk", label: "GK" },
+                                    { key: "df", label: "DF" },
+                                    { key: "mf", label: "MF" },
+                                    { key: "fw", label: "FW" },
+                                  ] as const
+                                ).map((line) => {
+                                  const xs = validStarters.filter(
+                                    (s) => groupOf(s.role as Parameters<typeof groupOf>[0]) === line.key
+                                  );
+                                  if (xs.length === 0) return null;
+                                  return (
+                                    <div className="sqline" key={line.key}>
+                                      <span className="sqline-l">{line.label}</span>
+                                      <span className="sqline-v">
+                                        {xs.map((s) => (
+                                          <span
+                                            key={s.playerId}
+                                            className={`sqname${!isCoach && me?.id === s.playerId ? " me" : ""}`}
+                                          >
+                                            {s.role !== line.label && <i className="sqrole">{s.role}</i>}#
+                                            {numberOf(s.playerId) ?? "–"} {nameOf(s.playerId)}
+                                          </span>
+                                        ))}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                                <div className="sqline sqbench">
+                                  <span className="sqline-l">ベンチ</span>
+                                  <span className="sqline-v">
+                                    {validBench.length === 0
+                                      ? "なし"
+                                      : validBench.map((id) => (
+                                          <span key={id} className={`sqname${!isCoach && me?.id === id ? " me" : ""}`}>
+                                            #{numberOf(id) ?? "–"} {nameOf(id)}
+                                          </span>
+                                        ))}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            <div className="dline" style={{ fontSize: 12, color: "var(--mut)" }}>
+                              更新 {fmtTs(squad.updatedAt)}
+                            </div>
+                            {isCoach && (
+                              <>
+                                <button className="bigbtn ghost" onClick={() => registerFromBoard(squad)}>
+                                  戦術ボードのメンバーで更新
+                                </button>
+                                <button
+                                  className="bigbtn ghost"
+                                  style={{ color: "var(--red)" }}
+                                  onClick={() => {
+                                    if (window.confirm("メンバーの登録を消しますか？")) {
+                                      team.setEventSquad(e.id, null);
+                                    }
+                                  }}
+                                >
+                                  メンバーを消す
+                                </button>
+                              </>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
                   {isCoach && (
                     <div className="dsec">
                       <div className="dsec-h">出欠状況</div>

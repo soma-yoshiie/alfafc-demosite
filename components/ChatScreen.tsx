@@ -95,17 +95,14 @@ export default function ChatScreen() {
     if (tgid) return groups.find((g) => g.id === tgid)?.label ?? "会話";
     return players.find((p) => dmThreadKey(p.id) === to)?.name ?? "会話";
   };
-  // 戻りラベル: 押下先は常にホームのため、PCでは「‹ ホーム」に(モバイルは「‹ メニュー」のまま)
+  // board-squad-and-pc-polish §1: PCは左レールで戻れるため「‹ ホーム」は出さない(モバイルは「‹ メニュー」のまま)
   const pc = usePc();
 
   return (
     <div className="app chatapp">
       {pc ? (
         <header>
-          <div className="fpback" onClick={() => board.setScreen("home")}>
-            ‹ ホーム
-          </div>
-          <div className="brand" style={{ marginLeft: 4 }}>
+          <div className="brand">
             <div className="logo">チャット</div>
             <div className="tag team" style={{ marginTop: 4 }}>
               {board.state.teamName ?? "マイチーム"}

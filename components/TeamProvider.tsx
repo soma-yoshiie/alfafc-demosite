@@ -12,6 +12,7 @@ import type {
   AttendanceStatus,
   Competition,
   EventCategory,
+  EventSquad,
   FitnessRecord,
   FitnessTest,
   MatchRecord,
@@ -409,6 +410,8 @@ interface TeamContextValue {
   addEvent: (e: Omit<TeamEvent, "id">) => void;
   updateEvent: (e: TeamEvent) => void;
   removeEvent: (id: string) => void;
+  /** board-squad-and-pc-polish §3: 試合予定にスタメン・ベンチを登録／更新する。null=登録を消す */
+  setEventSquad: (eventId: string, squad: EventSquad | null) => void;
   /** イベントカテゴリの実効値（組込み2種 + カスタム） */
   categories: EventCategory[];
   addCategory: (label: string, color: string) => string;
@@ -533,6 +536,12 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     setTeam((t) => ({
       ...t,
       events: t.events.map((x) => (x.id === e.id ? e : x)),
+    }));
+  }, []);
+  const setEventSquad = useCallback((eventId: string, squad: EventSquad | null) => {
+    setTeam((t) => ({
+      ...t,
+      events: t.events.map((e) => (e.id === eventId ? { ...e, squad: squad ?? undefined } : e)),
     }));
   }, []);
   const removeEvent = useCallback(
@@ -813,13 +822,17 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       const seriesId = anchor.seriesId;
       if (!seriesId) return;
       // Omit<>は型上の除去のみで実行時には何も除去しないため、
-      // 呼び出し元由来の id/date/endDate/seriesId/detached を実行時に取り除く
+      // 呼び出し元由来の id/date/endDate/seriesId/detached を実行時に取り除く。
+      // squadも同様に除く：patch(=フォームのdata)はanchor自身のsquadしか持たないため、
+      // 含めたままだとシリーズの他の回のsquadをanchorの値で上書きしてしまう
+      // （squadは戦術ボードからの登録・選手削除の後始末でのみ更新する）
       const {
         id: _pid,
         date: _pdate,
         endDate: _pend,
         seriesId: _psid,
         detached: _pdet,
+        squad: _psquad,
         ...cleanPatch
       } = patch as TeamEvent;
       setTeam((t) => {
@@ -828,8 +841,10 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
         );
 
         // detached回は一切触らない（個別編集済みの意図を保護）。
-        // 出欠回答ありの回は削除せずその場でpatchを適用（内容変更を反映）。
-        // クリーンな回（detachedでも出欠済みでもない）だけを削除し、再生成対象にする。
+        // 出欠回答ありの回・戦術ボードのメンバーが発表済みの回は削除せずその場でpatchを
+        // 適用（内容変更を反映。squadはcleanPatchに含まれないため{...x, ...cleanPatch}で
+        // そのまま引き継がれる）。クリーンな回（detachedでも出欠済みでもメンバー発表済み
+        // でもない）だけを削除し、再生成対象にする。
         const attendance = { ...t.attendance };
         const keepDates = new Set<string>();
         const events = t.events.flatMap((x) => {
@@ -839,7 +854,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
             keepDates.add(x.date);
             return [x];
           }
-          if (hasAttendance) {
+          if (hasAttendance || x.squad) {
             keepDates.add(x.date);
             return [{ ...x, ...cleanPatch }];
           }
@@ -1018,7 +1033,19 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
         const { [playerId]: _drop, ...rest } = rec;
         attendance[evId] = rest;
       }
-      return { ...t, attendance };
+      // board-squad-and-pc-polish §3: 選手削除時はevents[].squadからもそのidを外す
+      // （スタメン・ベンチとも）。表示側は存在チェックで除くため画面は壊れないが、
+      // 保存データに参照切れのidが残り続けないよう後始末する
+      const events = t.events.map((e) => {
+        if (!e.squad) return e;
+        const starters = e.squad.starters.filter((s) => s.playerId !== playerId);
+        const bench = e.squad.bench.filter((id) => id !== playerId);
+        if (starters.length === e.squad.starters.length && bench.length === e.squad.bench.length) {
+          return e;
+        }
+        return { ...e, squad: { ...e.squad, starters, bench } };
+      });
+      return { ...t, attendance, events };
     });
   }, []);
 
@@ -1113,6 +1140,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       addEvent,
       updateEvent,
       removeEvent,
+      setEventSquad,
       categories,
       addCategory,
       updateCategory,
@@ -1154,6 +1182,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       addEvent,
       updateEvent,
       removeEvent,
+      setEventSquad,
       categories,
       addCategory,
       updateCategory,

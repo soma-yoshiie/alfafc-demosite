@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   CoachDeliverable,
   DrillDoc,
+  EventSquad,
   FitnessRecord,
   Library,
   NotebookEntry,
@@ -307,6 +308,14 @@ export function loadState(): BoardState | null {
     if (!raw) return null;
     const data = JSON.parse(raw) as BoardState;
     if (!data || !Array.isArray(data.slots)) return null;
+    // board-squad-and-pc-polish §2-1: 形が壊れていれば未定義に戻す（旧データとして
+    // normalizeBoard/seedBenchIfMissing 側の1度きりの補完に委ねる）
+    if (data.benchIds !== undefined && !Array.isArray(data.benchIds)) {
+      data.benchIds = undefined;
+    }
+    if (data.benchSize !== undefined && typeof data.benchSize !== "number") {
+      data.benchSize = undefined;
+    }
     if (Array.isArray(data.players)) {
       data.players = data.players.map((p) => {
         if (!p) return p;
@@ -501,6 +510,26 @@ export function saveSetPieceWork(state: BoardState, currentId: string | null): v
   }
 }
 
+/** board-squad-and-pc-polish §3: events[].squad の形を検査する。壊れていれば読み込み正規化で消す */
+function isValidEventSquad(v: unknown): v is EventSquad {
+  if (!v || typeof v !== "object") return false;
+  const s = v as Partial<EventSquad>;
+  return (
+    typeof s.formation === "string" &&
+    Array.isArray(s.starters) &&
+    s.starters.every(
+      (x) =>
+        !!x &&
+        typeof x === "object" &&
+        typeof (x as { role?: unknown }).role === "string" &&
+        typeof (x as { playerId?: unknown }).playerId === "string"
+    ) &&
+    Array.isArray(s.bench) &&
+    s.bench.every((id) => typeof id === "string") &&
+    typeof s.updatedAt === "number"
+  );
+}
+
 /* ---- チーム（出欠・連絡） ---- */
 export function loadTeam(): TeamData | null {
   if (typeof window === "undefined") return null;
@@ -543,6 +572,10 @@ export function loadTeam(): TeamData | null {
     // groups-phase2 §3-1: matches の groupIds が配列でなければ除去する
     data.matches = data.matches.map((m) =>
       m.groupIds !== undefined && !Array.isArray(m.groupIds) ? { ...m, groupIds: undefined } : m
+    );
+    // board-squad-and-pc-polish §3: events の squad の形が壊れていれば消す
+    data.events = data.events.map((e) =>
+      e.squad !== undefined && !isValidEventSquad(e.squad) ? { ...e, squad: undefined } : e
     );
     return data;
   } catch {

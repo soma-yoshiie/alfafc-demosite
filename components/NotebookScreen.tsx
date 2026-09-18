@@ -204,7 +204,7 @@ export default function NotebookScreen() {
   }, [board.notebook, filterGroup, targetPlayers]);
   // PC×コーチのときだけ選択state経路を使う。それ以外(モバイル/選手)は従来のview遷移のまま
   const isPcCoach = () => isCoach && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches;
-  // 戻りラベル: 押下先がホームのとき、PCでは「‹ ホーム」に(モバイルの「‹ メニュー」は現状維持)
+  // board-squad-and-pc-polish §1: PCは左レールで戻れるため「‹ ホーム」は出さない(モバイルの「‹ メニュー」は現状維持)
   const pc = usePc();
 
   const identity = notifIdentity(board.auth.role, board.auth.playerId);
@@ -309,15 +309,14 @@ export default function NotebookScreen() {
     <div className={"app noteapp" + (isCoach ? " coachapp" : "")}>
       {pc ? (
         <header>
-          {(!isRoot || tab === "home") && (
-            <div
-              className="fpback"
-              onClick={() => (isRoot ? board.setScreen("home") : setView({ mode: "root" }))}
-            >
-              ‹ {isRoot ? "ホーム" : "戻る"}
+          {/* board-squad-and-pc-polish §1: 左レールがあるためルート(isRoot)の「‹ ホーム」は出さない。
+              画面内の戻る(詳細・検索から一覧へ)の「‹ 戻る」は残す */}
+          {!isRoot && (
+            <div className="fpback" onClick={() => setView({ mode: "root" })}>
+              ‹ 戻る
             </div>
           )}
-          <div className="brand" style={{ marginLeft: 4 }}>
+          <div className="brand" style={!isRoot ? { marginLeft: 4 } : undefined}>
             <div className="logo">
               サッカー<b>ノート</b>
             </div>

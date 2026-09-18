@@ -196,6 +196,16 @@ function MhomeHero({
             <span className="mh-metaval">{nextEvent.note.split("\n")[0]}</span>
           </div>
         )}
+        {/* board-squad-and-pc-polish §3: メンバー登録済みの試合バッジ。
+            レビュー指摘(1回目): 濃紺グラデのヒーローカード内で.evgroups.targeted（薄青地に
+            薄青文字）を使うとコントラスト比が約2.1:1しか無く読めなかった。隣の値と同じ
+            .mh-metaval（白文字）で出す */}
+        {nextEvent.kind === "match" && nextEvent.squad && (
+          <div className="mh-metaitem">
+            <span className="mh-metalabel">メンバー</span>
+            <span className="mh-metaval">メンバー発表</span>
+          </div>
+        )}
         <div className="mh-metaitem">
           <span className="mh-metalabel">{metaLabel}</span>
           <span className="mh-metaval">{metaValue}</span>
