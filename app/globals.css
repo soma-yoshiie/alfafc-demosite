@@ -17791,6 +17791,24 @@ body:has(.mhead) .grouppick-item {
     flex-wrap: wrap;
     overflow-x: visible;
   }
+  /* チャット(PCコーチの2ペイン): 右ペインの白カード(.chattab)は .chatpanehead + .chatwrap の縦2段だが、
+     .chattab が block のままで、基底の .chatwrap{height:100%}(6043行)が .chatpanehead 分(45px+margin 8px)を
+     差し引かずカード内容高さの全量を取るため、.chatwrap がカードを約53px はみ出し、入力欄(.chatcompose)が
+     カード下枠(y≈976)の外に出て .chatmain の overflow:hidden(padding-box=ビューポート下端)で切れていた
+     （groups機能より前からの崩れ）。.chattab を縦flexにし、.chatwrap は残り高さを埋める
+     (flex:1・min-height:0・height:auto)。一覧のスクロールは基底の .chatscroll(flex:1/min-height:0/
+     overflow-y:auto)がそのまま引き受けるので、入力欄は常にカード内の最下部に固定される。
+     選手側(.scroll.pchat 直下の .chattab)は .chatmain 配下でないため対象外。
+     スマホは .chatmain{display:none}(5888行)のため構造的に影響なし */
+  .chatapp .chatmain .chattab {
+    display: flex;
+    flex-direction: column;
+  }
+  .chatapp .chatmain .chatwrap {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
