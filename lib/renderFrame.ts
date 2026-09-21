@@ -29,11 +29,14 @@ export interface FrameOpts {
  * ヘッダー込みの高さを返す（full ≒ 480:640 / half ≒ 480:340 相当の比率）。
  * boxatk/boxdef は y可視範囲が42（=100の42%）と半分以下のため、横長（画面のPNG/GIF書き出しも
  * 同じ構図になるよう）に ≒ 480:300 相当の比率にする（PC表示側の横長クロップ演出と揃える）。
+ * paatk/padef（PA拡大。setpiece-redesign §6）は書き出しでは横の切り出しをせず、
+ * boxatk/boxdefと同じ構図として扱う。
  */
 export function frameSize(view: PitchViewMode | undefined, width: number): { w: number; h: number } {
+  const v = view === "paatk" ? "boxatk" : view === "padef" ? "boxdef" : view;
   const ratio =
-    view === "half" ? 340 / 480 :
-    view === "boxatk" || view === "boxdef" ? 300 / 480 :
+    v === "half" ? 340 / 480 :
+    v === "boxatk" || v === "boxdef" ? 300 / 480 :
     640 / 480;
   return { w: width, h: Math.round(HEADER_H + width * ratio) };
 }
@@ -48,6 +51,9 @@ export function renderFrame(
   const { w, h } = opts;
   const showPaths = opts.showPaths !== false;
   const view = state.pitchView;
+  // PA拡大(paatk/padef)は書き出しでは横の切り出しをせず、boxatk/boxdefと同じ構図で描く
+  // （setpiece-redesign §6）。y変換(mapY)はboxatk/boxdefと同式のためviewのまま使ってよい
+  const boxView = view === "paatk" ? "boxatk" : view === "padef" ? "boxdef" : view;
 
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = "#0a0e0c";
@@ -115,7 +121,7 @@ export function renderFrame(
     ctx.beginPath();
     ctx.arc(px + pw / 2, py + ph - 4, pw * 0.16, Math.PI, Math.PI * 2);
     ctx.stroke();
-  } else if (view === "boxatk") {
+  } else if (boxView === "boxatk") {
     // 敵陣ボックス周辺クロップ：開いた3辺＋ゴールエリア（下端はクロップ線＝ピッチの実在ラインでは
     // ないため、half表示のハーフウェイライン/センターサークルに相当する装飾は描かない）
     ctx.beginPath();
@@ -126,7 +132,7 @@ export function renderFrame(
     ctx.stroke();
     ctx.strokeRect(px + (pw - boxW) / 2, py + 4, boxW, boxH);
     ctx.strokeRect(px + (pw - gboxW) / 2, py + 4, gboxW, gboxH);
-  } else if (view === "boxdef") {
+  } else if (boxView === "boxdef") {
     // 自陣ボックス周辺クロップ：開いた3辺（上端がクロップ線）＋ゴールエリア
     ctx.beginPath();
     ctx.moveTo(px + 4, py + 4);
@@ -185,8 +191,8 @@ export function renderFrame(
       [100 / 3, 200 / 3]
         .filter((y) => {
           if (view === "half") return y > 50;
-          if (view === "boxatk") return y > 58;
-          if (view === "boxdef") return y < 42;
+          if (boxView === "boxatk") return y > 58;
+          if (boxView === "boxdef") return y < 42;
           return true;
         })
         .forEach((y) => {
@@ -208,19 +214,19 @@ export function renderFrame(
       ctx.textBaseline = "middle";
       // 各見出しは、現在のビューで可視の範囲にあるものだけ描く
       // （boxatk/boxdefはボックス周辺のみのクロップのため、該当するサード1つ以外は画面に出ない）
-      if (view !== "boxatk" && view !== "boxdef") {
+      if (boxView !== "boxatk" && boxView !== "boxdef") {
         ctx.fillText("アタッキングサード", px + S(14), mapY((200 / 3 + 100) / 2));
         ctx.fillText("ミドルサード", px + S(14), mapY((100 / 3 + 200 / 3) / 2));
-      } else if (view === "boxatk") {
+      } else if (boxView === "boxatk") {
         ctx.fillText("アタッキングサード", px + S(14), mapY((200 / 3 + 100) / 2));
       }
       // half/boxatk表示では自陣側の「ディフェンディングサード」は画面に出ないため描かない
-      if (view !== "half" && view !== "boxatk") {
+      if (view !== "half" && boxView !== "boxatk") {
         ctx.fillText("ディフェンディングサード", px + S(14), mapY((0 + 100 / 3) / 2));
       }
       ctx.textAlign = "center";
       // 「バイタルエリア」（y81）はboxdef（y0-42）では画面に出ないため描かない
-      if (view !== "boxdef") {
+      if (boxView !== "boxdef") {
         ctx.fillText("バイタルエリア", mapX(50), mapY(81));
       }
       ctx.textAlign = "left";

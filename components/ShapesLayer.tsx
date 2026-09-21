@@ -21,7 +21,7 @@ import type {
 } from "@/lib/types";
 import { actorPos } from "@/lib/animation";
 import { convexHull, trimQuadEnd } from "@/lib/geometry";
-import { ySpan, yToTop } from "@/lib/pitchView";
+import { paZoomStrokeScale, ySpan, yToTop } from "@/lib/pitchView";
 import { useBoard } from "./BoardProvider";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -66,6 +66,10 @@ export default function ShapesLayer() {
   const board = useBoard();
   const view = board.state.pitchView;
   const drag = useRef<DragState | null>(null);
+  // レビュー指摘(2回目・major): PA拡大中は.pitchzoomのCSS scaleで図形の線も1.39倍太くなる。
+  // 図形ごとに太さが違う(s.width等)ためCSS固定値上書きでは対応できず、ここで直接
+  // 逆倍率を掛けて戻す
+  const paScale = paZoomStrokeScale(view);
 
   // アニメ中の「描き込み」表示OFF：図形は描画しない
   const hideDrawings = board.mode === "anim" && !board.showDrawings;
@@ -244,7 +248,7 @@ export default function ShapesLayer() {
               points={pts}
               fill="none"
               stroke={col}
-              strokeWidth={sel ? w + 0.6 : w}
+              strokeWidth={(sel ? w + 0.6 : w) * paScale}
               strokeLinecap="round"
               strokeLinejoin="round"
               style={{ pointerEvents: interactive ? "auto" : "none" }}
@@ -273,7 +277,7 @@ export default function ShapesLayer() {
               fill={col}
               fillOpacity={0.14}
               stroke={col}
-              strokeWidth={sel ? 1.3 : 0.7}
+              strokeWidth={(sel ? 1.3 : 0.7) * paScale}
               style={{ pointerEvents: interactive ? "auto" : "none" }}
               onPointerDown={(e) => {
                 if (!interactive) return;
@@ -305,7 +309,7 @@ export default function ShapesLayer() {
                     fill={col}
                     fillOpacity={0.22}
                     stroke={col}
-                    strokeWidth={zw}
+                    strokeWidth={zw * paScale}
                     opacity={0.85}
                     style={{ pointerEvents: interactive ? "auto" : "none" }}
                     {...dragProps(s.id, "move", s)}
@@ -320,7 +324,7 @@ export default function ShapesLayer() {
                     fill={col}
                     fillOpacity={0.22}
                     stroke={col}
-                    strokeWidth={zw}
+                    strokeWidth={zw * paScale}
                     opacity={0.85}
                     style={{ pointerEvents: interactive ? "auto" : "none" }}
                     {...dragProps(s.id, "move", s)}
@@ -355,7 +359,7 @@ export default function ShapesLayer() {
                   )}`}
                   fill="none"
                   stroke={col}
-                  strokeWidth={s.width ?? 1.1}
+                  strokeWidth={(s.width ?? 1.1) * paScale}
                   strokeDasharray={s.dash ? "2.4 1.6" : undefined}
                   strokeLinecap="round"
                   style={{ pointerEvents: interactive ? "auto" : "none" }}

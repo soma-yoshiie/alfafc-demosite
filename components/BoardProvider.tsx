@@ -13,6 +13,7 @@ import React, {
 import type {
   Actor,
   AssignmentResponse,
+  BallTrajectory,
   BoardState,
   ChatMessage,
   CoachDeliverable,
@@ -45,7 +46,7 @@ import type {
 import { groupThreadKey, isOppActor, migratePlan, oppIndex } from "@/lib/types";
 import type { UserArticle } from "@/lib/articles";
 import { daysAgoStr } from "@/lib/dates";
-import { buildSlots } from "@/lib/formations";
+import { buildSlots, groupOf } from "@/lib/formations";
 import type { AssignPair } from "@/lib/autoAssign";
 import {
   actorPos,
@@ -68,6 +69,7 @@ import {
   loadNotebook,
   loadSetPieceWork,
   loadSettings,
+  loadSpBarOpen,
   loadState,
   loadTeamLogo,
   loadUserArticles,
@@ -77,6 +79,7 @@ import {
   saveNotebook,
   saveSetPieceWork,
   saveSettings,
+  saveSpBarOpen,
   saveState,
   saveTeamLogo,
   saveUserArticles,
@@ -87,11 +90,14 @@ import {
   snapshotToBoard,
 } from "@/lib/share";
 import { SAMPLE_GROUP_A_ID, SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
+import { buildSetPieceState, getSetPiecePreset } from "@/lib/setPiecePresets";
 import {
-  buildSetPieceState,
-  DEFAULT_SETPIECE_PRESET_ID,
-  getSetPiecePreset,
-} from "@/lib/setPiecePresets";
+  buildSetPieceLayout,
+  DEFAULT_SETPIECE_LAYOUT_INPUT,
+  type SetPieceLayout,
+  type SetPieceLayoutInput,
+} from "@/lib/setPieceLayouts";
+import { buildDeliveryMove, getDelivery } from "@/lib/setPieceDelivery";
 
 /* ------------------------------------------------------------------ */
 /* Reducer                                                            */
@@ -140,6 +146,12 @@ type Action =
       kind?: MoveKind;
       /** ボールmoveの到達先（パス/シュート生成時のみ指定） */
       to?: Actor | "goal";
+      /** trueのときはtoをundefinedであっても明示的に上書きする（レビュー指摘(1回目):
+       * セットプレーの軌道で狙う場所を誰も居ない所へ動かしたとき、前回のtoを消して
+       * 「受け手なし」に戻すために必要。指定なしは従来どおりtoが未指定なら既存値を温存する） */
+      toSet?: boolean;
+      /** ボールの弾道（セットプレーの軌道生成時のみ指定。setpiece-redesign §4） */
+      trajectory?: BallTrajectory;
     }
   | { type: "MERGE_MOVES"; moves: Move[]; step: number }
   | { type: "UPDATE_MOVE"; index: number; patch: Partial<Move> }
@@ -419,8 +431,24 @@ function reducer(state: BoardState, action: Action): BoardState {
       return syncCarriedBall({ ...state, slots });
     }
 
-    case "SET_BALL":
-      return { ...state, ball: { x: action.x, y: action.y } };
+    case "SET_BALL": {
+      const ball = { x: action.x, y: action.y };
+      // ボールのトークンを動かしたら軌道の始点も追従する（moveのpathの先頭をballに
+      // 合わせて2次ベジェを作り直す。狙う場所・軌道・曲がりは維持する＝setpiece-redesign §4）
+      const delivery = state.setPiece ? getDelivery(state) : null;
+      if (!delivery) return { ...state, ball };
+      const idx = state.moves.findIndex((m) => m.actor === "ball" && (m.step ?? 0) === 0);
+      if (idx < 0) return { ...state, ball };
+      const rebuilt = buildDeliveryMove({
+        from: ball,
+        target: delivery.target,
+        trajectory: delivery.trajectory,
+        bend: delivery.bend,
+        slots: state.slots,
+      });
+      const moves = state.moves.map((m, i) => (i === idx ? rebuilt : m));
+      return { ...state, ball, moves };
+    }
 
     case "SET_HOLDER":
       return syncCarriedBall({ ...state, holder: action.holder });
@@ -507,7 +535,10 @@ function reducer(state: BoardState, action: Action): BoardState {
                 dur,
                 ...(action.start !== undefined ? { start: action.start } : {}),
                 ...(action.kind !== undefined ? { kind: action.kind } : {}),
-                ...(action.to !== undefined ? { to: action.to } : {}),
+                // toSet指定時はtoがundefinedでも明示的に上書きする（狙う場所を誰も居ない所へ
+                // 動かしたら受け手なしに戻す＝レビュー指摘(1回目)。未指定時は従来どおり温存）
+                ...(action.toSet || action.to !== undefined ? { to: action.to } : {}),
+                ...(action.trajectory !== undefined ? { trajectory: action.trajectory } : {}),
               }
             : m
         );
@@ -522,6 +553,7 @@ function reducer(state: BoardState, action: Action): BoardState {
             step: action.step,
             kind: action.kind ?? defaultKind(action.actor),
             to: action.to,
+            trajectory: action.trajectory,
           },
         ];
       }
@@ -796,7 +828,13 @@ function reducer(state: BoardState, action: Action): BoardState {
         return sh;
       });
       const drawings = (state.drawings ?? []).map((d) => ({ ...d, path: d.path.map(flipX) }));
-      return { ...state, slots, opponents, ball, moves, shapes, drawings };
+      // FK/スローインの起点(origin)も左右反転する（そのまま残すと、この後の人数・攻守
+      // 切替の作り直しで反転前の位置に戻ってしまう＝setpiece-redesign §3）
+      const setPiece =
+        state.setPiece && state.setPiece.origin
+          ? { ...state.setPiece, origin: flipX(state.setPiece.origin) }
+          : state.setPiece;
+      return { ...state, slots, opponents, ball, moves, shapes, drawings, setPiece };
     }
 
     case "NEW_TACTIC":
@@ -1175,12 +1213,29 @@ interface BoardContextValue {
   renameSetPiece: (id: string, title: string) => void;
   /** 現在のボードを SavedSetPiece スナップショットにして返す（送信用。setPiece未設定なら null） */
   snapshotSetPiece: (title: string) => SavedSetPiece | null;
-  /** 指定プリセットから新規セットプレーを作成し、setpiece画面へ遷移する */
-  newSetPiece: (presetId: string) => void;
-  /** 現在のセットプレー文書へ、別プリセットの初期配置を適用し直す（保存中IDは変えない） */
+  /** 種別・攻守・人数（と将来のorigin）から新規セットプレー文書を作成し、setpiece画面へ
+   * 遷移する（保存中のIDは外す。lib/setPieceLayouts.ts の buildSetPieceLayout を使う） */
+  newSetPiece: (input: SetPieceLayoutInput) => void;
+  /** 現在のセットプレー文書へ、別プリセットの初期配置を適用し直す（保存中IDは変えない・旧データ用） */
   applySetPiecePreset: (presetId: string) => void;
+  /** 現在のセットプレー文書へ、種別・攻守・人数（と将来のorigin）から作った基本配置を
+   * 適用し直す（保存中IDは変えない。適用前の状態は1件だけ覚え、restoreSetPieceSnapshotで戻せる） */
+  applySetPieceLayout: (input: SetPieceLayoutInput) => void;
+  /** applySetPieceLayout/newSetPiece の直前の状態が残っており「元に戻す」を出せるか */
+  canRestoreSetPiece: boolean;
+  /** 直前のセットプレー配置（1件だけ）に戻す */
+  restoreSetPieceSnapshot: () => void;
+  /** 直近に生成した基本配置から、slots/opponents/ballの座標が動かされたか（レビュー指摘(1回目):
+   * トークンをドラッグしただけの手入れはmoves/shapes/drawingsに現れないため、isDirty()の
+   * 「手が入っている」判定に組み込むための追加チェック。基準が無ければfalse＝従来どおり） */
+  isSetPieceLayoutEdited: () => boolean;
   /** セットプレー文書を左右反転する */
   flipSetPieceX: () => void;
+  /** ボールの軌道（キック/スローのmove）を作成・更新する。nullで削除する（setpiece-redesign §4） */
+  setSetPieceDelivery: (move: Move | null) => void;
+  /** 「ボールの軌道」グループの開閉（Pitch側のDeliveryLayer表示可否も兼ねる。§4・§5） */
+  spTrajOpen: boolean;
+  setSpTrajOpen: (open: boolean) => void;
   // コーチラボ（ユーザー投稿記事）
   userArticles: UserArticle[];
   /** 新規投稿を追加し、生成した記事IDを返す */
@@ -1535,6 +1590,94 @@ function sampleDeliverables(): CoachDeliverable[] {
   ];
 }
 
+/** SetPieceLayout（lib/setPieceLayouts.ts。座標だけの純データ）から、名簿を割り当てた
+ * BoardState を組み立てる。buildSetPieceState（旧プリセット用。lib/setPiecePresets.ts）と
+ * 同じ規則（slotsへ選手を巡回割当・moves/shapes/drawingsは空）だが、setPieceメタは
+ * SetPieceLayoutInputのkind/side/formatを直接使う（presetIdは持たない＝setpiece-redesign §1）。
+ * レビュー指摘(1回目): 引数だけで完結する純粋関数（コンポーネントのstate/propsを閉じ込めない）
+ * なので、useCallbackにせずモジュール直下へ出す。こうすることで spState の初期値（useReducerの
+ * 遅延初期化）からも呼べる＝初回起動時に旧プリセットck-near-attack（ニア狙いの図形・メモ付き）
+ * ではなく図形なしの基本配置を出せる */
+function buildSetPieceStateFromLayout(
+  layout: SetPieceLayout,
+  input: SetPieceLayoutInput,
+  basePlayers: Player[],
+  teamName: string | null,
+  captain: string | null,
+  /** 優先して使う選手（戦術ボードのスタメンの pid） */
+  preferIds: string[] = []
+): BoardState {
+  // 統括の最終調整: 以前は名簿の先頭から順に枠へ入れていたため、GK がキッカーで FW がゴールを守る
+  // といった配置になっていた。戦術ボードのスタメン（preferIds）を優先し、①ポジション一致 ②同じ
+  // 大分類（GK/DF/MF/FW）③残り、の順で GK の枠から埋める。70 人の名簿でも先頭 11 人に偏らない
+  const pool: Player[] = [
+    ...preferIds.map((id) => basePlayers.find((p) => p.id === id)).filter((p): p is Player => !!p),
+    ...basePlayers.filter((p) => !preferIds.includes(p.id)),
+  ];
+  const used = new Set<string>();
+  const pick = (test: (p: Player) => boolean): string | null => {
+    const hit = pool.find((p) => !used.has(p.id) && test(p));
+    if (!hit) return null;
+    used.add(hit.id);
+    return hit.id;
+  };
+  const pids: (string | null)[] = layout.slots.map(() => null);
+  const byPriority = layout.slots.map((s, i) => ({ s, i })).sort((a, b) => (a.s.role === "GK" ? 0 : 1) - (b.s.role === "GK" ? 0 : 1));
+  for (const { s, i } of byPriority) pids[i] = pick((p) => p.position === s.role);
+  for (const { s, i } of byPriority) if (!pids[i]) pids[i] = pick((p) => groupOf(p.position) === groupOf(s.role) && (s.role === "GK") === (p.position === "GK"));
+  for (const { s, i } of byPriority) if (!pids[i]) pids[i] = pick((p) => (s.role === "GK") === (p.position === "GK"));
+  for (const { i } of byPriority) if (!pids[i]) pids[i] = pick(() => true);
+  const slots: Slot[] = layout.slots.map((s, i) => ({ role: s.role, x: s.x, y: s.y, pid: pids[i] }));
+  const opponents: OppToken[] = layout.opps.map((o, i) => ({
+    x: o.x,
+    y: o.y,
+    label: String(i + 1),
+  }));
+  return {
+    teamName,
+    formation: input.format === 11 ? "4-3-3" : "8人制 3-3-1",
+    slots,
+    players: basePlayers,
+    ball: { ...layout.ball },
+    moves: [],
+    captain,
+    holder: null,
+    opponents,
+    drawings: [],
+    shapes: [],
+    stepCount: 1,
+    guides: {},
+    pitchView: layout.view,
+    setPiece: {
+      kind: input.kind,
+      side: input.side,
+      presetId: undefined,
+      format: input.format,
+      origin: input.origin,
+    },
+  };
+}
+
+/** isSetPieceLayoutEditedが比較に使う、slots/opponents/ballの座標だけの軽い基準
+ * （レビュー指摘(1回目)：トークンのドラッグはmoves/shapes/drawingsに現れないため、
+ * 生成直後の座標をここに1件だけ覚えておき、後で座標がずれたかどうかを比較する） */
+interface SpLayoutSnapshot {
+  ball: Point;
+  slots: { x: number; y: number }[];
+  opponents: { x: number; y: number }[];
+}
+function snapshotSpLayout(state: {
+  ball: Point;
+  slots: { x: number; y: number }[];
+  opponents?: { x: number; y: number }[];
+}): SpLayoutSnapshot {
+  return {
+    ball: { ...state.ball },
+    slots: state.slots.map((s) => ({ x: s.x, y: s.y })),
+    opponents: (state.opponents ?? []).map((o) => ({ x: o.x, y: o.y })),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Provider                                                           */
 /* ------------------------------------------------------------------ */
@@ -1566,17 +1709,51 @@ export function BoardProvider({
     reducer,
     undefined,
     () =>
+      // レビュー指摘(1回目): 初回（保存データなし）の既定文書は旧プリセットck-near-attack
+      // （ニア狙いのゾーン・「ニア」「キッカー」の図形とメモ付き）ではなく、CK・攻撃・8人制の
+      // 図形なしの基本配置にする（ユーザー指示「ニア狙いはいらない」・setpiece-redesign §1）
       loadSetPieceWork()?.state ??
-      buildSetPieceState(
-        getSetPiecePreset(DEFAULT_SETPIECE_PRESET_ID)!,
+      buildSetPieceStateFromLayout(
+        buildSetPieceLayout(DEFAULT_SETPIECE_LAYOUT_INPUT),
+        DEFAULT_SETPIECE_LAYOUT_INPUT,
         playState.players,
         playState.teamName,
-        playState.captain
+        playState.captain,
+        playState.slots.map((s) => s.pid).filter((id): id is string => !!id)
       )
   );
   const [currentSetPieceId, setCurrentSetPieceId] = useState<string | null>(
     () => loadSetPieceWork()?.currentId ?? null
   );
+  /** 「元に戻す」用に、基本配置を作り直す直前のBoardStateを1件だけ覚える
+   * （setpiece-redesign §1）。セットプレー文書(spState)専用で、戦術ボード(playState)には
+   * 影響しない。別の文書を開いた／新規作成したら破棄する */
+  const [spSnapshot, setSpSnapshot] = useState<BoardState | null>(null);
+  /** 直近に生成した基本配置のslots/opponents/ball座標（レビュー指摘(1回目)：isDirty()が
+   * moves/drawings/shapesしか見ておらず、トークンをドラッグしただけの手入れを確認なしで
+   * 作り直してしまうため、比較用の基準として持つ。保存データを引き継いだとき（編集履歴が
+   * 不明）はnull＝isSetPieceLayoutEditedはfalseを返す＝従来どおりの判定のみになる）。
+   * レビュー指摘(2回目・major): 以前は「作業中データ(loadSetPieceWork)があれば常にnull」
+   * だったため、保存データがある状態（＝2回目以降の起動すべて）ではリロード直後から
+   * ドラッグの手入れを検知できなかった。作業中データと一緒に基準も永続化し（下のuseEffect・
+   * lib/storage.tsのSpLayoutBaseline）、保存されていればそれを使う。保存データはあるが
+   * 基準が無い（このレビュー以前に保存された古いデータ）ときだけ、従来どおりnullのまま
+   * （編集履歴不明＝isSetPieceLayoutEditedはfalseを返す）にする */
+  const [spLayoutBaseline, setSpLayoutBaseline] = useState<SpLayoutSnapshot | null>(() => {
+    const saved = loadSetPieceWork();
+    if (saved) return saved.layoutBaseline ?? null;
+    const layout = buildSetPieceLayout(DEFAULT_SETPIECE_LAYOUT_INPUT);
+    return snapshotSpLayout({ ball: layout.ball, slots: layout.slots, opponents: layout.opps });
+  });
+  /** 「ボールの軌道」グループの開閉（setpiece-redesign §4・§5）。SetPieceBar（操作列の
+   * 開閉・要約表示）とPitch/DeliveryLayer（軌道の線・ハンドルの表示可否）の両方から
+   * 参照するため、他の3グループ（種類/表示/描く・動かす。SetPieceBar内のローカルstate）
+   * とは別にここに持つ。保存先(localStorage)はSetPieceBar側と同じキーのtrajフィールドを共有する */
+  const [spTrajOpen, setSpTrajOpenState] = useState<boolean>(() => !!loadSpBarOpen().traj);
+  const setSpTrajOpen = useCallback((open: boolean) => {
+    setSpTrajOpenState(open);
+    saveSpBarOpen({ ...loadSpBarOpen(), traj: open });
+  }, []);
 
   const state = sp ? spState : playState;
   // dispatch自体は「常に同じ関数」として安定させ、実体の切替はref経由で行う。
@@ -1630,12 +1807,13 @@ export function BoardProvider({
   }, [playState]);
 
   // ---- セットプレー文書の永続化（デバウンス保存。lazy初期化済みのため起動時hydrateは不要） ----
+  // レビュー指摘(2回目・major): spLayoutBaselineも一緒に保存する（このコメント上のuseState参照）
   useEffect(() => {
     const timer = setTimeout(() => {
-      saveSetPieceWork(spState, currentSetPieceId);
+      saveSetPieceWork(spState, currentSetPieceId, spLayoutBaseline);
     }, 300);
     return () => clearTimeout(timer);
-  }, [spState, currentSetPieceId]);
+  }, [spState, currentSetPieceId, spLayoutBaseline]);
 
   // ---- UI state ----
   const [mode, setMode] = useState<"edit" | "anim">("edit");
@@ -2862,6 +3040,12 @@ export function BoardProvider({
         setPiece: item.setPiece,
       });
       setCurrentSetPieceId(id);
+      setSpSnapshot(null);
+      // レビュー指摘(2回目・major): 別文書を開いたら基準も破棄する（前の文書の基準が
+      // 残ったままだと、isSetPieceLayoutEdited()が新しい文書の座標をおかしな基準と比較して
+      // しまう。この文書自体はcurrentSetPieceId!=nullでisDirty()が既にtrueを返すため
+      // 実害は無いが、setSpSnapshot(null)と同じ理由で揃えておく） */
+      setSpLayoutBaseline(null);
       setSheet({ type: null });
       setScreen("setpiece");
       showToast(droppedAny ? "一部の選手を割当解除しました" : `「${item.title}」を読み込みました`);
@@ -2927,10 +3111,17 @@ export function BoardProvider({
     [cloneTactic]
   );
 
+  /** 種別・攻守・人数（と将来のorigin）で新規セットプレー文書を作り、setpiece画面へ遷移する
+   * （保存中のIDは外す）。applySetPieceLayoutと同じ入力形（SetPieceLayoutInput）で呼べる
+   * ようにし、旧プリセットidベースのAPIから置き換えた（唯一の呼び出し元だった操作列の
+   * 「新規作成」は右上へ移った＝setpiece-redesign §7） */
   const newSetPiece = useCallback(
-    (presetId: string) => {
-      const preset =
-        getSetPiecePreset(presetId) ?? getSetPiecePreset(DEFAULT_SETPIECE_PRESET_ID)!;
+    (input: SetPieceLayoutInput) => {
+      const layout = buildSetPieceLayout(input);
+      // レビュー指摘(1回目): 種別チップ経由(applySetPieceLayout)は直前の盤面へ「元に戻す」で
+      // 戻せるのに、新規作成だけスナップショットを捨てていて非対称だった。別文書を開く
+      // （loadSetPiece/applyImport）ときだけ破棄し、新規作成は直前の盤面を1件だけ覚える
+      setSpSnapshot(stateRef.current);
       stopPlay();
       setMode("edit");
       setSelActor(null);
@@ -2939,23 +3130,28 @@ export function BoardProvider({
       setPenMode(false);
       spDispatch({
         type: "HYDRATE",
-        state: buildSetPieceState(
-          preset,
+        state: buildSetPieceStateFromLayout(
+          layout,
+          input,
           playStateRef.current.players,
           playStateRef.current.teamName,
-          playStateRef.current.captain
+          playStateRef.current.captain,
+          playStateRef.current.slots.map((s) => s.pid).filter((id): id is string => !!id)
         ),
       });
+      setSpLayoutBaseline(snapshotSpLayout({ ball: layout.ball, slots: layout.slots, opponents: layout.opps }));
       setCurrentSetPieceId(null);
       setSheet({ type: null });
       // 新規化したら必ずセットプレー画面へ移動する（newPlayと同じ配慮）
       setScreen("setpiece");
-      showToast(`「${preset.label}」を作成しました`);
+      showToast("新しいセットプレーを作成しました");
     },
-    [stopPlay, showToast]
+    [stopPlay, showToast, buildSetPieceStateFromLayout]
   );
 
-  /** 現在のセットプレー文書へ、別プリセットの初期配置を適用し直す（保存中IDは変えない＝上書き保存で反映） */
+  /** 現在のセットプレー文書へ、別プリセットの初期配置を適用し直す（保存中IDは変えない＝上書き保存で反映）。
+   * 旧データ（ゴールキック・PK・旧CK/FK/スローインプリセット）用に残す。新規の種別・攻守・人数の
+   * チップ操作は applySetPieceLayout を使う */
   const applySetPiecePreset = useCallback(
     (presetId: string) => {
       const preset = getSetPiecePreset(presetId);
@@ -2963,22 +3159,103 @@ export function BoardProvider({
       stopPlay();
       setSelActor(null);
       setSelMove(null);
-      spDispatch({
-        type: "HYDRATE",
-        state: buildSetPieceState(
-          preset,
-          playStateRef.current.players,
-          playStateRef.current.teamName,
-          playStateRef.current.captain
-        ),
-      });
+      const nextState = buildSetPieceState(
+        preset,
+        playStateRef.current.players,
+        playStateRef.current.teamName,
+        playStateRef.current.captain
+      );
+      spDispatch({ type: "HYDRATE", state: nextState });
+      setSpLayoutBaseline(snapshotSpLayout(nextState));
       showToast(`「${preset.label}」を適用しました`);
     },
     [stopPlay, showToast]
   );
 
+  /** 現在のセットプレー文書へ、種別・攻守・人数（と将来のorigin）から作った基本配置を
+   * 適用し直す（保存中IDは変えない＝上書き保存で反映。setpiece-redesign §1）。
+   * 適用前の状態を1件だけ覚え、restoreSetPieceSnapshotで盤面そのものを戻せるようにする */
+  const applySetPieceLayout = useCallback(
+    (input: SetPieceLayoutInput) => {
+      const layout = buildSetPieceLayout(input);
+      setSpSnapshot(stateRef.current);
+      stopPlay();
+      setSelActor(null);
+      setSelMove(null);
+      spDispatch({
+        type: "HYDRATE",
+        state: buildSetPieceStateFromLayout(
+          layout,
+          input,
+          playStateRef.current.players,
+          playStateRef.current.teamName,
+          playStateRef.current.captain,
+          playStateRef.current.slots.map((s) => s.pid).filter((id): id is string => !!id)
+        ),
+      });
+      setSpLayoutBaseline(snapshotSpLayout({ ball: layout.ball, slots: layout.slots, opponents: layout.opps }));
+      showToast("基本配置を適用しました");
+    },
+    [stopPlay, showToast, buildSetPieceStateFromLayout]
+  );
+
+  /** applySetPieceLayout/newSetPiece が直前に覚えたBoardStateへ戻す（プリセットidの
+   * 再適用ではなく盤面そのものを戻す＝setpiece-redesign §1）。1件だけなので戻したら消費する */
+  const restoreSetPieceSnapshot = useCallback(() => {
+    if (!spSnapshot) return;
+    spDispatch({ type: "HYDRATE", state: spSnapshot });
+    setSpLayoutBaseline(snapshotSpLayout(spSnapshot));
+    setSpSnapshot(null);
+    showToast("直前の配置に戻しました");
+  }, [spSnapshot, showToast]);
+
+  /** isDirty()（SetPieceBar.tsx）が使う追加チェック：直近に生成した基本配置から
+   * slots/opponents/ballの座標が動かされたか（レビュー指摘(1回目)）。基準が無ければfalse */
+  const isSetPieceLayoutEdited = useCallback((): boolean => {
+    const baseline = spLayoutBaseline;
+    if (!baseline) return false;
+    const s = stateRef.current;
+    const eq = (a: number, b: number) => Math.abs(a - b) < 0.01;
+    if (!eq(s.ball.x, baseline.ball.x) || !eq(s.ball.y, baseline.ball.y)) return true;
+    if (s.slots.length !== baseline.slots.length) return true;
+    if (s.slots.some((sl, i) => !eq(sl.x, baseline.slots[i].x) || !eq(sl.y, baseline.slots[i].y))) return true;
+    const opps = s.opponents ?? [];
+    if (opps.length !== baseline.opponents.length) return true;
+    if (opps.some((o, i) => !eq(o.x, baseline.opponents[i].x) || !eq(o.y, baseline.opponents[i].y))) return true;
+    return false;
+  }, [spLayoutBaseline]);
+
   const flipSetPieceX = useCallback(() => {
     spDispatch({ type: "FLIP_X" });
+  }, []);
+
+  /** ボールの軌道（キック/スローのmove）を作成・更新・削除する（setpiece-redesign §4）。
+   * 実体は場面0のボールの最初のmove。moveがnullなら削除する。既存のADD_MOVE/DELETE_MOVE
+   * をそのまま再利用し、専用の保存形式は持たない。呼び出しはセットプレー画面からのみの
+   * 想定なのでspDispatch（spStateへ直接）を使う（flipSetPieceXと同じ流儀） */
+  const setSetPieceDelivery = useCallback((move: Move | null) => {
+    if (move == null) {
+      const idx = stateRef.current.moves.findIndex(
+        (m) => m.actor === "ball" && (m.step ?? 0) === 0
+      );
+      if (idx >= 0) spDispatch({ type: "DELETE_MOVE", index: idx });
+      return;
+    }
+    spDispatch({
+      type: "ADD_MOVE",
+      actor: "ball",
+      path: move.path,
+      step: 0,
+      start: move.start,
+      dur: move.dur,
+      kind: move.kind,
+      to: move.to,
+      // レビュー指摘(1回目): buildDeliveryMoveが返すtoは「未設定(undefined)」も正しい結果
+      // （狙う場所の近くに味方が居ない＝こぼれ球）なので、ADD_MOVEの「to未指定なら温存」規則に
+      // 巻き込まれないようtoSetで明示的に上書きする（さもないと前回の受け手が残り続ける）
+      toSet: true,
+      trajectory: move.trajectory,
+    });
   }, []);
 
   const createFolder = useCallback(
@@ -3079,6 +3356,9 @@ export function BoardProvider({
     if (toSetPiece) {
       spDispatch(importAction);
       setCurrentSetPieceId(null);
+      setSpSnapshot(null);
+      // レビュー指摘(2回目・major): loadSetPieceと同じ理由で基準も破棄する
+      setSpLayoutBaseline(null);
       setScreen("setpiece");
     } else {
       dispatch(importAction);
@@ -3161,11 +3441,22 @@ export function BoardProvider({
       playStep,
       addOpponent: () => {
         const n = (stateRef.current.opponents ?? []).length;
+        // PA拡大(paatk/padef。setpiece-redesign §6)は可視y範囲がboxatk/boxdefより狭い
+        // （約y70-100/0-30）ため、従来のy=58基準のままだと枠外（見えず触れない位置）に
+        // 追加されてしまう＝レビュー指摘(1回目)。PA拡大のときだけ可視範囲に収める
+        // （boxatk/boxdef/fullは従来どおり）
+        const view = stateRef.current.pitchView;
+        const y =
+          view === "paatk"
+            ? Math.min(96, 72 + Math.floor(n / 5) * 6)
+            : view === "padef"
+            ? Math.max(4, 28 - Math.floor(n / 5) * 6)
+            : 58 + Math.floor(n / 5) * 8;
         // 中央付近に少しずつずらして置く
         dispatch({
           type: "ADD_OPPONENT",
           x: 50 + ((n % 5) - 2) * 8,
-          y: 58 + Math.floor(n / 5) * 8,
+          y,
         });
       },
       moveOpponent: (index, x, y) =>
@@ -3425,7 +3716,14 @@ export function BoardProvider({
       snapshotSetPiece,
       newSetPiece,
       applySetPiecePreset,
+      applySetPieceLayout,
+      canRestoreSetPiece: spSnapshot != null,
+      restoreSetPieceSnapshot,
+      isSetPieceLayoutEdited,
       flipSetPieceX,
+      setSetPieceDelivery,
+      spTrajOpen,
+      setSpTrajOpen,
       userArticles,
       addUserArticle,
       updateUserArticle,
@@ -3546,7 +3844,14 @@ export function BoardProvider({
       snapshotSetPiece,
       newSetPiece,
       applySetPiecePreset,
+      applySetPieceLayout,
+      spSnapshot,
+      restoreSetPieceSnapshot,
+      isSetPieceLayoutEdited,
       flipSetPieceX,
+      setSetPieceDelivery,
+      spTrajOpen,
+      setSpTrajOpen,
       userArticles,
       addUserArticle,
       updateUserArticle,

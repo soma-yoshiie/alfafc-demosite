@@ -95,10 +95,12 @@ export function usePointerDrag(actor: Actor) {
     const [xMin, xMax] = sp ? (isBall ? [0.5, 99.5] : [1, 99]) : [3, 97];
     const nx = clamp(st.ox + ((e.clientX - st.sx) / st.rect.width) * 100, xMin, xMax);
     const edge = sp ? (isBall ? 0.5 : 1) : 3;
+    // PA拡大(paatk/padef)はyの可視範囲がboxatk/boxdefと同じ式（lib/pitchView.ts）なので、
+    // ドラッグの許容範囲も同じ扱いにする（setpiece-redesign §6）
     const [yMin, yMax] =
       view === "half" ? [51, 100 - edge] :
-      view === "boxatk" ? [sp ? 58.5 : 59, 100 - edge] :
-      view === "boxdef" ? [edge, sp ? 41.5 : 41] :
+      view === "boxatk" || view === "paatk" ? [sp ? 58.5 : 59, 100 - edge] :
+      view === "boxdef" || view === "padef" ? [edge, sp ? 41.5 : 41] :
       [edge, 100 - edge];
     const ny = clamp(st.oy - ((e.clientY - st.sy) / st.rect.height) * ySpan(view), yMin, yMax);
     st.nx = nx;

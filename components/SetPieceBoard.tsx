@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type React from "react";
 import dynamic from "next/dynamic";
 import { useBoard } from "./BoardProvider";
@@ -12,6 +12,8 @@ import AnimationStudio from "./AnimationStudio";
 import FullPlayOverlay from "./FullPlayOverlay";
 import { SaveBody, ShareBody } from "./SheetManager";
 import { CAMERA_PRESET_LABEL, CAMERA_PRESET_ORDER, type CameraPresetId } from "@/lib/setPiece3d";
+import type { PlacingRequest } from "@/lib/setPieceLayouts";
+import type { PitchViewMode, Point } from "@/lib/types";
 
 /**
  * セットプレー3Dビューア本体。three.js/@react-three一式を直接importする重いコンポーネントのため
@@ -211,17 +213,56 @@ export default function SetPieceBoard() {
     setHelpOpenState(open);
     writeStoredHelpOpen(open);
   };
-  // 味方/相手のドラッグ固定（密集での誤操作防止）。CSSクラス経由でpointer-eventsを遮断する
-  const [lockOwn, setLockOwn] = useState(false);
-  const [lockOpp, setLockOpp] = useState(false);
+  // 「動かす」3択（両方｜味方だけ｜相手だけ。setpiece-redesign §2）。旧lockOwn/lockOppの
+  // 2状態を1つのmodeへ統合。「相手だけ」＝味方を固定（sp-lock-own）、「味方だけ」＝相手を
+  // 固定（sp-lock-opp）。CSSクラス経由でpointer-eventsを遮断する実体は従来どおり
+  const [moveMode, setMoveMode] = useState<"both" | "own" | "opp">("both");
+  // 位置を選ぶモード（setpiece-redesign §3-1）。「FK/スローインを選ぶ」「位置を選び直す」
+  // 「（FK/スローインの状態で）新規作成」のいずれからも同じ経路で入る。actionは
+  // 位置が決まった後にnewSetPiece（新規文書）かapplySetPieceLayout（現文書へ適用）の
+  // どちらを呼ぶかを覚えておくためのもの
+  const [placing, setPlacing] = useState<PlacingRequest | null>(null);
+  // レビュー指摘(1回目・critical/major): 「やめる」でキャンセルしたときに、位置を選ぶ
+  // モードへ入る直前の表示範囲へ戻すための退避（startPlacingがfullへ強制するため）
+  const prevViewRef = useRef<PitchViewMode | null>(null);
+  const startPlacing = (req: PlacingRequest) => {
+    // ペン・図形が開いたままだとピッチのタップを奪い合うため、位置を選ぶモードに入る際は閉じる
+    board.setPenMode(false);
+    board.setShapesOpen(false);
+    prevViewRef.current = board.state.pitchView ?? null;
+    // ピッチを全体表示にする（ズーム中だとタップできる範囲が狭まってしまうため＝§3-1）
+    board.setPitchView("full");
+    setPlacing(req);
+  };
+  const cancelPlacing = () => {
+    setPlacing(null);
+    // レビュー指摘(1回目): 以前はここでsetPlacing(null)しかしておらず、startPlacingが
+    // 強制した「全体」表示が戻らないままだった
+    const prevView = prevViewRef.current;
+    prevViewRef.current = null;
+    if (prevView) board.setPitchView(prevView);
+  };
+  const handlePlaceOrigin = (origin: Point) => {
+    if (!placing) return;
+    const input = { kind: placing.kind, side: placing.side, format: placing.format, origin };
+    if (placing.action === "new") board.newSetPiece(input);
+    else board.applySetPieceLayout(input);
+    setPlacing(null);
+    // 位置が決まったら「ボールの軌道」グループを開く（setpiece-redesign §3-1）。既定の軌道の
+    // 自動生成自体は「軌道グループが開いていてまだmoveが無いとき」の条件としてDeliveryLayer
+    // 側に寄せた（レビュー指摘(2回目・minor)：位置決め経路に限定すると、CK・旧文書・保存済み
+    // 文書を開いた直後など、位置決めを経ない開き方では既定の軌道が作られなかったため）
+    board.setSpTrajOpen(true);
+  };
   const cls = [
     "app",
     "spapp",
     board.mode === "anim" ? "anim" : "",
     board.fullplay ? "fullplay" : "",
     board.mode === "anim" && !board.showPaths ? "nopaths" : "",
-    lockOwn ? "sp-lock-own" : "",
-    lockOpp ? "sp-lock-opp" : "",
+    moveMode === "opp" ? "sp-lock-own" : "",
+    moveMode === "own" ? "sp-lock-opp" : "",
+    placing ? "sp-placing" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -229,14 +270,14 @@ export default function SetPieceBoard() {
   return (
     <div className={cls}>
       {showImportBanner && <ImportBanner />}
-      <Header />
+      <Header onStartPlacing={startPlacing} />
       {view === "2d" ? (
         <SetPieceBar
           onEnter3D={() => setView("3d")}
-          lockOwn={lockOwn}
-          lockOpp={lockOpp}
-          onToggleLockOwn={() => setLockOwn((v) => !v)}
-          onToggleLockOpp={() => setLockOpp((v) => !v)}
+          moveMode={moveMode}
+          onSetMoveMode={setMoveMode}
+          onStartPlacing={startPlacing}
+          placing={placing}
         />
       ) : (
         <CameraBar
@@ -250,7 +291,11 @@ export default function SetPieceBoard() {
       )}
       <div className="scroll">
         {view === "2d" ? (
-          <Pitch />
+          <Pitch
+            placingKind={placing?.kind ?? null}
+            onPlaceOrigin={handlePlaceOrigin}
+            onCancelPlacing={cancelPlacing}
+          />
         ) : (
           <SetPiece3D
             preset={preset}

@@ -7,6 +7,7 @@ import type {
   FitnessRecord,
   Library,
   NotebookEntry,
+  Point,
   SavedDrill,
   SchoolStage,
   Settings,
@@ -34,6 +35,8 @@ const SETTINGS_KEY = "soccer_tactics_settings_v1";
 const DRILLS_KEY = "soccer_tactics_drills_v1";
 const DRILL_WORK_KEY = "soccer_tactics_drill_work_v1";
 const SETPIECE_WORK_KEY = "soccer_tactics_setpiece_work_v1";
+/** セットプレー操作列（SetPieceBar）の4グループの開閉状態（setpiece-redesign §5） */
+const SPBAR_OPEN_KEY = "soccer_tactics_spbar_v1";
 const TEAM_KEY = "soccer_tactics_team_v1";
 const VIEWER_KEY = "soccer_tactics_viewer_v1";
 const MESSAGES_KEY = "soccer_tactics_messages_v1";
@@ -487,8 +490,23 @@ export function saveDrillWork(doc: DrillDoc, currentId: string | null): void {
   }
 }
 
+/** applySetPieceLayout/newSetPieceが基本配置を生成した直後のslots/opponents/ball座標の基準
+ * （BoardProvider.isSetPieceLayoutEditedの比較用）。レビュー指摘(2回目・major)：この基準を
+ * 作業中データ(SETPIECE_WORK_KEY)と一緒に永続化しないと、保存データがある状態（＝2回目
+ * 以降の起動すべて）では常にnullになり、リロード後や右上「新規作成」からはドラッグだけの
+ * 手入れを検知できず無警告で配置が作り直されてしまっていた */
+export interface SpLayoutBaseline {
+  ball: Point;
+  slots: { x: number; y: number }[];
+  opponents: { x: number; y: number }[];
+}
+
 /* ---- セットプレーデザイン（作業中の第2文書スロット） ---- */
-export function loadSetPieceWork(): { state: BoardState; currentId: string | null } | null {
+export function loadSetPieceWork(): {
+  state: BoardState;
+  currentId: string | null;
+  layoutBaseline?: SpLayoutBaseline | null;
+} | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(SETPIECE_WORK_KEY);
@@ -501,10 +519,39 @@ export function loadSetPieceWork(): { state: BoardState; currentId: string | nul
   }
 }
 
-export function saveSetPieceWork(state: BoardState, currentId: string | null): void {
+export function saveSetPieceWork(
+  state: BoardState,
+  currentId: string | null,
+  layoutBaseline?: SpLayoutBaseline | null
+): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(SETPIECE_WORK_KEY, JSON.stringify({ state, currentId }));
+    window.localStorage.setItem(SETPIECE_WORK_KEY, JSON.stringify({ state, currentId, layoutBaseline }));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/** セットプレー操作列の4グループ（種類/ボールの軌道/表示/描く・動かす）の開閉状態。
+ * キーはグループid、値がtrue＝開。未保存・保存が壊れている場合は空オブジェクト
+ * （呼び出し側で「初回は種類だけ開く」の既定値を補う） */
+export function loadSpBarOpen(): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(SPBAR_OPEN_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object") return {};
+    return data;
+  } catch {
+    return {};
+  }
+}
+
+export function saveSpBarOpen(open: Record<string, boolean>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SPBAR_OPEN_KEY, JSON.stringify(open));
   } catch {
     /* 無視 */
   }

@@ -9,7 +9,7 @@ import { alongPath, orderRank, pathLen } from "@/lib/animation";
 import { actorColor } from "@/lib/colors";
 import type { Actor, Move, Point, PitchViewMode } from "@/lib/types";
 import { moveKind } from "@/lib/types";
-import { yToTop } from "@/lib/pitchView";
+import { paZoomStrokeScale, yToTop } from "@/lib/pitchView";
 import { useBoard } from "./BoardProvider";
 
 function arrowHead(a: Point, b: Point, col: string, key: string, view: PitchViewMode | undefined) {
@@ -86,6 +86,10 @@ export default function PathLayer() {
 
   const { moves, slots, pitchView: view } = board.state;
   const tempDraw = board.tempDrawRef.current;
+  // レビュー指摘(2回目・major): PA拡大中は.pitchzoomのCSS scaleでルート矢印の線も1.39倍
+  // 太くなる。トークンと同じ逆倍率をここで太さに直接掛けて戻す（deliverysvgと違い太さが
+  // 可変のためCSS固定値上書きでは対応できない）
+  const paScale = paZoomStrokeScale(view);
 
   const isSel = (m: Move, i: number) =>
     (board.selMove &&
@@ -120,14 +124,14 @@ export default function PathLayer() {
               points={shotPts[0]}
               fill="none"
               stroke={col}
-              strokeWidth={sel ? 1.1 : 0.8}
+              strokeWidth={(sel ? 1.1 : 0.8) * paScale}
               strokeLinecap="round"
             />
             <polyline
               points={shotPts[1]}
               fill="none"
               stroke={col}
-              strokeWidth={sel ? 1.1 : 0.8}
+              strokeWidth={(sel ? 1.1 : 0.8) * paScale}
               strokeLinecap="round"
             />
           </>
@@ -136,7 +140,7 @@ export default function PathLayer() {
             points={pts}
             fill="none"
             stroke={col}
-            strokeWidth={sel ? 1.1 : 0.8}
+            strokeWidth={(sel ? 1.1 : 0.8) * paScale}
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeDasharray={kind === "pass" ? "2.4 1.6" : undefined}
@@ -151,7 +155,7 @@ export default function PathLayer() {
               r={2.7}
               fill={col}
               stroke="#0a0e0c"
-              strokeWidth={0.4}
+              strokeWidth={0.4 * paScale}
             />
             <text
               x={st.x.toFixed(1)}
@@ -184,7 +188,7 @@ export default function PathLayer() {
             .join(" ")}
           fill="none"
           stroke={actorColor(tempDraw.actor as Actor, slots)}
-          strokeWidth={1}
+          strokeWidth={1 * paScale}
           strokeDasharray="2 1.5"
           strokeLinecap="round"
         />

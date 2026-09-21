@@ -4095,22 +4095,317 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 
 /* ---------- セットプレーデザイン(SetPieceBar) ---------- */
-/* 上段の種別チップ列にある「攻守」の小ラベル（ボタンではなく区切りの目印） */
+/* 種別チップ列にある「攻守」「人数」の小ラベル（ボタンではなく区切りの目印）。
+   レビュー指摘(1回目・minor): 11pxは§9「文字は12px以上」を満たしていなかった
+   （「まだ軌道がありません」「動かす」等、今回追加した文言も同じclassを使うため影響） */
 .spbar-label {
   flex: 0 0 auto;
   align-self: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--mut);
   padding: 0 1px;
 }
-/* 種別×攻守の組み合わせに該当プリセットが無いときの案内文 */
-.spbar-empty {
-  flex: 1 1 auto;
-  padding: 8px 4px;
-  font-size: 12.5px;
-  color: var(--mut);
+
+/* ---------- セットプレー操作列のグループ化(setpiece-redesign §5) ----------
+   操作列を「種類／ボールの軌道／表示／描く・動かす」の4グループへ分け、グループごとに
+   開閉できるようにする。見出しボタンの行(spgroups-head)と、開いたグループの中身
+   (spgroup-body。複数同時に開ける)を分けて積む。基底(このブロック)はスマホの見た目
+   （見出しは2×2・高さ44px・横スクロールしない）で、PCの1行横並び・高さ32pxは
+   「mobile-redesign PC reset」側で上書きする。 */
+.spgroups {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+.spgroups-head {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 8px 14px 4px;
+}
+.spgroup-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  /* レビュー指摘(2回目・major): このボタンは.spgroups-head(display:grid)のグリッド項目の
+     ため、min-widthの既定(auto)だと中身(.spgroup-summary)がどれだけ長くても縮められず、
+     スマホ390pxで要約が長い（例「浮き球・右に曲げる」）とグリッド列ごと画面外へはみ出して
+     いた。0にしてグリッド枠まで縮められるようにする（.spgroup-summary側は元々min-width:0+
+     ellipsisを持つため、これだけで要約が正しく省略されるようになる） */
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.spgroup-head.on {
+  background: var(--accent-tint);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.spgroup-name {
+  flex: 0 0 auto;
   white-space: nowrap;
+}
+.spgroup-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--mut);
+}
+.spgroup-head.on .spgroup-summary {
+  color: var(--accent);
+}
+.spgroup-car {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--mut);
+}
+.spgroup-head.on .spgroup-car {
+  color: var(--accent);
+}
+/* グループの中身の行。.fbarの横スクロール(overflow-x:auto)を折り返しへ上書きし、
+   スマホで横はみ出しが起きないようにする（§9） */
+.spgroup-body {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+/* レビュー指摘(1回目・minor): グループの中身のチップ(CK/FK/スローイン/攻撃/守備/
+   8人制/11人制)・fmini(軌道を作る/＋相手/ペン/図形/アニメ等)・位置を選ぶ帯の「やめる」が
+   スマホで42px/37pxとなり、§9「タップ領域は44px以上」を満たしていなかった。基底
+   (スマホ既定)は44pxとし、PCは「mobile-redesign PC reset」で他の操作部品
+   (spgroup-head等)と同じ32pxへ戻す */
+.spgroup-body .chip,
+.spgroup-body .fmini,
+.spplacingbar .fmini {
+  min-height: 44px;
+}
+/* 「動かす」3択（両方｜味方だけ｜相手だけ。setpiece-redesign §2）。.spkindgrpは
+   「種類」グループの「攻守」「人数」ラベル＋その選択肢を1つの折り返し単位にまとめるのに
+   同じ文法を使う（レビュー指摘(1回目・minor): 折り返すとラベルが対応する選択肢から
+   切り離され、例えば「攻守」の下に守備だけが来て次行の「人数」の直前に見えてしまっていた） */
+.spkindgrp,
+.spmovegrp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+/* .spview3/.spviewbtn（表示範囲3択。全体｜ゴール前｜PA拡大＝setpiece-redesign §6）は
+   .spmove3/.spmovebtnと同じ分割ボタンの見た目をそのまま共用する。
+   レビュー指摘(1回目・minor): スマホでは同じ行に角丸999pxのピル(.chip/.fmini)と
+   角丸0pxのこの分割ボタンが混在して見た目の文法が揃わなかった。基底(スマホ)は
+   999px(端だけ丸い分割ボタン)にし、PCは「mobile-redesign PC reset」で
+   §9の規約どおり四角(--r-md)へ戻す */
+.spmove3,
+.spview3 {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--outline);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.spmovebtn,
+.spviewbtn {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.spmovebtn:first-child,
+.spviewbtn:first-child {
+  border-left: 0;
+}
+.spmovebtn.on,
+.spviewbtn.on {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+/* ---------- セットプレー: 位置を選ぶモード（setpiece-redesign §3-1） ----------
+   FK/スローインの位置を選ぶ間、トークンは薄く・操作不可にし、ピッチ上に案内の帯を出す。
+   操作列(.spgroups)もタップの奪い合いを避けるため一緒にロックする */
+.spapp.sp-placing .tok,
+.spapp.sp-placing .ball,
+.spapp.sp-placing .deliveryhandle {
+  pointer-events: none;
+  opacity: 0.45;
+}
+/* レビュー指摘(1回目・minor): 位置を選ぶモード中も軌道のハンドルだけが濃いまま残り、
+   タップの死角（44x44）になっていた。線ごと隠す（ハンドルだけ薄くしても線と重なって
+   紛らわしいため） */
+.spapp.sp-placing .deliverysvg {
+  display: none;
+}
+.spapp.sp-placing .spgroups-head,
+.spapp.sp-placing .spgroup-body {
+  pointer-events: none;
+  opacity: 0.5;
+}
+.spapp.sp-placing .pitch {
+  cursor: crosshair;
+}
+.spplacingbar {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  z-index: 9;
+  max-width: 94%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  padding: 6px 8px 6px 12px;
+  /* レビュー指摘(2回目・minor): この帯の裏側(ピッチ上端寄りの帯状の領域)がタップの死角に
+     なり、ゴールのすぐ前にキック位置を置けなかった。帯自体は透過させ、「やめる」ボタン
+     だけ受け取るようにする（帯の内側で起きたポインタ操作を無視するPitch.tsx側の既存の
+     isInPlacingBarチェックは、ボタン以外はもうこの要素をtargetにしないため無害のまま残る） */
+  pointer-events: none;
+}
+.spplacingbar-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.spplacingbar .fmini {
+  pointer-events: auto;
+}
+
+/* ---------- セットプレー: ボールの軌道編集レイヤー（setpiece-redesign §4） ----------
+   軌道の線はトークンより上、狙う場所のハンドルはHTML要素にして44px四方のタップ領域を
+   確保する（SVG円のr指定だとピッチの表示サイズ次第でタップ領域が44pxを下回るため）。 */
+.deliverysvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 7;
+  pointer-events: none;
+}
+.deliveryhandle {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+.deliveryhandle:active {
+  cursor: grabbing;
+}
+.deliveryhandledot {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--surface-lowest);
+  border: 2px solid var(--accent);
+}
+
+/* ---------- セットプレー: PA拡大（表示範囲「PA拡大」。setpiece-redesign §6） ----------
+   yの変換（lib/pitchView.ts）はboxatk/boxdefと同じ式のままにし、横方向の追加の切り出しは
+   ピッチの描画層(.pitchzoom)をCSSでscale(=100/72。x14〜86が画面いっぱいになる倍率)し、
+   外枠(.pitch)のoverflow:hiddenで切り抜く（Pitch.tsx参照）。原点はゴール側の辺の中央
+  （paatk=上辺=y100側／padef=下辺=y0側）。一様スケールなのでy方向も連動して狭まり、
+   可視範囲は42(boxatk/boxdefと同じ)÷(100/72)＝約30データ単位になる（§6の想定どおり）。
+   board.pitchRef/getPitchRect()はこの層のgetBoundingClientRectを返すため、
+   usePointerDrag等のポインタ変換はscale後の実測矩形を基準にした式のまま無改造で動く。 */
+.pitch.pazoom {
+  /* .pitch2dの overflow:visible（縁のトークン欠け対策）を、PA拡大では外枠での
+     正確な切り抜きを優先して打ち消す（枠の外に出たトークンは見えなくてよい＝§6） */
+  overflow: hidden;
+}
+.pitchzoom {
+  position: absolute;
+  inset: 0;
+  --sp-pa-scale: calc(100 / 72);
+  --sp-pa-inv: calc(72 / 100);
+}
+.pitchzoom.pazoom-atk {
+  transform: scale(var(--sp-pa-scale));
+  transform-origin: 50% 0%;
+}
+.pitchzoom.pazoom-def {
+  transform: scale(var(--sp-pa-scale));
+  transform-origin: 50% 100%;
+}
+/* トークン・ボール・軌道のハンドル・図形の文字は逆倍率をかけて画面上の大きさを保つ
+  （拡大しすぎない＝§6）。spview-boxが同時に付くため571行の1.15倍(ゴール前と同じ見やすさ)は
+   保ったまま、PA拡大分(--sp-pa-scale)だけを打ち消す。この規則は同じ詳細度の571行より
+   ソース順で後にあるため、PA拡大時はこちらが勝つ。
+   レビュー指摘(1回目・major): SetPieceBar(.spbar-presets)はスタッフのみ描画される
+   （選手はisCoach===falseでnullを返す）ため、:has(.spbar-presets.spview-pa)は選手には
+   一切マッチせず、選手がPA拡大の文書を開くと.pitchzoom側の拡大(--sp-pa-scale)だけが
+   無補正で掛かっていた。Pitch.tsx側が役割に関係なく必ず付けるクラス(.pitchzoom.pazoom-*)
+   も条件に加える（スタッフ向けの:has()セレクタは、既存の571行との詳細度タイの勝敗
+   （ソース順）を変えないよう残したまま追加する） */
+.pitchzoom.pazoom-atk .tok,
+.pitchzoom.pazoom-atk .ball,
+.pitchzoom.pazoom-def .tok,
+.pitchzoom.pazoom-def .ball,
+.spapp:has(.spbar-presets.spview-pa) .tok,
+.spapp:has(.spbar-presets.spview-pa) .ball {
+  transform: translate(-50%, -50%) scale(calc(1.15 * var(--sp-pa-inv, 1)));
+}
+.pitchzoom.pazoom-atk .deliveryhandle,
+.pitchzoom.pazoom-def .deliveryhandle,
+.spapp:has(.spbar-presets.spview-pa) .deliveryhandle {
+  transform: translate(-50%, -50%) scale(var(--sp-pa-inv, 1));
+}
+.pitchzoom.pazoom-atk .shapetext,
+.pitchzoom.pazoom-atk .hullcount,
+.pitchzoom.pazoom-def .shapetext,
+.pitchzoom.pazoom-def .hullcount,
+.spapp:has(.spbar-presets.spview-pa) .shapetext,
+.spapp:has(.spbar-presets.spview-pa) .hullcount {
+  transform: translate(-50%, -50%) scale(var(--sp-pa-inv, 1));
+}
+/* レビュー指摘(1回目・minor): 「ボールの軌道」の線もPA拡大の1.39倍がそのまま掛かって
+   太くなっていた（viewBox上のstroke-widthはpx換算で.pitchzoomの拡大率に比例するため）。
+   このレイヤーは今回新設のものなのでstroke-widthだけ逆倍率を掛けて元の太さに戻す
+   （役割に関係ないPitch.tsx側のクラスを条件にするため選手側でも効く） */
+.pitchzoom.pazoom-atk .deliverysvg polyline,
+.pitchzoom.pazoom-def .deliverysvg polyline {
+  stroke-width: calc(0.9 * var(--sp-pa-inv, 1));
+}
+/* レビュー指摘(2回目・major): ルート矢印・ペン・図形の線(.pathsvg)自体はPathLayer/PenLayer/
+   ShapesLayer側でJSから逆倍率(lib/pitchView.ts paZoomStrokeScale)を掛けて解決したが、
+   図形の選択ハンドル(.shapehandle)・補助線(.shapeguide)はCSS(globals.css)側の固定値の
+   まま(値がここでも固定のためdeliverysvgと同じ手法で対応できる) */
+.pitchzoom.pazoom-atk .shapehandle,
+.pitchzoom.pazoom-def .shapehandle {
+  stroke-width: calc(0.5 * var(--sp-pa-inv, 1));
+}
+.pitchzoom.pazoom-atk .shapeguide,
+.pitchzoom.pazoom-def .shapeguide {
+  stroke-width: calc(0.3 * var(--sp-pa-inv, 1));
 }
 
 /* ---------- セットプレー3Dビューア ---------- */
@@ -11932,8 +12227,7 @@ body:has(.mhead) .grouppick-item {
   border-color: var(--accent);
   color: var(--accent);
 }
-.fmini.half.on,
-.fmini.zoom.on {
+.fmini.half.on {
   background: var(--accent-tint);
   border-color: var(--accent);
   color: var(--accent);
@@ -12425,7 +12719,20 @@ body:has(.mhead) .grouppick-item {
 .spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.center-circle,
 .spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.spot,
 .spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.box-top,
-.spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.box-top-s {
+.spapp:has(.spbar-presets.spview-boxdef) .pitch .mk.box-top-s,
+/* レビュー指摘(2回目・minor): 上の:has(.spbar-presets...)はSetPieceBarを描画しない選手
+   （isCoach===falseでnull）には効かない。Pitch.tsx側が役割に関係なく必ず付けるクラス
+   (.pitch.pitch-box-atk/-def。PA拡大(paatk/padef)でも同じ側を共用する)も条件に加える */
+.pitch.pitch-box-atk .mk.center-line,
+.pitch.pitch-box-atk .mk.center-circle,
+.pitch.pitch-box-atk .mk.spot,
+.pitch.pitch-box-atk .mk.box-bot,
+.pitch.pitch-box-atk .mk.box-bot-s,
+.pitch.pitch-box-def .mk.center-line,
+.pitch.pitch-box-def .mk.center-circle,
+.pitch.pitch-box-def .mk.spot,
+.pitch.pitch-box-def .mk.box-top,
+.pitch.pitch-box-def .mk.box-top-s {
   display: none;
 }
 
@@ -12436,11 +12743,19 @@ body:has(.mhead) .grouppick-item {
    （半分だけ表示のPA-s/GA-sも同様。戦術ボードのhalfビューは対象外＝スコープを.spappに
    限定し、Pitch.tsx側の.mk定義自体は変更しない） */
 .spapp:has(.spbar-presets.spview-box) .pitch .mk.box-top,
-.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-bot {
+.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-bot,
+.pitch.pitch-box-atk .mk.box-top,
+.pitch.pitch-box-atk .mk.box-bot,
+.pitch.pitch-box-def .mk.box-top,
+.pitch.pitch-box-def .mk.box-bot {
   height: 33.3333%;
 }
 .spapp:has(.spbar-presets.spview-box) .pitch .mk.box-top-s,
-.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-bot-s {
+.spapp:has(.spbar-presets.spview-box) .pitch .mk.box-bot-s,
+.pitch.pitch-box-atk .mk.box-top-s,
+.pitch.pitch-box-atk .mk.box-bot-s,
+.pitch.pitch-box-def .mk.box-top-s,
+.pitch.pitch-box-def .mk.box-bot-s {
   height: 14.2857%;
 }
 
@@ -12709,7 +13024,13 @@ body:has(.mhead) .grouppick-item {
      half(旧仕様の残存文書)は対象外＝従来どおり68/105のまま変えない。
      上の.sp3dpitchと同じ理由（height固定のままだと幅クランプ時に縦伸びする）で、
      height:auto/width:100%にして幅基準でアスペクトを効かせる（max-heightで上限だけ残す）。 */
-  .spapp:has(.spbar-presets.spview-box) .pitch {
+  .spapp:has(.spbar-presets.spview-box) .pitch,
+  /* レビュー指摘(2回目・minor): 上の:has(.spbar-presets...)はSetPieceBarを描画しない選手には
+     一切効かず、選手がゴール前/PA拡大の文書を開くとピッチの縦横比がフル(68/105)のまま
+     崩れて見えた。Pitch.tsx側が役割に関係なく必ず付けるクラス(.pitch-box-atk/-def)も
+     条件に加える（この一行追加のみ。他は元のまま） */
+  .spapp:not(.fullplay) .pitch.pitch-box-atk,
+  .spapp:not(.fullplay) .pitch.pitch-box-def {
     height: auto;
     width: 100%;
     max-height: calc(100dvh - 158px);
@@ -18132,6 +18453,48 @@ body:has(.mhead) .grouppick-item {
     border-radius: var(--r-md);
     margin-left: 10px;
     vertical-align: middle;
+  }
+  /* setpiece-redesign §5・§9: 操作列の4グループ見出しは、基底(スマホの2×2グリッド・
+     高さ44px)からPCの「1行に横並び・高さ32px」へ戻す。PCの操作部品は四角(--r-md)の
+     まま(基底と同じ)で、幅だけ内容に合わせて縮める */
+  .spapp .spgroups-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 18px 4px;
+  }
+  .spapp .spgroup-head {
+    width: auto;
+    min-height: 32px;
+  }
+  .spapp .spmovebtn,
+  .spapp .spviewbtn {
+    min-height: 32px;
+  }
+  /* レビュー指摘(1回目・minor): グループの中身のチップ/fmini・位置を選ぶ帯の「やめる」の
+     44px化(基底)はスマホ向けのため、PCは他の操作部品と同じ32pxへ戻す */
+  .spapp .spgroup-body .chip,
+  .spapp .spgroup-body .fmini,
+  .spapp .spplacingbar .fmini {
+    min-height: 32px;
+  }
+  /* レビュー指摘(1回目・minor): .spmove3/.spview3の999px化(基底)はスマホ向けの
+     ピル統一のため。PCは§9「PCの操作部品は四角(--r-md)」どおり四角へ戻す */
+  .spapp .spmove3,
+  .spapp .spview3 {
+    border-radius: var(--r-md);
+  }
+  /* レビュー指摘(2回目・major): アニメ編集中もピッチを縮めない対策
+     (.app.anim:not(.fullplay) .pitch{height:...!important}。上のPCブロック内、
+     このセクションより前から存在するため触らない)が、ゴール前/PA拡大(.pitch-box-atk/
+     -def。上のspview-box用アスペクト比指定)のheight:autoを!importantで押しのけ、
+     アニメ編集中だけ縦横比(68/44.1)が効かずピッチが縦に伸びて枠が画面下へはみ出していた。
+     ここは「アニメ中のPCだけの調整」なのでこのセクションに書く。より高い詳細度＋
+     !importantで両方の値を上書きし直す */
+  .spapp.anim:not(.fullplay) .pitch.pitch-box-atk,
+  .spapp.anim:not(.fullplay) .pitch.pitch-box-def {
+    height: auto !important;
+    max-height: calc(100dvh - 158px) !important;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }

@@ -248,9 +248,13 @@ export type ShapePatch = Partial<
 /**
  * ピッチの表示モード（データ座標は変えず表示だけ変換）。
  * full=通常表示 / half=敵陣ハーフの拡大表示 /
- * boxatk=敵陣ボックス周辺(y58-100)の横長クロップ表示 / boxdef=自陣ボックス周辺(y0-42)の横長クロップ表示
+ * boxatk=敵陣ボックス周辺(y58-100)の横長クロップ表示 / boxdef=自陣ボックス周辺(y0-42)の横長クロップ表示 /
+ * paatk/padef=PA拡大（setpiece-redesign §6）。yの変換はboxatk/boxdefと完全に同じ式を使い、
+ * 横方向の切り出し（x14-86を画面いっぱいに）はCSS側のscaleで行う（Pitch.tsx参照）。
+ * 書き出し（lib/renderFrame.ts・lib/exportImage.ts）と3D（lib/setPiece3d.ts）は
+ * paatk→boxatk・padef→boxdefとして扱う（横の切り出しはしない）
  */
-export type PitchViewMode = "full" | "half" | "boxatk" | "boxdef";
+export type PitchViewMode = "full" | "half" | "boxatk" | "boxdef" | "paatk" | "padef";
 
 /* ===== セットプレーデザイン ===== */
 
@@ -266,6 +270,10 @@ export interface SetPieceMeta {
   memo?: string;
   /** 何人制のシナリオか（GK含む人数）。旧データ・未指定＝8（8人制） */
   format?: 8 | 11;
+  /** FK・スローインの起点（位置を選ぶモードで決めたタップ位置。攻守を切り替えても
+   * そのままの実座標を保持し、生成関数側でside分の上下反転を行う＝setpiece-redesign §3）。
+   * CK・旧種別（ゴールキック・PK）では未使用 */
+  origin?: Point;
 }
 
 /** 永続化するボード全体の状態（作業中のボード） */

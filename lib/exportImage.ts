@@ -15,7 +15,10 @@ export function renderTacticPng(state: BoardState): string {
   // （lib/renderFrame.ts の同分岐・app/globals.cssの.spapp aspect-ratio:68/44.1と同じ考え方）。
   // full/half はisBoxが常にfalseになり、以下の値は元のリテラルと完全に一致するため
   // 出力（PNGバイト列）はこれまでと不変。
-  const isBox = view === "boxatk" || view === "boxdef";
+  // PA拡大(paatk/padef)は書き出しでは横の切り出しをせず、boxatk/boxdefと同じ構図で描く
+  // （setpiece-redesign §6）
+  const boxView = view === "paatk" ? "boxatk" : view === "padef" ? "boxdef" : view;
+  const isBox = boxView === "boxatk" || boxView === "boxdef";
   const W = 750;
   const px = 24;
   const py = 104;
@@ -108,7 +111,7 @@ export function renderTacticPng(state: BoardState): string {
     ctx.beginPath();
     ctx.arc(px + pw / 2, py + ph - 4, pw * 0.16, Math.PI, Math.PI * 2);
     ctx.stroke();
-  } else if (view === "boxatk") {
+  } else if (boxView === "boxatk") {
     // Phase0: 敵陣ボックス周辺クロップ（開いた3辺＋ゴールエリア）。下端はクロップ線＝
     // ピッチの実在ラインではないため、half表示のハーフウェイライン/センターサークルに
     // 相当する装飾は描かない（lib/renderFrame.ts の同分岐と同じ構図）。
@@ -120,7 +123,7 @@ export function renderTacticPng(state: BoardState): string {
     ctx.stroke();
     ctx.strokeRect(px + (pw - boxW) / 2, py + 4, boxW, boxH);
     ctx.strokeRect(px + (pw - gboxW) / 2, py + 4, gboxW, gboxH);
-  } else if (view === "boxdef") {
+  } else if (boxView === "boxdef") {
     // Phase0: 自陣ボックス周辺クロップ（開いた3辺＝上端がクロップ線＋ゴールエリア）
     // （lib/renderFrame.ts の同分岐と同じ構図）。
     ctx.beginPath();

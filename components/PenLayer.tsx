@@ -8,7 +8,7 @@ import { useRef, useState } from "react";
 import type React from "react";
 import type { Point } from "@/lib/types";
 import { simplify } from "@/lib/animation";
-import { topToY, yToTop } from "@/lib/pitchView";
+import { paZoomStrokeScale, topToY, yToTop } from "@/lib/pitchView";
 import { useBoard } from "./BoardProvider";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -73,6 +73,10 @@ export default function PenLayer() {
 
   const toPts = (path: Point[]) =>
     path.map((p) => `${p.x.toFixed(1)},${yToTop(p.y, view).toFixed(1)}`).join(" ");
+  // レビュー指摘(2回目・major): PA拡大中は.pitchzoomのCSS scaleでペンの線も1.39倍太くなる。
+  // ペン幅は可変(s.width/board.penWidth)のためCSS固定値上書きでは対応できず、ここで直接
+  // 逆倍率を掛けて戻す
+  const paScale = paZoomStrokeScale(view);
 
   return (
     <svg
@@ -97,7 +101,7 @@ export default function PenLayer() {
                 points={pts}
                 fill="none"
                 stroke="#ffffff"
-                strokeWidth={w + 0.8}
+                strokeWidth={(w + 0.8) * paScale}
                 strokeLinecap="round"
                 strokeLinejoin="round"
                 opacity={0.85}
@@ -108,7 +112,7 @@ export default function PenLayer() {
               points={pts}
               fill="none"
               stroke={s.color ?? "#ffe27a"}
-              strokeWidth={w}
+              strokeWidth={w * paScale}
               strokeDasharray={s.dash ? `${w * 2.4} ${w * 1.8}` : undefined}
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -122,7 +126,7 @@ export default function PenLayer() {
               points={pts}
               fill="none"
               stroke="transparent"
-              strokeWidth={hitWidth}
+              strokeWidth={hitWidth * paScale}
               strokeLinecap="round"
               strokeLinejoin="round"
               style={{ pointerEvents: board.penMode ? "none" : "auto" }}
@@ -140,7 +144,7 @@ export default function PenLayer() {
           points={toPts(livePts)}
           fill="none"
           stroke={board.penColor}
-          strokeWidth={board.penWidth}
+          strokeWidth={board.penWidth * paScale}
           strokeDasharray={board.penDash ? `${board.penWidth * 2.4} ${board.penWidth * 1.8}` : undefined}
           strokeLinecap="round"
           strokeLinejoin="round"

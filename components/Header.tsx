@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useBoard } from "./BoardProvider";
 import { MobileHeader, MobileHeaderAction, MobileHeaderMore } from "./MobileHeader";
-import { IconFilm, IconFolder, IconSave, IconShare } from "./icons";
+import { IconFilm, IconFolder, IconPlusSquare, IconSave, IconShare } from "./icons";
+import { toLayoutKind, type PlacingRequest } from "@/lib/setPieceLayouts";
 
 /** PC(min-width:1024px)判定のブレークポイント。TeamHub.tsx usePc() と同じ値・同じ手法 */
 const PC_MQ = "(min-width: 1024px)";
@@ -23,7 +24,13 @@ function usePc(): boolean {
   return pc;
 }
 
-export default function Header() {
+export default function Header({
+  onStartPlacing,
+}: {
+  /** セットプレーデザイン画面でのみSetPieceBoardから渡される。現在の種別がFK/スローインの
+   * ときは「新規作成」も位置を選ぶモードへ入る（setpiece-redesign §3-1・§7） */
+  onStartPlacing?: (req: PlacingRequest) => void;
+} = {}) {
   const board = useBoard();
   const name = board.state.teamName;
   // セットプレー画面ではタイトル/保存先を第2文書スロット(setPieces)側から取る。
@@ -36,6 +43,33 @@ export default function Header() {
   // PCでは他画面(ライブラリ/チーム運営等)と同様に画面名をロゴに出す。
   // モバイルは従来どおりブランド名(ALFA FOOTBALL)のまま変更しない
   const pc = usePc();
+
+  // セットプレーデザインの画面だけ「新規作成」を右上へ出す（戦術ボードの「新規」は
+  // 操作列のまま変えない＝setpiece-redesign §7）。いまの種別・攻守・人数を引き継いで
+  // 新しい文書を作る（保存中のIDは外す）。ロジックはSetPieceBar側の内部stateに依存させず
+  // BoardProviderのAPI(board.state.setPiece/newSetPiece)だけを見る
+  const handleNewSetPiece = () => {
+    const meta = board.state.setPiece;
+    const kind = toLayoutKind(meta?.kind) ?? "ck";
+    const side = meta?.side ?? "attack";
+    const format = meta?.format ?? 8;
+    const dirty =
+      board.state.moves.length > 0 ||
+      (board.state.drawings?.length ?? 0) > 0 ||
+      (board.state.shapes?.length ?? 0) > 0 ||
+      board.currentSetPieceId != null ||
+      // レビュー指摘(2回目・major): SetPieceBar.isDirty()と同じ判定に揃える。トークンを
+      // ドラッグしただけの手入れはmoves/drawings/shapesに現れないため、これが無いと
+      // 右上「新規作成」だけ無警告で配置が作り直されてしまっていた
+      board.isSetPieceLayoutEdited();
+    if (dirty && !window.confirm("配置を作り直します。いまの配置と動きは消えます。よろしいですか？")) return;
+    // FK/スローインは位置を選ぶモードに入る（setpiece-redesign §3-1・§7）
+    if ((kind === "fk" || kind === "throwin") && onStartPlacing) {
+      onStartPlacing({ kind, side, format, action: "new" });
+      return;
+    }
+    board.newSetPiece({ kind, side, format });
+  };
 
   if (!pc) {
     // mobile-redesign §1-6: ブランドロゴ(ALFA FOOTBALL)→画面名に置換。.tag.teamの緑ピルは廃止し、
@@ -63,6 +97,9 @@ export default function Header() {
               </MobileHeaderAction>
               <MobileHeaderMore
                 items={[
+                  ...(isSp
+                    ? [{ label: "新規作成", icon: <IconPlusSquare />, onClick: handleNewSetPiece }]
+                    : []),
                   { label: "戦術アニメ", icon: <IconFilm />, onClick: board.openStudio },
                   { label: "ライブラリ", icon: <IconFolder />, onClick: () => board.setScreen("library") },
                 ]}
@@ -101,6 +138,11 @@ export default function Header() {
             <path d="M17 21v-8H7v8M7 3v5h8" />
           </svg>
         </div>
+        {isSp && (
+          <div className="icon" title="新規作成" onClick={handleNewSetPiece}>
+            <IconPlusSquare />
+          </div>
+        )}
         <div className="icon" title="戦術アニメ" onClick={board.openStudio}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
             <path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z" />
