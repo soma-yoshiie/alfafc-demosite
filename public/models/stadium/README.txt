@@ -7,6 +7,7 @@ ALFA_Stadium_V5_6_1_packed.glb
   Scoreboard_Screen_1 / Scoreboard_Screen_-1 (V5.3で単一クアッド0..1 UV・屋根縁 x=±92.5へ修正済み)
 - アンカー: ANCHOR_BROADCAST=(-7,40.5,90)(V5.3で屋根下ガントリーへ修正) / ANCHOR_PLAYER_TUNNEL_HOME/AWAY
 - 同梱ボール: BALL_ROOT(直径0.22m。アプリ側Ball3Dが正のため実行時は非表示化)
+- 表示条件: 品質「高」のときだけ使用(中・軽はprocedural一式。specs/setpiece-redesign.md §13)。8人制でも「高」ならこのGLBを使い、ピッチ面の上の物(ライン/ゴール/コーナーフラッグ=材質 ALFA_M_White/ALFA_M_GoalNet/ALFA_M_Stone_Light のうちピッチ範囲内のもの)を非表示にして、8人制のライン・ゴール・フラッグをアプリ側(components/SetPiece3D.tsx)で描く
 - V5.3の修正: スコアボード単一クアッド化+可視位置化 / 放送アンカー修正 / コーナー・ペナルティ
   アーク追加 / 全マテリアルへPBR定数ベイク(白化解消) / マッチボール追加
 - V5.6.1の修正: ゴール内の床に張られていたネット線(38本)を除去(側面/背面/ルーフは維持)

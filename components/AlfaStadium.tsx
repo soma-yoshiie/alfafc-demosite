@@ -1,10 +1,15 @@
 "use client";
 
 // Blender製スタジアムGLB(ALFA_Stadium_V5_6_1.glb / 81.7MB・892メッシュ・約146万tris・
-// 37マテリアル共有・テクスチャ0・単一ルートALFA_EXPORT_ROOT)を読み込み、11人制・高/中品質の
-// ときだけ components/SetPiece3D.tsx から描画される（8人制はピッチ寸法がGLBの105×68mと
-// 一致しない・軽品質はtris予算超過のため、どちらも従来のprocedural一式を使い続ける。
-// 判断はSetPiece3D.tsx側の glbStadium 変数で行う）。
+// 37マテリアル共有・テクスチャ0・単一ルートALFA_EXPORT_ROOT)を読み込み、品質「高」のときだけ
+// components/SetPiece3D.tsx から描画される（specs/setpiece-redesign.md §13。中・軽は
+// tris予算と「中では.glbを読み込ませない」方針から従来のprocedural一式を使う。判断は
+// SetPiece3D.tsx側の glbStadium = quality === "high" で行い、フォーマットは見ない）。
+// 「高」なら8人制でもこのGLBを使う。GLBのピッチは105×68m(11人制)固定のため、8人制では
+// pitchMode="app" を渡し、GLBの「ピッチ面の上の物」（ライン・ゴールのポスト/バー/ネット・
+// コーナーフラッグ）を非表示にして、アプリ側のPitchLines/Goal×2/CornerFlags（8人制寸法）を
+// SetPiece3D.tsx側で重ねて描く。芝(Pitch_Base)と芝の縞はGLBのまま残す＝「フルピッチの中に
+// 8人制のラインを引いた」実物どおりの見え方。11人制は pitchMode="glb"（何も隠さない）。
 // components/SetPiece3D.tsx からのみimportすること（SetPiece3DStadium.tsx/SetPiece3DEnv.tsxと
 // 同じ「3D本体と同じチャンクに留めてバンドル分離を保つ」流儀）。three系importはこのファイルと
 // SetPiece3D系のみに限定する制約があるため、lib/setPiece3d.ts（three非依存）へは一切importしない。
@@ -36,6 +41,7 @@
 
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
+import { useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 
 /** GLB配置パス（相対パス。components/SetPiece3D.tsx の MODEL_URL="models/player.glb" と
@@ -43,10 +49,11 @@ import { useGLTF } from "@react-three/drei";
 const STADIUM_GLB_URL = "models/stadium/ALFA_Stadium_V5_6_1_packed.glb";
 
 // 注意: useGLTF.preload(STADIUM_GLB_URL) はあえて呼ばない。
-// 81.7MBという重量級アセットを、11人制以外（8人制・軽品質）のユーザーも含めて全員に
-// 無条件でダウンロードさせるべきではないという設計判断による（8人制・軽品質は
-// 従来のprocedural一式のままGLBを一切参照しない＝そのユーザーには存在しないファイルの
-// はずなので、なおさら先読みすべきではない）。<Suspense>によるオンデマンド読み込みのみに任せる。
+// 重量級アセット（配信用に圧縮しても11.7MB）を、品質「高」以外（中・軽）のユーザーも含めて
+// 全員に無条件でダウンロードさせるべきではないという設計判断による（中・軽は従来の
+// procedural一式のままGLBを一切参照しない＝そのユーザーには存在しないファイルのはずなので、
+// なおさら先読みすべきではない。§13の受け入れ「中でNetworkに.glbが出ない」もこれに依る）。
+// <Suspense>によるオンデマンド読み込みのみに任せる。
 
 /* V5.2で必要だった「baseColor未設定→白化」7マテリアルへの色補正(SOLID_COLOR_FIXUPS)は撤廃。
  * V5.3はエクスポート直前にプロシージャルをPrincipled PBR定数へ変換して出力するようになり、
@@ -96,6 +103,69 @@ function fixupMaterial(mat: THREE.Material): THREE.Material {
 const PITCH_RECEIVE_SHADOW_NAME = "Pitch_Base";
 
 /* ============================================================
+   「ピッチ面の上の物」（8人制で非表示にするGLBメッシュ）の判定
+   （specs/setpiece-redesign.md §13）
+   ============================================================ */
+
+/** 8人制(pitchMode="app")で隠す対象のマテリアル名。ライン＝White、ネット＝GoalNet、
+ * フラッグ布＝Stone_Light。ポスト・バー・フラッグ支柱もWhite。配信用GLBはgltfpack -knで
+ * ランタイム参照14ノード以外のノード名が落ちているため、ノード名ではなく
+ * 「マテリアル名＋ワールド座標の位置」で判定する。Stone_Lightはスタンドの外壁など
+ * ピッチ外にも多数（約150）あるが、下の位置条件で除外される。 */
+const PITCH_LEVEL_MATERIAL_NAMES = new Set(["ALFA_M_White", "ALFA_M_GoalNet", "ALFA_M_Stone_Light"]);
+
+/** 位置条件（ルートgroupの回転−90°・y−0.32を反映したアプリ側ワールド座標）。
+ * |x|≤36: タッチライン(z=±34→アプリのx)＋コーナーフラッグ分の余白。
+ * |z|≤56: ゴールライン(x=±52.5→アプリのz)＋ゴール奥行き(ネット後端)の余白。
+ * y≤7: ゴール高2.44m・フラッグ1.5m程度を含み、屋根・スタンド・広告面は含まない。 */
+const PITCH_LEVEL_MAX_ABS_X_M = 36;
+const PITCH_LEVEL_MAX_ABS_Z_M = 56;
+const PITCH_LEVEL_MAX_Y_M = 7;
+
+/** 集めた「ピッチ面の上の物」。useGLTFのシーンはページ生存中共有される
+ * （AlfaStadiumを再マウントしても同じメッシュ実体）ため、一度集めればモジュールスコープに
+ * 保持したまま、マウントのたび・pitchModeが変わるたびにvisibleを代入し直せる。
+ * 収集の「一度きり」判定はこの配列の空判定で行う（scene.userData.__alfaProcessedではない）。
+ * devのFast Refreshでこのモジュールが再評価されると、この配列だけが空に戻る一方で
+ * scene.userData側のフラグ（drei/useGLTFキャッシュの寿命）は残るため、フラグで判定すると
+ * 以後visible代入が空配列を回すだけになり、GLBメッシュのvisibleが編集直前の状態で固定される
+ * （11人制なのにライン・ゴールが消える／8人制で二重に出る）。配列が空なら集め直す。 */
+const pitchLevelMeshes: THREE.Mesh[] = [];
+
+/** objがBALL_ROOT配下かどうか（親をたどる）。ノード名が残っているのは14ノードだけだが、
+ * BALL_ROOTはその1つのため名前で判定できる。 */
+function isUnderBallRoot(obj: THREE.Object3D): boolean {
+  let p: THREE.Object3D | null = obj.parent;
+  while (p) {
+    if (p.name === "BALL_ROOT") return true;
+    p = p.parent;
+  }
+  return false;
+}
+
+/** メッシュの材質名が対象（White/GoalNet/Stone_Light）かどうか。配列マテリアルは
+ * いずれか1つでも該当すれば対象とする（実測ではこのGLBの対象メッシュは全て単一マテリアル）。 */
+function hasPitchLevelMaterial(mesh: THREE.Mesh): boolean {
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  return mats.some((m) => m != null && PITCH_LEVEL_MATERIAL_NAMES.has(m.name));
+}
+
+/** ワールド座標のBox3が位置条件に収まるかどうか。呼び出し前にルートgroupの
+ * updateMatrixWorld(true)が済んでいること（matrixWorldが未更新だとGLBローカル座標のまま
+ * 判定してしまい、X/Zの取り違えで対象を取りこぼす）。 */
+function isWithinPitchLevelBounds(mesh: THREE.Mesh): boolean {
+  const box = new THREE.Box3().setFromObject(mesh);
+  if (box.isEmpty()) return false;
+  return (
+    box.min.x >= -PITCH_LEVEL_MAX_ABS_X_M &&
+    box.max.x <= PITCH_LEVEL_MAX_ABS_X_M &&
+    box.min.z >= -PITCH_LEVEL_MAX_ABS_Z_M &&
+    box.max.z <= PITCH_LEVEL_MAX_ABS_Z_M &&
+    box.max.y <= PITCH_LEVEL_MAX_Y_M
+  );
+}
+
+/* ============================================================
    動的スクリーン（広告4面・スコアボード2面）
    ============================================================ */
 
@@ -129,7 +199,9 @@ type AdSource = string | HTMLVideoElement | HTMLCanvasElement;
 
 /** ロード完了後に発見された「名前付きスクリーン」ノード（広告4面+スコアボード2面）。
  * ノード名→メッシュの対応はGLBシーンが生存する限り不変のため、モジュールスコープで
- * 一度登録すれば以後ずっと有効（AlfaStadiumの再マウントをまたいでも使える）。 */
+ * 一度登録すれば以後ずっと有効（AlfaStadiumの再マウントをまたいでも使える）。
+ * pitchLevelMeshesと同じく、登録の有無はこのMapの空判定で見る（Fast Refreshで空に戻ったら
+ * 登録し直す。登録し直さないと広告面へのテクスチャ適用が飛び、devで白ポリのまま残る）。 */
 const screenRegistry = new Map<string, THREE.Mesh>();
 
 /** 現在そのノードに適用中の「自作」広告テクスチャ/マテリアル（差し替え・アンマウント時に
@@ -328,8 +400,15 @@ function computeAndPublishStadiumBounds(root: THREE.Object3D): void {
    本体
    ============================================================ */
 
-export function AlfaStadium() {
+/** 8人制でGLBの「ピッチ面の上の物」を隠すかどうか（specs/setpiece-redesign.md §13）。
+ * "glb"＝11人制（GLBのライン・ゴール・フラッグをそのまま見せる）、
+ * "app"＝8人制（GLB側を隠し、SetPiece3D.tsxがアプリ側のPitchLines/Goal×2/CornerFlagsを重ねる）。 */
+export type StadiumPitchMode = "glb" | "app";
+
+export function AlfaStadium({ pitchMode }: { pitchMode: StadiumPitchMode }) {
   const gltf = useGLTF(STADIUM_GLB_URL) as unknown as { scene: THREE.Group };
+  // frameloop="demand"のため、visibleを書き換えた後は明示的にinvalidate()して再描画させる。
+  const invalidate = useThree((s) => s.invalidate);
   // rotation/position適用後のルートgroup参照（境界計算はこのrefに対して行う。
   // gltf.scene自身に対して行うと、祖先のrotationがまだ反映されていないタイミングで
   // 呼ばれた場合に不正確になりうるため、祖先を持たないこのルート自体を対象にする）。
@@ -338,10 +417,16 @@ export function AlfaStadium() {
   useEffect(() => {
     const scene = gltf.scene;
 
-    // (a)(b)(c): マテリアル補正・シャドウ設定・スクリーン発見は、このGLBシーンに対して
-    // 一度だけ行う（scene.userDataへ処理済みフラグを立てて判定する＝drei/useGLTFの
-    // ロード結果キャッシュにより、AlfaStadiumが再マウントされても同じsceneインスタンスが
-    // 返るため、フラグはページ生存中ずっと有効）。以後、毎フレームのtraverseは行わない。
+    // (a)(b): マテリアル補正・シャドウ設定・広告面のUV反転・GLB同梱ボールの非表示は、
+    // 「シーンを書き換える」処理なのでこのGLBシーンに対して一度だけ行う（scene.userDataへ
+    // 処理済みフラグを立てて判定する＝drei/useGLTFのロード結果キャッシュにより、AlfaStadiumが
+    // 再マウントされても同じsceneインスタンスが返るため、フラグはページ生存中ずっと有効）。
+    // 以後、毎フレームのtraverseは行わない。
+    // (c)(d)の「モジュールスコープの登録簿」（screenRegistry・pitchLevelMeshes）はこのブロックに
+    // 入れない: フラグはシーン側（useGLTFキャッシュ）の寿命、登録簿はこのモジュールの寿命で、
+    // devのFast Refreshでこのファイルが再評価されると登録簿だけが空に戻る。フラグで一度きりに
+    // すると以後二度と集め直されず、visible代入が空回りしてGLBのライン・ゴールが編集直前の状態で
+    // 固定される（§13の判定そのものが無効になる）ため、登録簿は自分自身の空判定で集め直す。
     if (!scene.userData.__alfaProcessed) {
       scene.userData.__alfaProcessed = true;
       // V5.3同梱のマッチボール(BALL_ROOT: ピッチ中央・直径0.22m)は非表示にする。
@@ -360,20 +445,60 @@ export function AlfaStadium() {
         } else if (mesh.material) {
           mesh.material = fixupMaterial(mesh.material);
         }
-        if (AD_SLOT_NODE_NAME_SET.has(obj.name) || SCOREBOARD_NODE_NAMES.includes(obj.name)) {
-          screenRegistry.set(obj.name, mesh);
-          // 外向き2面のUV左右反転（AD_BACKFACING_NODE_NAMES参照）。この2メッシュの
-          // ジオメトリは他と共有されていない（876メッシュが各自のジオメトリを持つGLB）ため、
-          // その場で属性を書き換えてよい。
-          if (AD_BACKFACING_NODE_NAMES.has(obj.name)) {
-            const uv = mesh.geometry.getAttribute("uv") as THREE.BufferAttribute | undefined;
-            if (uv) {
-              for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
-              uv.needsUpdate = true;
-            }
+        // 外向き2面のUV左右反転（AD_BACKFACING_NODE_NAMES参照）。この2メッシュの
+        // ジオメトリは他と共有されていない（876メッシュが各自のジオメトリを持つGLB）ため、
+        // その場で属性を書き換えてよい（書き換えは一度きり＝このブロック内でだけ行う）。
+        if (AD_BACKFACING_NODE_NAMES.has(obj.name)) {
+          const uv = mesh.geometry.getAttribute("uv") as THREE.BufferAttribute | undefined;
+          if (uv) {
+            for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));
+            uv.needsUpdate = true;
           }
         }
       });
+    }
+
+    // (c)(d): スクリーン発見・「ピッチ面の上の物」収集。どちらもシーンを書き換えない読み取りだけ
+    // なので、登録簿が空のとき（初回マウント、またはFast Refreshで空に戻った後の再マウント）に
+    // 集め直してよい。通常は初回の1回だけ走る（2回目以降のマウントは両方とも埋まっている）。
+    if (pitchLevelMeshes.length === 0 || screenRegistry.size === 0) {
+      // (d)の位置判定はアプリ側ワールド座標（ルートgroupの回転−90°・y−0.32を反映した座標）で
+      // 行うため、Box3を取る前にルートgroupから下のmatrixWorldを確定させる。ルートgroupは
+      // このuseEffectが走る時点で既にコミット済み（refはレイアウト段階でアタッチされる）。
+      // まだ一度も描画されていない初回マウントではmatrixWorldが未計算のため、これを省くと
+      // GLBローカル座標(長辺=X)のまま判定してX/Zの閾値を取り違える。
+      rootRef.current?.updateMatrixWorld(true);
+      pitchLevelMeshes.length = 0;
+      screenRegistry.clear();
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        const isScreen = AD_SLOT_NODE_NAME_SET.has(obj.name) || SCOREBOARD_NODE_NAMES.includes(obj.name);
+        if (isScreen) {
+          screenRegistry.set(obj.name, mesh);
+          return;
+        }
+        // (d) 8人制で隠す「ピッチ面の上の物」の収集。芝(Pitch_Base)・GLB同梱ボール(BALL_ROOT配下)・
+        // 広告面/スコアボードは名前で除外し、残りを材質名＋ワールド位置で判定する
+        // （判定基準の詳細はPITCH_LEVEL_*定数のコメント参照）。visibleの代入はここでは行わず、
+        // 下のpitchMode用useEffectがマウントのたびに明示的に代入する。
+        if (
+          obj.name !== PITCH_RECEIVE_SHADOW_NAME &&
+          !isUnderBallRoot(obj) &&
+          hasPitchLevelMaterial(mesh) &&
+          isWithinPitchLevelBounds(mesh)
+        ) {
+          pitchLevelMeshes.push(mesh);
+        }
+      });
+      // 開発時のみ、集めた「ピッチ面の上の物」の数を出す（V5.6.1の実測: White 35
+      // ＝ライン・スポット25＋ポスト4・バー2・フラッグ支柱4、GoalNet 174、Stone_Light 4＝フラッグ布、
+      // 合計213。specs/setpiece-redesign.md §13の目安と同じ値。GLB更新で材質名や配置が変わって
+      // 取りこぼした場合に、この数の変化で気付けるようにする。Fast Refresh後の再収集でも出る）。
+      if (process.env.NODE_ENV !== "production") {
+        // eslint-disable-next-line no-console
+        console.info(`[AlfaStadium] pitch-level meshes: ${pitchLevelMeshes.length}`);
+      }
     }
 
     // スタジアム境界（Box3）の要約を1回だけ計算して公開する（カメラUXオーバーホール:
@@ -414,6 +539,19 @@ export function AlfaStadium() {
       }
     };
   }, [gltf]);
+
+  // 「ピッチ面の上の物」の表示/非表示（specs/setpiece-redesign.md §13）。
+  // マウントのたび・pitchModeが変わるたびに、集めた全メッシュへvisibleを「明示的に代入」する。
+  // useGLTFのシーンはページ生存中共有されるため、「変化時だけ」書くと 8人制(app)で隠した状態が
+  // 次の11人制(glb)マウントにそのまま残る（例: 8人制の3D→2Dで11人制へ→3D）。毎回代入すれば
+  // どの順で切り替えても直前の状態に依存しない。上のuseEffect（初回traverseで収集）より後に
+  // 宣言しているため、初回マウントでも収集→代入の順で走る。
+  useEffect(() => {
+    const visible = pitchMode === "glb";
+    for (const mesh of pitchLevelMeshes) mesh.visible = visible;
+    // frameloop="demand": visibleの書き換えだけでは再描画されないため明示的に要求する。
+    invalidate();
+  }, [gltf, pitchMode, invalidate]);
 
   useEffect(() => {
     if (process.env.NODE_ENV === "production") return;

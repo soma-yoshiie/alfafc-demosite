@@ -123,6 +123,8 @@ function usePrefersReducedMotion(): boolean {
 /* ============================================================
    品質トグル（高/中/軽の3段）。localStorageに記憶し、観客Nearインスタンス・上層スタンド・
    外壁シェル・芝解像度・選手モデル(GLB/プロシージャル)・実シャドウ・dprを切り替える。
+   スタジアム自体も「高」だけGLB(components/AlfaStadium.tsx)、中・軽はprocedural一式
+   （glbStadium変数・specs/setpiece-redesign.md §13）。
    ============================================================ */
 
 const SP3D_QUALITY_KEY = "alfa_sp3d_quality";
@@ -2564,9 +2566,35 @@ function CameraController({
     // （board.state の他の変化には追従させない設計。dimsはformatが変わらない限り同一
     // オブジェクト参照のまま＝getPitchDimsが固定テーブルを返すため、通常のboard.state更新
     // では再発火しない。resetNonceは「リセット」ボタンがpresetを同値("overhead")のまま
-    // 再適用したいときに使う専用のトリガー）
+    // 再適用したいときに使う専用のトリガー）。
+    // stadiumBoundsは意図的に依存へ入れない: GLB境界の到着(null→値)で毎回プリセット姿勢を
+    // 再適用すると、GLB読み込み中（proceduralフォールバック表示中）にユーザーが回した/寄せた
+    // 視点が読み込み完了の瞬間に捨てられる。境界が姿勢に効くのは"exterior"だけなので、
+    // その再適用は下の専用useEffectに限定する（applyPresetは毎レンダー作り直されるため、
+    // preset切替時には最新のstadiumBoundsを閉じ込めた計算になる）。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [preset, reducedMotion, camera, controlsRef, invalidate, dims, glbStadium, stadiumBounds, resetNonce]);
+  }, [preset, reducedMotion, camera, controlsRef, invalidate, dims, glbStadium, resetNonce]);
+
+  // GLB境界の到着時にプリセット姿勢を再適用するのは「全景」(exterior)のときだけ
+  // （specs/setpiece-redesign.md §13-3）。lib/setPiece3d.ts computeCameraPresetで
+  // stadiumBoundsを読むのは"exterior"分岐のみで、俯瞰45°・放送カメラ等では再適用しても
+  // 境界到着前と同じ姿勢＝得るものが無く、視点操作を捨てるだけになる。glbStadium =
+  // quality==="high"（8人制でもGLB）になったことで新規文書の既定（8人制・PC=高）の初回3Dで
+  // 必ず「読み込み中に操作→到着」を踏むため、ここで限定する。maxDistance/farの反映は
+  // <CameraControls maxDistance>とfar用useEffectが別途担うので、プリセット再適用は不要。
+  // prevBoundsRefは「境界が実際に変わった時」だけ動かすためのガード（初回マウントで
+  // 既に境界が判明している再マウント時は、上の遷移用useEffectが反映済みなので二重に
+  // 適用しない）。
+  const prevBoundsRef = useRef<StadiumBoundsSummary | null>(stadiumBounds);
+  useEffect(() => {
+    const prev = prevBoundsRef.current;
+    prevBoundsRef.current = stadiumBounds;
+    if (prev === stadiumBounds) return; // 初回マウント（値は反映済み）
+    if (!stadiumBounds) return; // 到着ではなく消失（glbStadium解除等）は何もしない
+    if (preset !== "exterior") return; // 全景以外は境界が姿勢に効かない
+    applyPreset("exterior", !reducedMotion);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stadiumBounds]);
 
   // camera.farの切替反映。<Canvas camera={{far:...}}>はCanvas生成時にしか適用されない
   // （R3Fは既存カメラのユーザー設定を上書きしない）ため、3Dを開いたまま品質を切り替えて
@@ -3367,15 +3395,22 @@ export default function SetPiece3D({
   // ＝下流のuseMemo([dims])はformat切替時だけ再計算される。
   const format = board.state.setPiece?.format ?? 8;
   const dims = getPitchDims(format);
-  // GLBスタジアム(components/AlfaStadium.tsx)を使うかどうか。11人制かつ高/中品質のときだけ true。
-  // - 8人制は不使用: GLBのピッチ実測は105×68m(11人制)固定のため、8人制(50×68m)の寸法とは
-  //   一致しない。8人制は従来どおりprocedural一式（フォーマットに応じて寸法を作り直せる）を使う。
+  // GLBスタジアム(components/AlfaStadium.tsx)を使うかどうか。品質「高」のときだけ true
+  // （specs/setpiece-redesign.md §13。formatは見ない）。
+  // - 8人制でも使う: 新規文書の既定は8人制のため、旧条件（11人制かつ高/中）では「高」にしても
+  //   3Dが旧スタジアムのままだった。GLBのピッチは105×68m(11人制)固定なので、8人制では
+  //   GLBの「ピッチ面の上の物」（ライン・ゴール・フラッグ）をAlfaStadium側で隠し、アプリ側の
+  //   PitchLines/Goal×2/CornerFlags（8人制寸法）を重ねて描く（下のglbStadium描画分岐を参照）。
+  // - 中(medium)品質は不使用: 中では.glb（配信用圧縮でも11.7MB）を読み込ませない方針。
+  //   従来どおりPBR芝・実シャドウのprocedural一式のまま。
   // - 軽(mobile)品質は不使用: GLBは1,460,240trisと軽品質のtris予算を大きく超えるため、
   //   軽量端末向けにはprocedural一式(軽量ジオメトリ)を使い続ける。
-  const glbStadium = format === 11 && quality !== "mobile";
+  const glbStadium = quality === "high";
   // GLBスタジアムのBox3境界要約（動的maxDistance/far/fog算出・「全景」プリセットのフィットに
-  // 使う）。glbStadium時のみ購読する（procedural一式・8人制/軽品質はGLB自体を読み込まないため
+  // 使う）。glbStadium時のみ購読する（procedural一式＝中/軽品質はGLB自体を読み込まないため
   // 境界は常にnullのまま＝lib側のcomputeCameraPresetがdims由来のフォールバックへ自動で落ちる）。
+  // 8人制のGLBでも境界はGLB（フルピッチのスタジアム実寸）に従う＝カメラの動的境界・放送カメラの
+  // アンカーは11人制と同じ。キッカー目線・GK目線などdimsから出す視点は8人制寸法のまま。
   // 初期値はgetStadiumBoundsSummary()で即座に取得を試みる（品質切替でSetPiece3Dが
   // 再マウントされた場合など、GLBが既にロード済みで境界が判明済みのケースに対応する）。
   const [stadiumBounds, setStadiumBounds] = useState<StadiumBoundsSummary | null>(() =>
@@ -3523,17 +3558,36 @@ export default function SetPiece3D({
           <fog attach="fog" args={[sky.fogColor, dynamicLimits.fogNear, dynamicLimits.fogFar]} />
           <SkyFollow preset={sky} cloudTint={sky.cloud} />
           {glbStadium ? (
-            // 11人制・高/中品質: Blender製GLBスタジアムを描画する。procedural一式
-            // （StadiumBowl/PitchGround/PitchLines/Goal×2/CornerFlags/ApronGround）は
-            // レンダーしない（二重ピッチ/二重ゴールを避けるため）が、コード自体は残し、
+            // 高品質: Blender製GLBスタジアムを描画する（specs/setpiece-redesign.md §13）。
+            // procedural一式（StadiumBowl/PitchGround/PitchLines/Goal×2/CornerFlags/ApronGround）は
+            // 一式としてはレンダーしない（二重ピッチ/二重ゴールを避けるため）が、コード自体は残し、
             // ロード中(Suspense)・失敗時(GlbStadiumBoundary)のフォールバックとして使う。
             <GlbStadiumBoundary fallback={proceduralStadium}>
               <Suspense fallback={proceduralStadium}>
-                <AlfaStadium />
+                {format === 11 ? (
+                  // 11人制: GLBのピッチ(105×68m)と寸法が一致するため、ライン・ゴール・フラッグも
+                  // GLBのものをそのまま見せる（何も隠さない・アプリ側は何も重ねない）。
+                  <AlfaStadium pitchMode="glb" />
+                ) : (
+                  // 8人制: GLBのピッチはフルピッチ固定なので、GLB側の「ピッチ面の上の物」
+                  // （ライン・ゴールのポスト/バー/ネット・コーナーフラッグ）をpitchMode="app"で隠し、
+                  // アプリ側のPitchLines/Goal×2/CornerFlags（8人制寸法）だけを重ねて描く
+                  // ＝「フルピッチの芝の中に8人制のラインを引いた」実物どおりの見え方。
+                  // PitchLinesはy=0.02・polygonOffset付きマテリアルのためGLBの芝(ワールドy=0)の
+                  // 上に出る。芝はGLBのPitch_Baseを使うのでPitchGround/ApronGround/StadiumBowlは
+                  // 描かない（二重の芝・スタンドになるため）。
+                  <>
+                    <AlfaStadium pitchMode="app" />
+                    <PitchLines dims={dims} />
+                    <Goal end={1} dims={dims} />
+                    <Goal end={-1} dims={dims} />
+                    <CornerFlags dims={dims} />
+                  </>
+                )}
               </Suspense>
             </GlbStadiumBoundary>
           ) : (
-            // 8人制、または軽(mobile)品質: 従来どおりprocedural一式をそのまま描画する。
+            // 中(medium)・軽(mobile)品質: フォーマットによらず従来どおりprocedural一式を描画する。
             proceduralStadium
           )}
           <ShapesFloor dims={dims} />

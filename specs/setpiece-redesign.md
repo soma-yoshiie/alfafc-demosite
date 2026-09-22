@@ -136,3 +136,33 @@ export function buildSetPieceLayout(input: SetPieceLayoutInput): SetPieceLayout
 - **選手の割り当て**：生成した枠には、戦術ボードのスタメンを優先して、①ポジション一致 ②同じ大分類（GK/DF/MF/FW）の順で GK の枠から埋める（以前は名簿の先頭から順で、GK がキッカーになっていた）。
 - **§4 ボールの軌道**：グループを開いただけでは軌道を作らない。「軌道を作る」を押したときだけ作る（自動生成は「消す」直後に再生成されて消せない・手を入れていない盤面でも確認ダイアログが出る、の 2 つを招いたため）。
 - **§6 PA 拡大**：切り替え時の自動スクロールはしない（PC で最下部まで飛び、ゴール側が操作列の下に隠れたため）。
+
+## 13. 3D スタジアムの表示条件（2026-09-22・統括）
+
+背景：3D（`components/SetPiece3D.tsx`）はスタジアムを 2 系統持つ。Blender 製 GLB（`public/models/stadium/ALFA_Stadium_V5_6_1_packed.glb`、描画は `components/AlfaStadium.tsx`）と、旧来のプロシージャル一式（`StadiumBowl`＋`PitchGround`＋`PitchLines`＋`Goal`×2＋`CornerFlags`＋`ApronGround`）。これまで GLB は「11 人制 かつ 高／中」のときだけだったため、既定が 8 人制の新規文書では 3D が旧スタジアムのままだった。
+
+決定：
+
+1. GLB は **品質「高」のときだけ**使う（`glbStadium = quality === "high"`）。中・軽はプロシージャル一式（中は従来どおり PBR 芝・実シャドウのまま。中では GLB を読み込まない）。
+2. 「高」なら **8 人制でも GLB のスタジアム**を使う。GLB のピッチは 105×68 固定なので、8 人制では GLB の「ピッチ面の上の物」＝ライン・ゴール（ポスト・バー・ネット）・コーナーフラッグを非表示にし、アプリ側の `PitchLines`／`Goal`×2／`CornerFlags`（8 人制寸法）をその上に描く。芝（`Pitch_Base`）と芝の縞（材質 `ALFA_M_Grass_Stripe`）は GLB のまま残す（「フルピッチの中に 8 人制のラインを引いた」実物どおりの見え方）。8 人制 GLB でも `PitchGround`（アプリ側の芝）・`ApronGround`・`StadiumBowl` は描かない。
+   - `AlfaStadium` に `pitchMode: "glb" | "app"` を持たせる。`"glb"`＝11 人制（今のまま何も隠さない）、`"app"`＝8 人制。
+   - 非表示にする GLB メッシュの判定：初回の一度きりの traverse（既存の `__alfaProcessed` の中）で、**ワールド座標の Box3 が |x| ≤ 36・|z| ≤ 56・y ≤ 7 に収まり**、かつマテリアル名が `ALFA_M_White`／`ALFA_M_GoalNet`／`ALFA_M_Stone_Light` のもの（ノード名は gltfpack `-kn` で 14 ノード以外落ちているため、材質＋位置で判定する）。`Pitch_Base`・`BALL_ROOT` 配下・広告面は対象外。Box3 を取る前にルート group の `updateMatrixWorld(true)` を呼ぶ（ルートの回転 −90°・y −0.32 を反映した座標で判定する）。
+   - 該当メッシュの配列をモジュールスコープに保持し、**マウントのたび・`pitchMode` が変わるたびに** `visible` を明示的に代入する（`useGLTF` のシーンはページ生存中共有されるため、8 人制で隠した状態が 11 人制のマウントに残らないように「変化時だけ」ではなく毎回代入する）。切り替え後は `invalidate()`（`frameloop="demand"`）。
+   - 収集の一度きりガードは `__alfaProcessed`（シーンの `userData`＝`useGLTF` キャッシュの寿命）ではなく **配列自身の空判定**で行う。dev の Fast Refresh で `AlfaStadium.tsx` が再評価されるとモジュールスコープの配列だけが空に戻り、`__alfaProcessed` は残るため、フラグで判定すると以後 `visible` 代入が空回りする（11 人制でライン・ゴールが消える／8 人制で二重になる）。配列が空なら再 traverse して集め直す（マテリアル補正・UV 反転などシーンを書き換える処理だけを `__alfaProcessed` で一度きりにする）。
+   - 数の目安（V5.6.1 の GLB 実測・dev コンソールの `[AlfaStadium] pitch-level meshes: N` と突き合わせる）：`ALFA_M_White` 35（ライン・スポット 25＋ポスト 4・バー 2・フラッグ支柱 4）、`ALFA_M_GoalNet` 174、`ALFA_M_Stone_Light` 4（旗布）＝**合計 213**。README.txt の版歴（V5.6 でネット 212 メッシュ → V5.6.1 でゴール内床のネット線 38 本を除去＝174）と整合する。GLB を差し替えたらこの数を取り直してここを更新する。
+3. カメラの動的境界（`dynamicLimits`／`stadiumBounds`）と放送カメラのアンカー・境界は `glbStadium` に従う（8 人制 GLB でも同じ）。キッカー目線・GK 目線など `dims` から出す視点は 8 人制寸法のまま。
+   - GLB 境界の到着（`stadiumBounds` null → 値）でプリセット姿勢を再適用するのは **「全景」（`exterior`）のときだけ**。境界が姿勢に効くのは `computeCameraPreset` の `exterior` 分岐のみで、俯瞰 45°・放送カメラ等で再適用しても同じ姿勢＝GLB 読み込み中にユーザーが回した／寄せた視点を捨てるだけになる（8 人制・高が既定になったことで初回 3D で必ず踏むため）。`maxDistance`／`far` の反映は `<CameraControls maxDistance>` と far 用 useEffect が別に担う。
+4. 読み込み失敗（`GlbStadiumBoundary`）・読み込み中（`Suspense`）のフォールバックは従来どおりプロシージャル一式。`useGLTF.preload` は引き続き呼ばない。
+5. `AlfaStadium.tsx` 冒頭のコメントと `public/models/stadium/README.txt` の「11 人制・高/中のときだけ」の記述をこの節に合わせて直す。`lib/setPiece3d.ts`（three 非依存）は触らない。
+   - `lib/setPiece3d.ts` は挙動を変えない（`format` を見ず `opts.glbStadium` だけで分岐する）。JSDoc の旧条件「8 人制＝プロシージャル」の記述 3 箇所（`CAMERA_TUNING.fallbackMaxDistanceM`・`GLB_BROADCAST_ANCHOR`・`computeCameraPreset` の `@param opts.glbStadium`）はコメントだけ「中・軽（プロシージャル一式）時」に直した。
+
+変えないもの：品質トグルの 3 段と既定（PC＝高、1024px 未満＝軽）、新規文書の既定入力（CK・攻撃・8 人制）、CSS。
+
+受け入れ：
+
+- 8 人制・高：GLB スタジアム＋8 人制のライン・ゴール・フラッグ。GLB のフルピッチ用ラインとゴールが見えない。ボールは 1 つ。
+- 11 人制・高：従来どおり GLB（ライン・ゴールも GLB）。
+- 8 人制・中／軽、11 人制・中／軽：プロシージャル一式。中で Network に `.glb` が出ない。
+- 8 人制の 3D → 2D で 11 人制へ → 3D、の順で二重ゴール・二重ラインにならない（逆順も）。
+- 8 人制・高で「放送カメラ」「全景」「リセット」が動く。
+- 検証は `scratchpad/tools/p7_stadium_probe.js` の拡張（3D に入るには「描く・動かす」グループを開いてから「3D」）。

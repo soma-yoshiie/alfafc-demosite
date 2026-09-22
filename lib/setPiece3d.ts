@@ -342,7 +342,7 @@ export const CAMERA_TUNING = {
   exteriorFogFarMult: 0.95,
   /** 境界到着時のfog near（m、固定） */
   exteriorFogNearM: 120,
-  /** 境界未到着 or 8人制/軽品質(procedural一式)時のフォールバックmaxDistance（m）。
+  /** 境界未到着 or 中/軽品質(procedural一式)時のフォールバックmaxDistance（m）。
    * 260: 俯瞰45°の距離(11人制で170.8m)や8人制の全景(189.7m)がクランプに衝突しない値
    * （旧OrbitControls時代の120は俯瞰45°の時点で既に超過しており、最初のズーム操作で
    * 50m飛ぶ実測不具合の原因だった）。 */
@@ -654,7 +654,7 @@ function broadcastBowlInnerBoundaryXM(dims: PitchDims): number {
  * 行列そのもの）ため、変換後は worldX=-86, worldZ=-7, worldY≈28（ルートのposition.y=-0.32は
  * 誤差として無視できる）。この対応は、アプリの既存座標規約（dims.pitchWidthM⇔X軸＝タッチライン
  * 方向、dims.pitchLengthM⇔Z軸＝ゴールライン方向）とGLBの軸（幅=Z、長さ=X）が一致することの
- * 確認にもなっている。8人制・プロシージャル時はこの定数を一切参照しない。
+ * 確認にもなっている。中/軽品質（プロシージャル一式）時はこの定数を一切参照しない。
  *
  * V5.3でGLB側のANCHOR_BROADCASTが屋根下ガントリー位置(GLBローカル(-7, 40.5, 90))へ修正された
  * ため、V5.2時代のアプリ側y=40暫定補正は撤廃し、GLB実測値をそのまま変換した値を使う
@@ -694,9 +694,10 @@ const GLB_BROADCAST_BOUNDARY_X_M = 100;
  *   BROADCAST_ASSUMED_ASPECT（従来の固定値）。broadcast以外のプリセットは無視する。
  * @param opts.glbStadium true時、broadcastのカメラアンカーをGLB_BROADCAST_ANCHOR
  *   （GLBスタジアム統合時の実測アンカー）へ差し替える。距離が十分遠いため必要fovは通常の
- *   18-40度クランプ内に収まり、fovフィット・後退フォールバックのロジック自体は8人制/
- *   プロシージャル時と完全に共有する（ここで分岐するのはアンカー座標(rx/ry/rz)のみ）。
- *   8人制・プロシージャル時は省略でよい（従来どおりの計算になる）。
+ *   18-40度クランプ内に収まり、fovフィット・後退フォールバックのロジック自体はプロシージャル
+ *   一式（中/軽品質）時と完全に共有する（ここで分岐するのはアンカー座標(rx/ry/rz)のみ）。
+ *   GLBは品質「高」のときだけで8人制でも使う（specs/setpiece-redesign.md §13）ため、
+ *   formatではなく呼び出し側のglbStadium（quality==="high"）で渡す。中/軽品質時は省略でよい。
  * @param opts.stadiumBounds "exterior"（全景）プリセット専用。components/AlfaStadium.tsxの
  *   getStadiumBoundsSummary()/subscribeStadiumBounds()が返す要約（構造的に同じ形の値であれば
  *   足りるため、three非依存を保つこのファイルへその型を持ち込まず、ここではインラインの
