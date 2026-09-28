@@ -630,6 +630,26 @@ export interface TeamGroup {
   kind: "grade" | "custom";
   /** kind="grade" のときの学年 */
   grade?: number;
+  /** カレンダーの絞り込みと色の作り直し（案A §1）: 月のマス・リスト行の色。
+   *  値は lib/groups.ts の GROUP_PALETTE（8色）のみ。未設定（旧データ・新規作成直後）は
+   *  lib/groups.ts の ensureGroupColors で補う */
+  color?: string;
+}
+
+/**
+ * カレンダーの絞り込み状態（案A §2。lib/storage.ts の loadCalFilter/saveCalFilter で
+ * localStorage soccer_tactics_calfilter_v2 に保存）。コーチ・選手/保護者どちらも同じ形を使うが、
+ * hiddenGroupIds/hideAllTargetsは選手/保護者側では使わない（絞り込みのUI自体を出さない）。
+ * 保存側にどのIDが実在するかは分からないため、存在しないIDが残っていても
+ * lib/calendarUtils.ts の calEventVisible 側で無視できるようにしてある。
+ */
+export interface CalFilter {
+  /** 非表示にしたグループID（コーチの減算型絞り込み） */
+  hiddenGroupIds: string[];
+  /** 全員向けの予定を隠すか（コーチのみ） */
+  hideAllTargets: boolean;
+  /** 非表示にした予定の種類（カテゴリ）ID。コーチ・選手/保護者で共用 */
+  hiddenCategoryIds: string[];
 }
 
 export type AttendanceStatus = "yes" | "maybe" | "no";

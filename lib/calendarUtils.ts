@@ -1,6 +1,7 @@
 // カレンダー機能拡張のヘルパー集約（パレット・カテゴリ・日付・繰り返し展開・地図URL）
 
-import type { EventCategory, RecurrenceRule, TeamEvent, TeamGroup } from "./types";
+import type { CalFilter, EventCategory, Player, RecurrenceRule, TeamEvent, TeamGroup } from "./types";
+import { eventTargetsPlayer } from "./groups";
 
 /** プリセットパレット（これ以外の色は使わせない） */
 export const CATEGORY_PALETTE: { color: string; name: string }[] = [
@@ -50,11 +51,6 @@ export function categoryOf(e: TeamEvent, cats: EventCategory[]): EventCategory {
 export const isAllTargets = (e: TeamEvent): boolean =>
   !e.groupIds || e.groupIds.length === 0;
 
-/** groupId(絞り込み中のグループ。nullは「すべて」)がこの予定の対象に含まれるか。
- *  全員対象の予定はどのグループを選んでいても表示する */
-export const eventTargetsGroup = (e: TeamEvent, groupId: string | null): boolean =>
-  groupId == null || isAllTargets(e) || e.groupIds!.includes(groupId);
-
 /** 対象表示ラベル。全員対象、または削除済みIDのみなら「全員」。それ以外は「・」連結 */
 export function targetLabel(e: TeamEvent, groups: TeamGroup[]): string {
   if (isAllTargets(e)) return "全員";
@@ -62,6 +58,33 @@ export function targetLabel(e: TeamEvent, groups: TeamGroup[]): string {
     .map((id) => groups.find((g) => g.id === id)?.label)
     .filter((l): l is string => !!l);
   return labels.length > 0 ? labels.join("・") : "全員";
+}
+
+/**
+ * カレンダーの絞り込みと色の作り直し（案A §2）: 予定eを画面に表示してよいか。
+ * CalendarTab・日別シート（SheetHostのdayPassesFilter）・「今日からの予定」・
+ * スマホの「画像で保存」の4か所で共用する（コーチ・選手/保護者どちらもこの1関数を通す）。
+ * ctx.categories は種類（練習/試合/…）の絞り込みに、ctx.groups は対象グループの絞り込みに使う。
+ */
+export function calEventVisible(
+  e: TeamEvent,
+  filter: CalFilter,
+  ctx: { isCoach: boolean; me: Player | null; groups: TeamGroup[]; categories: EventCategory[]; calMine: boolean }
+): boolean {
+  const cat = categoryOf(e, ctx.categories);
+  if (filter.hiddenCategoryIds.includes(cat.id)) return false;
+  if (ctx.isCoach) {
+    // 対象グループのうち解決できるもの（削除済みIDは除外）。0件（未指定／全部削除済み）は
+    // isAllTargets/targetLabelと同じく「全員向け」扱いにする
+    const resolved = (e.groupIds ?? [])
+      .map((id) => ctx.groups.find((g) => g.id === id))
+      .filter((g): g is TeamGroup => !!g);
+    if (isAllTargets(e) || resolved.length === 0) return !filter.hideAllTargets;
+    return resolved.some((g) => !filter.hiddenGroupIds.includes(g.id));
+  }
+  // 選手・保護者: グループの非表示は持たず、「自分の予定だけ」(calMine)のみ見る
+  if (!ctx.calMine || !ctx.me) return true;
+  return eventTargetsPlayer(e, ctx.me, ctx.groups);
 }
 
 /* ===== 場所の履歴（groups-editing-and-place-history §6） ===== */

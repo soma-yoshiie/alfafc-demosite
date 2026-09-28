@@ -188,7 +188,7 @@ export default function NotebookScreen() {
   // review #1回目: 絞り込み中のグループが削除されても、保存値([grp_a]等)がlocalStorageに
   // 残ったままだとチップ行はどれもonにならず(filterGroupはnullで描画に使う前に無効化されて
   // いるが、チップの選択表示はfilterIdsそのものを見るため)絞り込みが読めない状態になる。
-  // TeamHub.tsxのcalGroupEff/matchGroupEffと同じ作法で保存値自体も[]に戻す
+  // TeamHub.tsxのcalFilterEff/matchGroupEffと同じ作法で保存値自体も[]に戻す
   useEffect(() => {
     if (isCoach && filterIds.length > 0 && !filterGroup) setFilterIds([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps

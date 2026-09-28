@@ -1,5 +1,6 @@
 import type {
   BoardState,
+  CalFilter,
   ChatMessage,
   CoachDeliverable,
   DrillDoc,
@@ -18,7 +19,7 @@ import type {
 import type { UserArticle } from "./articles";
 import type { CoachLabState } from "./coachlab";
 import { emptyCoachLabState } from "./coachlab";
-import { ensureGradeGroups, gradeGroupsFor } from "./groups";
+import { ensureGradeGroups, ensureGroupColors, gradeGroupsFor } from "./groups";
 import {
   DEFAULT_FITNESS_TESTS,
   FITNESS_TEST_1000M,
@@ -44,7 +45,10 @@ const NOTEBOOK_KEY = "soccer_tactics_notebook_v1";
 const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
 const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
-const CALGROUP_KEY = "soccer_tactics_calgroup_v1";
+// カレンダーの絞り込みと色の作り直し（案A §2）: 旧キー（単一グループ選択）は撤去。
+// 新キーは読み込み時に旧キーをremoveItemし、二度と読まない
+const CALGROUP_KEY_OLD = "soccer_tactics_calgroup_v1";
+const CALFILTER_KEY = "soccer_tactics_calfilter_v2";
 const GROUPFILTER_KEY = "soccer_tactics_groupfilter_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
@@ -606,6 +610,9 @@ export function loadTeam(): TeamData | null {
     // groups の kind 未定義（旧データ）は "custom" とみなす
     data.groups = data.groups.map((g) => (g.kind ? g : { ...g, kind: "custom" as const }));
     if (schoolStageWasUnset) data.groups = ensureGradeGroups(stage, data.groups);
+    // カレンダーの絞り込みと色の作り直し（案A §1）: 色未設定のグループ（旧データ）に
+    // 未使用パレット色を補う。一度色が付けば保存後は毎回ここを通っても変化しない
+    data.groups = ensureGroupColors(data.groups);
     // events の optInPlayerIds が配列でなければ除去する
     data.events = data.events.map((e) =>
       e.optInPlayerIds !== undefined && !Array.isArray(e.optInPlayerIds)
@@ -658,21 +665,42 @@ export function saveLastEventCategory(id: string): void {
   }
 }
 
-/** カレンダーの絞り込み中グループ（次回も同じ絞り込みで開くための記憶。nullは「すべて」） */
-export function loadCalGroup(): string | null {
-  if (typeof window === "undefined") return null;
+/**
+ * カレンダーの絞り込み状態（案A §2。型は lib/types.ts の CalFilter）。コーチは
+ * 「隠しているもの」を保存する減算型：hiddenGroupIds（非表示のグループID）・
+ * hideAllTargets（全員向けを隠すか）・hiddenCategoryIds（非表示の種類ID。
+ * 選手・保護者もこれだけ共用する）。存在しないIDが残っていても読み込み側
+ * （lib/calendarUtils.ts の calEventVisible）は無視してよく、掃除（現存IDだけ残す）は
+ * 呼び出し側（components/TeamHub.tsx の Inner）が保存前に行う。
+ */
+const EMPTY_CALFILTER: CalFilter = { hiddenGroupIds: [], hideAllTargets: false, hiddenCategoryIds: [] };
+
+/** 次回も同じ絞り込みで開くための記憶。旧キー（soccer_tactics_calgroup_v1）は読まず、掃除する */
+export function loadCalFilter(): CalFilter {
+  if (typeof window === "undefined") return { ...EMPTY_CALFILTER };
   try {
-    return window.localStorage.getItem(CALGROUP_KEY) || null;
+    window.localStorage.removeItem(CALGROUP_KEY_OLD);
   } catch {
-    return null;
+    /* 無視 */
+  }
+  try {
+    const raw = window.localStorage.getItem(CALFILTER_KEY);
+    if (!raw) return { ...EMPTY_CALFILTER };
+    const data = JSON.parse(raw);
+    return {
+      hiddenGroupIds: Array.isArray(data?.hiddenGroupIds) ? data.hiddenGroupIds : [],
+      hideAllTargets: !!data?.hideAllTargets,
+      hiddenCategoryIds: Array.isArray(data?.hiddenCategoryIds) ? data.hiddenCategoryIds : [],
+    };
+  } catch {
+    return { ...EMPTY_CALFILTER };
   }
 }
 
-export function saveCalGroup(id: string | null): void {
+export function saveCalFilter(filter: CalFilter): void {
   if (typeof window === "undefined") return;
   try {
-    if (id) window.localStorage.setItem(CALGROUP_KEY, id);
-    else window.localStorage.removeItem(CALGROUP_KEY);
+    window.localStorage.setItem(CALFILTER_KEY, JSON.stringify(filter));
   } catch {
     /* 無視 */
   }

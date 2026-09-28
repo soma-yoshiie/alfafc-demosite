@@ -539,3 +539,15 @@ export function IconBell(p: SVGProps<SVGSVGElement>) {
     </Svg>
   );
 }
+
+/** 絞り込み（漏斗）。カレンダーの絞り込みと色の作り直し（案A §3-2）:
+ *  スマホヘッダーの「絞り込み」アクション専用 */
+export function IconFilter(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M4 5h16" />
+      <path d="M7 12h10" />
+      <path d="M10 19h4" />
+    </Svg>
+  );
+}

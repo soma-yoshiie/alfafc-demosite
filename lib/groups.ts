@@ -1,7 +1,7 @@
 // グループ機能の全面展開（groups-everywhere §1）のヘルパー集約。
 // 学年グループ（kind:"grade"。所属はPlayer.gradeから自動）とカスタムグループ
 // （kind:"custom"。所属はPlayer.groupIds）を横断して扱う。
-// カレンダーの絞り込み専用ヘルパー（eventTargetsGroup/targetLabel）は引き続き lib/calendarUtils.ts 側。
+// カレンダーの絞り込み専用ヘルパー（calEventVisible/targetLabel）は引き続き lib/calendarUtils.ts 側。
 
 import type {
   Announcement,
@@ -25,16 +25,101 @@ function isDefaultGradeLabel(label: string, grade: number): boolean {
 }
 
 /**
+ * カレンダーの絞り込みと色の作り直し（案A §1）: グループ色の固定パレット（8色）。
+ * オレンジ（試合カテゴリの色 #d9731f）とネイビー（全員向け、ALL_TARGETS_COLOR）は
+ * グループには割り当てない色として除外してある。TeamGroup.colorに入れてよい値はこれだけ。
+ */
+export const GROUP_PALETTE: { color: string; name: string }[] = [
+  { color: "#15803d", name: "グリーン" },
+  { color: "#2563eb", name: "ブルー" },
+  { color: "#7c5cbf", name: "パープル" },
+  { color: "#0f766e", name: "ティール" },
+  { color: "#d6324b", name: "レッド" },
+  { color: "#c2418f", name: "ピンク" },
+  { color: "#8a5a2b", name: "ブラウン" },
+  { color: "#b7791f", name: "琥珀" },
+];
+
+/**
+ * 全員向け（対象グループなし、または対象グループが全て削除済み）の予定・点・帯に使う色
+ * （案A §1）。CSSのvar(--blue)（=var(--ink)のネイビー）と同じ値。Canvas書き出し
+ * （2段目・lib/exportCalendar.ts）でも同じhexを直接使うためここに定数として置く。
+ */
+export const ALL_TARGETS_COLOR = "#15233c";
+
+/**
+ * usedColors（既に他のグループが使っている色。GROUP_PALETTE外の値は無視）から見て
+ * 「まだ使われていない」パレット色を配列順で1つ選ぶ。8色すべて使用済みなら、
+ * 使用回数が最少の色（同数はパレット順）を返す（案A §1）。
+ * ensureGroupColors/gradeGroupsForが「新規グループにどの色を割り当てるか」を決めるのに使う。
+ */
+function pickUnusedColor(usedColors: string[]): string {
+  const counts = new Map<string, number>(GROUP_PALETTE.map((p) => [p.color, 0]));
+  for (const c of usedColors) {
+    if (counts.has(c)) counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  const unused = GROUP_PALETTE.find((p) => counts.get(p.color) === 0);
+  if (unused) return unused.color;
+  let best = GROUP_PALETTE[0];
+  let bestCount = counts.get(best.color) ?? 0;
+  for (const p of GROUP_PALETTE) {
+    const c = counts.get(p.color) ?? 0;
+    if (c < bestCount) {
+      best = p;
+      bestCount = c;
+    }
+  }
+  return best.color;
+}
+
+/**
+ * 色の無いグループ（色未設定＝旧データ、または作った直後）に、未使用パレット色を配列順
+ * （学年→カスタム）で割り当てる（案A §1）。呼び出し順に「直前に割り当てた色」も使用済みに
+ * 数えるため、1回の呼び出し内で同じ色が重複しない。lib/storage.tsの読み込み正規化・
+ * components/TeamProvider.tsxのgroups初期化・addGroup/addGradeGroupから呼ぶ。
+ */
+export function ensureGroupColors(groups: TeamGroup[]): TeamGroup[] {
+  const used: string[] = groups.filter((g) => g.color).map((g) => g.color as string);
+  return groups.map((g) => {
+    if (g.color) return g;
+    const color = pickUnusedColor(used);
+    used.push(color);
+    return { ...g, color };
+  });
+}
+
+/**
+ * 予定eの色（案A §1「グループ＝色、種類＝文字」）。対象グループ（e.groupIds）のうち
+ * 最初に解決できたものの色。対象グループが無い（全員向け）、または全て削除済みで
+ * 解決できない場合はALL_TARGETS_COLOR。2段目（月のマス・リスト行・画像保存）が使う。
+ */
+export function groupColorOf(e: TeamEvent, groups: TeamGroup[]): string {
+  if (!e.groupIds || e.groupIds.length === 0) return ALL_TARGETS_COLOR;
+  for (const id of e.groupIds) {
+    const g = groups.find((x) => x.id === id);
+    if (g) return g.color ?? ALL_TARGETS_COLOR;
+  }
+  return ALL_TARGETS_COLOR;
+}
+
+/**
  * stage の学年ぶんの学年グループ一覧。既存の groups に kind:"grade" で該当学年のものが
  * あればそれを使うが、Phase D-1(C2-major): ラベルが3区分いずれかの既定ラベルのまま
  * （＝未改名）のときだけ新stageの既定ラベルへ差し替える。ユーザーが改名済み（どの区分の
  * 既定とも一致しない）ラベルはそのまま保持する（仕様§1「学年グループは改名可」）。
  * 無ければ既定ラベルの雛形を生成する。範囲外（stage変更で対象外になった）学年は含まれない。
+ * 案A §1: 新規に作る学年グループには、groups（渡された全グループ＝学年＋カスタム）の
+ * 色を見て未使用パレット色を割り当てる（同じ呼び出しで複数新設しても重複しない）。
  */
 export function gradeGroupsFor(stage: SchoolStage, groups: TeamGroup[]): TeamGroup[] {
+  const used: string[] = groups.filter((g) => g.color).map((g) => g.color as string);
   return STAGE_GRADES[stage].map((g) => {
     const existing = groups.find((x) => x.kind === "grade" && x.grade === g);
-    if (!existing) return { id: `grp_grade_${g}`, label: gradeLabel(stage, g), kind: "grade" as const, grade: g };
+    if (!existing) {
+      const color = pickUnusedColor(used);
+      used.push(color);
+      return { id: `grp_grade_${g}`, label: gradeLabel(stage, g), kind: "grade" as const, grade: g, color };
+    }
     if (isDefaultGradeLabel(existing.label, g)) return { ...existing, label: gradeLabel(stage, g) };
     return existing;
   });
@@ -164,7 +249,7 @@ export function matchTargetLabel(m: MatchRecord, groups: TeamGroup[]): string {
 
 /**
  * groupId(絞り込み中のグループ。nullは「すべて」)が試合記録mの対象に含まれるか。
- * calendarUtils.eventTargetsGroup()と同じ考え方：全体対象の記録はどのグループを選んでいても表示する。
+ * calendarUtils.calEventVisible()の対象グループ判定と同じ考え方：全体対象の記録はどのグループを選んでいても表示する。
  */
 export function matchTargetsGroup(m: MatchRecord, groupId: string | null): boolean {
   return groupId == null || !m.groupIds || m.groupIds.length === 0 || m.groupIds.includes(groupId);

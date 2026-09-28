@@ -45,7 +45,13 @@ import {
   diffDays,
   expandRule,
 } from "@/lib/calendarUtils";
-import { ensureGradeGroups, eventTargetPlayers, gradeGroupsFor, membersOf } from "@/lib/groups";
+import {
+  ensureGradeGroups,
+  ensureGroupColors,
+  eventTargetPlayers,
+  gradeGroupsFor,
+  membersOf,
+} from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
 
 let seq = 0;
@@ -614,8 +620,12 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
-  /** グループ（学年＋カスタム）マスタ */
-  const groups = useMemo<TeamGroup[]>(() => team.groups ?? [], [team.groups]);
+  /**
+   * グループ（学年＋カスタム）マスタ。カレンダーの絞り込みと色の作り直し（案A §1）:
+   * 色未設定（旧データ・ensureGradeGroups直後にまだ色が付いていないカスタムグループ等）を
+   * 保険として補う。一度色が付けば保存後は毎回ここを通っても変化しない
+   */
+  const groups = useMemo<TeamGroup[]>(() => ensureGroupColors(team.groups ?? []), [team.groups]);
   // groups-editing-and-place-history §3: 既定を"junior"に変更（実際にはstate初期化で
   // 常に埋まっているため、ここは万一未設定のときの保険）
   const schoolStage: SchoolStage = team.schoolStage ?? "junior";
@@ -651,7 +661,9 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
         if (!ok) return;
       }
       const prevGroups = team.groups ?? [];
-      const nextGroups = ensureGradeGroups(stage, prevGroups);
+      // 案A §1: gradeGroupsFor(ensureGradeGroups内)が新設の学年グループへ色を割り当てるが、
+      // 保険としてカスタムグループ側の色未設定もここで補っておく
+      const nextGroups = ensureGroupColors(ensureGradeGroups(stage, prevGroups));
       const removedIds = prevGroups
         .filter((g) => g.kind === "grade" && !nextGroups.some((x) => x.id === g.id))
         .map((g) => g.id);
@@ -701,7 +713,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       if (!nm) return "";
       const id = nid("grp");
       const g: TeamGroup = { id, label: nm, kind: "custom" };
-      setTeam((t) => ({ ...t, groups: [...(t.groups ?? []), g] }));
+      // 案A §1: 追加直後から表示側に自然に入るよう、その場でパレット色を割り当てる
+      setTeam((t) => ({ ...t, groups: ensureGroupColors([...(t.groups ?? []), g]) }));
       board.toast(`グループ「${nm}」を追加しました`);
       return id;
     },
@@ -729,7 +742,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
         (a, b) => (a.grade ?? 0) - (b.grade ?? 0)
       );
       const customGroups = gs.filter((x) => x.kind !== "grade");
-      setTeam((t) => ({ ...t, groups: [...gradeGroups, ...customGroups] }));
+      // 案A §1: 追加直後から表示側に自然に入るよう、その場でパレット色を割り当てる
+      setTeam((t) => ({ ...t, groups: ensureGroupColors([...gradeGroups, ...customGroups]) }));
       board.toast(`「${g.label}」を追加しました`);
     },
     [team.groups, team.schoolStage, board]

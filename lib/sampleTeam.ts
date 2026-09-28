@@ -11,10 +11,13 @@ export const SAMPLE_GROUP_A_ID = "grp_a";
 export const SAMPLE_GROUP_B_ID = "grp_b";
 export const SAMPLE_GROUP_GK_ID = "grp_gk";
 
+// カレンダーの絞り込みと色の作り直し（案A §1）: colorは固定パレット(lib/groups.ts
+// GROUP_PALETTE)から、学年グループ（中1=緑・中2=青・中3=紫。TeamProvider側でgradeGroupsFor
+// ("junior", [])により自動採番）と重ならない3色を割り当てておく
 export const SAMPLE_CUSTOM_GROUPS: TeamGroup[] = [
-  { id: SAMPLE_GROUP_A_ID, label: "Aチーム", kind: "custom" },
-  { id: SAMPLE_GROUP_B_ID, label: "Bチーム", kind: "custom" },
-  { id: SAMPLE_GROUP_GK_ID, label: "GK", kind: "custom" },
+  { id: SAMPLE_GROUP_A_ID, label: "Aチーム", kind: "custom", color: "#0f766e" },
+  { id: SAMPLE_GROUP_B_ID, label: "Bチーム", kind: "custom", color: "#d6324b" },
+  { id: SAMPLE_GROUP_GK_ID, label: "GK", kind: "custom", color: "#c2418f" },
 ];
 
 /* ===== 体力測定：デフォルト種目ID ===== */

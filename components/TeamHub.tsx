@@ -5,7 +5,9 @@ import type React from "react";
 import type {
   Announcement,
   AttendanceStatus,
+  CalFilter,
   DominantFoot,
+  EventCategory,
   EventSquad,
   FitnessRecord,
   FitnessTest,
@@ -29,11 +31,11 @@ import { LEAGUE_STANDINGS } from "@/lib/sampleLeague";
 import {
   addDays,
   byStartAsc,
+  calEventVisible,
   CATEGORY_PALETTE,
   categoryOf,
   diffDays,
   eventEndDate,
-  eventTargetsGroup,
   gmapsDirUrl,
   gmapsEmbedUrl,
   gmapsSearchUrl,
@@ -46,10 +48,10 @@ import {
   targetLabel,
 } from "@/lib/calendarUtils";
 import {
-  loadCalGroup,
+  loadCalFilter,
   loadGroupFilter,
   loadLastEventCategory,
-  saveCalGroup,
+  saveCalFilter,
   saveGroupFilter,
   saveLastEventCategory,
 } from "@/lib/storage";
@@ -66,20 +68,25 @@ import {
 import type { AttPeriod } from "@/lib/attendanceStats";
 import { groupAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
 import {
+  ALL_TARGETS_COLOR,
   announcementTargetsPlayer,
   eventTargetsPlayer,
+  GROUP_PALETTE,
+  groupColorOf,
   matchTargetLabel,
   matchTargetsGroup,
   playerInGroup,
   resolveFilterGroup,
   resolveFilterGroups,
 } from "@/lib/groups";
+import { renderCalendarListPng } from "@/lib/exportCalendar";
+import { downloadDataUrl } from "@/lib/exportImage";
 import { LineChart } from "./Charts";
 import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
-import { IconEdit, IconPlus } from "./icons";
+import { IconDownload, IconEdit, IconFilter, IconPlus } from "./icons";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import { fmtFitnessValue } from "@/lib/fitness";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
@@ -307,6 +314,9 @@ type SheetState =
   | { type: "annList" }
   | { type: "day"; date: string }
   | { type: "eventView"; id: string }
+  // カレンダーの絞り込みと色の作り直し（案A §3-2）: スマホヘッダー「絞り込み」から開く
+  // 下からのシート。中身はCalFilterPanel（コーチ/選手・保護者共通）
+  | { type: "calfilter" }
   | {
       type: "match";
       record?: MatchRecord;
@@ -350,22 +360,33 @@ function Inner() {
   const now = new Date();
   const [calYm, setCalYm] = useState({ y: now.getFullYear(), m: now.getMonth() });
   const [calView, setCalView] = useState<"month" | "list">("month");
-  // カレンダーの絞り込み（グループ）もタブを跨いで保持し、次回起動時も復元する（§3）
-  const [calGroup, setCalGroup] = useState<string | null>(() => loadCalGroup());
+  // カレンダーの絞り込みと色の作り直し（案A §2）もタブを跨いで保持し、次回起動時も復元する。
+  // 旧・単一選択(calGroup)を、コーチの減算型絞り込み(calFilter)に置き換える
+  const [calFilter, setCalFilter] = useState<CalFilter>(() => loadCalFilter());
   // 選手・保護者のカレンダー絞り込み（groups-everywhere §3）: 既定「自分の予定」。
-  // コーチ向けのcalGroupとは別軸（選手にはグループ絞り込み自体を出さない）
+  // コーチ向けのcalFilterとは別軸（選手にはグループ絞り込み自体を出さない）。既存のまま保存しない
   const [calMine, setCalMine] = useState(true);
-  // Phase D-1(C1-minor): 復元直後は掃除がuseEffect後(=描画1回分遅れ)になるため、
-  // 存在しないグループIDを描画に使う前にここで無効化する派生値を用意する
-  // （useEffectのsetCalGroup(null)はlocalStorage掃除用としてそのまま残す）
-  const calGroupEff = calGroup && team.groups.some((g) => g.id === calGroup) ? calGroup : null;
+  // Phase D-1(C1-minor)由来: 復元直後は掃除がuseEffect後(=描画1回分遅れ)になるため、
+  // 存在しないグループ/種類IDを描画に使う前にここで無効化する派生値を用意する
+  // （useEffectのsetCalFilterはlocalStorage掃除用としてそのまま残す）
+  const calFilterEff: CalFilter = {
+    hiddenGroupIds: calFilter.hiddenGroupIds.filter((id) => team.groups.some((g) => g.id === id)),
+    hideAllTargets: calFilter.hideAllTargets,
+    hiddenCategoryIds: calFilter.hiddenCategoryIds.filter((id) => team.categories.some((c) => c.id === id)),
+  };
   useEffect(() => {
-    // 保存済みのグループが削除済みなら「すべて」に戻す
-    if (calGroup && !team.groups.some((g) => g.id === calGroup)) setCalGroup(null);
-  }, [calGroup, team.groups]);
+    // 保存済みの非表示グループ・種類に削除済みIDが残っていれば「すべて」側へ戻す
+    if (
+      calFilter.hiddenGroupIds.length !== calFilterEff.hiddenGroupIds.length ||
+      calFilter.hiddenCategoryIds.length !== calFilterEff.hiddenCategoryIds.length
+    ) {
+      setCalFilter(calFilterEff);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calFilter, team.groups, team.categories]);
   useEffect(() => {
-    saveCalGroup(calGroup);
-  }, [calGroup]);
+    saveCalFilter(calFilter);
+  }, [calFilter]);
 
   // PC右ペイン(マスター・ディテール)の選択状態。タブを跨いで保持するためInnerで持つ
   const [recSel, setRecSel] = useState<RecSel>({ kind: "summary" });
@@ -383,7 +404,7 @@ function Inner() {
   }, [cmp, team.team.competitions, team.team.matches]);
   // groups-phase2 §3-3: 試合記録のグループ絞り込み（単一選択。大会フィルタと同じくInnerへ持ち上げ、
   // 左右ペイン(MatchesTab/RecSummaryPane)で共有する）。保存済みIDが削除済みなら「すべて」とみなす
-  // （calGroupEffと同じ作法）
+  // （calFilterEffと同じ作法）
   const [matchGroupIds, setMatchGroupIds] = useGroupFilter("matches");
   const matchGroupEff = resolveFilterGroup(matchGroupIds, team.groups)?.id ?? null;
   useEffect(() => {
@@ -441,6 +462,15 @@ function Inner() {
             : activeTab === "chat"
               ? { label: "連絡を送る", onClick: () => setSheet({ type: "announce" }) }
               : null;
+  // カレンダーの絞り込みと色の作り直し（案A §3-2）: カレンダータブのときだけスマホヘッダーに
+  // 「絞り込み」を出す（コーチ・選手/保護者どちらも。プレビュー中の閲覧ロールisCoachで出し分ける）。
+  // コーチは「絞り込み」→「＋予定を追加」の順、選手は「絞り込み」だけになるようheaderActionの前に置く
+  const showCalFilterAction = activeTab === "cal";
+  const calFilterHasHidden = isCoach
+    ? calFilterEff.hiddenGroupIds.length > 0 ||
+      calFilterEff.hideAllTargets ||
+      calFilterEff.hiddenCategoryIds.length > 0
+    : calFilterEff.hiddenCategoryIds.length > 0 || calMine;
 
   // PC専用コンソールシェルの左レール：チーム運営項目の直下にタブ帯と同じ一覧を出す。
   // レールはスクリム(left:208px)の外にあるため、シートを開いたままタブ切替できてしまう。
@@ -562,15 +592,27 @@ function Inner() {
           )}
         </header>
       ) : (
-        // mobile-redesign-v2 §3-3: タイトルは変更なし。右のアクションはタブ連動で1つだけ
-        // （スタッフのみ・headerActionで算出済み）。下部タブ「チーム」の直下画面のため戻るは出さない
+        // mobile-redesign-v2 §3-3: タイトルは変更なし。右のアクションはタブ連動で
+        // headerAction(スタッフのみ)1つだけだったが、案A §3-2でカレンダータブのときだけ
+        // 「絞り込み」を先頭に足す（コーチは絞り込み→＋の順、選手は絞り込みだけ）。
+        // 下部タブ「チーム」の直下画面のため戻るは出さない
         <MobileHeader
           title={board.auth.role === "coach" ? "チーム運営" : "チーム"}
           actions={
-            headerAction && (
-              <MobileHeaderAction primary label={headerAction.label} onClick={headerAction.onClick}>
-                <IconPlus />
-              </MobileHeaderAction>
+            (showCalFilterAction || headerAction) && (
+              <>
+                {showCalFilterAction && (
+                  <MobileHeaderAction label="絞り込み" onClick={() => setSheet({ type: "calfilter" })}>
+                    <IconFilter />
+                    {calFilterHasHidden && <span className="dot" />}
+                  </MobileHeaderAction>
+                )}
+                {headerAction && (
+                  <MobileHeaderAction primary label={headerAction.label} onClick={headerAction.onClick}>
+                    <IconPlus />
+                  </MobileHeaderAction>
+                )}
+              </>
             )
           }
         />
@@ -658,8 +700,10 @@ function Inner() {
                   setSheet={setSheet}
                   players={players}
                   isCoach={isCoach}
-                  calGroup={calGroupEff}
+                  calFilter={calFilterEff}
+                  setCalFilter={setCalFilter}
                   calMine={calMine}
+                  setCalMine={setCalMine}
                 />
               ) : (
                 <>
@@ -679,8 +723,8 @@ function Inner() {
                       setYm={setCalYm}
                       view={calView}
                       setView={setCalView}
-                      calGroup={calGroupEff}
-                      setCalGroup={setCalGroup}
+                      calFilter={calFilterEff}
+                      setCalFilter={setCalFilter}
                       calMine={calMine}
                       setCalMine={setCalMine}
                     />
@@ -719,8 +763,10 @@ function Inner() {
                     setSheet={setSheet}
                     players={players}
                     isCoach={isCoach}
-                    calGroup={calGroupEff}
+                    calFilter={calFilterEff}
+                    setCalFilter={setCalFilter}
                     calMine={calMine}
+                    setCalMine={setCalMine}
                   />
                 ) : (
                   <>
@@ -776,8 +822,10 @@ function Inner() {
           setSheet={setSheet}
           players={players}
           isCoach={isCoach}
-          calGroup={calGroupEff}
+          calFilter={calFilterEff}
+          setCalFilter={setCalFilter}
           calMine={calMine}
+          setCalMine={setCalMine}
         />
       )}
     </div>
@@ -1011,23 +1059,35 @@ function EvGroupsBadge({
   ev,
   groups,
   full,
+  dot,
+  outside,
 }: {
   ev: TeamEvent;
   groups: TeamGroup[];
   full?: boolean;
+  /** 案A §5: 先頭にグループ色の点(7px)を付ける（リスト行専用。全員向けは点なし） */
+  dot?: boolean;
+  /** 案A §2/§5: 選手・保護者の「すべて」表示でこの予定が自分を対象にしていないとき、
+   *  通常のラベルの代わりに薄い「対象外」を出す（.evgroups.outside） */
+  outside?: boolean;
 }) {
+  if (outside) {
+    return <span className={`evgroups outside${full ? " full" : ""}`}>対象外</span>;
+  }
   // Phase D-1(C2-minor): グループを1つも作っていないチームでは対象バッジ自体を出さない
   // （絞り込み行と同じ「グループが無ければ出さない」扱いに揃える）
   if (groups.length === 0) return null;
   const label = targetLabel(ev, groups);
+  const isAll = label === "全員";
   // Phase D-1(C2-minor): 色分けの判定基準をisAllTargets(groupIdsの有無)ではなく
   // 表示ラベルに揃える。削除済み/存在しないグループIDだけの予定は、ラベルが「全員」なのに
   // accent色になる食い違いを防ぐ
   return (
     <span
-      className={`evgroups${label === "全員" ? "" : " targeted"}${full ? " full" : ""}`}
+      className={`evgroups${isAll ? "" : " targeted"}${full ? " full" : ""}`}
       title={full ? undefined : label}
     >
+      {dot && !isAll && <i className="evgdot" style={{ background: groupColorOf(ev, groups) }} />}
       {label}
     </span>
   );
@@ -1175,8 +1235,8 @@ function CalendarTab({
   setYm,
   view,
   setView,
-  calGroup,
-  setCalGroup,
+  calFilter,
+  setCalFilter,
   calMine,
   setCalMine,
 }: {
@@ -1186,9 +1246,9 @@ function CalendarTab({
   setYm: (v: { y: number; m: number }) => void;
   view: "month" | "list";
   setView: (v: "month" | "list") => void;
-  /** カレンダーの絞り込み中グループ（コーチ向け）。null=すべて */
-  calGroup: string | null;
-  setCalGroup: (v: string | null) => void;
+  /** カレンダーの絞り込み状態（案A §2）。コーチの減算型絞り込み・選手/保護者の種類非表示を共用する */
+  calFilter: CalFilter;
+  setCalFilter: (v: CalFilter) => void;
   /** 選手・保護者向けの絞り込み: true=自分の予定だけ／false=すべて（groups-everywhere §3） */
   calMine: boolean;
   setCalMine: (v: boolean) => void;
@@ -1198,8 +1258,10 @@ function CalendarTab({
   const pc = usePc();
   // isCoach=false（選手・保護者、またはコーチの選手プレビュー）のときの「自分」
   const me = !isCoach ? board.state.players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
+  // 案A §2: 同じ判定(calEventVisible)をCalendarTab・日別シート・「今日からの予定」・
+  // 画像保存(2段目)の4か所で共用する
   const passesFilter = (e: TeamEvent) =>
-    isCoach ? eventTargetsGroup(e, calGroup) : !calMine || !me || eventTargetsPlayer(e, me, team.groups);
+    calEventVisible(e, calFilter, { isCoach, me, groups: team.groups, categories: team.categories, calMine });
 
   const first = new Date(ym.y, ym.m, 1);
   const startWd = first.getDay();
@@ -1216,7 +1278,6 @@ function CalendarTab({
   const eventsOn = (d: number) =>
     team.team.events.filter((e) => occursOn(e, dateStr(d)) && passesFilter(e)).sort(byStartAsc);
   const today = todayStr();
-  const calGroupLabel = calGroup ? team.groups.find((g) => g.id === calGroup)?.label ?? null : null;
 
   const shift = (delta: number) => {
     const nm = ym.m + delta;
@@ -1228,17 +1289,26 @@ function CalendarTab({
     .map((d) => ({ d, ds: dateStr(d), evs: eventsOn(d) }))
     .filter((x) => x.evs.length > 0);
 
-  // その月に登場するカテゴリ（凡例用・最大5個＋「他◯」）
-  const monthCatMap = new Map<string, ReturnType<typeof categoryOf>>();
+  // 案A §1 レビュー指摘対応: 凡例はカテゴリ色ではなく、マスの点・帯と同じグループ色
+  // (groupColorOf)に揃える。その月に登場する対象グループ／全員向けを重複なく列挙し
+  // （最大5個＋「他◯」）、試合が1件でもあれば輪の見本を1つ添える
+  const monthGroupLegendMap = new Map<string, { label: string; color: string }>();
+  let monthHasMatch = false;
   monthDays.forEach(({ evs }) =>
     evs.forEach((e) => {
-      const c = categoryOf(e, team.categories);
-      if (!monthCatMap.has(c.id)) monthCatMap.set(c.id, c);
+      if (e.kind === "match") monthHasMatch = true;
+      const resolvedId = isAllTargets(e) ? null : e.groupIds!.find((id) => team.groups.some((g) => g.id === id)) ?? null;
+      const g = resolvedId ? team.groups.find((x) => x.id === resolvedId) : undefined;
+      const key = g ? g.id : "__all__";
+      if (!monthGroupLegendMap.has(key)) {
+        monthGroupLegendMap.set(key, { label: g ? g.label : "全員向け", color: g?.color ?? ALL_TARGETS_COLOR });
+      }
     })
   );
-  const monthCats = Array.from(monthCatMap.values());
+  const monthGroupLegend = Array.from(monthGroupLegendMap.values());
 
-  // 日付ごとの予定行（リスト表示と、スマホの月表示下の「今日からの予定」で共用）
+  // 日付ごとの予定行（リスト表示と、スマホの月表示下の「今日からの予定」で共用）。
+  // 案A §5: 色はグループ(groupColorOf)・種類は文字(cat.label)のみで示す
   const renderAgendaRows = (days: typeof monthDays) =>
     days.map(({ d, ds, evs }) => {
       const wd = new Date(ym.y, ym.m, d).getDay();
@@ -1256,19 +1326,25 @@ function CalendarTab({
                   ? "終日"
                   : fmtTimeRange(e);
               const cat = categoryOf(e, team.categories);
+              const color = groupColorOf(e, team.groups);
+              // 選手・保護者の「すべて」表示で、この予定が自分を対象にしていないとき(案A §2)
+              const outside = !isCoach && !calMine && !!me && !eventTargetsPlayer(e, me, team.groups);
               return (
                 <div
                   key={e.id}
                   className={`agbar ${e.kind}`}
-                  style={{ borderLeftColor: cat.color }}
+                  style={{ borderLeftColor: color }}
                   onClick={() => setSheet({ type: "eventView", id: e.id })}
                 >
-                  <span className="agkind" style={{ background: cat.color }}>
-                    <i className="evdot" style={{ background: cat.color }} />
+                  <span className="agkind">
+                    <i
+                      className="evdot"
+                      style={{ background: color }}
+                    />
                     {cat.label}
                   </span>
                   <span className="agtitle">{e.title}</span>
-                  <EvGroupsBadge ev={e} groups={team.groups} />
+                  <EvGroupsBadge ev={e} groups={team.groups} dot outside={outside} />
                   {/* board-squad-and-pc-polish §3: メンバー登録済みの試合バッジ */}
                   {e.kind === "match" && e.squad && <span className="evgroups targeted">メンバー発表</span>}
                   {timeLabel && <span className="agtime">{timeLabel}</span>}
@@ -1280,65 +1356,136 @@ function CalendarTab({
       );
     });
 
-  return (
-    <div className="cal">
-      {/* groups-everywhere §3: 選手・保護者には既存のグループ絞り込みは出さず、代わりに
-          「自分の予定／すべて」の2択（既定=自分の予定）を出す */}
-      {isCoach ? (
-        // §3: グループの絞り込み行（.mseg-itemと同じチップ文法）。
-        // groups-editing-and-place-history §5: 末尾に「＋ 管理」を足し、カレンダーの一番上
-        // からもグループ管理シートを開けるようにする。グループが0件でも行自体は出し、
-        // その場合は「すべて」を出さず「＋ グループを管理」の1チップだけにする
-        <>
-          <MobileSegments
-            wrapClassName="calfilter"
-            ariaLabel="カレンダーの絞り込み"
-            items={
-              team.groups.length > 0
-                ? [
-                    { key: "all", label: "すべて", on: calGroup == null, onSelect: () => setCalGroup(null) },
-                    ...team.groups.map((g) => ({
-                      key: g.id,
-                      label: g.label,
-                      on: calGroup === g.id,
-                      onSelect: () => setCalGroup(g.id),
-                    })),
-                    {
-                      key: "manage",
-                      label: "＋ 管理",
-                      on: false,
-                      kind: "action" as const,
-                      onSelect: () => setSheet({ type: "groups" }),
-                    },
-                  ]
-                : [
-                    {
-                      key: "manage",
-                      label: "＋ グループを管理",
-                      on: false,
-                      kind: "action" as const,
-                      onSelect: () => setSheet({ type: "groups" }),
-                    },
-                  ]
-            }
-          />
-          {calGroupLabel && (
-            <div className="calfilterhint">{calGroupLabel}の予定と全員の予定を表示中</div>
-          )}
-        </>
-      ) : (
-        me && (
-          <MobileSegments
-            wrapClassName="calfilter"
-            ariaLabel="カレンダーの絞り込み"
-            items={[
-              { key: "mine", label: "自分の予定", on: calMine, onSelect: () => setCalMine(true) },
-              { key: "all", label: "すべて", on: !calMine, onSelect: () => setCalMine(false) },
-            ]}
-          />
-        )
-      )}
+  // 案A §3-2/3-3: 月の見出し(.calnav)の直下に出す「選択中の絞り込み」1行（スマホ・PC共通）。
+  // 「＋ 管理」チップ・.calfilterの行・.calfilterhintは撤去し、代わりにこの1行だけで状態を示す。
+  // レビュー指摘対応: コーチの判定(表示中グループ・全員向け・種類)をcalSel(色付きJSX)と
+  // calSelText(画像保存用のプレーンテキスト)それぞれに重複して書いていたため、判定自体を
+  // ここ1か所にまとめる（食い違い防止）。あわせて、グループも全員向けも1つも表示していない
+  // （＝何も表示されない）ときに空表示や「・練習のみ」のように先頭が「・」で始まる表示に
+  // なっていた不具合も、ここで「表示する予定なし」に正規化して直す
+  const coachSel = isCoach
+    ? (() => {
+        const shownGroups = team.groups.filter((g) => !calFilter.hiddenGroupIds.includes(g.id));
+        const shownCats = team.categories.filter((c) => !calFilter.hiddenCategoryIds.includes(c.id));
+        const catsHiddenLabel =
+          calFilter.hiddenCategoryIds.length === 0
+            ? null
+            : shownCats.length > 0
+              ? `${shownCats.map((c) => c.label).join("・")}のみ`
+              : "表示する種類なし";
+        return {
+          allDefault: shownGroups.length === team.groups.length && !calFilter.hideAllTargets && !catsHiddenLabel,
+          nothingShown: shownGroups.length === 0 && calFilter.hideAllTargets,
+          shownGroups,
+          showAllTargets: !calFilter.hideAllTargets,
+          catsHiddenLabel,
+        };
+      })()
+    : null;
 
+  const calSel: React.ReactNode = isCoach
+    ? coachSel!.allDefault
+      ? "すべての予定"
+      : coachSel!.nothingShown
+        ? "表示する予定なし"
+        : (() => {
+            const nodes: React.ReactNode[] = coachSel!.shownGroups.map((g) => (
+              <span key={g.id} style={{ marginRight: 8 }}>
+                <i className="calseldot" style={{ background: g.color }} />
+                {g.label}
+              </span>
+            ));
+            if (coachSel!.showAllTargets) nodes.push(<span key="all">＋ 全員向け</span>);
+            if (coachSel!.catsHiddenLabel) nodes.push(`・${coachSel!.catsHiddenLabel}`);
+            return nodes;
+          })()
+    : (() => {
+        const shownCats = team.categories.filter((c) => !calFilter.hiddenCategoryIds.includes(c.id));
+        const base = calMine ? "自分の予定" : "すべての予定";
+        if (calFilter.hiddenCategoryIds.length === 0) return base;
+        const catsLabel = shownCats.length > 0 ? `${shownCats.map((c) => c.label).join("・")}のみ` : "表示する種類なし";
+        return `${base}・${catsLabel}`;
+      })();
+
+  // 案A §6: 画像保存(PNG)のヘッダーに使うプレーンテキスト版。coachSelを共用するため、
+  // calSel(色付きJSX)と食い違わない
+  const calSelText: string = isCoach
+    ? coachSel!.allDefault
+      ? "すべての予定"
+      : coachSel!.nothingShown
+        ? "表示する予定なし"
+        : (() => {
+            const parts = coachSel!.shownGroups.map((g) => g.label);
+            if (coachSel!.showAllTargets) parts.push("全員向け");
+            return parts.join("・") + (coachSel!.catsHiddenLabel ? `・${coachSel!.catsHiddenLabel}` : "");
+          })()
+    : (() => {
+        const shownCats = team.categories.filter((c) => !calFilter.hiddenCategoryIds.includes(c.id));
+        const base = calMine ? "自分の予定" : "すべての予定";
+        if (calFilter.hiddenCategoryIds.length === 0) return base;
+        const catsLabel = shownCats.length > 0 ? `${shownCats.map((c) => c.label).join("・")}のみ` : "表示する種類なし";
+        return `${base}・${catsLabel}`;
+      })();
+
+  // 案A §6: スマホのリスト表示「画像で保存」。絞り込み後の全件(monthDays)をそのまま
+  // lib/exportCalendar.tsへ渡す（スクロールに関係なく全部＝リスト表示と同じ内容）
+  const saveListImage = async () => {
+    const totalEvs = monthDays.reduce((s, x) => s + x.evs.length, 0);
+    if (totalEvs === 0) {
+      board.toast("この月の予定はありません");
+      return;
+    }
+    const days = monthDays.map((day) => ({
+      d: day.d,
+      wd: new Date(ym.y, ym.m, day.d).getDay(),
+      evs: day.evs.map((e) => {
+        const cat = categoryOf(e, team.categories);
+        const timeLabel = isMultiDay(e)
+          ? `${fmtMD(e.date)}〜${fmtMD(eventEndDate(e))}`
+          : e.allDay
+            ? "終日"
+            : fmtTimeRange(e);
+        const outside = !isCoach && !calMine && !!me && !eventTargetsPlayer(e, me, team.groups);
+        return {
+          title: e.title,
+          timeLabel,
+          categoryLabel: cat.label,
+          color: groupColorOf(e, team.groups),
+          targetLabel: outside ? "対象外" : targetLabel(e, team.groups),
+          isMatch: e.kind === "match",
+          outside,
+        };
+      }),
+    }));
+    const dataUrl = renderCalendarListPng({
+      ym,
+      teamName: board.state.teamName,
+      days,
+      selLabel: calSelText,
+    });
+    const filename = `予定_${ym.y}-${String(ym.m + 1).padStart(2, "0")}.png`;
+    // 案A §6: 共有シートが使えれば共有(iPhoneでは「画像を保存」が出る)。使えなければダウンロード。
+    // 共有をキャンセル(AbortError)したときは何もしない
+    if (typeof navigator !== "undefined" && navigator.share && navigator.canShare) {
+      try {
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: "image/png" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: filename });
+          return;
+        }
+      } catch (err) {
+        if ((err as { name?: string } | null)?.name === "AbortError") return;
+        // 共有に失敗した場合はダウンロードにフォールバックする（下へ続く）
+      }
+    }
+    downloadDataUrl(dataUrl, filename);
+    board.toast("画像を保存しました");
+  };
+
+  const calBody = (
+    <>
       <div className="calnav">
         <button onClick={() => shift(-1)}>‹</button>
         <b>
@@ -1346,6 +1493,8 @@ function CalendarTab({
         </b>
         <button onClick={() => shift(1)}>›</button>
       </div>
+
+      <div className="calsel">{calSel}</div>
 
       <div className="calviewtoggle">
         <button className={view === "month" ? "on" : ""} onClick={() => setView("month")}>
@@ -1385,44 +1534,61 @@ function CalendarTab({
                       const isEnd = eventEndDate(e) === ds;
                       const corner = isStart && isEnd ? "single" : isStart ? "start" : isEnd ? "end" : "mid";
                       const showTime = (corner === "start" || corner === "single") && !e.allDay && e.time;
+                      // 案A §4-2: 帯の色はグループ(groupColorOf)。種類は文字の先頭1文字で示す
+                      // （試合は「試 」固定・練習は付けない・その他カテゴリは先頭1文字）
+                      const prefix = cat.id === "match" ? "試 " : cat.id === "practice" ? "" : `${cat.label.slice(0, 1)} `;
+                      const label = showTime ? `${e.time} ${e.title}` : e.title;
                       return (
                         <span
                           key={e.id}
                           className={`calev ${corner}`}
-                          style={{ background: cat.color }}
+                          style={{ background: groupColorOf(e, team.groups) }}
                         >
-                          {showTime ? `${e.time} ${e.title}` : e.title}
+                          {prefix}
+                          {label}
                         </span>
                       );
                     })}
-                    {evs.length > 2 && <span className="calmore">＋{evs.length - 2}件</span>}
+                    {/* §4-2: 「＋N件」を「+N」に短くする */}
+                    {evs.length > 2 && <span className="calmore">+{evs.length - 2}</span>}
                   </div>
                   <div className="caldots">
                     {/* Phase D-1(C1-minor): スマホ390pxのセル幅では点3つ+「+n」が1行に
                         収まらず2行目へ折り返してレイアウトが崩れるため、4件以上のときは
                         点を2つに減らして「+n」と1行で収める（3件以下は従来どおり点3つ） */}
-                    {evs.slice(0, evs.length > 3 ? 2 : 3).map((e) => (
-                      <span
-                        key={e.id}
-                        className="caldot"
-                        style={{ background: categoryOf(e, team.categories).color }}
-                      />
-                    ))}
-                    {/* §4: 4件以上は点2つ＋「+n」（12px未満は使わない） */}
-                    {evs.length > 3 && <span className="caldotmore">+{evs.length - 2}</span>}
+                    {evs.slice(0, evs.length > 3 ? 2 : 3).map((e) => {
+                      // 案A §4-1: 点はグループ色(groupColorOf)。試合は塗りではなく輪(枠だけ)にする
+                      const color = groupColorOf(e, team.groups);
+                      const isMatch = e.kind === "match";
+                      return (
+                        <span
+                          key={e.id}
+                          className={`caldot${isMatch ? " match" : ""}`}
+                          style={isMatch ? { borderColor: color } : { background: color }}
+                        />
+                      );
+                    })}
+                    {/* §4-1: 4件以上は点2つ＋「+」（件数は下のリストで分かるため数字は出さない） */}
+                    {evs.length > 3 && <span className="caldotmore">+</span>}
                   </div>
                 </div>
               );
             })}
           </div>
-          {(monthCats.length > 0 || isCoach) && (
+          {(monthGroupLegend.length > 0 || isCoach) && (
             <div className="callegend">
-              {monthCats.slice(0, 5).map((c) => (
-                <span key={c.id}>
-                  <i className="caldot" style={{ background: c.color }} /> {c.label}
+              {monthGroupLegend.slice(0, 5).map((g) => (
+                <span key={g.label}>
+                  <i className="caldot" style={{ background: g.color }} /> {g.label}
                 </span>
               ))}
-              {monthCats.length > 5 && <span>他{monthCats.length - 5}</span>}
+              {monthGroupLegend.length > 5 && <span>他{monthGroupLegend.length - 5}</span>}
+              {/* 試合は色を持たないため、点ではなく輪(枠だけ)の見本を文字と一緒に添える */}
+              {monthHasMatch && (
+                <span>
+                  <i className="legendring" /> 試合
+                </span>
+              )}
               {isCoach && <span className="calhint">日付をタップで予定を追加</span>}
             </div>
           )}
@@ -1455,6 +1621,22 @@ function CalendarTab({
         </>
       ) : (
         <div className="agenda">
+          {/* 案A §6: スマホのリスト表示だけ先頭に「この月の予定 N件」＋「画像で保存」。
+              PCは出さない（月送り・月/リスト切替と同じく変更しない対象のため） */}
+          {!pc && (
+            <div className="callistbar">
+              <span>この月の予定 {monthDays.reduce((s, x) => s + x.evs.length, 0)}件</span>
+              <button
+                type="button"
+                className="callistsave"
+                onClick={() => {
+                  void saveListImage();
+                }}
+              >
+                <IconDownload /> 画像で保存
+              </button>
+            </div>
+          )}
           {monthDays.length === 0 ? (
             <div className="empty-msg">
               <b>この月の予定はありません</b>
@@ -1476,6 +1658,214 @@ function CalendarTab({
             </button>
           )}
         </div>
+      )}
+    </>
+  );
+
+  // 案A §3-3: PCは.calを.calside(絞り込み常設。見出し行なし＝compact)+.calmain(従来の本体)
+  // の2列にする。月送り・月/リスト切替・＋予定を追加はcalBody(.calmain)側の子要素のまま
+  // 位置・見た目を変えない。スマホは従来どおり.cal直下にcalBodyだけを置く
+  return pc ? (
+    <div className="cal">
+      <div className="calside">
+        <CalFilterPanel
+          filter={calFilter}
+          setFilter={setCalFilter}
+          isCoach={isCoach}
+          me={me}
+          calMine={calMine}
+          setCalMine={setCalMine}
+          groups={team.groups}
+          categories={team.categories}
+          onManageGroups={() => setSheet({ type: "groups" })}
+          compact
+        />
+      </div>
+      <div className="calmain">{calBody}</div>
+    </div>
+  ) : (
+    <div className="cal">{calBody}</div>
+  );
+}
+
+/**
+ * カレンダーの絞り込みと色の作り直し（案A §3-1）: 絞り込みの共通部品。
+ * スマホは下からのシート(SheetHostのtype:"calfilter")の中身として、PCはCalendarTabの
+ * .calside（常時表示・compact=true）として、同じ中身をどちらからも呼ぶ。
+ * コーチは学年/グループ/種類の3セクション＋「全員向けの予定を含める」トグル＋
+ * 「グループを編集…」リンク、選手・保護者は「自分の予定だけ」トグル＋種類セクションのみ。
+ */
+function CalFilterPanel({
+  filter,
+  setFilter,
+  isCoach,
+  me,
+  calMine,
+  setCalMine,
+  groups,
+  categories,
+  onManageGroups,
+  compact,
+  onClose,
+}: {
+  filter: CalFilter;
+  setFilter: (v: CalFilter) => void;
+  isCoach: boolean;
+  me: Player | null;
+  calMine: boolean;
+  setCalMine: (v: boolean) => void;
+  groups: TeamGroup[];
+  categories: EventCategory[];
+  /** 「グループを編集…」リンク。省略時はリンク自体を出さない */
+  onManageGroups?: () => void;
+  /** true=PCの常設パネル（見出し行・完了ボタンを出さない） */
+  compact?: boolean;
+  /** スマホのシートを閉じる（見出し行の「完了」用。compact=trueのときは使わない） */
+  onClose?: () => void;
+}) {
+  const toggleGroup = (id: string) => {
+    setFilter({
+      ...filter,
+      hiddenGroupIds: filter.hiddenGroupIds.includes(id)
+        ? filter.hiddenGroupIds.filter((x) => x !== id)
+        : [...filter.hiddenGroupIds, id],
+    });
+  };
+  const toggleCategory = (id: string) => {
+    setFilter({
+      ...filter,
+      hiddenCategoryIds: filter.hiddenCategoryIds.includes(id)
+        ? filter.hiddenCategoryIds.filter((x) => x !== id)
+        : [...filter.hiddenCategoryIds, id],
+    });
+  };
+
+  // グループの1セクション（学年／グループ）。0件なら見出しごと出さない
+  const groupSection = (label: string, list: TeamGroup[]) => {
+    if (list.length === 0) return null;
+    const allShown = list.every((g) => !filter.hiddenGroupIds.includes(g.id));
+    return (
+      <div className="calfilterpanel-sec" key={label}>
+        <div className="calfilterpanel-sech">
+          <b>{label}</b>
+          <button
+            type="button"
+            className="calfilterpanel-all"
+            onClick={() =>
+              setFilter({
+                ...filter,
+                hiddenGroupIds: allShown
+                  ? Array.from(new Set([...filter.hiddenGroupIds, ...list.map((g) => g.id)]))
+                  : filter.hiddenGroupIds.filter((id) => !list.some((g) => g.id === id)),
+              })
+            }
+          >
+            {allShown ? "すべて解除" : "すべて選択"}
+          </button>
+        </div>
+        {list.map((g) => {
+          const on = !filter.hiddenGroupIds.includes(g.id);
+          return (
+            <div
+              key={g.id}
+              className="calfilterpanel-row"
+              role="button"
+              tabIndex={0}
+              onClick={() => toggleGroup(g.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  toggleGroup(g.id);
+                }
+              }}
+            >
+              <span
+                className={`calchk${on ? " on" : ""}`}
+                style={{ background: on ? g.color : "transparent", borderColor: on ? "transparent" : g.color }}
+              />
+              <span>{g.label}</span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const allCatsShown = categories.every((c) => !filter.hiddenCategoryIds.includes(c.id));
+  const catSection = (
+    <div className="calfilterpanel-sec">
+      <div className="calfilterpanel-sech">
+        <b>種類</b>
+        <button
+          type="button"
+          className="calfilterpanel-all"
+          onClick={() =>
+            setFilter({ ...filter, hiddenCategoryIds: allCatsShown ? categories.map((c) => c.id) : [] })
+          }
+        >
+          {allCatsShown ? "すべて解除" : "すべて選択"}
+        </button>
+      </div>
+      <div className="grouppick">
+        {categories.map((c) => {
+          const on = !filter.hiddenCategoryIds.includes(c.id);
+          return (
+            <button
+              type="button"
+              key={c.id}
+              className="calfilterpanel-catchip"
+              onClick={() => toggleCategory(c.id)}
+            >
+              <span className={`calchk sq${on ? " on" : ""}`} />
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`calfilterpanel${compact ? " compact" : ""}`}>
+      {!compact && (
+        <div className="calfilterpanel-head">
+          <b>表示する予定</b>
+          <button type="button" onClick={onClose}>
+            完了
+          </button>
+        </div>
+      )}
+      {isCoach ? (
+        <>
+          {groupSection("学年", groups.filter((g) => g.kind === "grade"))}
+          {groupSection("グループ", groups.filter((g) => g.kind === "custom"))}
+          {catSection}
+          <label className="calfilter-toggle">
+            <input
+              type="checkbox"
+              checked={!filter.hideAllTargets}
+              onChange={(e) => setFilter({ ...filter, hideAllTargets: !e.target.checked })}
+            />
+            <span />
+            全員向けの予定を含める
+          </label>
+          {onManageGroups && (
+            // 統括の最終調整: div[role=button]だとEnter/Spaceで動かないため実ボタンにする
+            // （見た目は.calfilterpanel-manageのまま。ボタン既定のスタイルはCSS側で外す）
+            <button type="button" className="calfilterpanel-manage" onClick={onManageGroups}>
+              グループを編集…
+            </button>
+          )}
+        </>
+      ) : (
+        <>
+          <label className="calfilter-toggle">
+            <input type="checkbox" checked={calMine} onChange={(e) => setCalMine(e.target.checked)} />
+            <span />
+            自分の予定だけ
+          </label>
+          {catSection}
+        </>
       )}
     </div>
   );
@@ -3422,14 +3812,18 @@ const MATCH_FORMATION_SLOTS: Record<string, string[]> = {
 const MATCH_FORMATION_KEYS = Object.keys(MATCH_FORMATION_SLOTS);
 
 /* ---------------- Sheets ---------------- */
+const EMPTY_CALFILTER: CalFilter = { hiddenGroupIds: [], hideAllTargets: false, hiddenCategoryIds: [] };
+
 function SheetHost({
   sheet,
   setSheet,
   players,
   isCoach,
   pane,
-  calGroup = null,
+  calFilter = EMPTY_CALFILTER,
+  setCalFilter,
   calMine = true,
+  setCalMine,
 }: {
   sheet: SheetState;
   setSheet: (s: SheetState) => void;
@@ -3437,23 +3831,33 @@ function SheetHost({
   isCoach: boolean;
   /** PC専用: 配下の全Sheetをモーダルでなく.teammain内の1ペインとして描画する */
   pane?: boolean;
-  /** カレンダーの絞り込み中グループ（コーチ）。日別シートの一覧に適用する（§3） */
-  calGroup?: string | null;
+  /** カレンダーの絞り込み状態（案A §2）。日別シートの一覧・絞り込みシート本体に適用する（§3） */
+  calFilter?: CalFilter;
+  /** 絞り込みシート(type:"calfilter")からの変更を反映する保存付きセッター */
+  setCalFilter?: (v: CalFilter) => void;
   /** 選手・保護者向け「自分の予定」絞り込み中か（groups-everywhere §3）。日別シートに適用する */
   calMine?: boolean;
+  setCalMine?: (v: boolean) => void;
 }) {
   const board = useBoard();
   const team = useTeam();
   const close = () => setSheet(null);
   // isCoach=falseのときの「自分」（選手・保護者、またはコーチの選手プレビュー）
   const me = !isCoach ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
+  // 案A §2: CalendarTabと同じcalEventVisibleを日別シート・「今日からの予定」でも共用する
   const dayPassesFilter = (e: TeamEvent) =>
-    isCoach ? eventTargetsGroup(e, calGroup) : !calMine || !me || eventTargetsPlayer(e, me, team.groups);
+    calEventVisible(e, calFilter, { isCoach, me, groups: team.groups, categories: team.categories, calMine });
   // グループ管理シート内でメンバー一覧を開いているグループID（学年・カスタムどちらも可。
   // groups-editing-and-place-history §4）。sheetがgroups以外に変わったらリセットする
   const [groupMembersId, setGroupMembersId] = useState<string | null>(null);
+  // カレンダーの絞り込みと色の作り直し（案A §1）: 色の丸をタップした行の下にパレットを開く。
+  // groupMembersIdと同じくsheetがgroups以外に変わったらリセットする
+  const [groupColorPickId, setGroupColorPickId] = useState<string | null>(null);
   useEffect(() => {
-    if (sheet?.type !== "groups") setGroupMembersId(null);
+    if (sheet?.type !== "groups") {
+      setGroupMembersId(null);
+      setGroupColorPickId(null);
+    }
   }, [sheet]);
   // tm-sheetpane(PCペイン)の「戻る」用: 最小限の親復帰マップ。
   // categories/groupsは呼び出し元のevent編集シートへ、prefill.eventId付きのmatchは
@@ -3542,7 +3946,7 @@ function SheetHost({
   const [catEditLabel, setCatEditLabel] = useState("");
   const [catEditColor, setCatEditColor] = useState("");
 
-  // グループ管理（カテゴリ管理と同じ構造。色は持たない）
+  // グループ管理（カテゴリ管理と同じ構造）
   const [newGroupLabel, setNewGroupLabel] = useState("");
   const [groupEditId, setGroupEditId] = useState<string | null>(null);
   const [groupEditLabel, setGroupEditLabel] = useState("");
@@ -3662,6 +4066,25 @@ function SheetHost({
 
   return (
     <>
+      {/* カレンダーの絞り込みと色の作り直し（案A §3-2）: スマホヘッダー「絞り込み」から開く
+          下からのシート。setCalFilter/setCalMineが無い(=呼び出し元がPCペイン等で渡していない)
+          ときは中身が機能しないため、その場合は開かせない */}
+      {setCalFilter && setCalMine && (
+        <Sheet open={sheet?.type === "calfilter"} onClose={pane ? paneBack : close} pane={pane}>
+          <CalFilterPanel
+            filter={calFilter}
+            setFilter={setCalFilter}
+            isCoach={isCoach}
+            me={me}
+            calMine={calMine}
+            setCalMine={setCalMine}
+            groups={team.groups}
+            categories={team.categories}
+            onManageGroups={() => setSheet({ type: "groups" })}
+            onClose={close}
+          />
+        </Sheet>
+      )}
       {/* 予定（イベント）フォーム */}
       <Sheet open={sheet?.type === "event"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>{ev ? "予定を編集" : "予定を追加"}</h2>
@@ -4133,7 +4556,8 @@ function SheetHost({
                 const isGrade = g.kind === "grade";
                 const memberCount = players.filter((p) => playerInGroup(p, g)).length;
                 return (
-                  <div key={g.id} className="catrow">
+                  <Fragment key={g.id}>
+                  <div className="catrow">
                     {groupEditId === g.id ? (
                       <div style={{ flex: 1 }}>
                         <input
@@ -4168,6 +4592,17 @@ function SheetHost({
                       </div>
                     ) : (
                       <>
+                        {/* カレンダーの絞り込みと色の作り直し（案A §1）: 色の丸をタップすると
+                            行の下にパレット(GROUP_PALETTE・8色)が開く。選ぶとteam.updateGroup
+                            で即反映（月の点・リストの線に使われる色。groupColorOf参照） */}
+                        <button
+                          type="button"
+                          className="calgroupdot"
+                          aria-label={`「${g.label}」の色を変更`}
+                          onClick={() => setGroupColorPickId(groupColorPickId === g.id ? null : g.id)}
+                        >
+                          <span style={{ background: g.color }} />
+                        </button>
                         {/* Phase D-1(C2-minor): サブテキストが非タップで、メンバー編集の入口が
                             右側の人型アイコン(次のbutton)だけだと初見で気づきにくい。
                             仕様§5「『メンバー（n人）』→ 選手のチェックリスト」どおり、
@@ -4224,6 +4659,24 @@ function SheetHost({
                       </>
                     )}
                   </div>
+                  {groupColorPickId === g.id && (
+                    <div className="grpswatches">
+                      {GROUP_PALETTE.map((p) => (
+                        <button
+                          key={p.color}
+                          type="button"
+                          className={`swatch${g.color === p.color ? " on" : ""}`}
+                          style={{ background: p.color }}
+                          aria-label={p.name}
+                          onClick={() => {
+                            team.updateGroup({ ...g, color: p.color });
+                            setGroupColorPickId(null);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  </Fragment>
                 );
               })}
             </div>
