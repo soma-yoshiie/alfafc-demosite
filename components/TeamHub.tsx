@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import type {
   Announcement,
@@ -32,7 +32,6 @@ import {
   addDays,
   byStartAsc,
   calEventVisible,
-  CATEGORY_PALETTE,
   categoryOf,
   diffDays,
   eventEndDate,
@@ -49,9 +48,11 @@ import {
 } from "@/lib/calendarUtils";
 import {
   loadCalFilter,
+  loadCalSideOpen,
   loadGroupFilter,
   loadLastEventCategory,
   saveCalFilter,
+  saveCalSideOpen,
   saveGroupFilter,
   saveLastEventCategory,
 } from "@/lib/storage";
@@ -70,8 +71,8 @@ import { groupAttendance, monthlyAttendance, perPlayerAttendance, periodStartDat
 import {
   ALL_TARGETS_COLOR,
   announcementTargetsPlayer,
+  COLOR_CHOICES,
   eventTargetsPlayer,
-  GROUP_PALETTE,
   groupColorOf,
   matchTargetLabel,
   matchTargetsGroup,
@@ -95,6 +96,9 @@ import { CoachConversations, PlayerChat } from "./ChatScreen";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
+
+/** 新しいカテゴリの色の既定値（calendar-plan-a §11-3「新規の既定はブルー」） */
+const DEFAULT_CATEGORY_COLOR = COLOR_CHOICES.find((p) => p.name === "ブルー")!.color;
 
 /**
  * PC幅かどうかを追跡するフック（components/CoachLab/CoachLabParts.tsx useIsPc() と同じ手法）。
@@ -387,6 +391,12 @@ function Inner() {
   useEffect(() => {
     saveCalFilter(calFilter);
   }, [calFilter]);
+  // calendar-plan-a §11-1: PCの絞り込みパネル(.calside)の開閉状態。タブを跨いで保持し
+  // （sheetを開いてCalendarTabがアンマウントされても消えないよう）Innerで持つ
+  const [calSideOpen, setCalSideOpen] = useState(() => loadCalSideOpen());
+  useEffect(() => {
+    saveCalSideOpen(calSideOpen);
+  }, [calSideOpen]);
 
   // PC右ペイン(マスター・ディテール)の選択状態。タブを跨いで保持するためInnerで持つ
   const [recSel, setRecSel] = useState<RecSel>({ kind: "summary" });
@@ -727,6 +737,8 @@ function Inner() {
                       setCalFilter={setCalFilter}
                       calMine={calMine}
                       setCalMine={setCalMine}
+                      calSideOpen={calSideOpen}
+                      setCalSideOpen={setCalSideOpen}
                     />
                   )}
                   {activeTab === "rec" && (
@@ -1239,6 +1251,8 @@ function CalendarTab({
   setCalFilter,
   calMine,
   setCalMine,
+  calSideOpen,
+  setCalSideOpen,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
@@ -1252,14 +1266,17 @@ function CalendarTab({
   /** 選手・保護者向けの絞り込み: true=自分の予定だけ／false=すべて（groups-everywhere §3） */
   calMine: boolean;
   setCalMine: (v: boolean) => void;
+  /** PCの絞り込みパネル(.calside)の開閉（calendar-plan-a §11-1）。スマホには影響しない */
+  calSideOpen: boolean;
+  setCalSideOpen: (v: boolean) => void;
 }) {
   const board = useBoard();
   const team = useTeam();
   const pc = usePc();
   // isCoach=false（選手・保護者、またはコーチの選手プレビュー）のときの「自分」
   const me = !isCoach ? board.state.players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
-  // 案A §2: 同じ判定(calEventVisible)をCalendarTab・日別シート・「今日からの予定」・
-  // 画像保存(2段目)の4か所で共用する
+  // 案A §2: 同じ判定(calEventVisible)をCalendarTab・日別シート・画像保存(2段目)の
+  // 3か所で共用する（calendar-plan-a §11-2で月表示下の「今日からの予定」は撤去した）
   const passesFilter = (e: TeamEvent) =>
     calEventVisible(e, calFilter, { isCoach, me, groups: team.groups, categories: team.categories, calMine });
 
@@ -1307,7 +1324,8 @@ function CalendarTab({
   );
   const monthGroupLegend = Array.from(monthGroupLegendMap.values());
 
-  // 日付ごとの予定行（リスト表示と、スマホの月表示下の「今日からの予定」で共用）。
+  // 日付ごとの予定行（リスト表示だけで使う。calendar-plan-a §11-2で撤去した
+  // 「今日からの予定」（月表示下）とも以前は共用していたが、今はここだけ）。
   // 案A §5: 色はグループ(groupColorOf)・種類は文字(cat.label)のみで示す
   const renderAgendaRows = (days: typeof monthDays) =>
     days.map(({ d, ds, evs }) => {
@@ -1484,9 +1502,25 @@ function CalendarTab({
     board.toast("画像を保存しました");
   };
 
+  // calendar-plan-a §11-1: .calnav左端の「絞り込み」(.calshow)に出す点。Inner側の
+  // calFilterHasHidden(スマホヘッダーの点)と同じ判定をここでも使う（何か隠しているか）
+  const calSideHasHidden = isCoach
+    ? calFilter.hiddenGroupIds.length > 0 || calFilter.hideAllTargets || calFilter.hiddenCategoryIds.length > 0
+    : calFilter.hiddenCategoryIds.length > 0 || calMine;
+
   const calBody = (
     <>
       <div className="calnav">
+        {/* calendar-plan-a §11-1: パネルを隠しているときだけ.calnav左端に「絞り込み」を出す。
+            中央の年月・矢印の位置はabsolute配置なので動かない（PCだけ表示。スマホは
+            CSS側で.calnavにposition:relativeを付けないため通常フローに残らない） */}
+        {pc && !calSideOpen && (
+          <button type="button" className="calshow" onClick={() => setCalSideOpen(true)}>
+            <IconFilter />
+            絞り込み
+            {calSideHasHidden && <span className="dot" />}
+          </button>
+        )}
         <button onClick={() => shift(-1)}>‹</button>
         <b>
           {ym.y}年 {ym.m + 1}月
@@ -1527,49 +1561,36 @@ function CalendarTab({
                   onClick={() => setSheet({ type: "day", date: ds })}
                 >
                   <span className={`caldate${i % 7 === 0 ? " sun" : i % 7 === 6 ? " sat" : ""}`}>{d}</span>
+                  {/* calendar-plan-a §11-2: スマホも点(.caldots)ではなくピル(.calevs/.calev)を出す。
+                      色は--gc(インラインstyle)で渡し、CSS側がcolor-mixで薄地+濃い文字にする。
+                      件数(§11-2「1マス3件まで、4件目からは2件＋『+N』」)は旧.caldotsと同じ
+                      slice式（4件以上だけ2件に減らす）。ちょうど3件のときだけスマホ(3件とも表示・
+                      「+N」なし)とPC/タブレット(2件＋「+1」＝§4-2の従来どおり)で見え方が割れるため、
+                      その1パターンだけ.calmore-pconlyでPCだけに出す（4件以上は両方とも同じ「+N」） */}
                   <div className="calevs">
-                    {evs.slice(0, 2).map((e) => {
+                    {evs.slice(0, evs.length > 3 ? 2 : 3).map((e) => {
                       const cat = categoryOf(e, team.categories);
                       const isStart = e.date === ds;
                       const isEnd = eventEndDate(e) === ds;
                       const corner = isStart && isEnd ? "single" : isStart ? "start" : isEnd ? "end" : "mid";
                       const showTime = (corner === "start" || corner === "single") && !e.allDay && e.time;
-                      // 案A §4-2: 帯の色はグループ(groupColorOf)。種類は文字の先頭1文字で示す
-                      // （試合は「試 」固定・練習は付けない・その他カテゴリは先頭1文字）
+                      // 案A §4-2: 種類は文字の先頭1文字で示す（試合は「試 」固定・練習は付けない・
+                      // その他カテゴリは先頭1文字）。時刻はPC/タブレットだけ.calev-time(CSS)で出す
                       const prefix = cat.id === "match" ? "試 " : cat.id === "practice" ? "" : `${cat.label.slice(0, 1)} `;
-                      const label = showTime ? `${e.time} ${e.title}` : e.title;
                       return (
                         <span
                           key={e.id}
                           className={`calev ${corner}`}
-                          style={{ background: groupColorOf(e, team.groups) }}
+                          style={{ "--gc": groupColorOf(e, team.groups) } as React.CSSProperties}
                         >
                           {prefix}
-                          {label}
+                          {showTime && <span className="calev-time">{e.time} </span>}
+                          {e.title}
                         </span>
                       );
                     })}
-                    {/* §4-2: 「＋N件」を「+N」に短くする */}
-                    {evs.length > 2 && <span className="calmore">+{evs.length - 2}</span>}
-                  </div>
-                  <div className="caldots">
-                    {/* Phase D-1(C1-minor): スマホ390pxのセル幅では点3つ+「+n」が1行に
-                        収まらず2行目へ折り返してレイアウトが崩れるため、4件以上のときは
-                        点を2つに減らして「+n」と1行で収める（3件以下は従来どおり点3つ） */}
-                    {evs.slice(0, evs.length > 3 ? 2 : 3).map((e) => {
-                      // 案A §4-1: 点はグループ色(groupColorOf)。試合は塗りではなく輪(枠だけ)にする
-                      const color = groupColorOf(e, team.groups);
-                      const isMatch = e.kind === "match";
-                      return (
-                        <span
-                          key={e.id}
-                          className={`caldot${isMatch ? " match" : ""}`}
-                          style={isMatch ? { borderColor: color } : { background: color }}
-                        />
-                      );
-                    })}
-                    {/* §4-1: 4件以上は点2つ＋「+」（件数は下のリストで分かるため数字は出さない） */}
-                    {evs.length > 3 && <span className="caldotmore">+</span>}
+                    {evs.length > 3 && <span className="calmore">+{evs.length - 2}</span>}
+                    {evs.length === 3 && <span className="calmore calmore-pconly">+1</span>}
                   </div>
                 </div>
               );
@@ -1583,41 +1604,15 @@ function CalendarTab({
                 </span>
               ))}
               {monthGroupLegend.length > 5 && <span>他{monthGroupLegend.length - 5}</span>}
-              {/* 試合は色を持たないため、点ではなく輪(枠だけ)の見本を文字と一緒に添える */}
-              {monthHasMatch && (
-                <span>
-                  <i className="legendring" /> 試合
-                </span>
-              )}
+              {/* レビュー指摘対応（calendar-plan-a §11-2）: マスの点(輪=試合)は撤去し、
+                  試合はピル先頭の「試 」で示す方式に変えたため、輪の見本は撤去し
+                  文字だけの凡例に置き換える */}
+              {monthHasMatch && <span>試＝試合</span>}
               {isCoach && <span className="calhint">日付をタップで予定を追加</span>}
             </div>
           )}
-          {/* v2 目視レビュー(minor-10): 月表示だけでは時刻・場所が読めず下半分が空くため、
-              スマホでは月グリッドの下に予定の行（当月なら今日以降、最大5日分）を続ける。PC は変更しない */}
-          {!pc &&
-            (() => {
-              const isThisMonth = today.startsWith(`${ym.y}-${String(ym.m + 1).padStart(2, "0")}`);
-              const days = isThisMonth ? monthDays.filter((x) => x.ds >= today) : monthDays;
-              return (
-                <div className="agenda calagenda">
-                  <div className="sech">
-                    {isThisMonth ? "今日からの予定" : "この月の予定"}
-                    {days.length > 5 && (
-                      <span className="seclink" onClick={() => setView("list")}>
-                        すべて見る ›
-                      </span>
-                    )}
-                  </div>
-                  {days.length === 0 ? (
-                    <div className="empty-msg" style={{ padding: "8px 0" }}>
-                      {isThisMonth ? "今日以降の予定はありません。" : "この月の予定はありません。"}
-                    </div>
-                  ) : (
-                    renderAgendaRows(days.slice(0, 5))
-                  )}
-                </div>
-              );
-            })()}
+          {/* calendar-plan-a §11-2: スマホの月表示下の「今日からの予定」は撤去した
+              （マスにピルで予定名が出るようになり、リスト表示でも足りるため） */}
         </>
       ) : (
         <div className="agenda">
@@ -1662,12 +1657,18 @@ function CalendarTab({
     </>
   );
 
-  // 案A §3-3: PCは.calを.calside(絞り込み常設。見出し行なし＝compact)+.calmain(従来の本体)
-  // の2列にする。月送り・月/リスト切替・＋予定を追加はcalBody(.calmain)側の子要素のまま
-  // 位置・見た目を変えない。スマホは従来どおり.cal直下にcalBodyだけを置く
+  // 案A §3-3・calendar-plan-a §11-1: PCは.calを.calside(絞り込み常設。見出し行なし＝compact)+
+  // .calmain(従来の本体)の2列にする。月送り・月/リスト切替・＋予定を追加はcalBody(.calmain)側の
+  // 子要素のまま位置・見た目を変えない。スマホは従来どおり.cal直下にcalBodyだけを置く。
+  // §11-1: calSideOpen=falseのときは.calに"side-hidden"を足して1列にし、.calmainが全幅になる
+  // （.calside自体はCSS側で非表示にする。空白を作らないため）
   return pc ? (
-    <div className="cal">
+    <div className={`cal${calSideOpen ? "" : " side-hidden"}`}>
       <div className="calside">
+        {/* calendar-plan-a §11-1: パネル先頭の「隠す」。押すと.calmainが全幅になり空白を作らない */}
+        <button type="button" className="calside-hide" onClick={() => setCalSideOpen(false)}>
+          ‹ 絞り込みを隠す
+        </button>
         <CalFilterPanel
           filter={calFilter}
           setFilter={setCalFilter}
@@ -1867,6 +1868,82 @@ function CalFilterPanel({
           {catSection}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * 色を選ぶ縦リスト（calendar-plan-a §11-3。iPhoneカレンダーの「カレンダーのカラー」と同じ形）。
+ * グループ管理シート（色の丸の下）とカテゴリ管理シート（編集行・新規追加）の両方から使う。
+ * 7色（COLOR_CHOICES）を並べ、最後に「カスタム…」＋隠した<input type="color">を置く。
+ * ルート要素は"colorchoice"、各行は"colorchoice-row"固定（検証スクリプトがこの名前を見る）。
+ */
+function ColorChoiceList({
+  value,
+  onChange,
+}: {
+  value: string;
+  /**
+   * レビュー指摘対応（calendar-plan-a §11-3）: プリセット行のタップとカスタムピッカーの
+   * 入力を呼び出し側が区別できるよう、第2引数で通知元を渡す。カスタムの<input type="color">は
+   * ドラッグ中も逐次onChangeが飛ぶため、呼び出し側はこれを見て「custom」のときだけ
+   * リストを開いたままにする（グループ管理シート参照。閉じるとinputがDOMから外れ、
+   * ブラウザ側の色ピッカーごと閉じてしまうため） */
+  onChange: (hex: string, source: "preset" | "custom") => void;
+}) {
+  const customInputRef = useRef<HTMLInputElement>(null);
+  const isPreset = COLOR_CHOICES.some((c) => c.color === value);
+  const openCustomPicker = () => customInputRef.current?.click();
+  const rowKeyDown = (e: React.KeyboardEvent, run: () => void) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      run();
+    }
+  };
+  return (
+    <div className="colorchoice">
+      {COLOR_CHOICES.map((c) => (
+        <div
+          key={c.color}
+          className="colorchoice-row"
+          role="button"
+          tabIndex={0}
+          onClick={() => onChange(c.color, "preset")}
+          onKeyDown={(e) => rowKeyDown(e, () => onChange(c.color, "preset"))}
+        >
+          <span className="colorchoice-dot" style={{ background: c.color }} />
+          <span className="colorchoice-name">{c.name}</span>
+          {value === c.color && <span className="colorchoice-check" />}
+        </div>
+      ))}
+      {/* 「カスタム…」：7色のどれとも一致しないvalueはカスタム色とみなし、その色でチェックを付ける。
+          タップで隠しfile input(type=color)をclick()し、OSの色ピッカーを開く */}
+      <div
+        className="colorchoice-row"
+        role="button"
+        tabIndex={0}
+        onClick={openCustomPicker}
+        onKeyDown={(e) => rowKeyDown(e, openCustomPicker)}
+      >
+        <span
+          className={`colorchoice-dot${isPreset ? " colorchoice-dot-empty" : ""}`}
+          style={isPreset ? undefined : { background: value }}
+        />
+        <span className="colorchoice-name">カスタム…</span>
+        {!isPreset && <span className="colorchoice-check" />}
+        <input
+          ref={customInputRef}
+          type="color"
+          className="colorchoice-input"
+          /* レビュー指摘対応（calendar-plan-a §11-3）: プリセット中も常に現在値を渡す。
+             以前は"#000000"固定にしていたため、プリセット選択中にカスタムを開くと
+             常に黒から始まり、黒そのものも選べなかった */
+          value={value}
+          onChange={(e) => onChange(e.target.value, "custom")}
+          aria-label="カスタムの色を選ぶ"
+          tabIndex={-1}
+        />
+      </div>
     </div>
   );
 }
@@ -3844,7 +3921,8 @@ function SheetHost({
   const close = () => setSheet(null);
   // isCoach=falseのときの「自分」（選手・保護者、またはコーチの選手プレビュー）
   const me = !isCoach ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
-  // 案A §2: CalendarTabと同じcalEventVisibleを日別シート・「今日からの予定」でも共用する
+  // 案A §2: CalendarTabと同じcalEventVisibleを日別シートでも共用する
+  // （calendar-plan-a §11-2で月表示下の「今日からの予定」は撤去した）
   const dayPassesFilter = (e: TeamEvent) =>
     calEventVisible(e, calFilter, { isCoach, me, groups: team.groups, categories: team.categories, calMine });
   // グループ管理シート内でメンバー一覧を開いているグループID（学年・カスタムどちらも可。
@@ -3853,6 +3931,13 @@ function SheetHost({
   // カレンダーの絞り込みと色の作り直し（案A §1）: 色の丸をタップした行の下にパレットを開く。
   // groupMembersIdと同じくsheetがgroups以外に変わったらリセットする
   const [groupColorPickId, setGroupColorPickId] = useState<string | null>(null);
+  // レビュー指摘対応（calendar-plan-a §11-3）: 色の選び方がスウォッチ1行(約54px)から
+  // 8行・約366pxの縦リスト(ColorChoiceList)に変わったため、下の方のグループで開くと
+  // .list(overflow-y:auto)のスクロール範囲外に出てしまう。開いたら見える位置までスクロールする
+  const groupSwatchesRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (groupColorPickId) groupSwatchesRef.current?.scrollIntoView({ block: "nearest" });
+  }, [groupColorPickId]);
   useEffect(() => {
     if (sheet?.type !== "groups") {
       setGroupMembersId(null);
@@ -3941,10 +4026,16 @@ function SheetHost({
 
   // カテゴリ管理
   const [newCatLabel, setNewCatLabel] = useState("");
-  const [newCatColor, setNewCatColor] = useState(CATEGORY_PALETTE[0].color);
+  const [newCatColor, setNewCatColor] = useState(DEFAULT_CATEGORY_COLOR);
   const [catEditId, setCatEditId] = useState<string | null>(null);
   const [catEditLabel, setCatEditLabel] = useState("");
   const [catEditColor, setCatEditColor] = useState("");
+  // レビュー指摘対応（calendar-plan-a §11-3）: グループ管理と同じ作り（ColorChoiceListが
+  // 縦に長い）なので、編集行を開いたときに同じくスクロールして見える位置に寄せる
+  const catEditRowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (catEditId) catEditRowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [catEditId]);
 
   // グループ管理（カテゴリ管理と同じ構造）
   const [newGroupLabel, setNewGroupLabel] = useState("");
@@ -4394,7 +4485,7 @@ function SheetHost({
           {team.categories.map((c) => (
             <div key={c.id} className="catrow">
               {catEditId === c.id ? (
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1 }} ref={catEditRowRef}>
                   {c.builtin ? (
                     <div className="cmpnm" style={{ marginBottom: 8 }}>
                       {c.label}
@@ -4407,18 +4498,8 @@ function SheetHost({
                       autoFocus
                     />
                   )}
-                  <div className="swatches">
-                    {CATEGORY_PALETTE.map((p) => (
-                      <button
-                        key={p.color}
-                        type="button"
-                        className={`swatch${catEditColor === p.color ? " on" : ""}`}
-                        style={{ background: p.color }}
-                        aria-label={p.name}
-                        onClick={() => setCatEditColor(p.color)}
-                      />
-                    ))}
-                  </div>
+                  {/* calendar-plan-a §11-3: 色の選択肢をiPhoneカレンダー式の縦リストにする */}
+                  <ColorChoiceList value={catEditColor} onChange={setCatEditColor} />
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button
                       className="bigbtn"
@@ -4502,18 +4583,8 @@ function SheetHost({
             onChange={(e) => setNewCatLabel(e.target.value)}
             placeholder="例）遠征・合宿 / 保護者会"
           />
-          <div className="swatches">
-            {CATEGORY_PALETTE.map((p) => (
-              <button
-                key={p.color}
-                type="button"
-                className={`swatch${newCatColor === p.color ? " on" : ""}`}
-                style={{ background: p.color }}
-                aria-label={p.name}
-                onClick={() => setNewCatColor(p.color)}
-              />
-            ))}
-          </div>
+          {/* calendar-plan-a §11-3: 色の選択肢をiPhoneカレンダー式の縦リストにする */}
+          <ColorChoiceList value={newCatColor} onChange={setNewCatColor} />
         </div>
         <button
           className="bigbtn"
@@ -4524,7 +4595,7 @@ function SheetHost({
             }
             team.addCategory(newCatLabel, newCatColor);
             setNewCatLabel("");
-            setNewCatColor(CATEGORY_PALETTE[0].color);
+            setNewCatColor(DEFAULT_CATEGORY_COLOR);
           }}
         >
           追加する
@@ -4592,9 +4663,10 @@ function SheetHost({
                       </div>
                     ) : (
                       <>
-                        {/* カレンダーの絞り込みと色の作り直し（案A §1）: 色の丸をタップすると
-                            行の下にパレット(GROUP_PALETTE・8色)が開く。選ぶとteam.updateGroup
-                            で即反映（月の点・リストの線に使われる色。groupColorOf参照） */}
+                        {/* カレンダーの絞り込みと色の作り直し（案A §1・calendar-plan-a §11-3）:
+                            色の丸をタップすると行の下にColorChoiceList(7色＋カスタム)が開く。
+                            選ぶとteam.updateGroupで即反映（月の点・リストの線に使われる色。
+                            groupColorOf参照） */}
                         <button
                           type="button"
                           className="calgroupdot"
@@ -4660,20 +4732,18 @@ function SheetHost({
                     )}
                   </div>
                   {groupColorPickId === g.id && (
-                    <div className="grpswatches">
-                      {GROUP_PALETTE.map((p) => (
-                        <button
-                          key={p.color}
-                          type="button"
-                          className={`swatch${g.color === p.color ? " on" : ""}`}
-                          style={{ background: p.color }}
-                          aria-label={p.name}
-                          onClick={() => {
-                            team.updateGroup({ ...g, color: p.color });
-                            setGroupColorPickId(null);
-                          }}
-                        />
-                      ))}
+                    <div className="grpswatches" ref={groupSwatchesRef}>
+                      <ColorChoiceList
+                        value={g.color ?? ALL_TARGETS_COLOR}
+                        onChange={(hex, source) => {
+                          team.updateGroup({ ...g, color: hex });
+                          // レビュー指摘対応（calendar-plan-a §11-3）: カスタムの色ピッカーは
+                          // 入力のたびonChangeが飛ぶため、ここで閉じるとinputがDOMから外れ、
+                          // ブラウザの色ピッカーごと閉じて最初の1色しか反映できなかった。
+                          // プリセット行を選んだときだけ閉じる
+                          if (source === "preset") setGroupColorPickId(null);
+                        }}
+                      />
                     </div>
                   )}
                   </Fragment>

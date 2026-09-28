@@ -1,21 +1,14 @@
 // カレンダー機能拡張のヘルパー集約（パレット・カテゴリ・日付・繰り返し展開・地図URL）
 
 import type { CalFilter, EventCategory, Player, RecurrenceRule, TeamEvent, TeamGroup } from "./types";
-import { eventTargetsPlayer } from "./groups";
+import { COLOR_CHOICES, eventTargetsPlayer } from "./groups";
 
-/** プリセットパレット（これ以外の色は使わせない） */
-export const CATEGORY_PALETTE: { color: string; name: string }[] = [
-  { color: "#15233c", name: "ネイビー" },
-  { color: "#d9731f", name: "オレンジ" },
-  { color: "#15803d", name: "グリーン" },
-  { color: "#d6324b", name: "レッド" },
-  { color: "#7c5cbf", name: "パープル" },
-  { color: "#0f766e", name: "ティール" },
-  { color: "#2563eb", name: "ブルー" },
-  { color: "#8a5a2b", name: "ブラウン" },
-  { color: "#c2418f", name: "ピンク" },
-  { color: "#586074", name: "グレー" },
-];
+/**
+ * カテゴリの色の選択肢（calendar-plan-a §11-3）。グループの色選択と同じ7色＋カスタムに
+ * 統一したため、実体は lib/groups.ts の COLOR_CHOICES をそのまま再エクスポートする
+ * （プリセット以外＝任意のHEXも保持できる。詳しくは EventCategory.color 参照）。
+ */
+export const CATEGORY_PALETTE = COLOR_CHOICES;
 
 export const BUILTIN_CATEGORIES: EventCategory[] = [
   { id: "practice", label: "練習", color: "#15233c", builtin: true },
@@ -62,8 +55,9 @@ export function targetLabel(e: TeamEvent, groups: TeamGroup[]): string {
 
 /**
  * カレンダーの絞り込みと色の作り直し（案A §2）: 予定eを画面に表示してよいか。
- * CalendarTab・日別シート（SheetHostのdayPassesFilter）・「今日からの予定」・
- * スマホの「画像で保存」の4か所で共用する（コーチ・選手/保護者どちらもこの1関数を通す）。
+ * CalendarTab・日別シート（SheetHostのdayPassesFilter）・スマホの「画像で保存」の
+ * 3か所で共用する（コーチ・選手/保護者どちらもこの1関数を通す）。
+ * calendar-plan-a §11-2で月表示下の「今日からの予定」は撤去したため、共用箇所は3つに減った。
  * ctx.categories は種類（練習/試合/…）の絞り込みに、ctx.groups は対象グループの絞り込みに使う。
  */
 export function calEventVisible(

@@ -541,7 +541,9 @@ export type TeamEventKind = "practice" | "match";
 export interface EventCategory {
   id: string; // 組込みは "practice" / "match"（kindと同じ文字列にする）
   label: string;
-  color: string; // HEX。プリセットパレットの値のみ
+  // HEX。calendar-plan-a §11-3: 任意のHEX（プリセット限定はやめた）。
+  // 選択肢は lib/groups.ts の COLOR_CHOICES（7色）＋カスタム色（ColorChoiceListの「カスタム…」）
+  color: string;
   builtin?: boolean; // true = 削除・改名不可（practice/match）
 }
 
@@ -630,9 +632,10 @@ export interface TeamGroup {
   kind: "grade" | "custom";
   /** kind="grade" のときの学年 */
   grade?: number;
-  /** カレンダーの絞り込みと色の作り直し（案A §1）: 月のマス・リスト行の色。
-   *  値は lib/groups.ts の GROUP_PALETTE（8色）のみ。未設定（旧データ・新規作成直後）は
-   *  lib/groups.ts の ensureGroupColors で補う */
+  /** カレンダーの絞り込みと色の作り直し（案A §1・calendar-plan-a §11-3）: 月のマス・
+   *  リスト行の色。値は lib/groups.ts の COLOR_CHOICES（7色）または任意のカスタムHEX。
+   *  未設定（旧データ・新規作成直後）、または旧固定パレット（LEGACY_GROUP_COLORS）の値は
+   *  lib/groups.ts の ensureGroupColors が新しい色へ自動で補う・付け替える */
   color?: string;
 }
 

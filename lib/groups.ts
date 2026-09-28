@@ -25,19 +25,50 @@ function isDefaultGradeLabel(label: string, grade: number): boolean {
 }
 
 /**
- * カレンダーの絞り込みと色の作り直し（案A §1）: グループ色の固定パレット（8色）。
- * オレンジ（試合カテゴリの色 #d9731f）とネイビー（全員向け、ALL_TARGETS_COLOR）は
- * グループには割り当てない色として除外してある。TeamGroup.colorに入れてよい値はこれだけ。
+ * カレンダーの絞り込みと色の作り直し（calendar-plan-a §11-3）: グループ・カテゴリ共通の
+ * 色の選択肢（iPhoneカレンダーの「カレンダーのカラー」と同じ7色＋カスタム）。
+ * 旧GROUP_PALETTE（8色）はLEGACY_GROUP_COLORSへ退避し、選択肢からは外した
+ * （選べる色は常にこの7色＋任意のカスタムHEXになる）。
  */
-export const GROUP_PALETTE: { color: string; name: string }[] = [
-  { color: "#15803d", name: "グリーン" },
-  { color: "#2563eb", name: "ブルー" },
-  { color: "#7c5cbf", name: "パープル" },
-  { color: "#0f766e", name: "ティール" },
-  { color: "#d6324b", name: "レッド" },
-  { color: "#c2418f", name: "ピンク" },
-  { color: "#8a5a2b", name: "ブラウン" },
-  { color: "#b7791f", name: "琥珀" },
+export const COLOR_CHOICES: { color: string; name: string }[] = [
+  { color: "#ff3b30", name: "レッド" },
+  { color: "#ff9500", name: "オレンジ" },
+  { color: "#ffcc00", name: "イエロー" },
+  { color: "#34c759", name: "グリーン" },
+  { color: "#007aff", name: "ブルー" },
+  { color: "#af52de", name: "パープル" },
+  { color: "#a2845e", name: "ブラウン" },
+];
+
+/**
+ * 自動割り当て（ensureGroupColors/gradeGroupsFor/addGroup/addGradeGroup）で新規グループに
+ * 色を配る順（calendar-plan-a §11-3）。COLOR_CHOICESの表示順（レッド始まり）とは別に、
+ * 最初のグループがブルーになるようここだけ独自の順を持つ。
+ */
+export const AUTO_COLOR_ORDER: string[] = [
+  "#007aff", // ブルー
+  "#34c759", // グリーン
+  "#af52de", // パープル
+  "#ff9500", // オレンジ
+  "#ff3b30", // レッド
+  "#a2845e", // ブラウン
+  "#ffcc00", // イエロー
+];
+
+/**
+ * 旧固定パレット（案A §1、8色）。保存済みグループの色がこの8値のどれかのときは
+ * 「未設定」とみなし、ensureGroupColors/gradeGroupsForが新しい色へ自動で付け替える
+ * （calendar-plan-a §11-3「移行」）。ユーザーがカスタムで選んだ色（この8値以外）はそのまま保持する。
+ */
+export const LEGACY_GROUP_COLORS: string[] = [
+  "#15803d",
+  "#2563eb",
+  "#7c5cbf",
+  "#0f766e",
+  "#d6324b",
+  "#c2418f",
+  "#8a5a2b",
+  "#b7791f",
 ];
 
 /**
@@ -47,41 +78,48 @@ export const GROUP_PALETTE: { color: string; name: string }[] = [
  */
 export const ALL_TARGETS_COLOR = "#15233c";
 
-/**
- * usedColors（既に他のグループが使っている色。GROUP_PALETTE外の値は無視）から見て
- * 「まだ使われていない」パレット色を配列順で1つ選ぶ。8色すべて使用済みなら、
- * 使用回数が最少の色（同数はパレット順）を返す（案A §1）。
- * ensureGroupColors/gradeGroupsForが「新規グループにどの色を割り当てるか」を決めるのに使う。
- */
-function pickUnusedColor(usedColors: string[]): string {
-  const counts = new Map<string, number>(GROUP_PALETTE.map((p) => [p.color, 0]));
-  for (const c of usedColors) {
-    if (counts.has(c)) counts.set(c, (counts.get(c) ?? 0) + 1);
-  }
-  const unused = GROUP_PALETTE.find((p) => counts.get(p.color) === 0);
-  if (unused) return unused.color;
-  let best = GROUP_PALETTE[0];
-  let bestCount = counts.get(best.color) ?? 0;
-  for (const p of GROUP_PALETTE) {
-    const c = counts.get(p.color) ?? 0;
-    if (c < bestCount) {
-      best = p;
-      bestCount = c;
-    }
-  }
-  return best.color;
+/** colorが「自動で付け直してよい」値か（未設定、または旧固定パレットの値。calendar-plan-a §11-3） */
+function needsAutoColor(color?: string): boolean {
+  return !color || LEGACY_GROUP_COLORS.includes(color);
 }
 
 /**
- * 色の無いグループ（色未設定＝旧データ、または作った直後）に、未使用パレット色を配列順
- * （学年→カスタム）で割り当てる（案A §1）。呼び出し順に「直前に割り当てた色」も使用済みに
- * 数えるため、1回の呼び出し内で同じ色が重複しない。lib/storage.tsの読み込み正規化・
- * components/TeamProvider.tsxのgroups初期化・addGroup/addGradeGroupから呼ぶ。
+ * usedColors（既に他のグループが使っている色。COLOR_CHOICES外の値＝カスタム色は無視）から見て
+ * 「まだ使われていない」色をAUTO_COLOR_ORDER順で1つ選ぶ。7色すべて使用済みなら、
+ * 使用回数が最少の色（同数はAUTO_COLOR_ORDER順）を返す（calendar-plan-a §11-3）。
+ * ensureGroupColors/gradeGroupsForが「新規グループにどの色を割り当てるか」を決めるのに使う。
+ */
+function pickUnusedColor(usedColors: string[]): string {
+  const counts = new Map<string, number>(AUTO_COLOR_ORDER.map((c) => [c, 0]));
+  for (const c of usedColors) {
+    if (counts.has(c)) counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  const unused = AUTO_COLOR_ORDER.find((c) => counts.get(c) === 0);
+  if (unused) return unused;
+  let best = AUTO_COLOR_ORDER[0];
+  let bestCount = counts.get(best) ?? 0;
+  for (const c of AUTO_COLOR_ORDER) {
+    const n = counts.get(c) ?? 0;
+    if (n < bestCount) {
+      best = c;
+      bestCount = n;
+    }
+  }
+  return best;
+}
+
+/**
+ * 色が「未設定または旧パレット（＝自動で付け直してよい）」のグループに、未使用の色を
+ * AUTO_COLOR_ORDER順（学年→カスタム）で割り当てる（calendar-plan-a §11-3）。それ以外
+ * （ユーザーが選んだカスタム色。COLOR_CHOICESの7色を選び直した場合も含む）はそのまま保持する。
+ * 呼び出し順に「直前に割り当てた色」も使用済みに数えるため、1回の呼び出し内で同じ色が
+ * 重複しない。lib/storage.tsの読み込み正規化・components/TeamProvider.tsxのgroups初期化・
+ * addGroup/addGradeGroupから呼ぶ。
  */
 export function ensureGroupColors(groups: TeamGroup[]): TeamGroup[] {
-  const used: string[] = groups.filter((g) => g.color).map((g) => g.color as string);
+  const used: string[] = groups.filter((g) => g.color && !needsAutoColor(g.color)).map((g) => g.color as string);
   return groups.map((g) => {
-    if (g.color) return g;
+    if (!needsAutoColor(g.color)) return g;
     const color = pickUnusedColor(used);
     used.push(color);
     return { ...g, color };
@@ -108,11 +146,12 @@ export function groupColorOf(e: TeamEvent, groups: TeamGroup[]): string {
  * （＝未改名）のときだけ新stageの既定ラベルへ差し替える。ユーザーが改名済み（どの区分の
  * 既定とも一致しない）ラベルはそのまま保持する（仕様§1「学年グループは改名可」）。
  * 無ければ既定ラベルの雛形を生成する。範囲外（stage変更で対象外になった）学年は含まれない。
- * 案A §1: 新規に作る学年グループには、groups（渡された全グループ＝学年＋カスタム）の
- * 色を見て未使用パレット色を割り当てる（同じ呼び出しで複数新設しても重複しない）。
+ * 案A §1・calendar-plan-a §11-3: 新規に作る学年グループ、および色が未設定／旧パレットの
+ * ままの既存学年グループには、groups（渡された全グループ＝学年＋カスタム）の色を見て
+ * 未使用の色を割り当てる（同じ呼び出しで複数新設・付け替えしても重複しない）。
  */
 export function gradeGroupsFor(stage: SchoolStage, groups: TeamGroup[]): TeamGroup[] {
-  const used: string[] = groups.filter((g) => g.color).map((g) => g.color as string);
+  const used: string[] = groups.filter((g) => g.color && !needsAutoColor(g.color)).map((g) => g.color as string);
   return STAGE_GRADES[stage].map((g) => {
     const existing = groups.find((x) => x.kind === "grade" && x.grade === g);
     if (!existing) {
@@ -120,8 +159,13 @@ export function gradeGroupsFor(stage: SchoolStage, groups: TeamGroup[]): TeamGro
       used.push(color);
       return { id: `grp_grade_${g}`, label: gradeLabel(stage, g), kind: "grade" as const, grade: g, color };
     }
-    if (isDefaultGradeLabel(existing.label, g)) return { ...existing, label: gradeLabel(stage, g) };
-    return existing;
+    const relabeled = isDefaultGradeLabel(existing.label, g) ? { ...existing, label: gradeLabel(stage, g) } : existing;
+    if (needsAutoColor(relabeled.color)) {
+      const color = pickUnusedColor(used);
+      used.push(color);
+      return { ...relabeled, color };
+    }
+    return relabeled;
   });
 }
 

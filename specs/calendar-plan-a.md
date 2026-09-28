@@ -131,3 +131,44 @@
 - 起動から保存データの読み込みまで 3〜4 秒（スプラッシュ）→ goto／reload の後は 6 秒待つ。コーチのシード：`scratchpad/tools/p4_verify2/lib.js` の `seedCoach`。選手：`localStorage.alfa_session_v1 = {"role":"player","email":"sora@alfafc.example","name":"佐藤 蒼空","playerId":"p08"}`（`scratchpad/tools/p6_calshots_player.js` 参照）。
 - 変更前の基準スクショ：`scratchpad/calres/alfa/`（PC 01〜04、スマホ 11〜14）。
 - PNG の検証：puppeteer で `page.on("dialog")` ではなく、`navigator.share` を `undefined` に上書きしてダウンロード経路にし、`page._client().send("Page.setDownloadBehavior", { behavior: "allow", downloadPath })` で保存して PIL で寸法と（テキストの代わりに）行数（グループ色の縦線の本数）を数える。
+
+## 11. 追補（2026-09-28 ②・ユーザー指示。コードとこの節が §3〜§6 より優先）
+
+### 11-1. PC：絞り込みパネルを左端に寄せ、隠せるようにする
+
+- 今は `.cal`（`max-width: 940px`）が中央に置かれ、パネルがカレンダーの左に密着して、左レールとの間に空白ができている。**パネルは本文領域の左端**（`.scroll` の左パディング位置）に置き、カレンダー本体は残りの幅をすべて使う：`.teamapp .cal { max-width: none; grid-template-columns: 220px minmax(0, 1fr); gap: 24px }`、`.calmain { max-width: none; justify-self: stretch; min-width: 0 }`。月グリッドは幅いっぱい（マスが広がる）、リスト表示も同じ幅。
+- **隠す／出す**：`.calside` の最上部に「‹ 絞り込みを隠す」（`.calside-hide`、テキストボタン 13px `--accent`、右寄せ）。隠すと `.cal` に `side-hidden` が付き 1 列（`grid-template-columns: minmax(0, 1fr)`）、`.calmain` が全幅になり空白を作らない。出すボタンは `.calnav` の行の左端に「絞り込み」（`.calshow`：`IconFilter`＋文字、四角 `--r-md`、高さ 32px。何か隠していれば右上に点 `.dot`）。`.calnav` は中央寄せのままにするため PC だけ `position: relative` にし、`.calshow` は `position: absolute; left: 0; top: 50%; transform: translateY(-50%)`。
+- 開閉の状態は `Inner` の `calSideOpen`（既定 true）。localStorage `soccer_tactics_calside_v1`（"open"／"closed"）に保存する（`lib/storage.ts` に `loadCalSideOpen`／`saveCalSideOpen`）。
+- スマホ（シート）には影響しない。月送り・月／リスト切替・「＋ 予定を追加」の DOM と見た目は変えない（`.calshow` は `.calnav` の中に足すが、中央の年月と矢印の位置は動かない）。
+
+### 11-2. スマホ：月のマスを大きくして予定の名前を出す。「今日からの予定」は撤去
+
+- ユーザーの参考画像（iPhone のカレンダー・月表示「詳細」）：週の行が画面の高さを埋め、マスの中に予定の名前が薄い色地のピルで入る。
+- `.teamapp:has(.mhead) .calcell { min-height: 100px }`（5 週の月でほぼ画面が埋まる。6 週は縦スクロール）。日付は左上（`text-align: left; padding-left: 4px`）。
+- マスの中身は点（`.caldots`）ではなく **ピル**（`.calevs` を使う。`.calev`）：1 件 1 行、**12px** 700、高さ 18px、`white-space: nowrap; overflow: hidden; text-overflow: ellipsis`、角丸 4px、幅いっぱい。**色は薄い色地＋濃い同系色の文字**：`background: color-mix(in srgb, var(--gc) 18%, transparent); color: color-mix(in srgb, var(--gc) 65%, var(--ink))`。`--gc` は JS 側のインライン `style={{ "--gc": groupColorOf(...) }}` で渡す（CSS に hex は書かない）。試合は先頭に「試 」、その他のカテゴリは先頭 1 文字（練習は無し）＝§4-2 と同じ規則。時刻は出さない（幅が無い）。
+- 1 マス 3 件まで、4 件目からは 2 件＋「+N」（`.calmore`、12px）。
+- **PC・タブレットの帯（`.calev`）も同じ薄い色地＋濃い文字のピルにする**（§11-3 で明るい色（イエロー等）が選べるようになるため、白文字の帯では読めない）。PC は時刻を残す（`時刻 タイトル`）。
+- `.caldots`／`.caldot`／`.caldotmore` はマスからは撤去（DOM も出さない）。凡例 `.callegend` の点はそのまま（色＝グループの対応表として残す）。
+- スマホの月表示の下の **「今日からの予定」ブロック（`.calagenda`）は撤去**（リスト表示で足りる）。PC は元々出していない。
+- 今日の青い丸・週ごとの線区切り・曜日行は §4-1 のまま。タブレット（700〜1023px）の箱型は §4-2 のまま（ピルの見た目だけ変わる）。
+
+### 11-3. 色の選択肢を iPhone のカレンダーと同じにする（グループ・カテゴリ共通）
+
+- 参考画像 3：「カレンダーのカラー」＝レッド／オレンジ／イエロー／グリーン／ブルー／パープル／ブラウン／カスタム… の縦リスト（左に色の丸、選択中の行の右にチェック）。参考画像 4：「カスタム…」は OS の色ピッカー（グリッド／スペクトラム／スライダ）。
+- `lib/groups.ts` の `GROUP_PALETTE` と `lib/calendarUtils.ts` の `CATEGORY_PALETTE` を **1 つの `COLOR_CHOICES`**（`lib/colors.ts` ではなく `lib/groups.ts` に置き、calendarUtils からは re-export）に統一する：
+  `レッド #ff3b30`／`オレンジ #ff9500`／`イエロー #ffcc00`／`グリーン #34c759`／`ブルー #007aff`／`パープル #af52de`／`ブラウン #a2845e`（iOS の system color）。
+- **自動割り当て**（`ensureGroupColors`／`gradeGroupsFor`／`addGroup`／`addGradeGroup`）の順は ブルー→グリーン→パープル→オレンジ→レッド→ブラウン→イエロー（`AUTO_COLOR_ORDER`）。使い切ったら使用回数が最少の色。
+- **移行**：保存済みの色が旧 `GROUP_PALETTE` の 8 値（`#15803d #2563eb #7c5cbf #0f766e #d6324b #c2418f #8a5a2b #b7791f`）のときは未設定とみなして自動で付け直す（旧色はもう選択肢に無いため）。それ以外の値（ユーザーがカスタムで選んだ色）は保持する。`lib/sampleTeam.ts` のデモグループも新しい色に書き換える。
+- **色を選ぶ部品 `ColorChoiceList`**（`components/TeamHub.tsx` 内。`props: { value: string; onChange: (hex) => void }`）：縦リスト。各行 44px、左に色の丸（14px）＋名前、`value` と一致する行の右にチェック（`--accent`）。最後の行「カスタム…」は丸に現在のカスタム色（`value` が 7 色のどれでもないときはその色でチェック付き。7 色のどれかなら丸は `--mut` の枠だけ）。「カスタム…」を押すと、行の中に隠してある `<input type="color">` を `click()` して OS の色ピッカーを開く（iPhone では参考画像 4 と同じ画面になる。PC は OS のダイアログ）。`onChange`（または `onInput`）で `onChange(hex)`。
+- 使う場所：①グループ管理シートの色の丸をタップ → 行の下に `ColorChoiceList`（今の `.grpswatches` を置き換え）。②カテゴリ管理シートの編集行と「新しいカテゴリを追加」（今の `.swatches` を置き換え。新規の既定は ブルー）。組込みカテゴリ（練習＝ネイビー、試合＝オレンジ `#d9731f`）の既定値はそのまま（`BUILTIN_CATEGORIES` は触らない。ユーザーが変えたいときはリストから選べる）。
+- `EventCategory.color` の「プリセットパレットの値のみ」という制約はやめる（任意の HEX）。`lib/types.ts` のコメントも直す。
+- リストの見た目は PC も同じ（行は操作部品だが「リストの行」なので四角の角丸は付けない。チェックは `--accent`）。
+
+### 11-4. 受け入れ
+
+1. PC 1440：絞り込みパネルが本文領域の左端（左レールのすぐ右）にあり、カレンダーが残りの幅いっぱい。「‹ 絞り込みを隠す」で 1 列になりカレンダーが全幅、`.calnav` 左端の「絞り込み」で戻る。再読み込みしても開閉が保持される。月送り・月／リスト切替の位置（中央）と見た目は変わらない。
+2. スマホ 390：月のマスが高さ 100px 以上で、予定名のピル（薄い色地＋濃い文字、12px）が入る。試合は「試 」から始まる。4 件以上は 2 件＋「+N」。月の下に「今日からの予定」が無い。横はみ出しなし。
+3. グループ管理の色の丸 → レッド／オレンジ／イエロー／グリーン／ブルー／パープル／ブラウン／カスタム… のリスト。選ぶと月のピル・リストの線・凡例が変わる。「カスタム…」で OS の色ピッカーが開き、任意の色が保持される（再読み込み後も）。
+4. カテゴリ管理（編集・新規）も同じリスト。
+5. 既存デモの 6 グループは新しい色（ブルー／グリーン／パープル／オレンジ／レッド／ブラウン）になる。
+6. `grep -c "^@media" app/globals.css` が 9。`npx tsc --noEmit` が通る。CSS に新規 hex を書かない（色は `--gc` のインライン変数と `color-mix`）。

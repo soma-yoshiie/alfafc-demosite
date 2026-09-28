@@ -49,6 +49,8 @@ const LAST_EVENT_CATEGORY_KEY = "soccer_tactics_lastcat_v1";
 // 新キーは読み込み時に旧キーをremoveItemし、二度と読まない
 const CALGROUP_KEY_OLD = "soccer_tactics_calgroup_v1";
 const CALFILTER_KEY = "soccer_tactics_calfilter_v2";
+// calendar-plan-a §11-1: PCの絞り込みパネル(.calside)の開閉状態。値は"open"/"closed"のみ
+const CALSIDE_OPEN_KEY = "soccer_tactics_calside_v1";
 const GROUPFILTER_KEY = "soccer_tactics_groupfilter_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
@@ -701,6 +703,29 @@ export function saveCalFilter(filter: CalFilter): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CALFILTER_KEY, JSON.stringify(filter));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/**
+ * PCの絞り込みパネル(.calside)の開閉状態（calendar-plan-a §11-1）。既定はtrue（開いた状態）。
+ * 隠すと.calが1列になりカレンダー本体が全幅を使う。値は"open"/"closed"の文字列のみ持つ
+ * （壊れている・未保存なら既定のtrueへフォールバック）。
+ */
+export function loadCalSideOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(CALSIDE_OPEN_KEY) !== "closed";
+  } catch {
+    return true;
+  }
+}
+
+export function saveCalSideOpen(open: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CALSIDE_OPEN_KEY, open ? "open" : "closed");
   } catch {
     /* 無視 */
   }

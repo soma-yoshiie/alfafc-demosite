@@ -2134,7 +2134,7 @@ header {
 }
 /* v2 目視レビュー反映（すべてスマホ限定: .mhead の有無で判定。PC reset 不要）
    major-3: シート見出しのバッジ 11px→12px ／ major-4: 「＋ 大会を登録・管理」の破線を実線白地に
-   minor-7: 月送り・チャット送信のタップ領域 44px ／ minor-10: 月表示下の予定リスト */
+   minor-7: 月送り・チャット送信のタップ領域 44px */
 body:has(.mhead) .sheet h2 span,
 body:has(.mhead) .screenbody h2 span {
   font-size: var(--fs-body-s);
@@ -2156,9 +2156,6 @@ body:has(.mhead) .chatplus,
 body:has(.mhead) .chatsend {
   width: 44px;
   height: 44px;
-}
-.teamapp:has(.mhead) .calagenda .sech {
-  margin-top: 18px;
 }
 /* minor-9: 試合詳細シートのカード（得点者・交代・メモ）を他のカードと同じ白地＋1px outline に */
 .teamapp:has(.mhead) .dsec {
@@ -3295,17 +3292,8 @@ body:has(.mhead) .billtoggle button.on {
 .caldate.sat {
   color: var(--blue);
 }
-.caldots {
-  display: flex;
-  gap: 3px;
-  margin-top: auto;
-  margin-bottom: 3px;
-  flex-wrap: wrap;
-  justify-content: center;
-  /* Phase D-1(C1-minor): 点(.caldot、固定サイズなので見た目は不変)と「+n」の
-     ベースラインを揃える */
-  align-items: center;
-}
+/* calendar-plan-a §11-2: マスの点(.caldots/.caldotmore)はピル(.calevs/.calev)に置き換えて
+   撤去した。.caldot自体は凡例(.callegend .caldot)がまだ使うためここに残す */
 .caldot {
   width: 10px;
   height: 10px;
@@ -3313,43 +3301,21 @@ body:has(.mhead) .billtoggle button.on {
   display: inline-block;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
-.caldot.practice {
-  background: var(--blue);
-}
-.caldot.match {
-  background: var(--match);
-}
-/* カレンダーのグループ機能§4: 点は最大3つ＋4件以上は「+n」（12px未満は使わない） */
-.caldotmore {
-  font-size: 12px;
-  line-height: 1;
-  color: var(--mut);
-  font-weight: 700;
-}
 /* 凡例の丸は本文サイズに合わせて少し小さく */
 .callegend .caldot {
   width: 9px;
   height: 9px;
   box-shadow: none;
 }
-/* レビュー指摘対応: .teamapp:has(.mhead) .caldot(詳細度0,3,0・4-1で7pxへ変更)が
-   上のルール(0,2,0)に勝ってスマホの凡例の点だけ7pxになっていたため、同じ詳細度以上の
-   セレクタで9pxへ戻す（calendar-plan-a §1） */
+/* calendar-plan-a §11-2でマス用の.teamapp:has(.mhead) .caldot(7px)自体を撤去したため
+   衝突は無くなったが、凡例だけスマホでも9pxと明示しておく（保険的に残す） */
 .teamapp:has(.mhead) .callegend .caldot {
   width: 9px;
   height: 9px;
   box-shadow: none;
 }
-/* 案A §1: 凡例の「試合」は色を持たないため、点ではなく輪(枠だけ)の見本にする。
-   グループ色のように動的な値ではないのでトークン(--ink)で固定して描く */
-.callegend .legendring {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  display: inline-block;
-  box-sizing: border-box;
-  border: 2px solid var(--ink);
-}
+/* レビュー指摘対応（calendar-plan-a §11-2）: 凡例の「試合」の輪(.legendring)は、
+   マスの点そのものを撤去して文字だけの凡例に変えたため使われなくなり削除した */
 .callegend {
   display: flex;
   gap: 14px;
@@ -3610,28 +3576,18 @@ body:has(.mhead) .billtoggle button.on {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* グループ管理シート：色の丸をタップして開くパレット行（.swatch/.swatches本体は
-   カテゴリ管理と共用。ここは行自体の見た目だけ） */
+/* グループ管理シート：色の丸をタップして開くパレット行（中身はColorChoiceList、
+   calendar-plan-a §11-3で.swatch群から差し替え済み。ここは行自体の見た目だけ） */
 .grpswatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  /* calendar-plan-a §11-3: 中身が.swatch(丸チップ)の横並びから.colorchoice(縦リスト)に
+     変わったため、display:flexの行コンテナだとColorChoiceListが内容ぶんの幅にしか
+     広がらず（flex-item既定はshrink-to-fit）チェックが右寄せにならない。子は1つだけに
+     なったのでdisplay:block（既定）に戻し、.colorchoiceが幅いっぱいに広がるようにする */
   padding: 10px 12px;
   margin: -4px 0 8px;
   background: var(--panel2);
   border: 1px solid var(--line);
   border-radius: 12px;
-}
-/* レビュー指摘(§8「44px以上」): .grpswatches .swatchは.swatch(30px)をそのまま使っており
-   スマホのタップ領域を満たさない。見た目(30pxの丸)は変えず、::beforeで44px相当の
-   ヒット領域だけ広げる（PCは対象外＝PC resetで四角30pxのまま） */
-.teamapp:has(.mhead) .grpswatches .swatch {
-  position: relative;
-}
-.teamapp:has(.mhead) .grpswatches .swatch::before {
-  content: "";
-  position: absolute;
-  inset: -7px;
 }
 
 /* ============================================================
@@ -3645,9 +3601,14 @@ body:has(.mhead) .billtoggle button.on {
 .teamapp:has(.mhead) .calhead {
   border-bottom: 1px solid var(--line);
 }
+/* calendar-plan-a §11-2: 週の行が画面の高さを埋めるようマスを高く(52px→100px)し、
+   中にピル(予定名)が複数行入るぶん、日付を中央上ではなく左上に寄せる
+   （align-items:flex-startは.caldate自身を左寄せするため。.calevsは幅100%指定済みなので
+   この変更の影響を受けない） */
 .teamapp:has(.mhead) .calcell {
   aspect-ratio: auto;
-  min-height: 52px;
+  min-height: 100px;
+  align-items: flex-start;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -3661,6 +3622,8 @@ body:has(.mhead) .billtoggle button.on {
 .teamapp:has(.mhead) .caldate {
   font-size: 13px;
   font-weight: 700;
+  text-align: left;
+  padding-left: 4px;
 }
 /* 今日は日付の後ろ(実質は日付自体)に--accentの丸(26px・白文字)。既存の.calcell.todayの
    枠・inset影はセル全体には出さない（直上のルールで打ち消し済み） */
@@ -3674,17 +3637,31 @@ body:has(.mhead) .billtoggle button.on {
   background: var(--accent);
   /* レビュー指摘(§8「新規hexを書かない」): accentの丸の上の白文字は--on-primaryへ */
   color: var(--on-primary);
+  padding-left: 0;
 }
-.teamapp:has(.mhead) .caldot {
-  width: 7px;
-  height: 7px;
-  box-sizing: border-box;
-  box-shadow: none;
+/* レビュー指摘対応（calendar-plan-a §11-2）: 390pxではマス幅が52pxしかなく、基底の
+   .calcell左右padding4px（3269行）＋.calevの左右padding6pxで文字に使える幅が32pxまで
+   減り、ellipsisの「…」も差し引かれると1〜1.5字しか読めなかった（実測clientWidth 44pxに
+   対しscrollWidth 57〜131px）。左右paddingを削って文字幅を46pxまで戻す（§11-2の
+   text-overflow:ellipsis指定はそのまま。指摘は代わりにclipへの変更も提案していたが、
+   仕様書の明記（§11-2）を優先しここでは変えない）。12px下限・タブレット/PCの見た目は
+   このセレクタの詳細度がベースの.calcell/.calevより高いため変わらない */
+.teamapp:has(.mhead) .calcell {
+  padding: 4px 1px;
 }
-/* 試合の点は塗りではなく輪（枠だけ。中は透明）。枠の色はJS側のインラインstyle(borderColor)で渡す */
-.teamapp:has(.mhead) .caldot.match {
-  background: transparent;
-  border: 2px solid;
+.teamapp:has(.mhead) .calev {
+  padding: 0 2px;
+}
+/* レビュー指摘対応（既存不具合。今回の差分ではないが同じ画面のため一緒に直す）:
+   .callegendがdisplay:flexで折り返しを許可しておらず、スマホ幅で子要素（グループ名）が
+   1文字ずつ圧縮されて縮んでいた。font-sizeも11pxで§8の12px下限を割っていたため揃える */
+.teamapp:has(.mhead) .callegend {
+  flex-wrap: wrap;
+  row-gap: 6px;
+  font-size: 12px;
+}
+.teamapp:has(.mhead) .callegend span {
+  white-space: nowrap;
 }
 
 /* ---------- Match stats ---------- */
@@ -11995,8 +11972,48 @@ body:has(.mhead) .teamapp .dynrow select {
 .teamapp:has(.mhead) .attgh.yes {
   color: var(--ink);
 }
-/* カレンダー：広い画面ではセル内に予定タイトルを表示 */
+/* カレンダー：マス内の予定ピル（calendar-plan-a §11-2でスマホも含め常時表示にした。
+   以前はこのセレクタ自体がdisplay:noneで、@media(min-width:700px)の中でだけ
+   display:flexへ戻していた） */
 .calevs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 4px;
+  width: 100%;
+  overflow: hidden;
+}
+/* 予定ピル本体（案A §4-2・calendar-plan-a §11-2）。色は--gc（groupColorOf、JS側の
+   インラインstyleで渡す）をcolor-mixで薄い地色＋濃い同系色の文字にする（白文字の帯は
+   やめた。§11-3で明るい色（イエロー等）も選べるようになるため、白文字だと読めなくなる） */
+.calev {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  height: 18px;
+  border-radius: 4px;
+  padding: 0 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--gc) 18%, transparent);
+  color: color-mix(in srgb, var(--gc) 65%, var(--ink));
+}
+/* 時刻はPC/タブレットだけ見せる（スマホはピルの幅が無いため隠す。§11-2「時刻は出さない」） */
+.calev-time {
+  display: none;
+}
+/* 「＋N」（4件以上で2件に減らしたときの残り件数。§4-2「＋N件」を短くしたもの） */
+.calmore {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+  padding: 0 6px;
+}
+/* ちょうど3件のときだけPC/タブレットは2件+「+1」に見せる（スマホは3件とも見せてよいので
+   「+1」は出さない。4件以上は.calmoreの方で両方とも同じ数字を出す） */
+.calmore-pconly {
   display: none;
 }
 @media (min-width: 700px) {
@@ -12009,35 +12026,17 @@ body:has(.mhead) .teamapp .dynrow select {
     text-align: left;
     padding-left: 2px;
   }
-  .teamapp .caldots {
+  .calev-time {
+    display: inline;
+  }
+  .calmore-pconly {
+    display: inline;
+  }
+  /* calendar-plan-a §11-2: ちょうど3件のときだけ、PC/タブレットは3件目のピルを隠して
+     2件+「+1」(.calmore-pconly)にする（4件以上はJS側のslice自体が2件までしか
+     レンダーしないため、このルールは3件ちょうどのときにしか一致しない） */
+  .calev:nth-child(3) {
     display: none;
-  }
-  .teamapp .calevs {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    margin-top: 4px;
-    width: 100%;
-    overflow: hidden;
-  }
-  /* カレンダーの絞り込みと色の作り直し（案A §4-2）: 帯の色はグループ(groupColorOf、
-     JS側のインラインstyleで渡す)。種類ごとの固定色(.calev.practice/.match)は撤去した */
-  .calev {
-    font-size: 11px;
-    font-weight: 700;
-    color: #ffffff;
-    border-radius: 6px;
-    padding: 2px 6px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  /* §4-2: 「＋N件」を「+N」に短くする。12px未満は使わない契約に合わせ10px→12pxへ */
-  .calmore {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--mut);
-    padding: 0 6px;
   }
   /* レビュー指摘対応(§4-2): usePc(1024px以上)より.mheadの出る幅が広いため、700〜1023px
      （タブレット）では上の§4-1(.teamapp:has(.mhead) .calcell等、詳細度0,3,0・メディア
@@ -12270,25 +12269,64 @@ body:has(.mhead) .grouppick-item {
   max-width: 100%;
 }
 
-/* パレットスウォッチ（カテゴリの色選択） */
-.swatches {
+/* calendar-plan-a §11-3: 色を選ぶ縦リスト（ColorChoiceList）。グループ管理・カテゴリ管理
+   （編集行・新規追加）で共用。旧.swatches/.swatch（丸チップの横並び）はここから撤去した
+   （置き換え後は使用箇所が無い）。色そのものは各行のインラインstyle(background)で渡すため、
+   CSSは寸法・配置・チェック記号(::afterではなく専用span)だけを持つ（§8「色はトークンのみ」） */
+.colorchoice {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
+  flex-direction: column;
+  gap: 2px;
 }
-.swatch {
-  width: 30px;
-  height: 30px;
+.colorchoice-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 6px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.colorchoice-row:active {
+  background: var(--panel2);
+}
+.colorchoice-dot {
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
 }
-.swatch.on {
-  border-color: var(--ink);
-  box-shadow: 0 0 0 2px var(--panel);
+/* 「カスタム…」行：valueがCOLOR_CHOICESの7色のどれとも一致しない＝カスタム色のときだけ
+   丸を塗り、それ以外（7色のどれかを選んでいる）は--mutの枠だけの空の丸にする */
+.colorchoice-dot-empty {
+  background: none;
+  border: 1.5px solid var(--mut);
+  box-sizing: border-box;
+}
+.colorchoice-name {
+  flex: 1;
+  font-size: 14px;
+  color: var(--ink);
+}
+.colorchoice-check {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 7px;
+  margin-right: 2px;
+  border-left: 2px solid var(--accent);
+  border-bottom: 2px solid var(--accent);
+  transform: rotate(-45deg);
+}
+/* 隠した<input type="color">。行のタップでclick()して開くOSの色ピッカーの入口 */
+.colorchoice-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* 曜日選択チップ（繰り返し設定） */
@@ -12369,11 +12407,12 @@ body:has(.mhead) .grouppick-item {
   margin-bottom: 8px;
 }
 
-/* 複数日予定の月表示チップ：角の丸めで日をまたぐ連続感を出す（帯スパンはしない） */
-.calev.single { border-radius: 6px; }
-.calev.start { border-radius: 6px 0 0 6px; }
+/* 複数日予定の月表示チップ：角の丸めで日をまたぐ連続感を出す（帯スパンはしない）。
+   calendar-plan-a §11-2: ピルの角丸4pxに合わせて6px→4pxへ */
+.calev.single { border-radius: 4px; }
+.calev.start { border-radius: 4px 0 0 4px; }
 .calev.mid { border-radius: 0; }
-.calev.end { border-radius: 0 6px 6px 0; }
+.calev.end { border-radius: 0 4px 4px 0; }
 
 /* ============================================================
    ステップ式アニメ・相手トークン・ペン（UI改修）
@@ -18885,38 +18924,102 @@ body:has(.mhead) .grouppick-item {
     height: auto !important;
     max-height: calc(100dvh - 158px) !important;
   }
-  /* カレンダーの絞り込みと色の作り直し（案A §3-3）: .calを.calside(絞り込み常設)+
-     .calmain(従来の本体)の2列にする。月送り・月/リスト切替・＋予定を追加はcalmain側の
-     子要素のままDOM・位置・見た目を変えない。.teamapp .cal(基底寄りのPCブロックで
-     max-width:720px)は同じセレクタ・後勝ちでこちらの940pxへ広がり、720pxの実質的な
-     引き継ぎ先が.calmainになる */
+  /* カレンダーの絞り込みと色の作り直し（案A §3-3・calendar-plan-a §11-1）: .calを
+     .calside(絞り込み常設)+.calmain(従来の本体)の2列にする。月送り・月/リスト切替・
+     ＋予定を追加はcalmain側の子要素のままDOM・位置・見た目を変えない。.teamapp .cal
+     (基底寄りのPCブロックでmax-width:720px)は同じセレクタ・後勝ちでこちらへ広がる。
+     §11-1: パネルは本文領域の左端に置き、カレンダー本体が残りの幅をすべて使うよう
+     max-width:noneにする（940px上限をやめる。中央寄せ時に左レールとの間へ空白ができていた
+     不具合の修正） */
   .teamapp .cal {
     display: grid;
-    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-columns: 220px minmax(0, 1fr);
     align-items: start;
     gap: 24px;
-    max-width: 940px;
+    max-width: none;
   }
   .calside {
     position: sticky;
     top: 0;
+  }
+  /* §11-1: 「‹ 絞り込みを隠す」。ボタン自体は.calside幅いっぱい(タップ領域確保)だが、
+     文字は右寄せのテキストボタンに見せる（パネル本体は左寄せのまま） */
+  .calside-hide {
+    display: block;
+    width: 100%;
+    margin: 0 0 12px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: right;
+    cursor: pointer;
+  }
+  /* §11-1: 隠すと.calが1列になり.calmainが全幅を使う（.calside自体は下のルールで
+     非表示にし、1列グリッドに空の列を残して空白を作らないようにする） */
+  .cal.side-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cal.side-hidden .calside {
+    display: none;
   }
   /* レビュー指摘対応: グリッドの子(.calmain)にmargin:0 auto(かつwidth:auto)を付けると、
      stretchされず内容の幅まで縮んで中央寄せされてしまう。月表示はグリッドの中身が
      広いので716pxまで伸びるが、リスト表示は内容の幅(約400px)まで縮み、月/リスト切替の
      幅・位置がずれていた（§3-3・§7「月送り・月/リスト切替は今のまま」に反する）。
      width:100%でグリッドの列幅いっぱいに広げたうえでmax-widthを掛け、中央寄せは
-     margin:autoではなくグリッド専用のjustify-selfで行う */
+     margin:autoではなくグリッド専用のjustify-selfで行う。
+     §11-1: パネルの右にできていた空白を無くすため、720px上限もやめてstretchにする
+     （カレンダー本体は残りの幅をすべて使う。月グリッド・リスト表示とも幅いっぱいになる） */
   .calmain {
     width: 100%;
-    max-width: 720px;
-    justify-self: center;
+    max-width: none;
+    justify-self: stretch;
     min-width: 0;
   }
-  /* 案A §1/§8: グループ管理シートのパレット(.grpswatches .swatch)はPCだけ四角にする
-     （色を示す丸チェック.calchkは例外だが、こちらは§8の「操作部品は四角」の対象） */
-  .grpswatches .swatch {
+  /* §11-1: 中央の年月・矢印は今までどおり中央寄せのまま、.calshow（隠しているときだけ
+     出す「絞り込み」）を左端にabsolute配置するための基点 */
+  .calnav {
+    position: relative;
+  }
+  /* レビュー指摘対応: .calnav button（‹/›用、0,1,1）が.calshow単体（0,1,0）より詳細度で
+     勝ってしまい、36×36の正方形に押しつぶされて「絞り込み」の文字が1字ずつ縦に折り返す
+     不具合があった。.calnav .calshow（0,2,0）まで詳細度を上げて確実に上書きする */
+  .calnav .calshow {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: auto;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
     border-radius: var(--r-md);
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .calnav .calshow svg {
+    width: 16px;
+    height: 16px;
+  }
+  /* 何か隠しているとき.calshowの右上に出す点（スマホの.mhead-action .dotと同じ作法） */
+  .calnav .calshow .dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
   }
   /* レビュー指摘対応: 200px幅の.calside内では「全員向けの予定を含める」(14px/700+gap10px+
      つまみ40px)が収まらず「る」だけ折り返していた。PCだけ詰める */
