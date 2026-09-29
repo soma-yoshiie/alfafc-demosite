@@ -11,12 +11,15 @@ import type {
 import { NOTE_KIND_LABEL, DELIVER_KIND_LABEL } from "./types";
 import { computePlayerKpi } from "./coaching";
 import { deliverableTargetsPlayer, deliverableVisibleToPlayer } from "./groups";
+import { announcementParts, visibleAnnouncements } from "./chat";
 
 export type NotifLevel = "warn" | "info" | "good";
 export type NotifTarget =
   | { kind: "note"; id: string }
   | { kind: "deliver"; id: string }
-  | { kind: "player"; id: string };
+  | { kind: "player"; id: string }
+  // chat-plan-a §4: 選手向け「新しいお知らせ」。押すとチャット画面でそのお知らせの詳細を開く
+  | { kind: "announcement"; id: string };
 
 export interface Notification {
   id: string;
@@ -82,6 +85,19 @@ export function buildEventNotifications(input: NotifInput): Notification[] {
           level: answered ? "good" : "warn",
           text: `コーチから${DELIVER_KIND_LABEL[d.kind]}「${d.title}」${answered ? "（回答済み）" : "が届いています"}`,
           target: { kind: "deliver", id: d.id },
+        });
+      });
+    // 新しいお知らせ（chat-plan-a §4）：自分宛てで seenBy に自分がいないもの。
+    // 開けば seenBy に入って消える（スタッフ向けには出さない）。旧データの件名は本文の 1 行目
+    visibleAnnouncements(team?.announcements ?? [], false, me ?? null, groups)
+      .filter((a) => !a.seenBy?.includes(playerId))
+      .forEach((a) => {
+        list.push({
+          id: "ann-" + a.id,
+          ts: a.ts,
+          level: "info",
+          text: `新しいお知らせ：${announcementParts(a).subject}`,
+          target: { kind: "announcement", id: a.id },
         });
       });
     // 自分のノートに付いたコメント

@@ -662,16 +662,36 @@ export interface AttendanceEntry {
   comment?: string;
 }
 
-/** スタッフからのお知らせ（戦術添付も可） */
+/**
+ * スタッフからのお知らせ（一斉連絡。全員／学年／グループ宛て）。
+ * chat-plan-a §2-1: 選手・保護者は読む・「了解」を押す・スタッフへ 1 対 1 で返信するだけ（投稿しない）。
+ * 追加項目はすべて任意（旧データ・旧形式の連絡がそのまま読める）
+ */
 export interface Announcement {
   id: string;
   ts: number;
   text: string;
-  /** 添付した保存戦術 */
+  /** 添付した保存戦術（旧データの表示用。新規作成では使わず attachments に入れる） */
   playId?: string;
   playTitle?: string;
   /** 宛先グループ。未定義または空＝全員（groups-everywhere §4） */
   groupIds?: string[];
+  /** 件名。無ければ本文の 1 行目を件名として表示する（chat-plan-a §2-1） */
+  title?: string;
+  /** 一覧の上部に固定する（最大 2 件。3 件目を固定したら一番古い固定を外す） */
+  pinned?: boolean;
+  /** 送信者の名前（例「岡本」）。無ければ「スタッフ」 */
+  fromName?: string;
+  /** 送信者の役割（例「監督」「コーチ」「スタッフ」） */
+  fromRole?: string;
+  /** 戦術・練習メニュー・セットプレー・画像・動画（ChatMessage と同じ型） */
+  attachments?: ChatAttachment[];
+  /** 開いた選手の playerId（選手と保護者は 1 アカウント＝選手単位） */
+  seenBy?: string[];
+  /** 「了解」を押した選手の playerId */
+  acks?: string[];
+  /** 最後に「未読の人に再通知」した時刻 */
+  remindedAt?: number;
 }
 
 /* ===== チャット / メッセージ（戦術・トレーニング・画像・動画の送信） ===== */
@@ -696,8 +716,9 @@ export interface ChatAttachment {
 
 /**
  * 会話の宛先キー。
- * "team" = チーム全員 / "p:<playerId>" = 個人（その選手とスタッフのDM）/
- * "grp:<groupId>" = グループ宛（groups-phase2 §5。所属は毎回 playerInGroup で評価する）
+ * "p:<playerId>" = 個人（その選手とスタッフの 1 対 1）。
+ * "team"／"grp:<groupId>" は廃止（chat-plan-a §1）。旧データの移行（lib/chat.ts planChatMigration）
+ * でお知らせへ移すためだけに残しており、以後どの画面からもこの 2 種へ送らない
  */
 export type ChatThreadKey = string;
 
@@ -711,9 +732,32 @@ export interface ChatMessage {
   from: string;
   /** 送信者の表示名 */
   fromName?: string;
+  /** スタッフの役割（例「監督」。選手の発言には付けない。chat-plan-a §2-2） */
+  fromRole?: string;
   text?: string;
   attachments?: ChatAttachment[];
+  /** 引用返信（text は 60 字まで。お知らせを引用するときは source="announcement"） */
+  replyTo?: ChatReplyTo;
 }
+
+/** 引用返信の参照（chat-plan-a §2-2） */
+export interface ChatReplyTo {
+  id: string;
+  source: "message" | "announcement";
+  fromName: string;
+  /** 元の本文の冒頭（60 字まで） */
+  text: string;
+}
+
+/**
+ * 1 対 1 の会話の既読時刻（chat-plan-a §2-3）。キーは "p:<playerId>"。
+ * staff＝スタッフ側が最後に開いた時刻、member＝選手・保護者側が最後に開いた時刻
+ */
+export interface ChatReadState {
+  staff?: number;
+  member?: number;
+}
+export type ChatReads = Record<string, ChatReadState>;
 
 /** 個人DMの会話キーを作る */
 export function dmThreadKey(playerId: string): ChatThreadKey {

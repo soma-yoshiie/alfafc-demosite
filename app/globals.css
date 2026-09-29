@@ -2157,6 +2157,10 @@ body:has(.mhead) .chatsend {
   width: 44px;
   height: 44px;
 }
+/* 入力欄も +・送信と同じ 44px に（chat-plan-a §7 スマホのタップ領域。基底の 40px だと枠込みで 41px だった） */
+body:has(.mhead) .chatcompose textarea {
+  min-height: 44px;
+}
 /* minor-9: 試合詳細シートのカード（得点者・交代・メモ）を他のカードと同じ白地＋1px outline に */
 .teamapp:has(.mhead) .dsec {
   background: var(--surface-lowest);
@@ -6763,10 +6767,6 @@ body:has(.mhead) .teamapp .dynrow select {
 .chatapp .scroll {
   padding: 0 14px calc(env(safe-area-inset-bottom) + 24px);
 }
-.chatapp .scroll.pchat {
-  padding-bottom: calc(env(safe-area-inset-bottom) + 8px);
-  display: flex;
-}
 /* PC専用の第2ペイン(スレッド本文)。モバイルでは非表示（既存DOMへの影響ゼロ） */
 .chatmain {
   display: none;
@@ -6866,14 +6866,6 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--mut);
   font-size: 20px;
 }
-/* groups-phase2 §5-2: 会話一覧の小見出し（「グループ」「個人」）。
-   review #1回目: 横paddingが.convrow(12px)と揃っておらず、.convrow(アバター左端)基準で
-   見出しテキストが4pxずれていた。同じ12pxに揃える */
-.convsec {
-  padding: 10px 12px 4px;
-  font-size: 12px;
-  color: var(--mut);
-}
 /* グループの行の人数表示（例:「23人」）。convdateと同じ並び(convtop内)。
    review #1回目: nowrapが無く、グループ名が長い(.convname/.convmainが折り返す)行では
    人数側の「16人」も「16 / 人」のように語中で2行に割れていた */
@@ -6888,12 +6880,6 @@ body:has(.mhead) .teamapp .dynrow select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-/* 会話一覧「個人」セクションの絞り込み(.grouppickは既存流用、余白だけここで足す。
-   .benchfilterと同じ作法)。review #1回目: .grouppick自身の左余白(2px)を差し引いて
-   .convrow(アバター左端)に揃える */
-.convfilter {
-  padding: 2px 10px 8px;
 }
 
 /* チャット本体 */
@@ -6926,49 +6912,166 @@ body:has(.mhead) .teamapp .dynrow select {
   height: 100%;
   min-height: 0;
 }
-/* groups-phase2 §5-1: 選手・保護者のタイムライン上部の説明文（表示範囲の案内）。
-   .chatwrap(flex column)の1項目として.chatscrollの前に置く（flex:noneで高さは内容なり） */
-.chatscopehint {
+/* chat-plan-a §3-4・§7: 1 対 1 のスレッド。旧 .chatscopehint/.chatmeta/.chatbadge/.chatdate/.chatdel
+   （日時・宛先バッジ・削除ボタンを吹き出しの中に並べる作り）は撤去し、行・吹き出し・帯・区切り・引用・
+   メニューを新しく作った。色はトークンのみ・文字 12px 以上 */
+.chatwrap {
+  position: relative;
+}
+/* 「このやりとりは保護者も見られます」の帯。.chatwrap(flex column)の1項目（スタッフ側・選手側の両方） */
+.chatguard {
   flex: none;
-  padding: 6px 2px 0;
-  font-size: 12px;
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface);
   color: var(--mut);
+  font-size: var(--fs-body-s);
+  line-height: 1.4;
+  text-align: center;
+}
+.chatsheet .chatguard {
+  margin-left: 16px;
+  margin-right: 16px;
 }
 .chatscroll {
+  position: relative; /* 「ここから未読」・引用元の位置(offsetTop)の基準 */
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
   padding: 8px 2px 12px;
 }
+.chatgroup {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+}
+/* 日付が変わるところの中央の区切り（「今日」「昨日」「9月28日（日）」） */
+.chatday {
+  align-self: center;
+  margin: 14px 0 2px;
+  padding: 3px 12px;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+/* 開いた時点の未読の手前の線 */
+.chatunreadline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 0;
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.chatunreadline::before,
+.chatunreadline::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.4;
+}
+/* 1 通ぶんの行。同じ送信者の連続（.cont）は間を詰め、名前・アバターを省く */
 .chatrow {
   display: flex;
+  align-items: flex-end;
+  gap: 8px;
   justify-content: flex-start;
+  margin-top: 12px;
+  -webkit-touch-callout: none; /* 長押しは iOS 標準のメニューでなく自前の .chatmenu を出す */
+}
+.chatrow.cont {
+  margin-top: 2px;
 }
 .chatrow.mine {
   justify-content: flex-end;
 }
+/* 引用から飛んだ発言（.flash）と、メニューを開いている間の対象の発言（.menuon）に同じ輪郭を付ける
+   （メニューは対象の吹き出しの上か下に出るので、どの発言への操作かをこの輪郭で示す。chat-plan-a §3-4） */
+.chatrow.flash .chatbubble,
+.chatrow.menuon .chatbubble {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.chatavatar {
+  flex: none;
+  align-self: flex-start;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-tint);
+  border: 1px solid var(--accent-tint-strong);
+  color: var(--accent);
+  font-size: var(--fs-body);
+  font-weight: 700;
+}
+.chatavatar.ghost {
+  visibility: hidden; /* 2 通目以降は左の余白だけ揃える */
+}
+.chatavatar.sm {
+  align-self: center; /* 詳細の送信者・既読パネルの名前行では文字と中心を揃える */
+  width: 24px;
+  height: 24px;
+  font-size: var(--fs-body-s);
+}
+.chatcol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-width: 0;
+  max-width: 78%;
+}
+.chatrow.mine .chatcol {
+  align-items: flex-end;
+}
+.chatnamerow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+}
+.chatname {
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--ink);
+}
+/* 役割バッジ（「監督」「コーチ」「スタッフ」） */
+.chatrole {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--r-full);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+/* 自分＝右・accent 地の白文字、相手＝左・灰（--surface）地 */
 .chatbubble {
-  max-width: 82%;
+  max-width: 100%;
   padding: 9px 12px;
   border-radius: 16px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
   border-bottom-left-radius: 4px;
 }
 .chatrow.mine .chatbubble {
-  background: var(--accent-tint);
-  border-color: var(--accent-tint-strong);
+  background: var(--accent);
+  color: var(--on-primary);
   border-bottom-left-radius: 16px;
   border-bottom-right-radius: 4px;
-}
-.chatname {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--accent);
-  margin-bottom: 3px;
 }
 .chattext {
   font-size: 14.5px;
@@ -6976,31 +7079,119 @@ body:has(.mhead) .teamapp .dynrow select {
   white-space: pre-wrap;
   word-break: break-word;
 }
-.chatmeta {
+/* 吹き出しの外側の下の小さい時刻（連続の最後の 1 通）と「既読」 */
+.chatsub {
+  display: flex;
+  gap: 4px;
+  padding: 0 2px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-variant-numeric: tabular-nums;
+}
+.chatread {
+  color: var(--accent);
+  font-weight: 700;
+}
+/* 引用返信：吹き出しの上に、元の送信者名と本文の冒頭（1 行・省略）を縦線付きで */
+.chatquote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 0 2px 10px;
+  border: 0;
+  border-left: 3px solid var(--outline-strong);
+  background: none;
+  text-align: left;
+  color: var(--mut);
+  font-family: inherit;
+  cursor: pointer;
+}
+.chatrow .chatquote {
+  min-height: 44px; /* 押すと元の発言へ飛ぶ（タップ領域を確保。見た目は変わらない） */
+  justify-content: center;
+}
+.chatquote b {
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.chatquote span {
+  max-width: 100%;
+  font-size: var(--fs-body-s);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 入力欄の上の引用バー（× で取り消し） */
+.chatreplybar {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 5px;
+  gap: 4px;
+  padding: 6px 0 6px 2px;
+  border-top: 1px solid var(--outline);
 }
-.chatbadge {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--on-primary);
-  background: var(--accent);
-  border-radius: 6px;
-  padding: 1px 5px;
+.chatsheet .chatreplybar {
+  padding-left: 16px;
 }
-.chatdate {
-  font-size: 11px;
-  color: var(--mut);
+.chatreplybar .chatquote {
+  flex: 1;
+  cursor: default;
 }
-.chatdel {
-  margin-left: auto;
+.chatreplybar button {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
   background: none;
-  border: none;
   color: var(--mut);
+  font-size: 20px;
   cursor: pointer;
-  font-size: 13px;
+}
+.chatreplybar + .chatcompose {
+  border-top: 0;
+}
+/* 長押し・右クリック・「…」のメニュー（返信／コピー／削除）。.chatwrap の中に絶対配置する
+   （シートは transform を持つため position:fixed だと基準がずれる） */
+.chatmenu-back {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+}
+.chatmenu {
+  position: absolute;
+  z-index: 31;
+  width: 168px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-3);
+}
+.chatmenu button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+.chatmenu button:active {
+  background: var(--surface-low);
+}
+.chatmenu button.danger {
+  color: var(--danger);
+}
+/* PC だけの「…」は PC ブロック末尾（mobile-redesign PC reset）で出す。スマホは長押し */
+.chatmore {
+  display: none;
 }
 .chatimg {
   display: block;
@@ -7183,6 +7374,575 @@ body:has(.mhead) .teamapp .dynrow select {
   font-size: 15px;
   font-family: inherit;
   line-height: 1.4;
+}
+
+/* =========================================================
+   チャットの作り直し（案A・specs/chat-plan-a.md §3-1〜§3-3・§7）
+   「お知らせ｜メッセージ」の入口（ChatHome.tsx）。新規 @media は作らない（基底に置く）。
+   色はトークンのみ（グループ色だけ .anntarget のインライン --tc）・文字 12px 以上・
+   スマホのタップ領域 44px 以上・緑は使わない（送信・主ボタンは --accent）。
+   PC だけの調整は PCブロック末尾「mobile-redesign PC reset」
+   ========================================================= */
+.chathome {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* PC(pc)は広い画面で行が伸び切らないよう幅を抑える（スマホは pc が付かない） */
+.chathome.pc {
+  max-width: 720px;
+}
+.chatsegwrap {
+  padding: 12px 0 4px;
+}
+/* このセグメントは画面の主ナビなのでタップ領域を 44px にする（共通の .mseg-item は 36px） */
+.chatsegwrap .mseg-item {
+  height: 44px;
+}
+/* セグメント項目の未読の赤丸 */
+.chatsegbadge,
+.chatunreadbadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--r-full);
+  background: var(--danger);
+  color: var(--on-primary);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- 共通ボタン（作成・送信・再通知・返信。主ボタンは --accent） ---- */
+.annbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--on-primary);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.annbtn:active {
+  opacity: 0.85;
+}
+.annbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.annbtn.ghost {
+  background: var(--surface-lowest);
+  border-color: var(--outline-strong);
+  color: var(--accent);
+}
+.annbtn.ghost.danger {
+  color: var(--danger);
+}
+.annbtn.wide {
+  width: calc(100% - 32px);
+  margin: 12px 16px 16px;
+}
+
+/* ---- お知らせの一覧（カード） ---- */
+.annlist,
+.msglist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 0;
+}
+.annlist > .annbtn,
+.msglist > .chatnewbtn {
+  width: 100%;
+}
+/* カードは div（役割なし）。詳細を開く .anncardmain（button）と、選手の「了解」（.annfoot の button）は兄弟。
+   入れ子の操作部品（nested-interactive）にしないため（chat-plan-a §3-2）。余白は button 側に持たせ、
+   カードのどこを押しても詳細が開く（了解の行だけは別の操作） */
+.anncard {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.anncard:has(> .anncardmain:active) {
+  background: var(--surface-low);
+}
+.anncardmain {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* 選手の了解の行（button の外）。カードの余白と同じ 14px を横に取り、了解の上の間隔は 8px（gap 6 + 2） */
+.anncard > .annfoot {
+  margin-top: 0;
+  padding: 0 14px 12px;
+}
+.anncardmain:has(+ .annfoot) {
+  padding-bottom: 8px;
+}
+/* 固定：左に 3px の --accent の線と「固定」ラベル（.annpin） */
+.anncard.pinned {
+  border-left: 3px solid var(--accent);
+}
+.anncard.sel {
+  background: var(--accent-tint);
+  border-color: var(--accent-tint-strong);
+}
+/* 固定のカードを選んでも左の 3px の --accent の線は残す（.sel の border-color に上書きされないように） */
+.anncard.pinned.sel {
+  border-left-color: var(--accent);
+}
+.annrow1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+/* 宛先ラベル：全員＝ネイビー、グループ＝そのグループの色（点に --tc、地は薄いティント） */
+.anntarget {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 52%;
+  padding: 3px 10px 3px 22px;
+  border-radius: var(--r-full);
+  background: color-mix(in srgb, var(--tc) 14%, var(--surface-lowest));
+  color: var(--ink);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.anntarget::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: var(--tc);
+}
+.annpin {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.annnew {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+.annfrom {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.anndate {
+  flex: none;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-variant-numeric: tabular-nums;
+}
+.annsubject {
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.annbody {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  white-space: pre-line;
+  word-break: break-word;
+}
+.annatt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+}
+.annatt span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.annfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+}
+/* 「了解 41」：選手は押すと自分が入る／外れる（押していれば塗り）。スタッフには数だけ */
+.annackbtn {
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.annackbtn.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-primary);
+}
+.annackbtn.on::before {
+  content: "✓ ";
+}
+.annackbtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.annackbtn.big {
+  min-height: 48px;
+  font-size: var(--fs-title-s);
+}
+.annacklabel {
+  color: var(--mut);
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+}
+/* スタッフだけの「既読 52/70 ›」 */
+.annseen {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--accent);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* PC の左ペイン用の小さい版：本文・添付を省き、選択行はティント（PC の 3 列の定義は末尾の chat-plan-a §3-6 の区画） */
+.anncard.mini .anncardmain {
+  gap: 4px;
+  padding: 10px 12px;
+}
+.anncard.mini > .annfoot {
+  padding: 0 12px 10px;
+}
+.anncard.mini .anncardmain:has(+ .annfoot) {
+  padding-bottom: 4px;
+}
+.anncard.mini .annfrom {
+  display: none;
+}
+.anncard.mini .anndate {
+  margin-left: auto;
+}
+
+/* ---- お知らせの詳細（board シート annDetail／PC の中のペイン） ---- */
+.annsheet {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.annsheetbody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 0 calc(env(safe-area-inset-bottom) + 24px);
+}
+.chatpanescroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 24px;
+}
+.anndetail {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 16px;
+}
+.anndhead {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.anndtags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.anndtitle {
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.anndfrom {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: var(--fs-body);
+}
+.anndname {
+  font-weight: 700;
+}
+.anndtime {
+  margin-left: auto;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-variant-numeric: tabular-nums;
+}
+.anndbody {
+  max-width: 680px;
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.anndatts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.anndactions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+.anndactions.row {
+  flex-direction: row;
+}
+.anndactions.row .annbtn {
+  flex: 1;
+}
+.anndnote {
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  text-align: center;
+}
+
+/* ---- スタッフの既読パネル（未読｜既読｜了解のタブ・名前一覧・再通知） ---- */
+.annread {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--outline);
+}
+.annstabs {
+  display: flex;
+  gap: 8px;
+}
+.annstab {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.annstab.on {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
+}
+.annremind {
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+.annreadhead {
+  padding: 8px 2px 4px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.annreadrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 2px;
+  border-bottom: 1px solid var(--outline);
+}
+.annreadname {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body);
+}
+.annreadno {
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-variant-numeric: tabular-nums;
+}
+.annreadempty {
+  padding: 20px 0;
+  color: var(--mut);
+  font-size: var(--fs-body);
+  text-align: center;
+}
+
+/* ---- お知らせの作成（board シート annCompose） ---- */
+.anncompose {
+  padding: 4px 0 8px;
+}
+.annpincheck {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  margin: 4px 16px 0;
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+.annpincheck input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+}
+.annpinhint {
+  margin: 0 16px 4px 46px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+}
+
+/* ---- メッセージの一覧（スタッフ）・選手の 1 対 1・新しいメッセージ ---- */
+.chatsearch {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  outline: none;
+}
+.chatsearch:focus {
+  border-color: var(--accent);
+}
+.chatfilterchips {
+  display: flex;
+  gap: 8px;
+}
+.chatfilterchip {
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--mut);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+.chatfilterchip.on {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
+}
+.msglist .convlist,
+.chatnew .convlist {
+  margin: 0;
+}
+/* 行の右端：時刻の下に未読の赤丸 */
+.convaside {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  min-width: 36px;
+}
+.convprev.unread {
+  color: var(--ink);
+  font-weight: 700;
+}
+.chatmember {
+  display: flex;
+  flex-direction: column;
+}
+.chatmemhead {
+  padding: 12px 2px 8px;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+/* 選手・保護者のメッセージ：スタッフとの 1 対 1 をこの場所にそのまま置く（.chatwrap の高さの基準になる枠） */
+.chatmemthread {
+  height: calc(100dvh - 340px);
+  min-height: 340px;
+  padding: 0 12px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.chatnew {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 16px 24px;
+}
+.chatnewchips {
+  margin: 0 -2px;
 }
 
 /* =========================================================
@@ -10377,9 +11137,6 @@ body:has(.mhead) .teamapp .dynrow select {
 .chatapp .scroll {
   padding-bottom: calc(56px + env(safe-area-inset-bottom) + 24px);
 }
-.chatapp .scroll.pchat {
-  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 8px);
-}
 .homeapp .scroll {
   padding-bottom: calc(56px + env(safe-area-inset-bottom) + 28px);
 }
@@ -10490,16 +11247,6 @@ body:has(.mhead) .teamapp .dynrow select {
 .otherapp .scroll {
   padding-left: 16px;
   padding-right: 16px;
-}
-
-/* ---- チーム運営「チャット」タブ（mobile-redesign-v2 §3-2） ----
-   ChatScreen.tsxのPlayerChat(.chattab)は height:100% で自身の親いっぱいに広がる前提
-   （元のチャット画面では.scroll.pchat自体がdisplay:flexの1画面構成）。ここでは「連絡」
-   セクションの下にそのまま差し込むため、.chattabに素直な高さの基準を与えるラッパーを挟む */
-.teamapp .teamchatthread {
-  height: 60vh;
-  min-height: 320px;
-  margin-top: 4px;
 }
 
 /* ---- ホーム刷新（スマホのみ。§1-2） ---- */
@@ -14068,25 +14815,11 @@ body:has(.mhead) .grouppick-item {
   .sheet .chatpicker {
     background: var(--surface-low);
   }
-  .chatapp .chatname,
-  .sheet .chatname {
-    color: var(--accent);
-  }
-  .chatapp .chatbadge,
-  .sheet .chatbadge {
-    background: var(--accent);
-    color: var(--on-primary);
-  }
   .chatapp .chatattcard,
   .sheet .chatattcard {
     border-color: var(--accent);
     background: var(--accent-tint);
     color: var(--accent);
-  }
-  .chatapp .chatrow.mine .chatbubble,
-  .sheet .chatrow.mine .chatbubble {
-    background: var(--accent-tint);
-    border-color: var(--accent-tint-strong);
   }
   .chatapp .chatplus.on,
   .sheet .chatplus.on {
@@ -16749,7 +17482,6 @@ body:has(.mhead) .grouppick-item {
   .catchip,
   .calviewtoggle button,
   .agkind,
-  .chatbadge,
   .chatattcard,
   .chatpick,
   .hometeam,
@@ -18802,7 +19534,6 @@ body:has(.mhead) .grouppick-item {
      （groups機能より前からの崩れ）。.chattab を縦flexにし、.chatwrap は残り高さを埋める
      (flex:1・min-height:0・height:auto)。一覧のスクロールは基底の .chatscroll(flex:1/min-height:0/
      overflow-y:auto)がそのまま引き受けるので、入力欄は常にカード内の最下部に固定される。
-     選手側(.scroll.pchat 直下の .chattab)は .chatmain 配下でないため対象外。
      スマホは .chatmain{display:none}(5888行)のため構造的に影響なし */
   .chatapp .chatmain .chattab {
     display: flex;
@@ -19027,6 +19758,172 @@ body:has(.mhead) .grouppick-item {
     font-size: 13px;
     gap: 8px;
   }
+
+  /* === chat-plan-a §3-4・§3-6（PC だけの調整） ===
+     スマホは長押しでメニューを出すため .chatmore（基底 display:none）を隠している。PC は吹き出しに
+     マウスを乗せたときだけ「…」を出す（場所は取ったまま opacity で切り替え、行の幅を動かさない）。
+     visibility:hidden にするとフォーカスを受けられず、キーボードで「…」に届かない（返信・コピー・削除を操作できない）。
+     opacity:0 ならタブで届き、行の中にフォーカスがある間（:focus-within）も出しておく。
+     PC の操作部品は四角（--r-md）。左 320px・既読パネル付きの 3 列はこの下の §3-6 の区画 */
+  .chatmore {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    align-self: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--mut);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0;
+  }
+  .chatrow:hover .chatmore,
+  .chatrow:focus-within .chatmore,
+  .chatrow.menuon .chatmore,
+  .chatmore:focus-visible {
+    opacity: 1;
+  }
+  .chatmore:hover {
+    background: var(--surface-low);
+  }
+  .chatrow.mine .chatmore {
+    order: -1;
+  }
+  .anncard,
+  .chatfilterchip {
+    border-radius: var(--r-md);
+  }
+
+  /* === chat-plan-a §3-6: PC の 3 列（左 320px｜中｜右 280px） ===
+     左＝セグメント＋一覧（.scroll。列の幅は下の .app.chatapp:has(.chatmain) の 320px。旧 300px・1600px 以上の 340px から変更）。
+     中＝お知らせの詳細（.chatpanescroll）／1 対 1（.chatmain .chattab）。
+     右＝既読パネル（.chatreadcol。スタッフがお知らせを開いたときだけ ChatScreen が出す）。
+     本文・吹き出しの行幅は 680px まで（カード 720px − 左右の余白 20px×2）。中の列の中では左寄せで余白は空ける */
+  /* 列の定義は詳細度 (0,3,0) の .app.chatapp:has(...) にして、上方の 300px（1 つ目の PC ブロック）と
+     末尾 1600px ブロックの 340px の両方に勝たせる（どちらのブロックも触らない） */
+  .app.chatapp:has(.chatmain) {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+  .app.chatapp:has(.chatreadcol) {
+    grid-template-columns: 320px minmax(0, 1fr) 280px;
+  }
+  .chatapp .chatmain {
+    grid-column: 2;
+  }
+  .chatapp .chatreadcol {
+    grid-column: 3;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    background: var(--surface-lowest);
+    border-left: 1px solid var(--outline);
+  }
+  .chatapp .chatreadhead {
+    flex: none;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--outline);
+    font-size: var(--fs-title-s);
+    font-weight: 700;
+  }
+  .chatapp .chatreadscroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 16px 24px;
+  }
+  /* 右の列に置く既読パネルは、詳細の下に続けるとき用の上罫線・余白を外す。名前の一覧は 280px に収まるよう行を詰める */
+  .chatapp .chatreadcol .annread {
+    padding-top: 0;
+    border-top: 0;
+  }
+  .chatapp .chatreadcol .annstab {
+    padding: 0 4px;
+  }
+  /* 中のお知らせ詳細：スレッド（.chattab）と同じ白カード。行幅 680px（padding 20px×2 を含めて 720px） */
+  .chatapp .chatmain .chatpanescroll {
+    flex: 1 1 0;
+    align-self: flex-start;
+    max-height: 100%;
+    min-width: 0;
+    max-width: 720px;
+    padding: 20px 0 24px;
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: var(--r-lg);
+  }
+  .chatapp .chatmain .chatpanescroll .anndetail {
+    max-width: none;
+    padding: 0 20px;
+  }
+  /* 中の 1 対 1：旧 1040px・中央寄せをやめ、行幅 680px の左寄せにする（.chatapp:has(.chatmain) .chattab の 1040px に勝つ） */
+  .chatapp .chatmain .chattab {
+    max-width: 720px;
+    margin: 0;
+  }
+  /* 左の一覧：お知らせは小さい版（.anncard.mini）。スマホ用の 44px を PC の密度へ詰める（タッチ端末は末尾の coarse ブロックで戻す） */
+  .chatapp .chathome.pc {
+    max-width: none;
+  }
+  .chatapp .annlist,
+  .chatapp .msglist {
+    padding: 4px 0;
+    gap: 8px;
+  }
+  .anncard.mini .annackbtn,
+  .anncard.mini .annseen {
+    min-height: 32px;
+  }
+  .anncard.mini .annackbtn {
+    padding: 0 12px;
+  }
+  .anncard.mini .annfoot {
+    margin-top: 0;
+  }
+  /* 固定・選択の見た目は PC の行文法（.convrow.sel＝accent-tint）に揃える。ホバーは薄い灰 */
+  .anncard:hover:not(.sel) {
+    background: var(--surface-low);
+  }
+  /* セグメント・ボタン・検索・タブ・チップは PC の操作部品の高さ（36px／チップ 32px）へ。角丸は --r-md（四角）のまま */
+  .chatsegwrap .mseg-item,
+  .annbtn,
+  .annstab,
+  .annackbtn,
+  .chatsearch {
+    min-height: 36px;
+    height: auto;
+  }
+  .chatsegwrap .mseg-item {
+    height: 36px;
+  }
+  .chatfilterchip {
+    min-height: 32px;
+    padding: 0 14px;
+  }
+  .annreadrow {
+    min-height: 40px;
+  }
+  .annackbtn.big {
+    min-height: 40px;
+  }
+  /* 入力欄：スマホの丸い入力（18px）を PC では他の入力欄と同じ --r-md の四角にする */
+  .chatcompose textarea {
+    border-radius: var(--r-md);
+  }
+  /* 会話ヘッダーのグループ表示（11px）を 12px に（chat-plan-a §7 の文字 12px 以上） */
+  .chatapp .chatpaneall {
+    font-size: 12px;
+  }
+  /* 新しいメッセージ（ダイアログ）の選手行：PC 既存の 14px の角丸カードを、他の PC の行と同じ --r-md にする */
+  .chatnew .convrow {
+    border-radius: var(--r-md);
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -19134,6 +20031,22 @@ body:has(.mhead) .grouppick-item {
       ここでその並びを増やさないため)。
    ========================================================= */
 @media (pointer: coarse) and (min-width: 1024px) {
+  /* chat-plan-a §3-6: チャットの操作部品（PC で 32〜36px に詰めた分）を指サイズ 44px へ戻す */
+  .chatsegwrap .mseg-item,
+  .annbtn,
+  .annstab,
+  .annackbtn,
+  .annackbtn.big,
+  .anncard.mini .annackbtn,
+  .anncard.mini .annseen,
+  .chatfilterchip,
+  .chatsearch,
+  .annreadrow {
+    min-height: 44px;
+  }
+  .chatsegwrap .mseg-item {
+    height: 44px;
+  }
   /* Phase Aはスコープ付きセレクタ(.noteapp/.plancard等)でも詰めているため、
      ここでも同じ詳細度で列挙しないとタッチ端末で復元が効かない */
   .formfield > input,

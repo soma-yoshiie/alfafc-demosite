@@ -6,9 +6,11 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type {
+  Announcement,
   AttendanceStatus,
   Competition,
   EventCategory,
@@ -27,11 +29,21 @@ import type {
 } from "@/lib/types";
 import { gradeLabel, STAGE_GRADES } from "@/lib/types";
 import {
+  isChatMigrated,
   loadTeam,
   loadViewer,
+  markChatMigrated,
+  saveMessages,
   saveTeam,
   saveViewer,
 } from "@/lib/storage";
+import {
+  announcementStats,
+  applyPinned,
+  planChatMigration,
+  staffIdentity,
+  type NewAnnouncementInput,
+} from "@/lib/chat";
 import { addDaysStr, localDateStr } from "@/lib/dates";
 import {
   DEFAULT_FITNESS_TESTS,
@@ -84,6 +96,69 @@ function sampleAttendance(
     rec[id] = { status: overrides[id] ?? "yes", comment: comments[id] };
   });
   return rec;
+}
+
+/**
+ * デモの既読・了解を「決め打ち」で作る（chat-plan-a §6）。ids（対象の選手 id・名簿順）から n 人を
+ * 等間隔に選び、include は必ず入れ、exclude は入れない。実行のたびに同じ結果になる
+ */
+function pickSpread(ids: string[], n: number, include: string[] = [], exclude: string[] = []): string[] {
+  const must = include.filter((id) => ids.includes(id));
+  const pool = ids.filter((id) => !must.includes(id) && !exclude.includes(id));
+  const need = Math.max(0, Math.min(n - must.length, pool.length));
+  const chosen = new Set(must);
+  pool.forEach((id, i) => {
+    if (Math.floor(((i + 1) * need) / pool.length) > Math.floor((i * need) / pool.length)) chosen.add(id);
+  });
+  return ids.filter((id) => chosen.has(id));
+}
+
+/**
+ * デモのお知らせ 3 件（chat-plan-a §6。新規シードのときだけ入る）。
+ * ①全員・固定 ②中3 ③Aチーム。seenBy／acks は対象の選手から決め打ちで選び、
+ * 佐藤 蒼空(p08) は①を既読・了解済み、③は未読（選手デモで未読が見える）にする。
+ * 配列は新しい順（addAnnouncement が先頭へ足すのと同じ）
+ */
+function sampleAnnouncements(now: number, allIds: string[], teamAIds: string[]): Announcement[] {
+  const grade3Ids = SAMPLE_PLAYERS.filter((p) => p.grade === 3).map((p) => p.id);
+  const seen1 = pickSpread(allIds, 52, ["p08"]);
+  const seen2 = pickSpread(grade3Ids, 20);
+  const seen3 = pickSpread(teamAIds, 15, [], ["p08"]);
+  return [
+    {
+      id: "ann_demo_3",
+      ts: now - 2400_000,
+      title: "金曜 9:15 キックオフ",
+      text: "金曜の練習試合は 9:15 キックオフ。集合は 8:30 です。",
+      groupIds: [SAMPLE_GROUP_A_ID],
+      fromName: "岡本",
+      fromRole: "監督",
+      seenBy: seen3,
+      acks: pickSpread(seen3, 12),
+    },
+    {
+      id: "ann_demo_2",
+      ts: now - 3000_000,
+      title: "木曜はセットプレーの確認",
+      text: "土曜の公式戦に向けて、木曜の練習はセットプレーの確認をします。",
+      groupIds: ["grp_grade_3"],
+      fromName: "藤田",
+      fromRole: "スタッフ",
+      seenBy: seen2,
+      acks: pickSpread(seen2, 15),
+    },
+    {
+      id: "ann_demo_1",
+      ts: now - 3600_000,
+      title: "今週末は練習試合です",
+      text: "集合 8:45・スパイクの手入れも忘れずに。",
+      pinned: true,
+      fromName: "岡本",
+      fromRole: "監督",
+      seenBy: seen1,
+      acks: pickSpread(seen1, 41, ["p08"]),
+    },
+  ];
 }
 
 function sampleTeam(): TeamData {
@@ -230,13 +305,7 @@ function sampleTeam(): TeamData {
       // ev_practice_camp / ev_practice_meeting / ev_practice_g1・g2・g3 は
       // 未回答のまま（未回答デモを兼ねる）
     },
-    announcements: [
-      {
-        id: "a1",
-        ts: Date.now() - 3600_000,
-        text: "今週末は練習試合です。集合8時45分・忘れ物に注意！",
-      },
-    ],
+    announcements: sampleAnnouncements(Date.now(), allPlayerIds, teamAIds),
     coaches: ["監督 岡本", "スタッフ 藤田"],
     categories: [
       { id: "cat_camp", label: "遠征・合宿", color: "#0f766e" },
@@ -459,8 +528,26 @@ interface TeamContextValue {
     status: AttendanceStatus,
     comment?: string
   ) => void;
-  addAnnouncement: (text: string, playId?: string, playTitle?: string, groupIds?: string[]) => void;
+  /**
+   * お知らせを作る（chat-plan-a §2-5）。text・title・attachments のどれも空なら何もしない。
+   * fromName／fromRole を省くと staffIdentity（ログイン名と coaches）で埋める。
+   * pinned:true は固定の最大 2 件の規則（applyPinned）で通す。完了の toast「お知らせを送りました」を出す
+   */
+  addAnnouncement: (a: NewAnnouncementInput) => void;
   removeAnnouncement: (id: string) => void;
+  /** お知らせを部分更新する（pinned を含めるときも最大 2 件の規則を守る） */
+  updateAnnouncement: (id: string, patch: Partial<Omit<Announcement, "id">>) => void;
+  /** 選手 playerId が ids のお知らせを開いた（seenBy に追加）。既に既読なら state を変えない */
+  markAnnouncementsSeen: (ids: string[], playerId: string) => void;
+  /** 「了解」を押す／外す（acks の切替。押したときは既読にもする） */
+  toggleAnnouncementAck: (id: string, playerId: string) => void;
+  /**
+   * 未読の人に再通知する（remindedAt を今にして toast「未読の N 人に再通知しました」）。
+   * 再通知した人数を返す（未読が 0 人なら何もせず 0）
+   */
+  remindAnnouncement: (id: string) => number;
+  /** 上部に固定／解除（固定は最大 2 件。超えたら今固定したもの以外で一番古い固定を外す） */
+  setAnnouncementPinned: (id: string, pinned: boolean) => void;
   addCoach: (name: string) => void;
   removeCoach: (name: string) => void;
   addMatch: (m: Omit<MatchRecord, "id">) => void;
@@ -956,24 +1043,32 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addAnnouncement = useCallback(
-    (text: string, playId?: string, playTitle?: string, groupIds?: string[]) => {
-      const msg = text.trim();
-      if (!msg) return;
-      setTeam((t) => ({
-        ...t,
-        announcements: [
-          {
-            id: nid("a"),
-            ts: Date.now(),
-            text: msg,
-            playId,
-            playTitle,
-            groupIds: groupIds && groupIds.length > 0 ? [...groupIds] : undefined,
-          },
-          ...t.announcements,
-        ],
-      }));
-      board.toast("連絡を送信しました");
+    (input: NewAnnouncementInput) => {
+      const text = (input.text ?? "").trim();
+      const title = input.title?.trim() || undefined;
+      const attachments = input.attachments && input.attachments.length > 0 ? input.attachments : undefined;
+      // 本文も件名も添付も無いお知らせは作らない（件名だけ・添付だけは可。chat-plan-a §2-5）
+      if (!text && !title && !attachments) return;
+      const id = nid("a");
+      const ts = Date.now();
+      setTeam((t) => {
+        // 送信者の既定は staffIdentity（ログイン名 と coaches「役割 名前」から）
+        const who = staffIdentity(board.auth.name, t.coaches);
+        const a: Announcement = {
+          id,
+          ts,
+          text,
+          title,
+          groupIds: input.groupIds && input.groupIds.length > 0 ? [...input.groupIds] : undefined,
+          attachments,
+          fromName: input.fromName ?? who.name,
+          fromRole: input.fromRole ?? who.role,
+        };
+        let list = [a, ...t.announcements];
+        if (input.pinned) list = applyPinned(list, id, true);
+        return { ...t, announcements: list };
+      });
+      board.toast("お知らせを送りました");
     },
     [board]
   );
@@ -983,6 +1078,121 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       announcements: t.announcements.filter((a) => a.id !== id),
     }));
   }, []);
+  const updateAnnouncement = useCallback((id: string, patch: Partial<Omit<Announcement, "id">>) => {
+    setTeam((t) => {
+      let list = t.announcements.map((a) => (a.id === id ? { ...a, ...patch, id } : a));
+      if (patch.pinned) list = applyPinned(list, id, true);
+      return { ...t, announcements: list };
+    });
+  }, []);
+  const markAnnouncementsSeen = useCallback((ids: string[], playerId: string) => {
+    if (ids.length === 0 || !playerId) return;
+    const target = new Set(ids);
+    setTeam((t) => {
+      let changed = false;
+      const list = t.announcements.map((a) => {
+        if (!target.has(a.id) || a.seenBy?.includes(playerId)) return a;
+        changed = true;
+        return { ...a, seenBy: [...(a.seenBy ?? []), playerId] };
+      });
+      // 全部が既読済みなら同じ参照を返す（開いているあいだの再描画・再保存を避ける）
+      return changed ? { ...t, announcements: list } : t;
+    });
+  }, []);
+  const toggleAnnouncementAck = useCallback((id: string, playerId: string) => {
+    if (!playerId) return;
+    setTeam((t) => ({
+      ...t,
+      announcements: t.announcements.map((a) => {
+        if (a.id !== id) return a;
+        if (a.acks?.includes(playerId)) return { ...a, acks: a.acks.filter((x) => x !== playerId) };
+        return {
+          ...a,
+          acks: [...(a.acks ?? []), playerId],
+          // 了解は開いた後にしか押せない。既読が抜けないよう一緒に入れる
+          seenBy: a.seenBy?.includes(playerId) ? a.seenBy : [...(a.seenBy ?? []), playerId],
+        };
+      }),
+    }));
+  }, []);
+  const remindAnnouncement = useCallback(
+    (id: string): number => {
+      const a = team.announcements.find((x) => x.id === id);
+      if (!a) return 0;
+      const n = announcementStats(a, board.state.players, groups).unseen.length;
+      if (n === 0) {
+        board.toast("未読の人はいません");
+        return 0;
+      }
+      const ts = Date.now();
+      setTeam((t) => ({
+        ...t,
+        announcements: t.announcements.map((x) => (x.id === id ? { ...x, remindedAt: ts } : x)),
+      }));
+      board.toast(`未読の${n}人に再通知しました`);
+      return n;
+    },
+    [team.announcements, board, groups]
+  );
+  const setAnnouncementPinned = useCallback((id: string, pinned: boolean) => {
+    setTeam((t) => ({ ...t, announcements: applyPinned(t.announcements, id, pinned) }));
+  }, []);
+
+  // chat-plan-a §6: 起動時に一度だけ、旧形式の team／grp:* メッセージをお知らせへ移す。
+  // messages（BoardProvider）と team（ここ）はどちらも lazy 初期化で読み込み済みなので mount 時に行える。
+  // 完了マーカー(soccer_tactics_chatmig_v1)で 2 回目以降は何もしない。ref は StrictMode の二重実行の保険、
+  // 追加側の id 重複チェックは万一 2 回走っても二重にならないための保険。
+  // 保存の順番が要：state に任せると、子のこちらの saveTeam が親の saveMessages より先に走り、
+  // 大きい添付（動画は約 3.5MB）が messages と team の両方に一時的に載って localStorage の容量を超え、
+  // saveTeam が黙って失敗する（そのあと messages だけ縮んでマーカーも立ち、お知らせが消える）。
+  // だからここで ① 残す messages を先に書いて容量を空け ② team を書き、書けたと確かめてから
+  // state・マーカーを確定する。書けなければ messages を元へ戻し、マーカーも立てずに次回へ回す。
+  // さらに確定後、state 由来の保存が古い messages の書き戻し（開発時の StrictMode の 2 回目の effect など）に
+  // 先を越されて落ちていても、migSaved の effect で「縮んだ messages → team」の順に書き直して揃える
+  const chatMigRef = useRef(false);
+  const [migSaved, setMigSaved] = useState(0);
+  useEffect(() => {
+    if (chatMigRef.current) return;
+    chatMigRef.current = true;
+    if (isChatMigrated()) return;
+    const plan = planChatMigration(board.messages, team.announcements, groups);
+    if (plan.removeIds.length === 0) {
+      markChatMigrated();
+      return;
+    }
+    const drop = new Set(plan.removeIds);
+    const keep = board.messages.filter((m) => !drop.has(m.id));
+    const have = new Set(team.announcements.map((a) => a.id));
+    const add = plan.add.filter((a) => !have.has(a.id));
+    if (!saveMessages(keep)) return;
+    if (add.length > 0) {
+      const next: TeamData = {
+        ...team,
+        announcements: [...team.announcements, ...add].sort((a, b) => b.ts - a.ts),
+      };
+      if (!saveTeam(next)) {
+        saveMessages(board.messages); // 書けなかった：messages を元に戻して次回に回す（何も失わない）
+        return;
+      }
+      setTeam((t) => {
+        const cur = new Set(t.announcements.map((a) => a.id));
+        const rest = add.filter((a) => !cur.has(a.id));
+        if (rest.length === 0) return t;
+        return { ...t, announcements: [...t.announcements, ...rest].sort((a, b) => b.ts - a.ts) };
+      });
+    }
+    board.removeMessages(plan.removeIds);
+    markChatMigrated();
+    if (add.length > 0) setMigSaved(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (migSaved === 0) return;
+    // 移した直後の 1 回。この描画の board.messages は移した分を除いた後の配列
+    saveMessages(board.messages);
+    saveTeam(team);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [migSaved]);
 
   const addCoach = useCallback((name: string) => {
     const nm = name.trim();
@@ -1174,6 +1384,11 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       setAttendance,
       addAnnouncement,
       removeAnnouncement,
+      updateAnnouncement,
+      markAnnouncementsSeen,
+      toggleAnnouncementAck,
+      remindAnnouncement,
+      setAnnouncementPinned,
       addCoach,
       removeCoach,
       addMatch,
@@ -1216,6 +1431,11 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       setAttendance,
       addAnnouncement,
       removeAnnouncement,
+      updateAnnouncement,
+      markAnnouncementsSeen,
+      toggleAnnouncementAck,
+      remindAnnouncement,
+      setAnnouncementPinned,
       addCoach,
       removeCoach,
       addMatch,

@@ -2,25 +2,18 @@
 
 import { useId } from "react";
 import type { Player, TeamGroup } from "@/lib/types";
-import { dmThreadKey, groupThreadKey } from "@/lib/types";
 import { GroupChips } from "./GroupChips";
 
+/**
+ * 送信先の選択。中身の送り先は lib/chat.ts の sendAttachmentToTarget（chat-plan-a §2-5）:
+ * チーム全員・グループ → お知らせ 1 件、個人 → その選手との 1 対 1。
+ * （旧 targetThreadKeys は会話キー "team"／"grp:*" を作っていたため廃止）
+ */
 export interface SendTarget {
   mode: "none" | "team" | "player" | "group";
   playerId?: string;
-  /** mode==="group" のときの宛先グループ（複数可。groups-phase2 §5-4） */
+  /** mode==="group" のときの宛先グループ（複数可。お知らせ 1 件の groupIds になる） */
   groupIds?: string[];
-}
-
-/**
- * 送信先を会話キーの配列に変換（groups-phase2 §5-4）。グループは選んだ各グループ宛へ複数キーになる。
- * 送信しない・宛先未確定（グループ未選択など）なら空配列。
- */
-export function targetThreadKeys(t: SendTarget): string[] {
-  if (t.mode === "team") return ["team"];
-  if (t.mode === "player" && t.playerId) return [dmThreadKey(t.playerId)];
-  if (t.mode === "group" && t.groupIds && t.groupIds.length > 0) return t.groupIds.map(groupThreadKey);
-  return [];
 }
 
 /** 戦術/トレーニング保存時の「送信先」セレクタ */

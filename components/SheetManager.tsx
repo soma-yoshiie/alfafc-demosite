@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ALL_POSITIONS, FORMATION_KEYS, groupOf } from "@/lib/formations";
 import type {
   BoardState,
+  ChatAttachment,
+  ChatReplyTo,
   DominantFoot,
   FitnessRecord,
   InjuryRecord,
@@ -21,6 +23,7 @@ import type {
 } from "@/lib/types";
 import { dmThreadKey, INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER, threadGroupId } from "@/lib/types";
 import { byStartAsc, isUpcomingOrOngoing, targetLabel } from "@/lib/calendarUtils";
+import { sendAttachmentToTarget, sendTargetError } from "@/lib/chat";
 import { buildEventSquad } from "@/lib/squad";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
@@ -28,7 +31,7 @@ import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/export
 import { fileToEmblemDataUrl } from "@/lib/imageResize";
 import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
-import { loadDrills, loadTeam, resetAppData } from "@/lib/storage";
+import { loadDrills, loadTeam, resetAppData, saveChatSeg } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
 import {
   aggregateTech,
@@ -48,15 +51,16 @@ import {
 import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
 import { localDateStr, weekStart } from "@/lib/dates";
 import { planAutoAssign, type AssignPair } from "@/lib/autoAssign";
-import { membersOf, playerInGroup, resolveFilterGroup } from "@/lib/groups";
+import { groupsOfPlayer, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { useBoard, type KpiMetric, type StatMetric } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import ChatThread from "./ChatThread";
+import { AnnouncementCompose, AnnouncementDetail, NewMessagePicker } from "./ChatHome";
 import { E } from "./Emoji";
 import LogoMark from "./Logo";
 import { MobileHeader } from "./MobileHeader";
-import { SendTargetField, targetThreadKeys, type SendTarget } from "./SendTarget";
+import { SendTargetField, type SendTarget } from "./SendTarget";
 import { fmtFitnessValue } from "@/lib/fitness";
 import {
   IconCalendarCheck,
@@ -1444,23 +1448,85 @@ function MoreSheet() {
 }
 
 /* ---------------- Save as ---------------- */
-/* ---------------- Chat（戦術・トレーニング・画像・動画の送信） ---------------- */
-function ChatSheet({ to }: { to: string }) {
+/* ---------------- Chat（スタッフと選手・保護者の 1 対 1。chat-plan-a §3-5） ---------------- */
+function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
   const board = useBoard();
   const team = useTeam();
-  const gid = threadGroupId(to);
-  const grp = gid ? team.groups.find((g) => g.id === gid) : null;
-  const title = grp
-    ? `${grp.label}（${membersOf(grp.id, board.state.players, team.groups).length}人）`
-    : to === "team"
-    ? "チーム全員"
-    : board.state.players.find((p) => dmThreadKey(p.id) === to)?.name ?? "メッセージ";
+  const pc = usePc();
+  const isStaff = team.viewer.role === "coach";
+  // team／grp:* の会話は廃止（お知らせへ移した）。旧いリンクで来たらお知らせを開き直す（chat-plan-a §3-5）
+  const legacy = to === "team" || threadGroupId(to) !== null;
+  useEffect(() => {
+    if (!legacy) return;
+    saveChatSeg("ann");
+    board.closeSheet();
+    if (pc) board.setScreen("chat");
+    else {
+      board.setTeamIntent({ tab: "chat" });
+      board.setScreen("team");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [legacy]);
+  if (legacy) return null;
+
+  const memberId = isStaff ? null : team.viewer.memberPlayerId ?? board.auth.playerId ?? null;
+  const player = board.state.players.find((p) => dmThreadKey(p.id) === to) ?? null;
+  // 見出しは選手名・副題に「中2・Aチーム」。選手側は相手＝「スタッフ」
+  const title = isStaff ? player?.name ?? "メッセージ" : "スタッフ";
+  const subtitle =
+    isStaff && player
+      ? groupsOfPlayer(player, team.groups)
+          .map((g) => g.label)
+          .join("・") || undefined
+      : undefined;
   return (
     <div className="chatsheet">
       {/* mobile-redesign Phase D-2(major §1-6): 「‹ 戻る」バー＋大見出しの2段構成を、
           他画面と同じ52px単段のMobileHeaderへ統一する */}
-      <MobileHeader title={title} onBack={board.closeSheet} />
-      <ChatThread to={to} />
+      <MobileHeader title={title} subtitle={subtitle} onBack={board.closeSheet} />
+      <ChatThread
+        key={to}
+        to={isStaff ? to : memberId ? dmThreadKey(memberId) : to}
+        as={isStaff ? undefined : { role: "member", playerId: memberId }}
+        replyTo={replyTo}
+      />
+    </div>
+  );
+}
+
+/* ---------------- お知らせの詳細・作成／新しいメッセージ（chat-plan-a §3-2・§3-3） ---------------- */
+function AnnDetailSheet({ annId }: { annId: string }) {
+  const board = useBoard();
+  return (
+    <div className="annsheet">
+      <MobileHeader title="お知らせ" onBack={board.closeSheet} />
+      <div className="annsheetbody">
+        <AnnouncementDetail annId={annId} onClose={board.closeSheet} />
+      </div>
+    </div>
+  );
+}
+
+function AnnComposeSheet() {
+  const board = useBoard();
+  return (
+    <div className="annsheet">
+      <MobileHeader title="お知らせを送る" onBack={board.closeSheet} />
+      <div className="annsheetbody">
+        <AnnouncementCompose onDone={board.closeSheet} />
+      </div>
+    </div>
+  );
+}
+
+function ChatNewSheet() {
+  const board = useBoard();
+  return (
+    <div className="annsheet">
+      <MobileHeader title="新しいメッセージ" onBack={board.closeSheet} />
+      <div className="annsheetbody">
+        <NewMessagePicker onPick={(pid) => board.openSheet({ type: "chat", chatTo: dmThreadKey(pid) })} />
+      </div>
     </div>
   );
 }
@@ -1480,39 +1546,27 @@ export function SaveBody() {
   const [folderId, setFolderId] = useState<string | null>(null);
   const [target, setTarget] = useState<SendTarget>({ mode: "none" });
   const wantsSend = target.mode !== "none";
-  const keys = targetThreadKeys(target);
 
-  // groups-phase2 §5-4: グループ宛を選んだのに未選択のまま送信しようとしたらtoastで気づかせる。
+  // 宛先の送り先は lib/chat.ts に共通化（chat-plan-a §2-5）:
+  // チーム全員・グループ → お知らせ 1 件（添付付き）、個人 → その選手との 1 対 1。
   // falseを返したとき(バリデーション失敗)は呼び出し側でシートを閉じない
   const sendAttachment = (): boolean => {
-    if (target.mode === "group" && keys.length === 0) {
-      board.toast("グループを選んでください");
+    const err = sendTargetError(target);
+    if (err) {
+      board.toast(err);
       return false;
     }
-    if (keys.length === 0) return false;
+    if (!wantsSend) return false;
+    let attachment: ChatAttachment;
     if (isSetPiece) {
       const item = board.snapshotSetPiece(title);
       if (!item) return false;
-      keys.forEach((to) =>
-        board.sendMessage({
-          to,
-          from: "coach",
-          fromName: "スタッフ",
-          attachments: [{ kind: "setpiece", title: item.title, setpiece: item }],
-        })
-      );
+      attachment = { kind: "setpiece", title: item.title, setpiece: item };
     } else {
       const play = board.snapshotPlay(title);
-      keys.forEach((to) =>
-        board.sendMessage({
-          to,
-          from: "coach",
-          fromName: "スタッフ",
-          attachments: [{ kind: "play", title: play.title, play }],
-        })
-      );
+      attachment = { kind: "play", title: play.title, play };
     }
-    return true;
+    return sendAttachmentToTarget({ target, attachment, board, team });
   };
 
   return (
@@ -1551,11 +1605,12 @@ export function SaveBody() {
       <button
         className="bigbtn"
         onClick={() => {
-          // 送信バリデーション(グループ未選択)は保存の前に行う。保存後に弾くと
+          // 送信バリデーション(グループ未選択など)は保存の前に行う。保存後に弾くと
           // 「失敗した」と思ったユーザーが選び直して再送し、savePlay/saveSetPieceが
           // 毎回新規保存するため戦術がライブラリに二重保存されてしまう
-          if (wantsSend && keys.length === 0) {
-            board.toast("グループを選んでください");
+          const err = wantsSend ? sendTargetError(target) : null;
+          if (err) {
+            board.toast(err);
             return;
           }
           const ok = isSetPiece ? board.saveSetPiece(title, null) : board.savePlay(title, folderId);
@@ -2618,7 +2673,16 @@ export default function SheetManager() {
       content = <ImportSheet />;
       break;
     case "chat":
-      content = <ChatSheet to={sheet.chatTo ?? "team"} />;
+      content = <ChatSheet to={sheet.chatTo ?? "team"} replyTo={sheet.replyTo} />;
+      break;
+    case "annDetail":
+      content = <AnnDetailSheet annId={sheet.annId ?? ""} />;
+      break;
+    case "annCompose":
+      content = <AnnComposeSheet />;
+      break;
+    case "chatNew":
+      content = <ChatNewSheet />;
       break;
     case "kpi":
       content = <KpiSheet metric={sheet.kpiMetric ?? "attendance"} />;
@@ -2642,8 +2706,13 @@ export default function SheetManager() {
     "articles",
     "article",
     "chat",
+    "annDetail",
+    "annCompose",
+    "chatNew",
   ];
   const full = !!sheet.type && FULL.includes(sheet.type);
+  // 自前の MobileHeader（戻る＋見出し）を持つ全画面シートは、汎用の「‹ 戻る」バーを出さない
+  const ownHeader = sheet.type === "chat" || sheet.type === "annDetail" || sheet.type === "annCompose" || sheet.type === "chatNew";
 
   const onBack = (): void => {
     switch (sheet.type) {
@@ -2676,7 +2745,7 @@ export default function SheetManager() {
       onClose={board.closeSheet}
       full={full}
       onBack={full ? onBack : undefined}
-      topBar={sheet.type !== "chat"}
+      topBar={!ownHeader}
     >
       {content}
     </Sheet>

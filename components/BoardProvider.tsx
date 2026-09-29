@@ -16,6 +16,8 @@ import type {
   BallTrajectory,
   BoardState,
   ChatMessage,
+  ChatReads,
+  ChatReplyTo,
   CoachDeliverable,
   Folder,
   HullShape,
@@ -43,7 +45,7 @@ import type {
   ShapePatch,
   Slot,
 } from "@/lib/types";
-import { groupThreadKey, isOppActor, migratePlan, oppIndex } from "@/lib/types";
+import { dmThreadKey, isOppActor, migratePlan, oppIndex } from "@/lib/types";
 import type { UserArticle } from "@/lib/articles";
 import { daysAgoStr } from "@/lib/dates";
 import { buildSlots, groupOf } from "@/lib/formations";
@@ -63,6 +65,7 @@ import { convexHull } from "@/lib/geometry";
 import { topToY, yToTop } from "@/lib/pitchView";
 import { benchOf, benchSizeOf, clampBenchSize, normalizeSquad, seedBenchIfMissing } from "@/lib/squad";
 import {
+  loadChatReads,
   loadDeliverables,
   loadLibrary,
   loadMessages,
@@ -73,6 +76,7 @@ import {
   loadState,
   loadTeamLogo,
   loadUserArticles,
+  saveChatReads,
   saveDeliverables,
   saveLibrary,
   saveMessages,
@@ -89,7 +93,8 @@ import {
   decodeSnapshot,
   snapshotToBoard,
 } from "@/lib/share";
-import { SAMPLE_GROUP_A_ID, SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
+import { SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
+import { latestCounterpartTs } from "@/lib/chat";
 import { buildSetPieceState, getSetPiecePreset } from "@/lib/setPiecePresets";
 import {
   buildSetPieceLayout,
@@ -900,6 +905,10 @@ export type SheetType =
   | "article"
   | "importShared"
   | "chat"
+  /** chat-plan-a §3-2: お知らせの詳細（annId）／作成／§3-3: 新しいメッセージの選手選び */
+  | "annDetail"
+  | "annCompose"
+  | "chatNew"
   | "oppMenu"
   | "kpi"
   | "stat"
@@ -930,8 +939,12 @@ export interface SheetState {
   injuryId?: string;
   /** article: 記事ID */
   articleId?: string;
-  /** chat: 開く会話キー（"team" または "p:<playerId>"） */
+  /** chat: 開く会話キー（"p:<playerId>"。旧リンクの "team"／"grp:*" はお知らせを開く） */
   chatTo?: string;
+  /** chat: 入力欄の上に付ける引用（お知らせの「スタッフに返信」から開くとき。chat-plan-a §3-2） */
+  replyTo?: ChatReplyTo;
+  /** annDetail: 開くお知らせの id */
+  annId?: string;
   /** kpi: 表示対象の指標 */
   kpiMetric?: KpiMetric;
   /** stat: 表示対象の指標 */
@@ -1151,8 +1164,21 @@ interface BoardContextValue {
   ) => void;
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
-  sendMessage: (msg: Omit<ChatMessage, "id" | "ts">) => void;
+  /**
+   * 1 対 1 のメッセージを送る（chat-plan-a §1: 宛先は "p:<playerId>" だけ。"team"／"grp:*" へは送らない）。
+   * 完了の toast は既定「送信しました」。opts.toast に文字列でその文言、false で出さない
+   */
+  sendMessage: (msg: Omit<ChatMessage, "id" | "ts">, opts?: { toast?: string | false }) => void;
   removeMessage: (id: string) => void;
+  /** 複数のメッセージをまとめて消す（team／grp メッセージのお知らせ移行で使う。chat-plan-a §6） */
+  removeMessages: (ids: string[]) => void;
+  /** 1 対 1 の既読時刻（キー "p:<playerId>"。chat-plan-a §2-3） */
+  chatReads: ChatReads;
+  /**
+   * その会話を side（staff／member）として「今読んだ」ことにする。表示中は新着のたびに呼んでよい：
+   * 相手の発言に既読時刻より新しいものが無ければ何も変えない（無駄な再描画と保存を避ける）
+   */
+  markChatRead: (key: string, side: "staff" | "member") => void;
   /** 現在のボードを SavedPlay スナップショットにして返す（送信用） */
   snapshotPlay: (title: string) => SavedPlay;
   /** 埋め込みの戦術データを読み込んでボードに表示（ライブラリ非依存） */
@@ -1286,34 +1312,105 @@ function newMsgId(): string {
   return `msg_${Date.now().toString(36)}_${msgSeq}`;
 }
 
-function sampleMessages(): ChatMessage[] {
-  return [
+/**
+ * デモの 1 対 1 とその既読（chat-plan-a §6。新規シードのときだけ入る）。
+ * team／grp:* 宛ての旧デモはお知らせ側（TeamProvider.sampleAnnouncements）に移した。
+ * - 佐藤 蒼空(p08)「明日の集合は何時ですか？」→ 監督の返信（replyTo 付き）→ 選手のお礼（スタッフ未読）。
+ *   統括の最終調整: 以前は質問そのものをスタッフ未読にしていたが、監督が返信済みなのに
+ *   「ここから未読」が質問の上に出て不自然だった。返信した時点で質問は読んだものとし、未読はその後のお礼にする
+ * - 中村 大翔(p02)「ノート出しました」（スタッフ未読）
+ * - 吉田 結翔(p11) 昨日の 1 往復（両側とも既読済み）
+ */
+function sampleChat(): { messages: ChatMessage[]; reads: ChatReads } {
+  const now = Date.now();
+  const min = (n: number) => now - n * 60_000;
+  const nm = (id: string) => SAMPLE_PLAYERS.find((p) => p.id === id)?.name ?? id;
+  const staff = { from: "coach", fromName: "岡本", fromRole: "監督" };
+  // 昨日の 18:30 と 18:42（日付の区切り「昨日」を出すため、暦日で昨日に固定する）
+  const y = new Date(now);
+  y.setDate(y.getDate() - 1);
+  y.setHours(18, 30, 0, 0);
+  const y1 = y.getTime();
+  const y2 = y1 + 12 * 60_000;
+
+  const qText = "明日の集合は何時ですか？";
+  const messages: ChatMessage[] = [
     {
-      id: "msg_sample1",
-      ts: Date.now() - 3600_000,
-      to: "team",
-      from: "coach",
-      fromName: "スタッフ",
-      text: "今週末は練習試合です。集合8時45分・忘れ物に注意！スパイクの手入れも忘れずに。",
+      id: "msg_demo_p11_q",
+      ts: y1,
+      to: dmThreadKey("p11"),
+      from: dmThreadKey("p11"),
+      fromName: nm("p11"),
+      text: "膝の調子が戻ったので、明日から全体練習に合流します。",
     },
-    // groups-phase2 §5-5: グループ宛サンプル（初回シード時のみ）
     {
-      id: "msg_sample_grp_grade3",
-      ts: Date.now() - 3000_000,
-      to: groupThreadKey("grp_grade_3"),
-      from: "coach",
-      fromName: "スタッフ",
-      text: "中3は土曜の公式戦に向けて、木曜はセットプレーの確認をします。",
+      id: "msg_demo_p11_a",
+      ts: y2,
+      to: dmThreadKey("p11"),
+      ...staff,
+      text: "了解。無理せず、違和感があったらすぐ言ってください。",
+      replyTo: {
+        id: "msg_demo_p11_q",
+        source: "message",
+        fromName: nm("p11"),
+        text: "膝の調子が戻ったので、明日から全体練習に合流します。",
+      },
     },
     {
-      id: "msg_sample_grp_a",
-      ts: Date.now() - 2400_000,
-      to: groupThreadKey(SAMPLE_GROUP_A_ID),
-      from: "coach",
-      fromName: "スタッフ",
-      text: "Aチームは金曜の練習試合、9時15分キックオフです。集合は8時30分。",
+      id: "msg_demo_p08_q",
+      ts: min(50),
+      to: dmThreadKey("p08"),
+      from: dmThreadKey("p08"),
+      fromName: nm("p08"),
+      text: qText,
+    },
+    {
+      id: "msg_demo_p08_a",
+      ts: min(40),
+      to: dmThreadKey("p08"),
+      ...staff,
+      text: "8:45 に市民グラウンドです。",
+      replyTo: { id: "msg_demo_p08_q", source: "message", fromName: nm("p08"), text: qText },
+    },
+    {
+      id: "msg_demo_p08_thanks",
+      ts: min(15),
+      to: dmThreadKey("p08"),
+      from: dmThreadKey("p08"),
+      fromName: nm("p08"),
+      text: "ありがとうございます！スパイクも持っていきます。",
+    },
+    {
+      id: "msg_demo_p02_n",
+      ts: min(25),
+      to: dmThreadKey("p02"),
+      from: dmThreadKey("p02"),
+      fromName: nm("p02"),
+      text: "ノート出しました",
     },
   ];
+  const reads: ChatReads = {
+    // 蒼空：スタッフは返信した時点まで読んだ（お礼が未読 1）／本人はお礼を送った時点まで読んだ
+    [dmThreadKey("p08")]: { staff: min(40), member: min(15) },
+    // 大翔：スタッフ未読 1
+    [dmThreadKey("p02")]: { staff: min(120), member: min(25) },
+    // 結翔：両側とも読み済み（スタッフの返信に「既読」が付く）
+    [dmThreadKey("p11")]: { staff: y2, member: y2 + 60_000 },
+  };
+  return { messages, reads };
+}
+
+/**
+ * 既存データ（メッセージは保存済みだが既読時刻は無い＝この機能より前のブラウザ）の初期の既読。
+ * 全部読み済みとして扱い、アップデート直後に過去の発言が一斉に「未読」にならないようにする
+ */
+function allReadReads(messages: ChatMessage[]): ChatReads {
+  const now = Date.now();
+  const reads: ChatReads = {};
+  messages.forEach((m) => {
+    if (m.to.startsWith("p:")) reads[m.to] = { staff: now, member: now };
+  });
+  return reads;
 }
 
 let noteSeq = 0;
@@ -1949,13 +2046,26 @@ export function BoardProvider({
   >(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
   // lazy初期化で保存データを直接読む（mount後のload→saveの競合・上書きを防ぐ。TeamProviderと同方針）
-  const [messages, setMessages] = useState<ChatMessage[]>(
-    () => loadMessages() ?? sampleMessages()
-  );
+  // chat-plan-a §2-3・§6: メッセージと既読時刻は同じ時刻基準のシードから作る（保存済みならそれを優先）
+  const [chatInit] = useState(() => {
+    const saved = loadMessages();
+    const seed = saved ? null : sampleChat();
+    const msgs = saved ?? seed?.messages ?? [];
+    return { msgs, reads: loadChatReads() ?? seed?.reads ?? allReadReads(msgs) };
+  });
+  const [messages, setMessages] = useState<ChatMessage[]>(chatInit.msgs);
+  const [chatReads, setChatReads] = useState<ChatReads>(chatInit.reads);
   const [incomingDrill, setIncomingDrill] = useState<SavedDrill | null>(null);
   useEffect(() => {
     saveMessages(messages);
   }, [messages]);
+  useEffect(() => {
+    saveChatReads(chatReads);
+  }, [chatReads]);
+  // markChatRead が「最新のメッセージ」を見られるよう、描画のたびに参照を更新する。
+  // effect で更新すると、子（スレッド）の effect が親より先に走って 1 つ古い配列を見てしまう
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   // サッカーノート（選手提出）。全画面共通のため Board に保持
   const [notebook, setNotebook] = useState<NotebookEntry[]>(
     () => loadNotebook() ?? sampleNotebook()
@@ -2678,18 +2788,34 @@ export function BoardProvider({
   );
 
   const sendMessage = useCallback(
-    (msg: Omit<ChatMessage, "id" | "ts">) => {
+    (msg: Omit<ChatMessage, "id" | "ts">, opts?: { toast?: string | false }) => {
       setMessages((list) => [
         ...list,
         { ...msg, id: newMsgId(), ts: Date.now() },
       ]);
-      showToast("送信しました");
+      if (opts?.toast !== false) showToast(opts?.toast ?? "送信しました");
     },
     [showToast]
   );
 
   const removeMessage = useCallback((id: string) => {
     setMessages((list) => list.filter((m) => m.id !== id));
+  }, []);
+
+  const removeMessages = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const drop = new Set(ids);
+    setMessages((list) => list.filter((m) => !drop.has(m.id)));
+  }, []);
+
+  // chat-plan-a §2-3: 表示中は新着のたびに呼ばれる。相手の新しい発言が無ければ state を変えない
+  const markChatRead = useCallback((key: string, side: "staff" | "member") => {
+    if (!key.startsWith("p:")) return;
+    setChatReads((prev) => {
+      const cur = prev[key]?.[side];
+      if (cur !== undefined && latestCounterpartTs(messagesRef.current, key, side) <= cur) return prev;
+      return { ...prev, [key]: { ...prev[key], [side]: Date.now() } };
+    });
   }, []);
 
   const loadPlayData = useCallback(
@@ -3668,6 +3794,9 @@ export function BoardProvider({
       messages,
       sendMessage,
       removeMessage,
+      removeMessages,
+      chatReads,
+      markChatRead,
       snapshotPlay,
       loadPlayData,
       loadSetPieceData,
@@ -3802,6 +3931,9 @@ export function BoardProvider({
       messages,
       sendMessage,
       removeMessage,
+      removeMessages,
+      chatReads,
+      markChatRead,
       snapshotPlay,
       loadPlayData,
       loadSetPieceData,

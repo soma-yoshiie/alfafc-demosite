@@ -3,7 +3,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import type {
-  Announcement,
   AttendanceStatus,
   CalFilter,
   DominantFoot,
@@ -70,7 +69,6 @@ import type { AttPeriod } from "@/lib/attendanceStats";
 import { groupAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
 import {
   ALL_TARGETS_COLOR,
-  announcementTargetsPlayer,
   COLOR_CHOICES,
   eventTargetsPlayer,
   groupColorOf,
@@ -92,7 +90,7 @@ import { GroupChips, useGroupFilter } from "./GroupChips";
 import { fmtFitnessValue } from "@/lib/fitness";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
-import { CoachConversations, PlayerChat } from "./ChatScreen";
+import ChatHome, { useChatHeaderAction } from "./ChatHome";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -314,8 +312,6 @@ const ICON: Record<Tab, Parameters<typeof E>[0]["n"]> = {
 type SheetState =
   | { type: "event"; event?: TeamEvent; date?: string }
   | { type: "attendance"; eventId: string }
-  | { type: "announce" }
-  | { type: "annList" }
   | { type: "day"; date: string }
   | { type: "eventView"; id: string }
   // カレンダーの絞り込みと色の作り直し（案A §3-2）: スマホヘッダー「絞り込み」から開く
@@ -444,12 +440,11 @@ function Inner() {
     if (isCoach) tabs.push(["att", "出欠"]);
     tabs.push(["cal", "カレンダー"], ["rec", "試合記録"]);
     if (showRos) tabs.push(["ros", "名簿"]);
-    // Phase D-2(critical): PCレールの「チャット」(ChatScreen.tsx)はメッセージ専用で
-    // 連絡(announcement)を一切描画しないため、グループ宛の連絡がPCのどこにも表示・
-    // 送信できなかった。チーム運営のサブメニューに「連絡」タブを追加し、下のchat
-    // レンダリング分岐(ChatTab)を共用する。メッセージ一覧は既存のPC専用チャット画面と
-    // 重複するためpc向けには出さない(ChatTabのpc props参照)
-    tabs.push(["chat", "連絡"]);
+    // Phase D-2(critical): チーム運営のサブメニューにもお知らせを置く（PCレールの「チャット」とは
+    // 別に、グループ宛のお知らせをここからも見て送れるように）。chat-plan-a: 中身は
+    // <ChatHome pc lockSegment="ann" />（お知らせだけ。メッセージはレールの「チャット」）
+    // chat-plan-a §3-6: PC のサブナビ「連絡」は「お知らせ」に改名（中身はお知らせだけ）
+    tabs.push(["chat", "お知らせ"]);
   } else {
     tabs = [["cal", "カレンダー"], ["rec", "試合記録"]];
     if (showRos) tabs.push(["ros", "名簿"]);
@@ -460,6 +455,9 @@ function Inner() {
   // PCのヘッダーCTA(.teamcta)と同じ対象・同じラベルにする。
   // Phase D-1(C2 major): ログインロール(board.auth.role)だけでなく閲覧ロール(isCoach=
   // team.viewer.role==="coach")も見る。選手プレビュー中はスタッフ操作を出さない
+  // chat-plan-a §3-5: チャットタブのアクションは「お知らせ｜メッセージ」の選択に連動する
+  // （お知らせ＝「お知らせを送る」／メッセージ＝「新しいメッセージ」。どちらも board シートで開く）
+  const chatAction = useChatHeaderAction(isCoach && board.auth.role === "coach");
   const headerAction: { label: string; onClick: () => void } | null =
     !isCoach || board.auth.role !== "coach"
       ? null
@@ -470,7 +468,7 @@ function Inner() {
           : activeTab === "ros"
             ? { label: "選手を追加", onClick: () => setSheet({ type: "playerForm" }) }
             : activeTab === "chat"
-              ? { label: "連絡を送る", onClick: () => setSheet({ type: "announce" }) }
+              ? chatAction
               : null;
   // カレンダーの絞り込みと色の作り直し（案A §3-2）: カレンダータブのときだけスマホヘッダーに
   // 「絞り込み」を出す（コーチ・選手/保護者どちらも。プレビュー中の閲覧ロールisCoachで出し分ける）。
@@ -579,7 +577,7 @@ function Inner() {
           </div>
           {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
               カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加 /
-              連絡=連絡を送る(Phase D-2 critical)。他タブでは出さない */}
+              お知らせ=お知らせを送る(Phase D-2 critical)。他タブでは出さない */}
           {board.auth.role === "coach" && activeTab === "cal" && (
             <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
               ＋ 予定を追加
@@ -596,8 +594,8 @@ function Inner() {
             </button>
           )}
           {board.auth.role === "coach" && activeTab === "chat" && (
-            <button className="teamcta" type="button" onClick={() => setSheet({ type: "announce" })}>
-              ＋ 連絡を送る
+            <button className="teamcta" type="button" onClick={() => board.openSheet({ type: "annCompose" })}>
+              ＋ お知らせを送る
             </button>
           )}
         </header>
@@ -757,7 +755,8 @@ function Inner() {
                   {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
                     <RosterTab players={players} setSheet={setSheet} rosSel={rosSel} setRosSel={setRosSel} />
                   )}
-                  {activeTab === "chat" && <ChatTab isCoach={isCoach} setSheet={setSheet} pc={pc} />}
+                  {/* chat-plan-a §3-5: スマホ＝お知らせ｜メッセージ、PC＝お知らせだけ。詳細・作成・スレッドは board シート */}
+                  {activeTab === "chat" && <ChatHome pc={pc} lockSegment={pc ? "ann" : undefined} />}
                 </>
               )}
             </div>
@@ -870,125 +869,6 @@ function sheetKey(s: SheetState): string {
   if (s.type === "playerDetail") return "pd-" + s.playerId;
   if (s.type === "playerForm") return "pf-" + (s.player?.id ?? "new");
   return s.type;
-}
-
-/* ---------------- チャット（チーム運営内。mobile-redesign-v2 §3-2） ---------------- */
-function ChatTab({
-  isCoach,
-  setSheet,
-  pc,
-}: {
-  isCoach: boolean;
-  setSheet: (s: SheetState) => void;
-  /** Phase D-2(critical): PC(チーム運営)から呼ぶときはtrue。PCには別途チャット専用の
-   * レール項目(ChatScreen.tsx)があるため、会話一覧はそちらと重複しないよう出さない */
-  pc?: boolean;
-}) {
-  const board = useBoard();
-  const team = useTeam();
-  // groups-everywhere §4: 選手・保護者のチャットタブの「連絡」は自分宛（全員 or 所属グループ）だけ
-  const me = !isCoach
-    ? board.state.players.find((p) => p.id === team.viewer.memberPlayerId) ?? null
-    : null;
-  const anns = team.team.announcements.filter(
-    (a) => isCoach || !me || announcementTargetsPlayer(a, me, team.groups)
-  );
-  // Phase D-2(critical): PCの「連絡」タブはこの一覧そのものが目的の画面なので全件を出し、
-  // 「すべて見る ›」(annListシートへの迂回)は挟まない。モバイルは従来どおり2件＋すべて見る
-  const shown = pc ? anns : anns.slice(0, 2);
-
-  return (
-    <>
-      {/* 旧ホームタブの「連絡」をそのまま上部へ移設 */}
-      <div className="sech">
-        連絡
-        {!pc && anns.length > 2 && (
-          <span className="seclink" onClick={() => setSheet({ type: "annList" })}>
-            すべて見る ›
-          </span>
-        )}
-      </div>
-      {isCoach && (
-        <button className="dynadd" style={{ marginBottom: 8 }} onClick={() => setSheet({ type: "announce" })}>
-          ＋ 連絡を送る
-        </button>
-      )}
-      {anns.length === 0 ? (
-        <div className="empty-msg" style={{ padding: "8px 0" }}>
-          連絡はまだありません。
-        </div>
-      ) : (
-        shown.map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} groups={team.groups} />)
-      )}
-
-      {/* ChatScreen.tsx の会話一覧／自分のスレッドをそのままタブ本体として描画する
-          （会話をタップすると既存どおり openSheet({type:"chat"}) が開く）。
-          Phase D-1(C2 major): isCoachは閲覧ロール(viewer.role)なので、コーチが選手
-          プレビュー中(isCoach=false)はPlayerChatが出る。その際board.auth.playerIdは
-          コーチアカウントのためnullになり送信が無言で失敗するので、プレビュー対象の
-          selectedPlayerIdをそのまま渡す。
-          Phase D-2(critical): PCには専用の「チャット」レール項目(ChatScreen.tsx)が別に
-          あるため、ここで同じ会話一覧を二重に出すと表示が割れる。PCでは連絡だけに絞る */}
-      {/* v2 目視レビュー(major-5): 「連絡」と会話の境界が無かったため見出しを1本入れる */}
-      {!pc && (
-        <>
-          <div className="sech">メッセージ</div>
-          {isCoach ? (
-            <CoachConversations selected={null} onSelect={() => {}} />
-          ) : (
-            <div className="teamchatthread">
-              <PlayerChat playerId={team.viewer.memberPlayerId} />
-            </div>
-          )}
-        </>
-      )}
-    </>
-  );
-}
-
-/** 連絡の宛先ラベル（groups-everywhere §4）。全員なら「全員」、そうでなければグループ名を「・」連結 */
-function announcementLabel(a: Announcement, groups: TeamGroup[]): string {
-  if (!a.groupIds || a.groupIds.length === 0) return "全員";
-  const labels = a.groupIds
-    .map((id) => groups.find((g) => g.id === id)?.label)
-    .filter((l): l is string => !!l);
-  return labels.length > 0 ? labels.join("・") : "全員";
-}
-
-/* 連絡1件の表示カード */
-function AnnCard({ a, isCoach, groups }: { a: Announcement; isCoach: boolean; groups: TeamGroup[] }) {
-  const team = useTeam();
-  const label = announcementLabel(a, groups);
-  return (
-    <div className="msgcard">
-      <div className="msgtop">
-        <span className="msgfrom">スタッフ</span>
-        <span className="msgdate">{fmtTs(a.ts)}</span>
-        {isCoach && (
-          <button
-            className="msgdel"
-            onClick={() => {
-              if (window.confirm("この連絡を削除しますか？")) team.removeAnnouncement(a.id);
-            }}
-          >
-            <E n="trash" />
-          </button>
-        )}
-      </div>
-      {/* groups-everywhere §4: 宛先バッジ（学年グループ・カスタムグループが無ければ出さない） */}
-      {groups.length > 0 && (
-        <div style={{ marginBottom: 6 }}>
-          <span className={`evgroups${label === "全員" ? "" : " targeted"}`}>{label}</span>
-        </div>
-      )}
-      <div className="msgtext">{a.text}</div>
-      {a.playTitle && (
-        <div className="evnote">
-          <E n="clipboard" /> 添付戦術: {a.playTitle}
-        </div>
-      )}
-    </div>
-  );
 }
 
 /* ---------------- 出欠 ---------------- */
@@ -4042,11 +3922,6 @@ function SheetHost({
   const [groupEditId, setGroupEditId] = useState<string | null>(null);
   const [groupEditLabel, setGroupEditLabel] = useState("");
 
-  // announce（groups-everywhere §4: 宛先グループ。複数選択・未選択＝全員）
-  const [text, setText] = useState("");
-  const [playId, setPlayId] = useState("");
-  const [annGroupIds, setAnnGroupIds] = useState<string[]>([]);
-
   // match form
   const mr = sheet?.type === "match" ? sheet.record : undefined;
   const mpf = sheet?.type === "match" ? sheet.prefill : undefined;
@@ -4948,92 +4823,6 @@ function SheetHost({
         {sheet?.type === "attendance" && (
           <AttendanceRecordBody eventId={sheet.eventId} players={players} />
         )}
-      </Sheet>
-
-      {/* 連絡フォーム */}
-      <Sheet open={sheet?.type === "announce"} onClose={pane ? paneBack : close} pane={pane}>
-        <h2>連絡を送る</h2>
-        <div className="formfield">
-          <label>本文</label>
-          <textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={4}
-            placeholder="例）明日の練習は雨天中止の場合あり。朝7時に判断します。"
-          />
-        </div>
-        {/* groups-everywhere §4: 宛先グループ（複数選択・未選択＝全員） */}
-        {team.groups.length > 0 && (
-          <div className="formfield">
-            <label>宛先</label>
-            <GroupChips
-              groups={team.groups}
-              value={annGroupIds}
-              onChange={setAnnGroupIds}
-              allowAll
-              onManage={() => setSheet({ type: "groups" })}
-            />
-          </div>
-        )}
-        {board.library.plays.length > 0 && (
-          <div className="formfield">
-            <label>戦術を添付（任意・選手が閲覧できます）</label>
-            <select value={playId} onChange={(e) => setPlayId(e.target.value)}>
-              <option value="">添付しない</option>
-              {board.library.plays.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.title}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-        <button
-          // Phase D-1(C2-minor): §4で追加した「宛先」チップ(青)の直下で送信ボタンだけ緑のまま
-          // だったため、グループ管理シートの「追加する」と同じ流儀でモバイルはaccent(青)にする。
-          // PC(pane)は不変
-          className={`bigbtn${pane ? "" : " accent"}`}
-          onClick={() => {
-            if (!text.trim()) {
-              board.toast("本文を入力してください");
-              return;
-            }
-            const pt = playId ? board.library.plays.find((p) => p.id === playId)?.title : undefined;
-            team.addAnnouncement(text, playId || undefined, pt, annGroupIds);
-            setText("");
-            setPlayId("");
-            setAnnGroupIds([]);
-            close();
-          }}
-        >
-          送信する
-        </button>
-      </Sheet>
-
-      {/* 連絡の一覧。groups-everywhere §4: 選手・保護者には自分宛（全員 or 所属グループ）だけ表示する */}
-      <Sheet open={sheet?.type === "annList"} onClose={pane ? paneBack : close} pane={pane}>
-        <h2>連絡</h2>
-        {isCoach && (
-          <button
-            className="dynadd"
-            style={{ width: "calc(100% - 32px)", margin: "0 16px 8px" }}
-            onClick={() => setSheet({ type: "announce" })}
-          >
-            ＋ 連絡を送る
-          </button>
-        )}
-        <div className="list">
-          {(() => {
-            const anns = team.team.announcements.filter(
-              (a) => isCoach || !me || announcementTargetsPlayer(a, me, team.groups)
-            );
-            return anns.length === 0 ? (
-              <div className="empty-msg">連絡はまだありません。</div>
-            ) : (
-              anns.map((a) => <AnnCard key={a.id} a={a} isCoach={isCoach} groups={team.groups} />)
-            );
-          })()}
-        </div>
       </Sheet>
 
       {/* 日別（カレンダー） */}

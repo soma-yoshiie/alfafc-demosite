@@ -14,6 +14,8 @@ export type MobileSegmentItem = {
   key: string;
   label: string;
   badge?: number;
+  /** 数字バッジのクラスを差し替える（既定 .mseg-badge。チャットは未読の赤丸 .chatsegbadge。chat-plan-a §3-1） */
+  badgeClass?: string;
   on: boolean;
   onSelect: () => void;
   /** groups-editing-and-place-history §5: 選択トグルではなく単発の操作（例:「＋ 管理」）。
@@ -61,7 +63,7 @@ export function MobileSegments({
         >
           {it.label}
           {!!it.badge && it.badge > 0 && (
-            <span className="mseg-badge" aria-hidden="true">{it.badge > 9 ? "9+" : it.badge}</span>
+            <span className={it.badgeClass ?? "mseg-badge"} aria-hidden="true">{it.badge > 9 ? "9+" : it.badge}</span>
           )}
         </button>
       ))}

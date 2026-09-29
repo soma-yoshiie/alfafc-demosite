@@ -1,7 +1,9 @@
 import type {
+  Announcement,
   BoardState,
   CalFilter,
   ChatMessage,
+  ChatReads,
   CoachDeliverable,
   DrillDoc,
   EventSquad,
@@ -41,6 +43,11 @@ const SPBAR_OPEN_KEY = "soccer_tactics_spbar_v1";
 const TEAM_KEY = "soccer_tactics_team_v1";
 const VIEWER_KEY = "soccer_tactics_viewer_v1";
 const MESSAGES_KEY = "soccer_tactics_messages_v1";
+// chat-plan-a §2-3: 1 対 1 の既読時刻。§6: team/grp メッセージ → お知らせの移行済みマーカー
+const CHATREADS_KEY = "soccer_tactics_chatreads_v1";
+const CHATMIG_KEY = "soccer_tactics_chatmig_v1";
+// chat-plan-a §3-1: チャット上部のセグメント（お知らせ／メッセージ）の選択。"ann"／"msg"
+const CHATSEG_KEY = "soccer_tactics_chatseg_v1";
 const NOTEBOOK_KEY = "soccer_tactics_notebook_v1";
 const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
@@ -583,6 +590,25 @@ function isValidEventSquad(v: unknown): v is EventSquad {
   );
 }
 
+/** お知らせ 1 件の読み込み正規化（chat-plan-a §2-1。形が違う項目だけ undefined にする） */
+function normalizeAnnouncement(a: Announcement): Announcement {
+  const strArr = (v: unknown): string[] | undefined =>
+    Array.isArray(v) ? (v.filter((x) => typeof x === "string") as string[]) : undefined;
+  const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+  return {
+    ...a,
+    groupIds: strArr(a.groupIds),
+    title: str(a.title),
+    pinned: a.pinned === true ? true : undefined,
+    fromName: str(a.fromName),
+    fromRole: str(a.fromRole),
+    attachments: Array.isArray(a.attachments) ? a.attachments : undefined,
+    seenBy: strArr(a.seenBy),
+    acks: strArr(a.acks),
+    remindedAt: typeof a.remindedAt === "number" ? a.remindedAt : undefined,
+  };
+}
+
 /* ---- チーム（出欠・連絡） ---- */
 export function loadTeam(): TeamData | null {
   if (typeof window === "undefined") return null;
@@ -621,10 +647,10 @@ export function loadTeam(): TeamData | null {
         ? { ...e, optInPlayerIds: undefined }
         : e
     );
-    // announcements の groupIds が配列でなければ除去する
-    data.announcements = data.announcements.map((a) =>
-      a.groupIds !== undefined && !Array.isArray(a.groupIds) ? { ...a, groupIds: undefined } : a
-    );
+    // announcements の groupIds が配列でなければ除去する。chat-plan-a §2-1: お知らせの追加項目
+    // （seenBy・acks・attachments は配列、pinned は真偽、title 等は文字列、remindedAt は数値）も
+    // 形が壊れていれば外す（旧データはそのまま通る）
+    data.announcements = data.announcements.map(normalizeAnnouncement);
     // groups-phase2 §3-1: matches の groupIds が配列でなければ除去する
     data.matches = data.matches.map((m) =>
       m.groupIds !== undefined && !Array.isArray(m.groupIds) ? { ...m, groupIds: undefined } : m
@@ -639,12 +665,17 @@ export function loadTeam(): TeamData | null {
   }
 }
 
-export function saveTeam(team: TeamData): void {
-  if (typeof window === "undefined") return;
+/**
+ * team を保存する。成否を返す（容量超過などで書けなかったら false）。
+ * 通常の保存は成否を見なくてよい。chat-plan-a §6 の移行だけは、書けたと確かめてから messages を消すために使う
+ */
+export function saveTeam(team: TeamData): boolean {
+  if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(TEAM_KEY, JSON.stringify(team));
+    return true;
   } catch {
-    /* 無視 */
+    return false;
   }
 }
 
@@ -778,12 +809,94 @@ export function loadMessages(): ChatMessage[] | null {
   }
 }
 
-export function saveMessages(messages: ChatMessage[]): void {
-  if (typeof window === "undefined") return;
+/**
+ * メッセージを保存する。成否を返す（容量超過＝画像・動画が大きい等は false。通常の保存では無視してよい）。
+ * chat-plan-a §6 の移行は、team を書く前に「残す messages」を先に書いて容量を空けるために使う
+ */
+export function saveMessages(messages: ChatMessage[]): boolean {
+  if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(MESSAGES_KEY, JSON.stringify(messages));
+    return true;
   } catch {
-    /* 容量超過（画像・動画が大きい等）は無視 */
+    return false;
+  }
+}
+
+/* ---- 1 対 1 の既読時刻（chat-plan-a §2-3） ---- */
+export function loadChatReads(): ChatReads | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CHATREADS_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+    // 値の形が壊れた会話だけ捨てる（数値以外の staff/member は除く）
+    const out: ChatReads = {};
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      if (!v || typeof v !== "object") continue;
+      const r = v as { staff?: unknown; member?: unknown };
+      out[k] = {
+        staff: typeof r.staff === "number" ? r.staff : undefined,
+        member: typeof r.member === "number" ? r.member : undefined,
+      };
+    }
+    return out;
+  } catch {
+    return null;
+  }
+}
+
+export function saveChatReads(reads: ChatReads): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CHATREADS_KEY, JSON.stringify(reads));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/* ---- チャットのセグメント（お知らせ／メッセージ）の選択（chat-plan-a §3-1） ---- */
+export type ChatSeg = "ann" | "msg";
+
+export function loadChatSeg(): ChatSeg {
+  if (typeof window === "undefined") return "ann";
+  try {
+    return window.localStorage.getItem(CHATSEG_KEY) === "msg" ? "msg" : "ann";
+  } catch {
+    return "ann";
+  }
+}
+
+export function saveChatSeg(seg: ChatSeg): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CHATSEG_KEY, seg);
+    // useGroupFilter と同じ作法: 同じキーを見る部品（チーム運営のヘッダー・チャット本体・PC の画面）が
+    // 揃って読み直せるよう、localStorage 直書きのあとにイベントを発火する
+    window.dispatchEvent(new Event("alfa-chatseg"));
+  } catch {
+    /* 無視 */
+  }
+}
+
+/* ---- team／grp メッセージ → お知らせの移行マーカー（chat-plan-a §6） ---- */
+export function isChatMigrated(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(CHATMIG_KEY) === "1";
+  } catch {
+    // 読めない環境では移行しない（毎回走って二重に移すより安全）
+    return true;
+  }
+}
+
+export function markChatMigrated(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CHATMIG_KEY, "1");
+  } catch {
+    /* 無視 */
   }
 }
 
