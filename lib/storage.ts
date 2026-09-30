@@ -58,6 +58,7 @@ const CALGROUP_KEY_OLD = "soccer_tactics_calgroup_v1";
 const CALFILTER_KEY = "soccer_tactics_calfilter_v2";
 // calendar-plan-a §11-1: PCの絞り込みパネル(.calside)の開閉状態。値は"open"/"closed"のみ
 const CALSIDE_OPEN_KEY = "soccer_tactics_calside_v1";
+const NBSIDE_OPEN_KEY = "soccer_tactics_nbside_v1";
 const GROUPFILTER_KEY = "soccer_tactics_groupfilter_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
@@ -757,6 +758,29 @@ export function saveCalSideOpen(open: boolean): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CALSIDE_OPEN_KEY, open ? "open" : "closed");
+  } catch {
+    /* 無視 */
+  }
+}
+
+/**
+ * PCのサッカーノート（スタッフ）の絞り込み列(.nbside)の開閉状態（notebook-staff-redesign §3-2）。
+ * loadCalSideOpenと同じ作法：既定はtrue（開いた状態）。隠すと提出一覧と詳細の2列になる。
+ * 値は"open"/"closed"の文字列のみ持つ（壊れている・未保存なら既定のtrueへフォールバック）。
+ */
+export function loadNbSideOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(NBSIDE_OPEN_KEY) !== "closed";
+  } catch {
+    return true;
+  }
+}
+
+export function saveNbSideOpen(open: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NBSIDE_OPEN_KEY, open ? "open" : "closed");
   } catch {
     /* 無視 */
   }

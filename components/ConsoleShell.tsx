@@ -290,7 +290,8 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
                 <span className="conrail-badge">{e.item.badge > 9 ? "9+" : e.item.badge}</span>
               )}
             </button>
-            {subnav && subnav.anchor === e.item.key && board.screen === subnav.anchor && (
+            {/* notebook-staff-redesign §2: items が空（スタッフのサッカーノート）なら枠ごと出さない */}
+            {subnav && subnav.items.length > 0 && subnav.anchor === e.item.key && board.screen === subnav.anchor && (
               <div className="conrail-sub">
                 {subnav.items.map((it) => (
                   <button

@@ -8775,6 +8775,37 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--accent);
   background: var(--accent-tint);
 }
+/* notebook-staff-redesign §3-3: 未読の提出（スタッフの提出一覧。NoteCard の .unread）。左に3pxの--accentの線、
+   氏名の前に8pxの--accentの点、氏名は太字。線は border ではなく inset の box-shadow で描き、border-radius・
+   カードの寸法・中身の位置を変えない。既読は今のまま（線・点なし。氏名の太さも変えない）。
+   未読との差は線・点・状態タグで付ける（PCは下の PC reset。PCの氏名は元から400）。
+   選手側のカード(.staffview が無い)には掛けない */
+.noteapp .notecard.unread {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.noteapp .notecard.unread .notewho {
+  font-weight: 700;
+}
+.noteapp .notecard.unread .notewho::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: 1px;
+}
+/* 状態タグ「未読」（--accent の文字。地は「共有」と同じ accent-tint）。「未コメント」は既存 .notetag の中立色、
+   「コメント済」は既存 .notetag.done。スタッフの一覧のタグ（状態・種別）だけ12px（文字12px以上。選手側は11pxのまま） */
+.noteapp .notetag.unread {
+  color: var(--accent);
+  background: var(--accent-tint);
+}
+.noteapp .notecard.staffview .notetag,
+.noteapp .notecard.staffview .dlvtag {
+  font-size: 12px;
+}
 .noteapp .notebody {
   font-size: 13px;
   color: var(--mut);
@@ -8824,6 +8855,30 @@ body:has(.mhead) .teamapp .dynrow select {
   font-size: var(--fs-label);
   font-weight: 600;
   color: var(--mut);
+}
+/* notebook-staff-redesign §5: 描画エリアの上の見出し行（「ピッチに描いて伝える」＋右端「× 閉じる」）。
+   閉じるは押すと畳む（描いた点・線は残る）。タップ領域は44px、PCは下の PC reset で32px */
+.noteapp .drawhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.noteapp .drawclose {
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  min-height: 44px;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.noteapp .drawhead + .detailwrap {
+  margin-top: 0;
 }
 .noteapp .detailwrap {
   margin-top: 14px;
@@ -9050,6 +9105,192 @@ body:has(.mhead) .teamapp .dynrow select {
   background: var(--accent-tint);
 }
 
+/* ---------- notebook-staff-redesign §2: スマホのヘッダー右のベルの未読数（赤丸に件数）----------
+   .mhead-action(44×44)の右上に重ねる。作法はホームのベル(.mh-bellcount)と同じ（赤 --danger の地に白文字）。
+   文字は12px。9件を超えたら「9+」（.hdrbellbadge と同じ出し方） */
+body:has(.mhead) .noteapp .mhead-action .mhead-badge {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: var(--r-full);
+  background: var(--danger);
+  color: var(--on-primary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+/* ---------- notebook-staff-redesign §3-1〜§3-3: スタッフの提出一覧の上部 ----------
+   検索欄の下に「操作行(.nbtop)／選択中の1行(.nbsel)／件数行(.nbcount)」。いずれも .scroll の中に置くので
+   横paddingは持たない。操作行のボタンはスマホ44px（PCは PC reset で32px）。1行に収まらない幅
+   （360px前後）でだけ折り返し、横はみ出しは作らない */
+.noteapp .nbtop {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+.noteapp .nbfilterbtn,
+.noteapp .nbunread {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.noteapp .nbfilterbtn svg {
+  width: 16px;
+  height: 16px;
+}
+/* 絞り込み中だけ右上に出す点（.mhead-action .dot / .calshow .dot と同じ作法。数字は出さない） */
+.noteapp .nbfilterbtn .dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.noteapp .nbunread.on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-primary);
+}
+/* 提出一覧｜予定別（既存 .ngbar）は操作行の右端へ。基底の margin(2px 0 10px)は持ち込まない */
+.noteapp .nbtop .ngbar {
+  flex: 0 0 auto;
+  margin: 0 0 0 auto;
+}
+/* ボタンの幅は文字の分だけ（flex:1 のままだと「提出一覧」が2行に割れる） */
+.noteapp .nbtop .ngchip {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+body:has(.mhead) .noteapp .nbtop .ngchip {
+  height: 44px;
+  padding: 0 10px;
+  font-size: 13px;
+}
+.noteapp .nbsel {
+  padding: 0 2px 4px;
+  font-size: 12px;
+  color: var(--mut);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.noteapp .nbseldot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border-radius: 50%;
+}
+.noteapp .nbcount {
+  padding: 0 2px 8px;
+  font-size: 12px;
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- notebook-staff-redesign §3-2: 絞り込みパネル（スマホ=.wsheetのシート／PC=左の.nbsideの中身） ----------
+   セクション＝見出し(.nbfsec-h)＋白い行の束(.nbfrows)。行は44px。種類・状態は右に四角のチェック
+   (.calchk.sq。選択中は .on)、学年・グループは左に色の丸チェック(.calchk。カレンダーの絞り込みと同じ
+   文法で、色はインライン style。選択中は色で塗って白いレ点、非選択は色の枠だけ) */
+.noteapp .nbfsec-h {
+  padding: 14px 4px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.noteapp .nbfrows {
+  overflow: hidden;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+}
+.noteapp .nbfrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+.noteapp .nbfrow:last-child {
+  border-bottom: 0;
+}
+.noteapp .nbfrow.on {
+  font-weight: 700;
+}
+.noteapp .nbfrow:active {
+  background: var(--surface-low);
+}
+.noteapp .nbfname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* スマホの絞り込みシート：行が多いので画面の88%までにして中でスクロールさせる。見出し行の右に「完了」 */
+.noteapp .wsheet.nbfsheet {
+  max-height: 88%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.noteapp .wsheet-h.nbfhead {
+  /* スクロールしても「完了」が見えるよう固定する。.wsheet の上padding(12px)ぶん上へ張り出し
+     （margin-top/top を -12px、padding-top で文字位置は元のまま）、左右も .wsheet の padding(14px)ぶん
+     張り出して、下を流れる行が脇から覗かないよう地を敷く */
+  position: sticky;
+  top: -12px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin: -12px -14px 0;
+  padding: 12px 18px 0;
+  background: var(--surface);
+}
+.noteapp .nbfdone {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* 予定のグループ行（開閉ボタン） */
 .noteapp .evgrow {
   display: flex;
@@ -9108,6 +9349,43 @@ body:has(.mhead) .teamapp .dynrow select {
   letter-spacing: 0.5px;
   color: var(--mut);
 }
+/* notebook-staff-redesign §3-4: 全員提出（「提出 M／M ✓」）は --primary-dim の文字。未読があれば行の右に赤い「未読 k」 */
+.noteapp .evgrowcount.done {
+  color: var(--primary-dim);
+}
+/* スタッフの行の右側（提出 N／M＋未読 k）を束ねる。予定名を潰さないよう、行は折り返しを許し、
+   予定名に最低5文字ぶんを確保する（収まらないときだけ右側が2行目の右端へ回る。PCの一覧の列は PC reset で常に2行目） */
+.noteapp .evgrowright {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin-left: auto;
+}
+.noteapp .evgrow:has(.evgrowright) {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+.noteapp .evgrow:has(.evgrowright) .evgrowtitle {
+  min-width: 5em;
+}
+/* notebook-staff-redesign §3-4/§4: スマホのタップ領域44px。スタッフの予定別の行(.evgrowright があるもの。
+   「予定に紐づかない提出」の行は43pxだった)と、シュート位置モーダルの「閉じる」（既存の .wsheetcancel は
+   padding 12px＋13px の文字で43px）。選手側の行・作成シートの「キャンセル」には掛けない */
+body:has(.mhead) .noteapp .evgrow:has(.evgrowright),
+body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
+  min-height: 44px;
+}
+.noteapp .evgrowunread {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  border-radius: var(--r-full);
+  background: var(--danger);
+  color: var(--on-primary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
 /* 開閉シェブロン。開いている行(.on)で90度回転させる（文字は「›」のまま） */
 .noteapp .evgrowchev {
   flex: 0 0 auto;
@@ -9130,6 +9408,35 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .evgnotes .evnote {
   padding: 2px 2px 6px;
   margin-top: 0;
+}
+/* notebook-staff-redesign §3-4: 予定を開いたときの「未提出（M−N 人）」と、未提出の選手のチップ（背番号＋名前） */
+.noteapp .nbmissing-h {
+  margin: 10px 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.noteapp .nbmissing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 4px;
+}
+.noteapp .nbmissingchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  font-size: 12px;
+  color: var(--mut);
+}
+.noteapp .nbmissingchip b {
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
 .noteapp .phasebar {
   display: flex;
@@ -9360,6 +9667,28 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .mdot.miss {
   background: #ff5b6e;
 }
+/* notebook-staff-redesign §4: 閲覧モードのシュートの点は押せる button。見た目(14px＋白フチ＋黄)は
+   .mdot.shot のまま変えず、::before の透明な当たり判定だけ広げる（padding box 10px＋両側7px＝24px。
+   スマホは下の body:has(.mhead) で両側17px＝44px。他の点(span)には付けない） */
+.noteapp .mdot.tappable {
+  padding: 0;
+  margin: 0;
+  appearance: none;
+  cursor: pointer;
+}
+.noteapp .mdot.tappable::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+body:has(.mhead) .noteapp .mdot.tappable::before {
+  inset: -17px;
+}
+/* モーダルが開いている間、そのシュートの点を --accent の輪で強調する（§4） */
+.noteapp .mdot.sel {
+  box-shadow: 0 0 0 3px var(--accent);
+  z-index: 1;
+}
 
 /* ゴール正面図（シュートコース） */
 .noteapp .goalview { position: relative; width: 100%; aspect-ratio: 2 / 1; background: var(--surface-low); border-radius: var(--r-md); overflow: hidden; }
@@ -9375,6 +9704,15 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .shotmark { width: 12px; height: 12px; border-radius: 50%; border: 2.5px solid var(--primary); flex: none; }
 .noteapp .shotmark.nogoal { border-color: var(--danger); }
 .noteapp .shotmark.none { border-style: dashed; border-color: var(--outline-strong); }
+/* notebook-staff-redesign §4: .shotrow は button になった（押すとシュート位置のモーダル）。
+   div のときと見た目が変わらないよう、button 既定の行間・太さ・寄せを継承へ戻す。
+   スマホのタップ領域は44px（PCは既存の高さのまま）。詳細(.notedetail)の中だけに掛け、選手の作成フォーム
+   (NoteForm)のシュート行は今のまま */
+.noteapp .notedetail .shotrow { appearance: none; margin-left: 0; margin-right: 0; font-family: inherit; font-weight: inherit; line-height: inherit; }
+body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
+/* シュート位置モーダルの結果ラベル（ゴール＝緑／ノーゴール＝赤。.shotmark と同じ色） */
+.noteapp .shotresult { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: var(--fs-body); font-weight: 700; color: var(--primary-dim); }
+.noteapp .shotresult.nogoal { color: var(--danger); }
 
 /* 試合ノートのフェーズ */
 .noteapp .phasecard {
@@ -19924,6 +20262,120 @@ body:has(.mhead) .grouppick-item {
   .chatnew .convrow {
     border-radius: var(--r-md);
   }
+  /* notebook-staff-redesign §5: 描画エリアの「× 閉じる」の44px化(基底)はスマホ向けのため、
+     PCは他の操作部品と同じ32pxへ戻す */
+  .noteapp .drawclose {
+    min-height: 32px;
+  }
+  /* === notebook-staff-redesign §3（PC だけの調整） ===
+     ・スタッフの提出タブのグリッドを 3 列（絞り込み 220px｜一覧 320px｜詳細 1fr）にする。1つ目のPCブロックの
+       .coachapp:has(.nbmain)（2列。.fbar/.nbgroupbar 用の行つき）は触らず、詳細度を上げてここで上書きする
+       （末尾の 1600px 追随ブロックの .coachapp:has(.nbmain) にも負けないよう .noteapp を足して 0,3,0 にする）。
+       スタッフには .fbar/.nbgroupbar が無くなったので、行は header と本体の 2 本でよい。
+       絞り込み列を畳むとルートに nbside-hidden が付き、一覧 320px｜詳細 1fr の 2 列へ戻る
+       （一覧の上の操作行 .nbtop が 320px の中に収まる幅）。通知タブは .nbside が無いので従来の 2 列のまま */
+  .coachapp.noteapp:has(.nbmain) {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .coachapp.noteapp:has(.nbmain) .scroll,
+  .coachapp.noteapp .nbmain {
+    grid-row: 2;
+  }
+  .coachapp.noteapp:has(.nbside) {
+    grid-template-columns: 220px 320px minmax(0, 1fr);
+  }
+  .coachapp.noteapp.nbside-hidden:has(.nbmain) {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+  .coachapp.noteapp .nbside {
+    grid-row: 2;
+    grid-column: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px calc(env(safe-area-inset-bottom) + 24px);
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+  }
+  .coachapp.noteapp:has(.nbside) .scroll {
+    grid-column: 2;
+  }
+  .coachapp.noteapp:has(.nbside) .nbmain {
+    grid-column: 3;
+  }
+  /* 「‹ 絞り込みを隠す」。.calside-hide と同じ右寄せのテキストボタン（PCは32px） */
+  .nbside-hide {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .nbside .nbfsec:first-of-type .nbfsec-h {
+    padding-top: 6px;
+  }
+  /* PC のヘッダー（スタッフ）：右寄せの起点は .hdrcta の margin-left:auto だけだったが、スタッフは「＋ 配信」
+     （notebook-staff-redesign §2）を外したので、ベルと「監督・管理者」がロゴの右隣に寄ってしまう。
+     ロゴの直後がベルのとき（＝ .hdrcta が無いスタッフだけ。選手は .hdrcta があるので今のまま）に右端へ送る */
+  .noteapp header .brand + .hdrbell {
+    margin-left: auto;
+  }
+  /* 操作行のボタンは PC の他の操作部品と同じ 32px・四角(--r-md)。一覧の列(320px)へ「絞り込み」＋「未読 N」＋
+     「提出一覧｜予定別」が1行に収まるよう余白を詰める（常時表示のスクロールバー・未読2桁でも折り返さない
+     よう余りを持たせ、一覧の .scroll のバーは細くする）。文字は隣の .ngchip と同じ 12px／400
+     （選択中の「未読 N」だけ 600）。行と行の束も --r-md に */
+  .noteapp .nbtop {
+    gap: 6px;
+  }
+  .noteapp .nbtop .nbfilterbtn,
+  .noteapp .nbtop .nbunread {
+    gap: 4px;
+    min-height: 32px;
+    padding: 0 6px;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .noteapp .nbtop .nbunread.on {
+    font-weight: 600;
+  }
+  .noteapp .nbtop .ngbar {
+    gap: 4px;
+  }
+  .noteapp .nbtop .ngchip {
+    min-height: 32px;
+    padding: 0 6px;
+  }
+  .coachapp.noteapp:has(.nbmain) .scroll {
+    scrollbar-width: thin;
+  }
+  .noteapp .nbfrows {
+    border-radius: var(--r-md);
+  }
+  .noteapp .nbfrow:hover {
+    background: var(--surface-low);
+  }
+  /* 予定別の行：一覧の列(約280px)では「日付・種類・予定名」と「提出 N／M・未読 k」が1行に入らず予定名が
+     1〜2文字に潰れていたので、右側を常に2行目（左寄せ）へ回し、シェブロンは1行目の右端に残す */
+  .coachapp:has(.nbmain) .scroll .evgrowright {
+    order: 2;
+    flex: 1 0 100%;
+    margin-left: 0;
+  }
+  .coachapp:has(.nbmain) .scroll .evgrow:has(.evgrowright) .evgrowchev {
+    order: 1;
+  }
+  /* 未読の提出：PCの一覧カードは box-shadow:none（1つ目のPCブロック）で線が消えるので、詳細度を上げて線を戻す。
+     氏名の太字(700)は基底のまま（PCの既読の氏名は元から400なので、未読との差が付く） */
+  .coachapp:has(.nbmain) .scroll .notecard.unread {
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -20078,6 +20530,15 @@ body:has(.mhead) .grouppick-item {
   .noteapp .ngchip {
     padding: 9px;
     font-size: 13px;
+  }
+  /* notebook-staff-redesign §3/§5: 提出一覧の操作行・絞り込み列の「隠す」・描画エリアの「× 閉じる」も
+     指サイズ 44px へ戻す */
+  .noteapp .nbtop .nbfilterbtn,
+  .noteapp .nbtop .nbunread,
+  .noteapp .nbtop .ngchip,
+  .noteapp .drawclose,
+  .nbside-hide {
+    min-height: 44px;
   }
   .cmpselect {
     height: auto;

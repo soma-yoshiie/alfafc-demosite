@@ -2,8 +2,6 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
-  CoachDeliverable,
-  DeliverKind,
   MatchNote,
   MatchPhase,
   MatchPhaseLineup,
@@ -14,6 +12,7 @@ import type {
   PlayLine,
   PlayLineKind,
   PlayPoint,
+  Player,
   Point,
   PracticeMenuDeliver,
   PracticeNote,
@@ -22,6 +21,7 @@ import type {
   SoloNote,
   StaffReaction,
   TeamEvent,
+  TeamGroup,
 } from "@/lib/types";
 import {
   MATCH_PHASE_LABEL,
@@ -33,7 +33,7 @@ import {
   STAFF_REACTION_LABEL,
 } from "@/lib/types";
 import { FORMATION_KEYS, buildSlots } from "@/lib/formations";
-import { useBoard, type KpiMetric } from "./BoardProvider";
+import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E, ConditionIcon, type EmojiName } from "./Emoji";
 import { FormationPitch, GoalCourseView, isInGoalFrame, PlayAreaPitch, type PlayTool } from "./MiniPitch";
@@ -41,23 +41,25 @@ import { LineChart, Sparkline } from "./Charts";
 import { addDaysStr, countByDay, daysAgoStr, localDateStr, longestWeeklyStreak, weekStart, weeklyCounts, weeklyStreak } from "@/lib/dates";
 import {
   clearNoteDraft,
+  loadNbSideOpen,
   loadNoteDraft,
   loadNotifSeen,
   loadTeam,
+  saveNbSideOpen,
   saveNoteDraft,
   saveNotifSeen,
 } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
-import { deliverableTargetsPlayer, playerInGroup, resolveFilterGroup } from "@/lib/groups";
+import { deliverableTargetsPlayer, eventTargetPlayers, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
-import { DeliverBlock, DeliverComposer, DeliverDetail } from "./DeliverViews";
-import { AnalyticsPanel, CoachDashboard, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
-import { KpiBody } from "./SheetManager";
-import { GroupChips, useGroupFilter } from "./GroupChips";
+import { DeliverBlock, DeliverDetail } from "./DeliverViews";
+import { AnalyticsPanel, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
+import { useGroupFilter } from "./GroupChips";
 import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
-import { MobileHeader } from "./MobileHeader";
+import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
+import { IconBell, IconFilter } from "./icons";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const PLAY_KINDS: PlayKind[] = ["receive", "shot", "miss"];
@@ -134,8 +136,21 @@ function fmt(d: string): string {
   const wd = ["日", "月", "火", "水", "木", "金", "土"][new Date(y, m - 1, day).getDay()];
   return `${m}/${day}(${wd})`;
 }
-/** ボトムナビのタブ。deliver=配信(コーチ) / report=シーズンレポート(選手) */
+/** ボトムナビのタブ。report=シーズンレポート(選手)。
+ *  notebook-staff-redesign §2: スタッフは notes(提出)と notifs(通知)だけ。home/deliver は選手側の
+ *  型として残る（deliver は旧コーチ配信タブ。スタッフでは到達しない） */
 type Tab = "home" | "notes" | "deliver" | "notifs" | "report";
+
+/** スタッフの提出一覧の「状態」絞り込み（notebook-staff-redesign §3-2）。
+ *  未読=!staffSeenAt／未コメント=既読でコメント無し（カードのタグと同じ定義）／コメント済=!!staffComment
+ *  （「未読 N」チップとは別の切替） */
+type NoteStatus = "all" | "unread" | "nocomment" | "commented";
+const NOTE_STATUS_LABEL: Record<NoteStatus, string> = {
+  all: "すべて",
+  unread: "未読",
+  nocomment: "未コメント",
+  commented: "コメント済",
+};
 
 /** PCのマスター・ディテール分岐に使うブレークポイント（ChatScreen.tsxのRowクリック分岐と同じ基準） */
 const PC_MQ = "(min-width: 1024px)";
@@ -159,7 +174,6 @@ type View =
   | { mode: "root" }
   | { mode: "form"; kind: NoteKind; edit?: NotebookEntry; menuId?: string }
   | { mode: "detail"; id: string }
-  | { mode: "deliverForm"; kind: DeliverKind; edit?: CoachDeliverable }
   | { mode: "deliverDetail"; id: string }
   | { mode: "search"; playerId?: string }
   | { mode: "report"; playerId: string }
@@ -169,39 +183,40 @@ export default function NotebookScreen() {
   const board = useBoard();
   const team = useTeam();
   const isCoach = board.auth.role === "coach";
-  const [tab, setTab] = useState<Tab>("home");
+  // notebook-staff-redesign §2: スタッフの初期タブは提出(notes)。ホーム/配信/レポートは選手だけのタブ
+  const [tabState, setTab] = useState<Tab>(isCoach ? "notes" : "home");
+  const tab: Tab = isCoach && (tabState === "home" || tabState === "deliver" || tabState === "report") ? "notes" : tabState;
   const [noteKind, setNoteKind] = useState<NoteKind | "all">(isCoach ? "all" : "practice");
+  // notebook-staff-redesign §3-2: スタッフの絞り込み。種類=noteKind、状態=noteStatus、学年/グループは
+  // 下の filterIds。「未読 N」チップ(unreadOnly)は状態とは別の切替で、両方ONならAND
+  const [noteStatus, setNoteStatus] = useState<NoteStatus>("all");
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  // PCの絞り込み列(.nbside)の開閉はlocalStorageで保持。スマホの絞り込みシートの開閉は filterSheet
+  const [nbSideOpen, setNbSideOpen] = useState(() => loadNbSideOpen());
+  useEffect(() => {
+    saveNbSideOpen(nbSideOpen);
+  }, [nbSideOpen]);
+  const [filterSheet, setFilterSheet] = useState(false);
   const [view, setView] = useState<View>({ mode: "root" });
   const [sheetOpen, setSheetOpen] = useState(false);
-  // PCマスター・ディテール（コーチ×notes/deliver/notifsタブ）の右ペイン選択状態。
+  // PCマスター・ディテール（コーチ×notes/notifsタブ）の右ペイン選択状態。
   // タブごとに1つ。View(mode)は変えず「選んでいるだけ」にすることで、左の一覧(.scroll)は
   // 従来どおり isRoot 判定のまま表示され続ける（=同時にマスター一覧としても機能する）
   const [selNote, setSelNote] = useState<string | null>(null);
-  const [selDeliver, setSelDeliver] = useState<string | { create: DeliverKind } | null>(null);
   const [selNotif, setSelNotif] = useState<{ target: NotifTarget; notifId?: string } | null>(null);
-  // PC: ホームのコーチ・ダッシュボードのサマリーカードから開いた内訳指標（右ペイン表示用）
-  const [selKpi, setSelKpi] = useState<KpiMetric | null>(null);
-  // groups-phase2 §4: サッカーノート（コーチ）のグループ絞り込み。ホーム/提出タブで共有し、
-  // 提出一覧・ダッシュボード・KPI内訳・検索は各自 useGroupFilter("notebook") で読み直す
+  // groups-phase2 §4: サッカーノート（コーチ）のグループ絞り込み。提出一覧・検索は
+  // 各自 useGroupFilter("notebook") で読み直す（notebook-staff-redesign §2: ホームの
+  // ダッシュボード・KPI内訳はスタッフのサッカーノートから外れた）
   const [filterIds, setFilterIds] = useGroupFilter("notebook");
   const filterGroup = isCoach ? resolveFilterGroup(filterIds, team.groups) : null;
   // review #1回目: 絞り込み中のグループが削除されても、保存値([grp_a]等)がlocalStorageに
-  // 残ったままだとチップ行はどれもonにならず(filterGroupはnullで描画に使う前に無効化されて
-  // いるが、チップの選択表示はfilterIdsそのものを見るため)絞り込みが読めない状態になる。
+  // 残ったままだとNoteSearch等の他の部品(filterIdsそのものを見る)で絞り込みが読めない状態になる
+  // （このファイルの絞り込みパネルは解決済みのfilterGroupを見るので「すべて」に戻って見える）。
   // TeamHub.tsxのcalFilterEff/matchGroupEffと同じ作法で保存値自体も[]に戻す
   useEffect(() => {
     if (isCoach && filterIds.length > 0 && !filterGroup) setFilterIds([]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterIds, filterGroup, isCoach]);
-  const targetPlayers = useMemo(
-    () => (filterGroup ? board.state.players.filter((p) => playerInGroup(p, filterGroup)) : board.state.players),
-    [board.state.players, filterGroup]
-  );
-  const targetNotebook = useMemo(() => {
-    if (!filterGroup) return board.notebook;
-    const ids = new Set(targetPlayers.map((p) => p.id));
-    return board.notebook.filter((n) => ids.has(n.playerId));
-  }, [board.notebook, filterGroup, targetPlayers]);
   // PC×コーチのときだけ選択state経路を使う。それ以外(モバイル/選手)は従来のview遷移のまま
   const isPcCoach = () => isCoach && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches;
   // board-squad-and-pc-polish §1: PCは左レールで戻れるため「‹ ホーム」は出さない(モバイルの「‹ メニュー」は現状維持)
@@ -235,10 +250,9 @@ export default function NotebookScreen() {
     setTab(t);
     setView({ mode: "root" });
     setSheetOpen(false);
+    setFilterSheet(false);
     setSelNote(null);
-    setSelDeliver(null);
     setSelNotif(null);
-    setSelKpi(null);
   };
 
   const navTarget = (t: NotifTarget, notifId?: string) => {
@@ -249,6 +263,9 @@ export default function NotebookScreen() {
       board.openSheet({ type: "annDetail", annId: t.id });
       return;
     }
+    // notebook-staff-redesign §2: スタッフは配信の作成・閲覧の入口が無いので、配信の通知は何もしない
+    // （既存の配信データは残す。選手側は今のまま配信詳細へ）
+    if (isCoach && t.kind === "deliver") return;
     if (isPcCoach()) {
       // notifIdは左一覧のハイライト用。同じtargetを指す通知が複数あっても選んだ行だけを光らせる
       setSelNotif({ target: t, notifId });
@@ -260,6 +277,34 @@ export default function NotebookScreen() {
   };
 
   const isRoot = view.mode === "root";
+  // notebook-staff-redesign §2: スタッフが通知画面(ルート)にいるか（提出へ戻る導線の出し分け）
+  const staffNotifs = isCoach && isRoot && tab === "notifs";
+  // notebook-staff-redesign §3-2: PCのスタッフの提出タブは左に絞り込み列(.nbside)を常設（畳める）。
+  // 畳んだときはルートに nbside-hidden を付け、PC reset のグリッドを2列へ戻す
+  const staffSide = isCoach && pc && isRoot && tab === "notes";
+  const showNbSide = staffSide && nbSideOpen;
+  // 種類・学年/グループ・状態の絞り込みパネル（スマホのシートとPCの.nbsideで同じ部品を使う）。
+  // 絞り込みで一覧から消えたノートを右ペインに残さない（selNote を外す）
+  const filterPanel = (
+    <NotebookFilterPanel
+      kind={noteKind}
+      onKind={(k) => {
+        setNoteKind(k);
+        setSelNote(null);
+      }}
+      status={noteStatus}
+      onStatus={(st) => {
+        setNoteStatus(st);
+        setSelNote(null);
+      }}
+      groups={team.groups}
+      groupId={filterGroup?.id ?? null}
+      onGroup={(id) => {
+        setFilterIds(id ? [id] : []);
+        setSelNote(null);
+      }}
+    />
+  );
   const startWrite = (k: NoteKind) => {
     setSheetOpen(false);
     setView({ mode: "form", kind: k });
@@ -275,11 +320,11 @@ export default function NotebookScreen() {
       ? ["practice", "match", "solo"]
       : ["match", "practice", "solo"];
 
+  // notebook-staff-redesign §2: スタッフは提出(notes)と通知(notifs)だけ。「提出」のラベルは
+  // 画面には出さない（スマホのセグメント行・PCのレールのサブナビはスタッフでは描画しない）
   const navItems: { t: Tab; icon: Parameters<typeof E>[0]["n"]; label: string; badge?: number }[] = isCoach
     ? [
-        { t: "home", icon: "chart", label: "ホーム" },
         { t: "notes", icon: "note", label: "提出" },
-        { t: "deliver", icon: "megaphone", label: "配信" },
         { t: "notifs", icon: "bell", label: "通知", badge: unread },
       ]
     : [
@@ -298,7 +343,9 @@ export default function NotebookScreen() {
       anchor: "notebook" as const,
       // 通知はレールのサブナビには出さない(PCはヘッダー右上のベル+未読バッジが導線。
       // モバイルのボトムナビは従来どおり通知タブを持つ)
-      items: navItems.filter((it) => it.t !== "notifs").map((it) => ({
+      // notebook-staff-redesign §2: スタッフはレールのサブナビを持たない（レールの
+      // 「サッカーノート」を押すと提出が開く）。フックの呼び出しは変えず items だけ空にする
+      items: (isCoach ? [] : navItems.filter((it) => it.t !== "notifs")).map((it) => ({
         key: it.t,
         label: it.label,
         icon: <E n={it.icon} />,
@@ -313,17 +360,19 @@ export default function NotebookScreen() {
   useConsoleSubnav(consoleSubnav);
 
   return (
-    <div className={"app noteapp" + (isCoach ? " coachapp" : "")}>
+    <div className={"app noteapp" + (isCoach ? " coachapp" : "") + (staffSide && !nbSideOpen ? " nbside-hidden" : "")}>
       {pc ? (
         <header>
           {/* board-squad-and-pc-polish §1: 左レールがあるためルート(isRoot)の「‹ ホーム」は出さない。
-              画面内の戻る(詳細・検索から一覧へ)の「‹ 戻る」は残す */}
-          {!isRoot && (
-            <div className="fpback" onClick={() => setView({ mode: "root" })}>
+              画面内の戻る(詳細・検索から一覧へ)の「‹ 戻る」は残す。
+              notebook-staff-redesign §2: スタッフはレールのサブナビが無いので、通知(ルート)からも
+              「‹ 戻る」で提出へ戻す */}
+          {(!isRoot || staffNotifs) && (
+            <div className="fpback" onClick={() => (isRoot ? switchTab("notes") : setView({ mode: "root" }))}>
               ‹ 戻る
             </div>
           )}
-          <div className="brand" style={!isRoot ? { marginLeft: 4 } : undefined}>
+          <div className="brand" style={!isRoot || staffNotifs ? { marginLeft: 4 } : undefined}>
             <div className="logo">
               サッカー<b>ノート</b>
             </div>
@@ -333,19 +382,19 @@ export default function NotebookScreen() {
           </div>
           {isRoot && (
             <>
-              <button
-                className="hdrcta"
-                onClick={() => (isCoach ? switchTab("deliver") : setSheetOpen(true))}
-              >
-                {isCoach ? "＋ 配信" : "＋ ノートを作成"}
-              </button>
+              {/* notebook-staff-redesign §2: スタッフの「＋ 配信」は撤去（配信の入口を持たない） */}
+              {!isCoach && (
+                <button className="hdrcta" onClick={() => setSheetOpen(true)}>
+                  ＋ ノートを作成
+                </button>
+              )}
               {/* 通知ベル(PC専用・モバイルは基底CSSで非表示)。未読があれば赤バッジで件数を出す */}
               <button
                 className={"hdrbell" + (tab === "notifs" ? " on" : "")}
                 type="button"
                 title="通知"
                 aria-label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
-                onClick={() => switchTab("notifs")}
+                onClick={() => switchTab(staffNotifs ? "notes" : "notifs")}
               >
                 <E n="bell" />
                 {unread > 0 && <span className="hdrbellbadge">{unread > 9 ? "9+" : unread}</span>}
@@ -362,11 +411,27 @@ export default function NotebookScreen() {
           {/* mobile-redesign §1-6/§1-7: 共通ヘッダー＋ヘッダー直下セグメント。
               「‹ メニュー」(=アプリホームへ戻る)は下部タブの「ホーム」で代替できるため、
               モバイルの戻るはisRoot=falseの詳細/フォーム画面でのみ出す */}
+          {/* notebook-staff-redesign §2: スタッフは下のセグメント行を出さず、通知は右のベルで開く
+              （未読数は赤丸の件数バッジ。PCの .hdrbellbadge と同じ出し方）。
+              通知画面からの戻るは「‹ 戻る」で提出へ（通知画面ではベルを出さない） */}
           <MobileHeader
             title="サッカーノート"
-            onBack={isRoot ? undefined : () => setView({ mode: "root" })}
+            onBack={!isRoot ? () => setView({ mode: "root" }) : staffNotifs ? () => switchTab("notes") : undefined}
+            actions={
+              isCoach &&
+              isRoot &&
+              tab === "notes" && (
+                <MobileHeaderAction
+                  label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
+                  onClick={() => switchTab("notifs")}
+                >
+                  <IconBell />
+                  {unread > 0 && <span className="mhead-badge">{unread > 9 ? "9+" : unread}</span>}
+                </MobileHeaderAction>
+              )
+            }
           />
-          {isRoot && (
+          {isRoot && !isCoach && (
             <div className="mseg-wrap">
               <MobileSegments
                 ariaLabel="サッカーノートの表示切替"
@@ -383,9 +448,11 @@ export default function NotebookScreen() {
         </>
       )}
 
-      {isRoot && tab === "notes" && (
+      {/* 種類チップ(.fbar)は選手だけ。notebook-staff-redesign §3-1: スタッフの種類・学年/グループ・状態は
+          絞り込みパネル(スマホ=シート／PC=左の.nbside)へ集約し、一覧の上の2行のチップは出さない */}
+      {isRoot && tab === "notes" && !isCoach && (
         <div className="fbar">
-          {([...(isCoach ? (["all"] as const) : []), "match", "practice", "solo"] as (NoteKind | "all")[]).map((k) => (
+          {(["match", "practice", "solo"] as NoteKind[]).map((k) => (
             <div
               key={k}
               className={`chip${noteKind === k ? " on" : ""}`}
@@ -394,110 +461,49 @@ export default function NotebookScreen() {
                 setSelNote(null); // 絞り込みで一覧から消えたノートを右ペインに残さない
               }}
             >
-              {k === "all" ? "すべて" : NOTE_KIND_LABEL[k]}
+              {NOTE_KIND_LABEL[k]}
             </div>
           ))}
         </div>
       )}
 
-      {/* groups-phase2 §4: ホーム(ダッシュボード)と提出タブでグループ絞り込み。配信・通知タブでは出さない */}
-      {isRoot && isCoach && (tab === "home" || tab === "notes") && team.groups.length > 0 && (
-        <div className="nbgroupbar">
-          <GroupChips
-            groups={team.groups}
-            value={filterIds}
-            onChange={(ids) => {
-              setFilterIds(ids);
-              setSelNote(null); // 絞り込みで一覧から消えたノートを右ペインに残さない（種別チップと同じ）
-            }}
-            allowAll
-          />
-        </div>
+      {/* notebook-staff-redesign §3-2: PCの絞り込み列。先頭の「‹ 絞り込みを隠す」で畳み
+          （TeamHub の .calside-hide と同じ作法）、畳んだら一覧の「絞り込み」ボタンで戻す */}
+      {showNbSide && (
+        <aside className="nbside">
+          <button type="button" className="nbside-hide" onClick={() => setNbSideOpen(false)}>
+            ‹ 絞り込みを隠す
+          </button>
+          {filterPanel}
+        </aside>
       )}
 
       <div className="scroll">
-        {isRoot && tab === "home" && (
-          isCoach ? (
-            <>
-              <CoachDashboard
-                onOpenPlayer={(playerId) => setView({ mode: "search", playerId })}
-                onReport={(playerId) => setView({ mode: "report", playerId })}
-                onOpenNote={(id) => setView({ mode: "detail", id })}
-                onOpenKpi={(metric) => setSelKpi(metric)}
-                players={targetPlayers}
-                notebook={targetNotebook}
-                filterGroup={filterGroup}
-              />
-              {/* KPI内訳: .nbmain(コーチ×notes/deliver/notifsの3ペイン専用)は使わず、
-                  homeタブの内容としてCoachDashboard直下にインライン展開する */}
-              {selKpi && (
-                <div className="nb-kpiinline">
-                  {/* tmback風(青リンク)の戻りリンク。.tmbackは.teamapp限定スコープのため
-                      同じ見た目をインラインstyleで再現する */}
-                  <button
-                    type="button"
-                    onClick={() => setSelKpi(null)}
-                    style={{
-                      display: "inline-block",
-                      background: "none",
-                      border: 0,
-                      padding: 0,
-                      marginBottom: 10,
-                      color: "var(--accent)",
-                      fontSize: "var(--fs-body-s)",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    ‹ 閉じる
-                  </button>
-                  <KpiBody metric={selKpi} />
-                </div>
-              )}
-            </>
-          ) : (
-            <PlayerHome
-              onOpenNote={(id) => setView({ mode: "detail", id })}
-              onOpenDeliver={(id) => setView({ mode: "deliverDetail", id })}
-              onOpenStats={(focus) => setView({ mode: "stats", focus })}
-            />
-          )
+        {/* notebook-staff-redesign §2: ホームは選手だけ（スタッフのダッシュボード・KPI内訳は撤去） */}
+        {isRoot && tab === "home" && !isCoach && (
+          <PlayerHome
+            onOpenNote={(id) => setView({ mode: "detail", id })}
+            onOpenDeliver={(id) => setView({ mode: "deliverDetail", id })}
+            onOpenStats={(focus) => setView({ mode: "stats", focus })}
+          />
         )}
         {isRoot && tab === "notes" && (
           <NoteList
             kind={noteKind}
+            status={noteStatus}
+            unreadOnly={unreadOnly}
+            onToggleUnread={() => {
+              setUnreadOnly((v) => !v);
+              setSelNote(null);
+            }}
+            showFilterBtn={!showNbSide}
+            onFilter={() => (pc ? setNbSideOpen(true) : setFilterSheet(true))}
             isCoach={isCoach}
             onWrite={(k) => startWrite(k)}
             onOpen={(id) => (isPcCoach() ? setSelNote(id) : setView({ mode: "detail", id }))}
             onSearch={() => setView({ mode: "search" })}
             selectedId={selNote}
           />
-        )}
-        {isRoot && tab === "deliver" && isCoach && (
-          <div className="notetools">
-            <h2><E n="megaphone" /> 配信</h2>
-            <DeliverBlock
-              kinds={["menu", "assignment", "meeting", "setpiece"]}
-              heading={null}
-              onOpen={(id) => {
-                if (!isPcCoach()) {
-                  setView({ mode: "deliverDetail", id });
-                  return;
-                }
-                // 作成フォームは下書き保存が無い。1クリックで無警告に消さない
-                if (
-                  selDeliver != null &&
-                  typeof selDeliver !== "string" &&
-                  !window.confirm("作成中の配信を破棄して、この配信を開きますか？")
-                ) {
-                  return;
-                }
-                setSelDeliver(id);
-              }}
-              onCreate={(k) => (isPcCoach() ? setSelDeliver({ create: k }) : setView({ mode: "deliverForm", kind: k }))}
-              selectedId={typeof selDeliver === "string" ? selDeliver : null}
-            />
-          </div>
         )}
         {isRoot && tab === "notifs" && (
           <NotificationsView
@@ -521,10 +527,7 @@ export default function NotebookScreen() {
             onDeleted={() => setView({ mode: "root" })}
           />
         )}
-        {view.mode === "deliverForm" && (
-          <DeliverComposer kind={view.kind} edit={view.edit} onDone={() => setView({ mode: "root" })} />
-        )}
-        {view.mode === "deliverDetail" && (
+        {view.mode === "deliverDetail" && !isCoach && (
           <DeliverDetail
             id={view.id}
             onBack={() => setView({ mode: "root" })}
@@ -544,11 +547,11 @@ export default function NotebookScreen() {
         )}
       </div>
 
-      {/* PC専用の第2ペイン(詳細)。コーチ×notes/deliver/notifsタブでのみマウントする
-          (KPI内訳はhomeタブのCoachDashboard直下へインライン展開したためここでは扱わない)。
-          view は root のまま進めるため、上の.scroll側の一覧(NoteList/DeliverBlock/NotificationsView)は
+      {/* PC専用の第2ペイン(詳細)。コーチ×notes/notifsタブでのみマウントする
+          (notebook-staff-redesign §2: 配信タブ・ホームのKPI内訳はスタッフから外れた)。
+          view は root のまま進めるため、上の.scroll側の一覧(NoteList/NotificationsView)は
           そのままマスター一覧として表示され続ける(モバイル・選手側は selNote 等が常にnullで従来どおり) */}
-      {isCoach && isRoot && (tab === "notes" || tab === "deliver" || tab === "notifs") && (
+      {isCoach && isRoot && (tab === "notes" || tab === "notifs") && (
         <div className="nbmain">
           {tab === "notes" &&
             (selNote ? (
@@ -566,23 +569,6 @@ export default function NotebookScreen() {
                 左の一覧から開くと内容が表示されます
               </div>
             ))}
-          {tab === "deliver" &&
-            (selDeliver == null ? (
-              <div className="nbempty">
-                <b>配信が選択されていません</b>
-                <br />
-                左の一覧から開くか、＋から新規作成できます
-              </div>
-            ) : typeof selDeliver === "string" ? (
-              <DeliverDetail id={selDeliver} key={selDeliver} onBack={() => setSelDeliver(null)} />
-            ) : (
-              // keyで種別切替時に必ず作り直す(無いと前の種別で入力したタイトル等が残る)
-              <DeliverComposer
-                key={`new:${selDeliver.create}`}
-                kind={selDeliver.create}
-                onDone={() => setSelDeliver(null)}
-              />
-            ))}
           {tab === "notifs" &&
             (selNotif == null ? (
               <div className="nbempty">
@@ -599,11 +585,12 @@ export default function NotebookScreen() {
                 onDeleted={() => setSelNotif(null)}
               />
             ) : selNotif.target.kind === "deliver" ? (
-              <DeliverDetail
-                id={selNotif.target.id}
-                key={`deliver:${selNotif.target.id}`}
-                onBack={() => setSelNotif(null)}
-              />
+              // notebook-staff-redesign §2: スタッフに配信の閲覧入口は無い（navTarget で弾くため通常は到達しない）
+              <div className="nbempty">
+                <b>通知が選択されていません</b>
+                <br />
+                左の一覧から開くと詳細が表示されます
+              </div>
             ) : (
               <NoteSearch
                 key={`player:${selNotif.target.id}`}
@@ -619,6 +606,22 @@ export default function NotebookScreen() {
         <button className="fab" title="ノートを作成" onClick={() => setSheetOpen(true)}>
           ＋
         </button>
+      )}
+
+      {/* notebook-staff-redesign §3-2: スマホの絞り込みシート（作成シートと同じ .wsheetback/.wsheet の文法。
+          見出し「表示する提出」＋右上「完了」）。PCは左の .nbside を使うのでシートは出さない */}
+      {filterSheet && isCoach && !pc && (
+        <div className="wsheetback" onClick={() => setFilterSheet(false)}>
+          <div className="wsheet nbfsheet" onClick={(e) => e.stopPropagation()}>
+            <div className="wsheet-h nbfhead">
+              <span>表示する提出</span>
+              <button type="button" className="nbfdone" onClick={() => setFilterSheet(false)}>
+                完了
+              </button>
+            </div>
+            {filterPanel}
+          </div>
+        </div>
       )}
 
       {sheetOpen && (
@@ -1089,6 +1092,11 @@ function noteBelongsToEvent(n: NotebookEntry, ev: TeamEvent): boolean {
 
 function NoteList({
   kind,
+  status = "all",
+  unreadOnly = false,
+  onToggleUnread,
+  showFilterBtn = true,
+  onFilter,
   isCoach,
   onWrite,
   onOpen,
@@ -1096,6 +1104,14 @@ function NoteList({
   selectedId,
 }: {
   kind: NoteKind | "all";
+  /** notebook-staff-redesign §3-2〜§3-3: スタッフの状態絞り込み・「未読 N」チップ・「絞り込み」ボタン。
+   *  選手側の呼び出しは渡さない（従来の .ngbar のまま） */
+  status?: NoteStatus;
+  unreadOnly?: boolean;
+  onToggleUnread?: () => void;
+  /** false=PCで絞り込み列(.nbside)が開いているので「絞り込み」ボタンを出さない */
+  showFilterBtn?: boolean;
+  onFilter?: () => void;
   isCoach: boolean;
   onWrite: (kind: NoteKind) => void;
   onOpen: (id: string) => void;
@@ -1112,7 +1128,8 @@ function NoteList({
   const [filterIds] = useGroupFilter("notebook");
   const filterGroup = isCoach ? resolveFilterGroup(filterIds, team.groups) : null;
 
-  const entries = useMemo(() => {
+  // 種類・グループ（スタッフ）／自分・チーム共有（選手）で絞った提出。予定別の「提出 N／M」の数え方の元
+  const scoped = useMemo(() => {
     let list = kind === "all" ? board.notebook : board.notebook.filter((n) => n.kind === kind);
     if (isCoach) {
       // 絞り込み中は対象グループ所属の選手のノートだけ（名簿外の選手のノートは「すべて」のときだけ出る）
@@ -1129,6 +1146,27 @@ function NoteList({
     }
     return [...list].sort((a, b) => b.ts - a.ts);
   }, [board.notebook, board.state.players, kind, isCoach, scope, me, filterGroup]);
+
+  // notebook-staff-redesign §3-3: スタッフの「状態」（未読／未コメント／コメント済）で絞ったもの。
+  // 「未読 N」チップの N は、未読だけ(unreadOnly)を重ねる前のここでの未読数。
+  // 未コメント＝既読でコメント無し（カードのタグ「未コメント」と同じ定義。未読はタグが「未読」なので含めない）。
+  // 未読の絞り込みでは、PCで開いて既読になった選択中の提出を一覧に残す（押した瞬間にカードが消えて
+  // 右の詳細だけ残るのを防ぐ。数える未読数は !staffSeenAt のまま）
+  const base = useMemo(() => {
+    if (!isCoach || status === "all") return scoped;
+    if (status === "unread") return scoped.filter((n) => !n.staffSeenAt || n.id === selectedId);
+    if (status === "nocomment") return scoped.filter((n) => !!n.staffSeenAt && !n.staffComment);
+    return scoped.filter((n) => !!n.staffComment);
+  }, [scoped, isCoach, status, selectedId]);
+  const unreadCount = useMemo(() => (isCoach ? base.filter((n) => !n.staffSeenAt).length : 0), [base, isCoach]);
+  // 表示する提出。未読だけ(unreadOnly)は状態とANDで重ねる
+  const entries = useMemo(
+    () => (isCoach && unreadOnly ? base.filter((n) => !n.staffSeenAt || n.id === selectedId) : base),
+    [base, isCoach, unreadOnly, selectedId]
+  );
+  const shownUnread = isCoach ? entries.filter((n) => !n.staffSeenAt).length : 0;
+  // 絞り込み中か（「絞り込み」ボタンの点）。未読だけは専用チップが色で示すので含めない
+  const staffFilterOn = isCoach && (kind !== "all" || status !== "all" || !!filterGroup);
 
   const nameOf = (pid: string) => board.state.players.find((p) => p.id === pid)?.name ?? "選手";
 
@@ -1173,22 +1211,52 @@ function NoteList({
   const events = useMemo(() => {
     if (listView !== "byEvent") return [];
     const today = todayStr();
-    return (loadTeam()?.events ?? [])
-      .filter((e) => e.date <= today)
-      .sort((a, b) => b.date.localeCompare(a.date))
-      .slice(0, 30);
-  }, [listView]);
+    return (
+      (loadTeam()?.events ?? [])
+        .filter((e) => e.date <= today)
+        .sort((a, b) => b.date.localeCompare(a.date))
+        // notebook-staff-redesign §3-4: 対象は今日までの予定30件（今のまま）。種類で絞るのは30件を取った後
+        // （絞った後の30件にすると、より古い予定まで遡ってしまう）
+        .slice(0, 30)
+        // スタッフが種類で絞っているときは、その種類の予定だけ並べる（「試合」で絞って練習の予定に
+        // 「提出 0／M」を出さない。自主練は予定に紐づかないので予定行は0件）
+        .filter((e) => !isCoach || kind === "all" || (kind !== "solo" && (e.kind === "match") === (kind === "match")))
+    );
+  }, [listView, isCoach, kind]);
 
-  // グループ分けは種別チップ(fbar)で絞り込んだ後の entries に対して行う（バッジ件数もフィルタ後の数）
+  // 未提出チップの並び：学年順（team.groups の学年グループの並び）→背番号順。学年が無い選手は末尾
+  const rosterOrder = useMemo(() => {
+    if (!isCoach) return [] as Player[];
+    const grades = team.groups.filter((g) => g.kind === "grade");
+    const rank = (p: Player) => {
+      const i = grades.findIndex((g) => playerInGroup(p, g));
+      return i < 0 ? grades.length : i;
+    };
+    return [...board.state.players].sort(
+      (a, b) => rank(a) - rank(b) || (a.number ?? 9999) - (b.number ?? 9999) || a.name.localeCompare(b.name, "ja")
+    );
+  }, [board.state.players, team.groups, isCoach]);
+
+  // グループ分けは絞り込み後の entries に対して行う（カードもバッジの未読数もフィルタ後）。
+  // notebook-staff-redesign §3-4/§3-5: スタッフは予定ごとに「提出 N／M」を出す。M＝予定の対象選手
+  // （絞り込み中の学年/グループでさらに絞る）、N＝そのうち提出した人数（同じ選手が2件出しても1人）。
+  // 提出済みかどうかは事実なので、状態・未読だけの絞り込みは掛けず scoped（種類・グループのみ）で数える
   const grouped = useMemo(() => {
     const used = new Set<string>();
     const list = events.map((ev) => {
       const notes = entries.filter((n) => noteBelongsToEvent(n, ev));
       notes.forEach((n) => used.add(n.id));
-      return { ev, notes };
+      if (!isCoach) return { ev, notes, targetCount: 0, submitted: 0, missing: [] as Player[], hasSub: false };
+      const subs = scoped.filter((n) => noteBelongsToEvent(n, ev));
+      const done = new Set(subs.map((n) => n.playerId));
+      const targets = eventTargetPlayers(ev, rosterOrder, team.groups).filter(
+        (p) => !filterGroup || playerInGroup(p, filterGroup)
+      );
+      const missing = targets.filter((p) => !done.has(p.id));
+      return { ev, notes, targetCount: targets.length, submitted: targets.length - missing.length, missing, hasSub: subs.length > 0 };
     });
     return { list, unlinked: entries.filter((n) => !used.has(n.id)) };
-  }, [events, entries]);
+  }, [events, entries, scoped, isCoach, rosterOrder, team.groups, filterGroup]);
 
   // フラット/予定別で同じカード表示（選択ハイライト・開き方の分岐も共通）
   const renderCard = (n: NotebookEntry) => (
@@ -1198,11 +1266,12 @@ function NoteList({
       who={isCoach || (kind === "practice" && scope === "team") ? nameOf(n.playerId) : undefined}
       showKind={kind === "all"}
       selected={selectedId != null && n.id === selectedId}
+      staffView={isCoach}
       onClick={() => onOpen(n.id)}
     />
   );
 
-  const groupRow = (key: string, label: React.ReactNode, count: number, body: React.ReactNode) => {
+  const groupRow = (key: string, label: React.ReactNode, right: React.ReactNode, body: React.ReactNode) => {
     const open = expanded.has(key);
     return (
       <Fragment key={key}>
@@ -1213,7 +1282,7 @@ function NoteList({
           onClick={() => toggleGroup(key)}
         >
           {label}
-          <span className="evgrowcount">{count}件</span>
+          {right}
           <span className="evgrowchev">›</span>
         </button>
         {open && <div className="evgnotes">{body}</div>}
@@ -1221,28 +1290,86 @@ function NoteList({
     );
   };
 
+  // 提出一覧｜予定別の切替（選手は一覧の上、スタッフは .nbtop の右端）
+  const viewToggle = (
+    <div className="ngbar">
+      <button
+        type="button"
+        className={`ngchip${listView === "flat" ? " on" : ""}`}
+        onClick={() => setListView("flat")}
+      >
+        提出一覧
+      </button>
+      <button
+        type="button"
+        className={`ngchip${listView === "byEvent" ? " on" : ""}`}
+        onClick={() => setListView("byEvent")}
+      >
+        予定別
+      </button>
+    </div>
+  );
+
+  // notebook-staff-redesign §3-1: 検索欄の下に「操作行(.nbtop)／選択中の1行(.nbsel)／件数行(.nbcount)」。
+  // 選択中の1行は絞っている条件だけを「・」でつなぐ（学年／グループはその色の点付き）
+  const selParts: React.ReactNode[] = [];
+  if (isCoach) {
+    if (filterGroup) {
+      selParts.push(
+        <span key="g">
+          <i className="nbseldot" style={{ background: filterGroup.color ?? "var(--mut)" }} />
+          {filterGroup.label}
+        </span>
+      );
+    }
+    if (kind !== "all") selParts.push(NOTE_KIND_LABEL[kind]);
+    if (status !== "all") selParts.push(NOTE_STATUS_LABEL[status]);
+    if (unreadOnly && status !== "unread") selParts.push(NOTE_STATUS_LABEL.unread);
+  }
+  const staffTop = (
+    <>
+      <div className="nbtop">
+        {showFilterBtn && (
+          <button type="button" className="nbfilterbtn" onClick={onFilter}>
+            <IconFilter />
+            絞り込み
+            {staffFilterOn && <span className="dot" />}
+          </button>
+        )}
+        <button
+          type="button"
+          className={"nbunread" + (unreadOnly ? " on" : "")}
+          aria-pressed={unreadOnly}
+          onClick={onToggleUnread}
+        >
+          未読 {unreadCount}
+        </button>
+        {viewToggle}
+      </div>
+      <div className="nbsel">
+        {selParts.length === 0
+          ? "すべて"
+          : selParts.map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 && " ・ "}
+                {part}
+              </Fragment>
+            ))}
+      </div>
+      <div className="nbcount">
+        提出 {entries.length} 件 ・ 未読 {shownUnread}
+      </div>
+    </>
+  );
+
   return (
     <>
       <button className="searchbar" onClick={onSearch}>
         <E n="search" /> 気づき・目標・相手名などで検索
       </button>
 
-      <div className="ngbar">
-        <button
-          type="button"
-          className={`ngchip${listView === "flat" ? " on" : ""}`}
-          onClick={() => setListView("flat")}
-        >
-          提出一覧
-        </button>
-        <button
-          type="button"
-          className={`ngchip${listView === "byEvent" ? " on" : ""}`}
-          onClick={() => setListView("byEvent")}
-        >
-          予定別
-        </button>
-      </div>
+      {/* 提出一覧｜予定別。選手側は今のまま一覧の上に置く。スタッフは .nbtop の右端に入れる */}
+      {isCoach ? staffTop : viewToggle}
 
       {!isCoach && kind === "practice" && (
         <div className="scopebar">
@@ -1278,7 +1405,7 @@ function NoteList({
             {kind === "practice" && scope === "team" ? (
               "共有されたノートはまだありません。"
             ) : isCoach ? (
-              "まだ提出がありません。"
+              staffFilterOn || unreadOnly ? "条件に合う提出がありません。" : "まだ提出がありません。"
             ) : (
               <>
                 まだ{kind === "all" ? "" : NOTE_KIND_LABEL[kind]}ノートがありません。
@@ -1299,10 +1426,16 @@ function NoteList({
         <>
           {events.length === 0 && (
             <div className="evnote" style={{ margin: "2px 2px 8px" }}>
-              カレンダーに今日までの予定がありません。
+              {/* notebook-staff-redesign §3-4: スタッフが種類で絞って0件のときは、その旨を出す
+                  （カレンダーに予定があるのに「予定がありません」と出さない） */}
+              {isCoach && kind === "solo"
+                ? "自主練は予定に紐づきません。下の「予定に紐づかない提出」を開いてください。"
+                : isCoach && kind !== "all"
+                  ? `今日までの直近の予定に${NOTE_KIND_LABEL[kind]}はありません。`
+                  : "カレンダーに今日までの予定がありません。"}
             </div>
           )}
-          {grouped.list.map(({ ev, notes }) =>
+          {grouped.list.map(({ ev, notes, targetCount, submitted, missing, hasSub }) =>
             groupRow(
               ev.id,
               <>
@@ -1310,19 +1443,69 @@ function NoteList({
                 <span className={`evgrowkind ${ev.kind}`}>{NOTE_KIND_LABEL[ev.kind]}</span>
                 <span className="evgrowtitle">{ev.title || NOTE_KIND_LABEL[ev.kind]}</span>
               </>,
-              notes.length,
-              notes.length === 0 ? (
-                <div className="evnote">この予定の提出はありません。</div>
+              isCoach ? (
+                // notebook-staff-redesign §3-4: 「提出 N／M」（全員なら「提出 M／M ✓」）＋未読があれば赤い「未読 k」。
+                // 対象選手が0人（名簿が空・絞り込み先に該当者なし）のときだけ従来どおり「N件」。
+                // .evgrowright に束ね、狭い幅（PCの一覧の列）では予定名の下の2行目へ回す
+                <span className="evgrowright">
+                  {targetCount === 0 ? (
+                    <span className="evgrowcount">{notes.length}件</span>
+                  ) : missing.length === 0 ? (
+                    <span className="evgrowcount done">
+                      提出 {targetCount}／{targetCount} ✓
+                    </span>
+                  ) : (
+                    <span className="evgrowcount">
+                      提出 {submitted}／{targetCount}
+                    </span>
+                  )}
+                  <UnreadPill count={notes.filter((n) => !n.staffSeenAt).length} />
+                </span>
               ) : (
-                <div className="notecards">{notes.map(renderCard)}</div>
-              )
+                <span className="evgrowcount">{notes.length}件</span>
+              ),
+              <>
+                {notes.length === 0 ? (
+                  <div className="evnote">
+                    {isCoach && hasSub ? "条件に合う提出はありません。" : "この予定の提出はありません。"}
+                  </div>
+                ) : (
+                  <div className="notecards">{notes.map(renderCard)}</div>
+                )}
+                {/* notebook-staff-redesign §3-4: 提出済みのカードの下に未提出の選手（学年順→背番号順）。全員提出なら1行 */}
+                {isCoach &&
+                  targetCount > 0 &&
+                  (missing.length === 0 ? (
+                    <div className="evnote">全員提出済み</div>
+                  ) : (
+                    <>
+                      <div className="nbmissing-h">未提出（{missing.length} 人）</div>
+                      <div className="nbmissing">
+                        {missing.map((p) => (
+                          <span key={p.id} className="nbmissingchip">
+                            {p.number != null && <b>{p.number}</b>}
+                            {p.name}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ))}
+              </>
             )
           )}
-          {/* 自主練・予定の日付範囲外の提出は常設グループにまとめる（予定が0件でも出す） */}
+          {/* 自主練・予定の日付範囲外の提出は常設グループにまとめる（予定が0件でも出す）。
+              予定に紐づかないので対象人数は出さない（「N件」のまま。スタッフは未読だけ添える） */}
           {groupRow(
             UNLINKED_KEY,
             <span className="evgrowtitle">予定に紐づかない提出</span>,
-            grouped.unlinked.length,
+            isCoach ? (
+              <span className="evgrowright">
+                <span className="evgrowcount">{grouped.unlinked.length}件</span>
+                <UnreadPill count={grouped.unlinked.filter((n) => !n.staffSeenAt).length} />
+              </span>
+            ) : (
+              <span className="evgrowcount">{grouped.unlinked.length}件</span>
+            ),
             grouped.unlinked.length === 0 ? (
               <div className="evnote">該当する提出はありません。</div>
             ) : (
@@ -1332,6 +1515,83 @@ function NoteList({
         </>
       )}
     </>
+  );
+}
+
+/** 予定別の行の右に添える赤い「未読 k」（notebook-staff-redesign §3-4）。0件なら何も出さない */
+function UnreadPill({ count }: { count: number }) {
+  return count > 0 ? <span className="evgrowunread">未読 {count}</span> : null;
+}
+
+/**
+ * スタッフの提出一覧の絞り込みパネル（notebook-staff-redesign §3-2）。スマホは下からのシート、
+ * PCは左の常設列(.nbside)の中身として、同じ部品を両方から呼ぶ。種類・学年・グループ・状態は
+ * すべて単一選択。種類・状態の行は右に四角のチェック(.calchk.sq)、学年・グループの行は左に
+ * グループ色の丸チェック(.calchk。選択中は色で塗って白いレ点、非選択は色の枠だけ。TeamHub の
+ * カレンダーの絞り込みと同じ文法)。学年とグループは同じ値（useGroupFilter("notebook")）を
+ * 共有するので「すべて」は先頭のセクションに1行だけ置く。
+ * グループ（kind==="custom"）が0件ならセクションごと出さない。
+ */
+function NotebookFilterPanel({
+  kind,
+  onKind,
+  status,
+  onStatus,
+  groups,
+  groupId,
+  onGroup,
+}: {
+  kind: NoteKind | "all";
+  onKind: (k: NoteKind | "all") => void;
+  status: NoteStatus;
+  onStatus: (s: NoteStatus) => void;
+  groups: TeamGroup[];
+  /** 選択中の学年／グループのID。null=すべて */
+  groupId: string | null;
+  onGroup: (id: string | null) => void;
+}) {
+  const grades = groups.filter((g) => g.kind === "grade");
+  const customs = groups.filter((g) => g.kind === "custom");
+  // color: undefined=種類・状態の行（右に四角のチェック）／文字列=学年・グループの行（左に色の丸チェック。
+  // 「すべて」だけ --mut）
+  const row = (key: string, label: string, on: boolean, onClick: () => void, color?: string) => (
+    <button key={key} type="button" className={`nbfrow${on ? " on" : ""}`} aria-pressed={on} onClick={onClick}>
+      {color !== undefined && (
+        <span
+          className={`calchk${on ? " on" : ""}`}
+          style={{ background: on ? color : "transparent", borderColor: on ? "transparent" : color }}
+        />
+      )}
+      <span className="nbfname">{label}</span>
+      {color === undefined && <span className={`calchk sq${on ? " on" : ""}`} />}
+    </button>
+  );
+  const sec = (title: string, rows: React.ReactNode) => (
+    <div className="nbfsec" key={title}>
+      <div className="nbfsec-h">{title}</div>
+      <div className="nbfrows">{rows}</div>
+    </div>
+  );
+  const groupRows = (list: TeamGroup[]) =>
+    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(g.id), g.color ?? "var(--mut)"));
+  const allRow = row("g-all", "すべて", groupId === null, () => onGroup(null), "var(--mut)");
+  return (
+    <div className="nbfpanel">
+      {sec("種類", [
+        row("k-all", "すべて", kind === "all", () => onKind("all")),
+        ...(["match", "practice", "solo"] as NoteKind[]).map((k) =>
+          row(`k-${k}`, NOTE_KIND_LABEL[k], kind === k, () => onKind(k))
+        ),
+      ])}
+      {grades.length > 0 && sec("学年", [allRow, ...groupRows(grades)])}
+      {customs.length > 0 && sec("グループ", [...(grades.length === 0 ? [allRow] : []), ...groupRows(customs)])}
+      {sec(
+        "状態",
+        (["all", "unread", "nocomment", "commented"] as NoteStatus[]).map((st) =>
+          row(`s-${st}`, NOTE_STATUS_LABEL[st], status === st, () => onStatus(st))
+        )
+      )}
+    </div>
   );
 }
 
@@ -1357,16 +1617,26 @@ function NoteCard({
   who,
   showKind,
   selected,
+  staffView,
   onClick,
 }: {
   entry: NotebookEntry;
   who?: string;
   showKind?: boolean;
   selected?: boolean;
+  /** スタッフの提出一覧のカード（notebook-staff-redesign §3-3）。選手側（自分のノート・チームの共有）は渡さず今のまま */
+  staffView?: boolean;
   onClick: () => void;
 }) {
+  // notebook-staff-redesign §3-3: 未読(=staffSeenAtが無い)のスタッフ画面のカードは左に線・氏名の前に点・氏名は太字。
+  // 状態タグは「未読／未コメント／コメント済」の3値（既読でコメント無しを未読と出していた誤りを直す）。
+  // 選手側は who の有無を問わず従来のまま（who無し=タグなし、チームの共有=コメント済／未読）
+  const unread = !!staffView && !entry.staffSeenAt;
   return (
-    <button className={`notecard${selected ? " sel" : ""}`} onClick={onClick}>
+    <button
+      className={`notecard${selected ? " sel" : ""}${staffView ? " staffview" : ""}${unread ? " unread" : ""}`}
+      onClick={onClick}
+    >
       <div className="notecond">{entry.condition ? <ConditionIcon c={entry.condition} /> : NOTE_KIND_LABEL[entry.kind].slice(0, 1)}</div>
       <div className="notemain">
         <div className="notetop">
@@ -1383,7 +1653,19 @@ function NoteCard({
               <E n={REACTION_ICON[entry.staffReaction]} />
             </span>
           )}
-          {entry.staffComment ? <span className="notetag done">コメント済</span> : who ? <span className="notetag">未読</span> : null}
+          {staffView ? (
+            unread ? (
+              <span className="notetag unread">未読</span>
+            ) : entry.staffComment ? (
+              <span className="notetag done">コメント済</span>
+            ) : (
+              <span className="notetag">未コメント</span>
+            )
+          ) : entry.staffComment ? (
+            <span className="notetag done">コメント済</span>
+          ) : who ? (
+            <span className="notetag">未読</span>
+          ) : null}
         </div>
         <div className="notebody">{summarize(entry)}</div>
       </div>
@@ -1873,6 +2155,46 @@ function ShotCourseSheet({
         </button>
         <button type="button" className="linkdanger" onClick={onDelete}>
           このシュートを削除
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** シュート位置のモーダル（試合ノートの詳細・閲覧専用）。notebook-staff-redesign §4:
+ *  ピッチのシュートの点／一覧の行を押すと、ゴール正面図にそのシュートだけを出して
+ *  「ゴールのどこに打ったか」と結果・状況メモを見せる。文法は ShotCourseSheet(.wsheetback/.wsheet)と同じ */
+function ShotViewSheet({
+  shot,
+  onClose,
+}: {
+  shot: PlayPoint & { num: number };
+  onClose: () => void;
+}) {
+  // コース未記録でも結果(scored)だけ入っていれば結果ラベルは出す。どちらも無ければ出さない
+  const hasResult = shot.course != null || shot.scored != null;
+  return (
+    <div className="wsheetback" onClick={onClose}>
+      <div className="wsheet shotsheet" onClick={(e) => e.stopPropagation()}>
+        <div className="wsheet-h">
+          #{shot.num} シュート ・ {MATCH_PHASE_LABEL[markPhase(shot.phase)]}
+        </div>
+        {shot.course ? (
+          <div className="formpitch">
+            <GoalCourseView shots={[{ course: shot.course, scored: shot.scored, label: shot.num }]} />
+          </div>
+        ) : (
+          <div className="evnote">コースは記録されていません</div>
+        )}
+        {hasResult && (
+          <div className={"shotresult" + (shot.scored ? "" : " nogoal")}>
+            <span className={"shotmark" + (shot.scored ? "" : " nogoal")} />
+            {shot.scored ? "ゴール" : "ノーゴール"}
+          </div>
+        )}
+        {shot.shotNote && <div className="notesec-b">{shot.shotNote}</div>}
+        <button type="button" className="wsheetcancel" onClick={onClose}>
+          閉じる
         </button>
       </div>
     </div>
@@ -2432,6 +2754,8 @@ function NoteDetail({
       comment,
       drawPlays.length > 0 || drawLines.length > 0 ? { plays: drawPlays, playLines: drawLines } : undefined
     );
+    // notebook-staff-redesign §5: 送信したら描画エリアを畳む（図は state に残り、保存もされたまま）
+    setDrawOpen(false);
   };
 
   return (
@@ -2476,57 +2800,69 @@ function NoteDetail({
           </div>
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} placeholder="選手へフィードバックを送る" />
 
+          {/* notebook-staff-redesign §5: 畳んだボタンは、図があれば「図を編集（点 N ・ 線 M）」。
+              開いたエリアの上に見出し行と「× 閉じる」を出し、押すと畳む（描いた点・線は state に残す） */}
           {!drawOpen ? (
             <button type="button" className="dynadd" onClick={() => setDrawOpen(true)}>
-              ＋ ピッチに描いて伝える
+              {drawPlays.length > 0 || drawLines.length > 0
+                ? `図を編集（点 ${drawPlays.length} ・ 線 ${drawLines.length}）`
+                : "＋ ピッチに描いて伝える"}
             </button>
           ) : (
-            <div className="detailwrap" style={{ marginTop: 10 }}>
-              <div className="playtools">
-                <div className="playtoolrow">
-                  {PLAY_KINDS.map((k) => {
-                    const on = drawTool.mode === "point" && drawTool.kind === k;
-                    return (
-                      <button key={k} type="button" className={`playkind ${k}${on ? " on" : ""}`} onClick={() => setDrawTool({ mode: "point", kind: k })}>
-                        {PLAY_KIND_LABEL[k]}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="playtoolrow">
-                  {PLAY_LINE_KINDS.map((k) => {
-                    const on = drawTool.mode === "line" && drawTool.kind === k;
-                    return (
-                      <button key={k} type="button" className={`playline ${k}${on ? " on" : ""}`} onClick={() => setDrawTool({ mode: "line", kind: k })}>
-                        {PLAY_LINE_LABEL[k]}
-                      </button>
-                    );
-                  })}
-                </div>
+            <>
+              <div className="drawhead">
+                <span>ピッチに描いて伝える</span>
+                <button type="button" className="drawclose" onClick={() => setDrawOpen(false)}>
+                  × 閉じる
+                </button>
               </div>
-              <div className="formpitch">
-                <PlayAreaPitch
-                  points={drawPlays}
-                  lines={drawLines}
-                  tool={drawTool}
-                  onAddPoint={(x, y) => setDrawPlays((prev) => [...prev, { x, y, kind: drawTool.mode === "point" ? drawTool.kind : "receive" }])}
-                  onAddLine={(path) => setDrawLines((prev) => [...prev, { kind: drawTool.mode === "line" ? drawTool.kind : "pass", path }])}
-                />
-              </div>
-              {(drawPlays.length > 0 || drawLines.length > 0) && (
-                <div className="playacts">
-                  <button
-                    className="dynadd"
-                    onClick={() => (drawTool.mode === "line" ? setDrawLines((p) => p.slice(0, -1)) : setDrawPlays((p) => p.slice(0, -1)))}
-                  >
-                    1つ戻す
-                  </button>
-                  <button className="dynadd" onClick={() => { setDrawPlays([]); setDrawLines([]); }}>
-                    全消去
-                  </button>
+              <div className="detailwrap">
+                <div className="playtools">
+                  <div className="playtoolrow">
+                    {PLAY_KINDS.map((k) => {
+                      const on = drawTool.mode === "point" && drawTool.kind === k;
+                      return (
+                        <button key={k} type="button" className={`playkind ${k}${on ? " on" : ""}`} onClick={() => setDrawTool({ mode: "point", kind: k })}>
+                          {PLAY_KIND_LABEL[k]}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="playtoolrow">
+                    {PLAY_LINE_KINDS.map((k) => {
+                      const on = drawTool.mode === "line" && drawTool.kind === k;
+                      return (
+                        <button key={k} type="button" className={`playline ${k}${on ? " on" : ""}`} onClick={() => setDrawTool({ mode: "line", kind: k })}>
+                          {PLAY_LINE_LABEL[k]}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
-            </div>
+                <div className="formpitch">
+                  <PlayAreaPitch
+                    points={drawPlays}
+                    lines={drawLines}
+                    tool={drawTool}
+                    onAddPoint={(x, y) => setDrawPlays((prev) => [...prev, { x, y, kind: drawTool.mode === "point" ? drawTool.kind : "receive" }])}
+                    onAddLine={(path) => setDrawLines((prev) => [...prev, { kind: drawTool.mode === "line" ? drawTool.kind : "pass", path }])}
+                  />
+                </div>
+                {(drawPlays.length > 0 || drawLines.length > 0) && (
+                  <div className="playacts">
+                    <button
+                      className="dynadd"
+                      onClick={() => (drawTool.mode === "line" ? setDrawLines((p) => p.slice(0, -1)) : setDrawPlays((p) => p.slice(0, -1)))}
+                    >
+                      1つ戻す
+                    </button>
+                    <button className="dynadd" onClick={() => { setDrawPlays([]); setDrawLines([]); }}>
+                      全消去
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           <button className="bigbtn" style={{ marginTop: 8 }} onClick={sendComment}>
@@ -2583,8 +2919,12 @@ function MatchDetail({ note }: { note: MatchNote }) {
   const notePhases = PLAY_PHASES.filter(
     (p) => allPlays.some((pt) => markPhase(pt.phase) === p) || allPlayLines.some((l) => markPhase(l.phase) === p)
   );
-  // シュート（plays配列順に1,2,3…を採番。ゴール正面図の打点ラベルと一覧の#Nを揃える）
-  const shots = allPlays.filter((p) => p.kind === "shot").map((p, i) => ({ ...p, num: i + 1 }));
+  // シュート（plays配列順に1,2,3…を採番。ゴール正面図の打点ラベルと一覧の#Nを揃える）。
+  // src は元の点への参照（プレーエリアの点を押したとき、同じ参照で shots を引くため）
+  const shots = allPlays.filter((p) => p.kind === "shot").map((p, i) => ({ ...p, num: i + 1, src: p }));
+  // notebook-staff-redesign §4: シュートの位置モーダル。開いているシュートの採番（未選択は null）
+  const [shotView, setShotView] = useState<number | null>(null);
+  const shotSel = shotView != null ? shots.find((s) => s.num === shotView) ?? null : null;
   return (
     <>
       <div className="notesec">
@@ -2632,7 +2972,15 @@ function MatchDetail({ note }: { note: MatchNote }) {
               <div className="notesec-h">
                 プレーエリア（{MATCH_PHASE_LABEL[p]} ・ 点 {pts.length} ／ 軌道 {lns.length}）{multiCanvas ? `・ピッチ${c + 1}` : ""}
               </div>
-              <PlayAreaPitch points={pts} lines={lns} />
+              <PlayAreaPitch
+                points={pts}
+                lines={lns}
+                onPointClick={(_, pt) => {
+                  const hit = shots.find((s) => s.src === pt);
+                  if (hit) setShotView(hit.num);
+                }}
+                selectedIndex={shotSel ? pts.indexOf(shotSel.src) : null}
+              />
             </div>
           );
         });
@@ -2643,13 +2991,13 @@ function MatchDetail({ note }: { note: MatchNote }) {
           <GoalCourseView shots={shots.filter((s) => s.course).map((s) => ({ course: s.course!, scored: s.scored, label: s.num }))} />
           <div className="shotlist">
             {shots.map((s) => (
-              <div key={s.num} className="shotrow">
+              <button key={s.num} type="button" className="shotrow" onClick={() => setShotView(s.num)}>
                 <span className={`shotmark${s.course ? (s.scored ? "" : " nogoal") : " none"}`} />
                 <span>
                   #{s.num} {MATCH_PHASE_LABEL[markPhase(s.phase)]} ・ {s.course ? (s.scored ? "ゴール" : "ノーゴール") : "コース未記録"}
                 </span>
                 {s.shotNote && <small>{s.shotNote}</small>}
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -2671,6 +3019,8 @@ function MatchDetail({ note }: { note: MatchNote }) {
           )}
         </div>
       )}
+
+      {shotSel && <ShotViewSheet shot={shotSel} onClose={() => setShotView(null)} />}
     </>
   );
 }

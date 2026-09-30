@@ -440,11 +440,9 @@ function Inner() {
     if (isCoach) tabs.push(["att", "出欠"]);
     tabs.push(["cal", "カレンダー"], ["rec", "試合記録"]);
     if (showRos) tabs.push(["ros", "名簿"]);
-    // Phase D-2(critical): チーム運営のサブメニューにもお知らせを置く（PCレールの「チャット」とは
-    // 別に、グループ宛のお知らせをここからも見て送れるように）。chat-plan-a: 中身は
-    // <ChatHome pc lockSegment="ann" />（お知らせだけ。メッセージはレールの「チャット」）
-    // chat-plan-a §3-6: PC のサブナビ「連絡」は「お知らせ」に改名（中身はお知らせだけ）
-    tabs.push(["chat", "お知らせ"]);
+    // notebook-staff-redesign §1: PC のチーム運営から「お知らせ」を外す（お知らせはチャットの
+    // 中にあるため。PC のチャットはレールの「チャット」だけ）。スマホは下部タブ「チーム」→
+    // セグメント「チャット」が唯一の入口なので下の else 側は変えない
   } else {
     tabs = [["cal", "カレンダー"], ["rec", "試合記録"]];
     if (showRos) tabs.push(["ros", "名簿"]);
@@ -486,8 +484,8 @@ function Inner() {
   // PCサブメニューは「ホーム」「出欠」を出さず、カレンダー/試合記録/名簿/連絡の順で登録する。
   // 出欠タブ自体（AttendanceTab等）は削除せず残すが、PCでの入口はカレンダーの予定詳細
   // 「記録を見る・編集」経由のみに一本化する（タブとしての入口だけを外す）
-  // Phase D-2(critical): 「連絡」をサブメニュー末尾に追加（tabsに無ければfilterで自然に消える）
-  const subnavTabs: Tab[] = ["cal", "rec", "ros", "chat"];
+  // notebook-staff-redesign §1: PC のサブナビは「お知らせ」(chat)を持たない
+  const subnavTabs: Tab[] = ["cal", "rec", "ros"];
   const consoleSubnav = useMemo(
     () => ({
       anchor: "team" as const,
@@ -576,8 +574,9 @@ function Inner() {
             </div>
           </div>
           {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
-              カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加 /
-              お知らせ=お知らせを送る(Phase D-2 critical)。他タブでは出さない */}
+              カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加。
+              他タブでは出さない（notebook-staff-redesign §1: PC の「お知らせ」タブ廃止に伴い
+              「＋ お知らせを送る」も外した。スマホのチャットのアクションは MobileHeader 側） */}
           {board.auth.role === "coach" && activeTab === "cal" && (
             <button className="teamcta" type="button" onClick={() => setSheet({ type: "event" })}>
               ＋ 予定を追加
@@ -591,11 +590,6 @@ function Inner() {
           {board.auth.role === "coach" && activeTab === "ros" && (
             <button className="teamcta" type="button" onClick={() => setSheet({ type: "playerForm" })}>
               ＋ 新規選手を追加
-            </button>
-          )}
-          {board.auth.role === "coach" && activeTab === "chat" && (
-            <button className="teamcta" type="button" onClick={() => board.openSheet({ type: "annCompose" })}>
-              ＋ お知らせを送る
             </button>
           )}
         </header>

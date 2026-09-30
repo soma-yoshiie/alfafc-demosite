@@ -126,6 +126,8 @@ function PlayLinesSvg({ lines, temp }: { lines: PlayLine[]; temp: { kind: PlayLi
  * ② プレーエリア記録用ピッチ。
  * 点ツール（受けた/シュート/トラップミス）＝タップで点を追加、軌道ツール（ドリブル/パス）＝なぞって線を追加。
  * y:0自陣→100敵陣（上が敵陣）。
+ * notebook-staff-redesign §4: 閲覧モード（tool 無し）で onPointClick があるとき、シュートの点だけを
+ * button にして押せるようにする（他の種類の点は今のまま何もしない）。selectedIndex の点は .sel の輪で強調する
  */
 export function PlayAreaPitch({
   points,
@@ -133,12 +135,16 @@ export function PlayAreaPitch({
   tool,
   onAddPoint,
   onAddLine,
+  onPointClick,
+  selectedIndex,
 }: {
   points: PlayPoint[];
   lines?: PlayLine[];
   tool?: PlayTool;
   onAddPoint?: (x: number, y: number) => void;
   onAddLine?: (path: Point[]) => void;
+  onPointClick?: (index: number, p: PlayPoint) => void;
+  selectedIndex?: number | null;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const draw = useRef<{ active: boolean; pts: Point[]; moved: boolean }>({ active: false, pts: [], moved: false });
@@ -199,14 +205,24 @@ export function PlayAreaPitch({
       <Markings />
       <div className="mpgoalhint">敵陣 ↑</div>
       <PlayLinesSvg lines={lines} temp={temp && tool?.mode === "line" ? { kind: tool.kind, path: temp } : null} />
-      {points.map((p, i) => (
-        <span
-          key={i}
-          className={`mdot ${p.kind}`}
-          style={{ left: p.x + "%", top: 100 - p.y + "%" }}
-          title={PLAY_KIND_LABEL[p.kind]}
-        />
-      ))}
+      {points.map((p, i) => {
+        const sel = selectedIndex === i ? " sel" : "";
+        const pos = { left: p.x + "%", top: 100 - p.y + "%" };
+        if (!editable && onPointClick && p.kind === "shot") {
+          return (
+            <button
+              key={i}
+              type="button"
+              className={`mdot shot tappable${sel}`}
+              style={pos}
+              title={PLAY_KIND_LABEL[p.kind]}
+              aria-label="シュート"
+              onClick={() => onPointClick(i, p)}
+            />
+          );
+        }
+        return <span key={i} className={`mdot ${p.kind}${sel}`} style={pos} title={PLAY_KIND_LABEL[p.kind]} />;
+      })}
     </div>
   );
 }
