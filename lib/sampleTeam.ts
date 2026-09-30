@@ -28,14 +28,34 @@ export const FITNESS_TEST_1000M = "fit_1000m";
 export const FITNESS_TEST_LONGJUMP = "fit_longjump";
 export const FITNESS_TEST_SIDESTEP = "fit_sidestep";
 export const FITNESS_TEST_SITUPS = "fit_situps";
+// player-hub §1-4: 新体力テストの標準種目のうち、あとから足した4つ（id は ft_std_<standardKey>。
+// 既存チームへは storage.ts の loadTeam が同じ id で足す。lib/fitnessScore.ts の standardTestId と同じ規則）
+export const FITNESS_TEST_GRIP = "ft_std_grip";
+export const FITNESS_TEST_SITREACH = "ft_std_sitreach";
+export const FITNESS_TEST_SHUTTLE = "ft_std_shuttle";
+export const FITNESS_TEST_HANDBALL = "ft_std_handball";
+// 標準種目の持久走（男子1500m／女子1000m）。クラブ独自の「1000m走」（fit_1000m）とは別の種目で、標準の得点表で採点するのはこちらだけ
+export const FITNESS_TEST_ENDURANCE = "ft_std_endurance";
 
-/** 初回起動時にシードするデフォルトの体力測定種目（スタッフが追加・編集・削除可） */
+/**
+ * 初回起動時にシードするデフォルトの体力測定種目（スタッフが追加・編集・削除可）。
+ * player-hub §1-4: 新体力テスト（文部科学省）の9種目（持久走とシャトルランはどちらか一方で採点）＋クラブ独自の1000m走。
+ * 既存の4種目（50m走・立ち幅とび・反復横とび・上体起こし）は id を変えず先頭に置き（既存ブラウザで storage.ts が
+ * 末尾に足す並びと揃える）、名前・単位・向きを新体力テストに揃えて standardKey を付けた。各種目の得点表は lib/fitnessScore.ts。
+ * 「1000m走」（fit_1000m）はクラブ独自の種目のまま standardKey を付けない：標準の持久走の表は男子1500m・女子1000m なので、
+ * 男子の1000mの記録を当てると実際より高い得点になる。標準の持久走は別種目（ft_std_endurance）として持つ
+ */
 export const DEFAULT_FITNESS_TESTS: FitnessTest[] = [
-  { id: FITNESS_TEST_50M, name: "50m走", unit: "秒", lowerIsBetter: true },
+  { id: FITNESS_TEST_50M, name: "50m走", unit: "秒", lowerIsBetter: true, standardKey: "sprint50" },
   { id: FITNESS_TEST_1000M, name: "1000m走", unit: "秒", lowerIsBetter: true },
-  { id: FITNESS_TEST_LONGJUMP, name: "立ち幅跳び", unit: "cm" },
-  { id: FITNESS_TEST_SIDESTEP, name: "反復横跳び", unit: "回" },
-  { id: FITNESS_TEST_SITUPS, name: "上体起こし", unit: "回" },
+  { id: FITNESS_TEST_LONGJUMP, name: "立ち幅とび", unit: "cm", standardKey: "longjump" },
+  { id: FITNESS_TEST_SIDESTEP, name: "反復横とび", unit: "点", standardKey: "sidestep" },
+  { id: FITNESS_TEST_SITUPS, name: "上体起こし", unit: "回", standardKey: "situp" },
+  { id: FITNESS_TEST_GRIP, name: "握力", unit: "kg", standardKey: "grip" },
+  { id: FITNESS_TEST_SITREACH, name: "長座体前屈", unit: "cm", standardKey: "sitreach" },
+  { id: FITNESS_TEST_SHUTTLE, name: "20mシャトルラン", unit: "回", standardKey: "shuttle" },
+  { id: FITNESS_TEST_HANDBALL, name: "ハンドボール投げ", unit: "m", standardKey: "handball" },
+  { id: FITNESS_TEST_ENDURANCE, name: "持久走（男子1500m／女子1000m）", unit: "秒", lowerIsBetter: true, standardKey: "endurance" },
 ];
 
 // 学年(grade)は中学年代(schoolStage:"junior")のデモ用に中1/中2/中3(23/24/23人)を付与している。
@@ -120,11 +140,21 @@ export const SAMPLE_PLAYERS: Player[] = [
     grade: 2,
     groupIds: [SAMPLE_GROUP_A_ID],
     // 既存3件（旧形式）を新形式へ移行。旧「1500m走」はデフォルト種目の「1000m走」へ写像し、
-    // 記録値はそのまま秒数として引き継ぐ（"6分04秒"→364秒）。
+    // 記録値はそのまま秒数として引き継ぐ（"6分04秒"→364秒）。「1000m走」はクラブ独自の種目（標準の持久走の得点には使わない）。
+    // player-hub §1-5: 標準種目4つ（握力・長座体前屈・20mシャトルラン・ハンドボール投げ）の2時点を足した
+    // （既存ブラウザへは storage.ts の migrateOldDemo が ft_std_* の記録だけ足す）
     fitness: [
       { testId: FITNESS_TEST_50M, value: 7.7, date: "2026-05-16" },
       { testId: FITNESS_TEST_1000M, value: 364, date: "2026-05-16" },
       { testId: FITNESS_TEST_SIDESTEP, value: 51, date: "2026-07-25" },
+      { testId: FITNESS_TEST_GRIP, value: 24, date: "2026-05-16" },
+      { testId: FITNESS_TEST_SITREACH, value: 42, date: "2026-05-16" },
+      { testId: FITNESS_TEST_SHUTTLE, value: 58, date: "2026-05-16" },
+      { testId: FITNESS_TEST_HANDBALL, value: 17, date: "2026-05-16" },
+      { testId: FITNESS_TEST_GRIP, value: 28, date: "2026-07-25" },
+      { testId: FITNESS_TEST_SITREACH, value: 45, date: "2026-07-25" },
+      { testId: FITNESS_TEST_SHUTTLE, value: 66, date: "2026-07-25" },
+      { testId: FITNESS_TEST_HANDBALL, value: 19, date: "2026-07-25" },
     ],
   },
   {
@@ -165,6 +195,15 @@ export const SAMPLE_PLAYERS: Player[] = [
       { testId: FITNESS_TEST_SITUPS, value: 27, date: "2026-05-16" },
       { testId: FITNESS_TEST_50M, value: 7.9, date: "2026-07-25" },
       { testId: FITNESS_TEST_SIDESTEP, value: 49, date: "2026-07-25" },
+      // player-hub §1-5: 標準種目4つの2時点（p08 と同じ。p10 は8種目そろうので合計点・評価が出る）
+      { testId: FITNESS_TEST_GRIP, value: 30, date: "2026-05-16" },
+      { testId: FITNESS_TEST_SITREACH, value: 46, date: "2026-05-16" },
+      { testId: FITNESS_TEST_SHUTTLE, value: 78, date: "2026-05-16" },
+      { testId: FITNESS_TEST_HANDBALL, value: 22, date: "2026-05-16" },
+      { testId: FITNESS_TEST_GRIP, value: 33, date: "2026-07-25" },
+      { testId: FITNESS_TEST_SITREACH, value: 49, date: "2026-07-25" },
+      { testId: FITNESS_TEST_SHUTTLE, value: 91, date: "2026-07-25" },
+      { testId: FITNESS_TEST_HANDBALL, value: 25, date: "2026-07-25" },
     ],
   },
   { id: "p11", name: "吉田 結翔", number: 11, position: "LW", height: 144, weight: 33, dominantFoot: "left", grade: 3, groupIds: [SAMPLE_GROUP_A_ID] },

@@ -5,6 +5,7 @@ import type { Session } from "@/lib/types";
 import { clearSession, loadSession, saveSession } from "@/lib/auth";
 import { BoardProvider } from "./BoardProvider";
 import { TeamProvider } from "./TeamProvider";
+import { ProfileProvider } from "./ProfileProvider";
 import AppRoot from "./AppRoot";
 import SplashScreen from "./SplashScreen";
 import LoginScreen from "./LoginScreen";
@@ -49,7 +50,10 @@ export default function AppFlow() {
   return (
     <BoardProvider session={session}>
       <TeamProvider>
-        <AppRoot />
+        {/* player-hub §1-1: 選手のプロフィール（記録）。BoardProvider の内側（board.auth・toast を使う）・TeamProvider の内側 */}
+        <ProfileProvider>
+          <AppRoot />
+        </ProfileProvider>
       </TeamProvider>
     </BoardProvider>
   );

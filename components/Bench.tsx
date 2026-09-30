@@ -181,10 +181,23 @@ export default function Bench() {
             board.toast(out ? `${out.name} → ${inP?.name ?? ""} に交代` : `${inP?.name ?? ""} を投入`);
           }
         } else {
-          // タップ＝プロフィールを開く（PCはチーム運営の名簿タブへ画面遷移）
-          if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+          // タップ＝個人ページを開く。
+          // スタッフ：PC・スマホとも、チーム運営の名簿タブの個人ページへ画面遷移（player-hub §2-3）。
+          // 選手：名簿タブが無いので名簿へは飛ばさない。自分ならプロフィール画面、他の選手なら従来の選手詳細シート。
+          // スマホは指を離したあとに click が続き、画面やシートが替わった後の click が指の下の新しい画面
+          // （チームのカレンダーの日、選手詳細シートの「測定を追加」など）に落ちて余計なシートを開いてしまうので、
+          // どの分岐でも最初の click は一度だけ握りつぶす（届かなければ 0.5 秒で外す）
+          const swallowClick = (e: MouseEvent) => {
+            e.stopPropagation();
+            e.preventDefault();
+          };
+          window.addEventListener("click", swallowClick, { capture: true, once: true });
+          window.setTimeout(() => window.removeEventListener("click", swallowClick, { capture: true }), 500);
+          if (board.auth.role === "coach") {
             board.setTeamIntent({ tab: "ros", playerId: d.pid });
             board.setScreen("team");
+          } else if (d.pid === board.auth.playerId) {
+            board.setScreen("profile");
           } else {
             board.openSheet({ type: "playerDetail", playerId: d.pid });
           }

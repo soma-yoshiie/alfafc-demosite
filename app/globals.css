@@ -11418,6 +11418,10 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 }
 .mtab-item {
   flex: 1;
+  /* player-hub §2-2: ボタン既定の横 padding(6px)だと「プロフィール」(12px×6文字)の最小幅が等分(390px÷5=78px)を
+     超えて、そのタブだけ広がる。等分を保つため padding を詰め、最小幅の下限を外す */
+  min-width: 0;
+  padding: 0 2px;
   min-height: 48px;
   display: flex;
   flex-direction: column;
@@ -11428,7 +11432,10 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   background: none;
   color: var(--mut);
   font-family: var(--font-ui);
-  font-size: var(--fs-body-s);
+  /* player-hub §2-2: 選手のタブが5つ（「プロフィール」6文字）になるため折り返さない。
+     390px 幅では 12px、360px 以下だけ 11px に落ちる（下部タブのラベルだけの例外。新しい @media は作らない） */
+  font-size: clamp(11px, 3.1vw, 12px);
+  white-space: nowrap;
   font-weight: 400;
   position: relative;
   cursor: pointer;
@@ -14270,6 +14277,1681 @@ body:has(.mhead) .grouppick-item {
 .pitch.pitch-box-def .mk.box-top-s,
 .pitch.pitch-box-def .mk.box-bot-s {
   height: 14.2857%;
+}
+
+/* ============================================================
+   名簿の刷新と選手の個人ページ（player-hub。specs/player-hub.md §5）
+   名簿（.ros*）・個人ページ（.phub*）・選手のプロフィール画面（.profapp）・グラフ（.tchart）の塊。
+   新しい @media は作らない：ここ（基底）に置き、PC だけの調整は下のPCブロック末尾
+   「mobile-redesign PC reset」に追記する。色は既存トークンのみ・文字は12px以上・
+   スマホのタップは44px以上・スマホ390pxで横はみ出しゼロ。
+   ============================================================ */
+
+/* ---- 選手のプロフィール画面（.profapp。§2-2）---- */
+/* .scroll の下部タブ分の余白は、.teamapp/.noteapp などと同じく画面のクラスを付けて同じ詳細度で後勝ちさせる */
+/* 上の余白は 0 にして、ハブ(.phub)側の上余白に任せる（チップ列 .phubtabs が上に貼り付くとき、上の帯に本文が透けないように） */
+.profapp .scroll {
+  padding: 0 16px calc(56px + env(safe-area-inset-bottom) + 24px);
+}
+/* ログインユーザー名はPCトップバー専用（スマホは .mhead があるので出さない。.noteapp .hdrusr と同じ） */
+.profapp .hdrusr {
+  display: none;
+}
+
+/* ---- 名簿（.ros*。§2-1）：一覧の上の操作行・選択中の1行・絞り込みパネル・スマホのシート ----
+   絞り込みパネルの行は提出の .nbfrow と同じ文法（チェックは既存の .calchk／.calchk.sq。色はグループ色だけ
+   インライン style）。.noteapp の中にしか効かない .nbf* を .teamapp でも使えるよう、同じ寸法で .rosf* を持つ。
+   基底はスマホ（タップ 44px）。PC の密度（32px）と左の常設列 .rosside は PCブロック末尾「mobile-redesign PC reset」へ。 */
+.rostop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0 8px;
+}
+.rosfilterbtn {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.rosfilterbtn svg {
+  width: 16px;
+  height: 16px;
+}
+/* 絞り込み中だけ右上に出す点（.nbfilterbtn .dot と同じ作法。数字は出さない） */
+.rosfilterbtn .dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.rostop .search {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  min-height: 44px;
+}
+.rossel {
+  padding: 0 2px 8px;
+  font-size: 12px;
+  color: var(--mut);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rosseldot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 3px;
+  border-radius: 50%;
+}
+.rosfsec-h {
+  padding: 14px 4px 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.rosfrows {
+  overflow: hidden;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+}
+.rosfrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+.rosfrow:last-child {
+  border-bottom: 0;
+}
+.rosfrow.on {
+  font-weight: 700;
+}
+.rosfrow:active {
+  background: var(--surface-low);
+}
+.rosfname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 「グループを編集…」（.calfilterpanel-manage と同じテキストボタン） */
+.rosfmanage {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 2px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* スマホの絞り込みシート（.sheet の中身）：左右の余白は中身が持つ。見出し行の右に「完了」 */
+.rosfsheet {
+  padding: 0 16px calc(env(safe-area-inset-bottom) + 16px);
+}
+.rosfhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+}
+.rosfhead b {
+  font-size: var(--fs-title-s);
+}
+.rosfdone {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+/* PC の左の絞り込み列(.rosside)はスマホでは描かない（PlayerHub と同じ流儀で念のため） */
+.rosside {
+  display: none;
+}
+/* 選手フォーム（TeamHub のシート）末尾のキャプテン・削除：ホームインジケータの分を空ける */
+.sheetBody .phubmanage {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+}
+
+/* ---- 個人ページ（.phub。§3）：ヘッダーカード・KPI・メニュー・一覧・カード・シート・表・チップ・グラフ ----
+   基底はスマホ（タップ 44px）。PC の密度（32px・四角）は PCブロック末尾「mobile-redesign PC reset」に置く。 */
+.phub {
+  min-width: 0;
+  padding-top: 12px;
+  color: var(--ink);
+  font-size: var(--fs-body);
+}
+.phub button {
+  font-family: var(--font-ui);
+}
+
+/* §3-1 ヘッダーカード */
+.phubhead {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.phubhead-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.phubid {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 48px;
+}
+.phubpos {
+  display: inline-block;
+  min-width: 44px;
+  padding: 4px 8px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: var(--fs-title-s);
+  letter-spacing: 0.5px;
+  line-height: 1.2;
+  color: var(--on-primary);
+  background: var(--ink);
+  border-radius: var(--r-sm);
+}
+.phubno {
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  color: var(--mut);
+}
+.phubwho {
+  flex: 1;
+  min-width: 0;
+}
+.phubname {
+  margin: 0;
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.phubcap {
+  margin-left: 6px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--mut);
+}
+.phubsub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubgroups {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.phubgroup {
+  padding: 1px 8px;
+  border-radius: var(--r-full);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 600;
+}
+/* 右上の小さな編集ボタン（44px。ヘッダーカードの余白の分だけ外へ張り出してカードの角に寄せる） */
+.phubedit {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin: -8px -8px 0 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--mut);
+  cursor: pointer;
+}
+.phubedit svg {
+  width: 20px;
+  height: 20px;
+}
+.phubedit:active,
+.phubedit:hover {
+  background: var(--surface-low);
+  color: var(--ink);
+}
+/* 4 マス（押すと該当セクションへ。スマホは 2×2） */
+.phubkpi {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.phubkpi-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 8px 12px;
+  text-align: left;
+  color: var(--ink);
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.phubkpi-item .v {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.phubkpi-item .v small {
+  margin: 0 2px;
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  color: var(--mut);
+}
+.phubkpi-item .l {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+
+/* メニュー：スマホ＝ヘッダーカードの下の横スクロールのチップ列（44px。スクロールしても上に貼り付く） */
+.phubtabs {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px 0 8px;
+  margin-bottom: 6px;
+  background: var(--surface);
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.phubtabs::-webkit-scrollbar {
+  display: none;
+}
+.phubtabs button {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+.phubtabs button.on {
+  color: var(--on-primary);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* PC の縦メニューはスマホでは出さない（PlayerHub が pc のときだけ描く。念のため） */
+.phubnav {
+  display: none;
+}
+.phubmain {
+  min-width: 0;
+}
+.phubsec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.phubsec > .phubh:not(:first-child) {
+  margin-top: 12px;
+}
+
+/* 見出し・カード・注記 */
+.phubh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 28px;
+}
+.phubh h3 {
+  display: inline;
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 700;
+}
+.phubh-sub {
+  margin-left: 8px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubcard {
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.phubcard-t {
+  margin-bottom: 8px;
+  font-size: var(--fs-body);
+  font-weight: 700;
+}
+.phubcard-t.phubsub {
+  margin: 8px 2px 0;
+}
+.phubnote {
+  font-size: var(--fs-body-s);
+  line-height: 1.6;
+  color: var(--mut);
+}
+.phubupd {
+  margin-top: 4px;
+  text-align: right;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubempty {
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--mut);
+  background: var(--surface-lowest);
+  border: 1px dashed var(--outline-strong);
+  border-radius: var(--r-lg);
+}
+.phubempty b {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--ink);
+}
+.phubempty p {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}
+.phubempty .phubadd {
+  margin-top: 12px;
+}
+
+/* 基本情報の表（ラベル｜値） */
+.phubkv {
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.phubkv-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--outline);
+}
+.phubkv-row:first-child {
+  border-top: 0;
+}
+.phubkv dt {
+  flex: 0 0 88px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubkv dd {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.phubkv-empty {
+  color: var(--mut);
+  font-weight: 400;
+}
+.phubkv-sub {
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  color: var(--mut);
+}
+.phubmemo {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+.phublink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+}
+
+/* 数値カード（成長）・今季成績のタイル（活動） */
+.phubnums {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.phubnumcard,
+.phubstat {
+  min-width: 0;
+  padding: 12px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.phubnumcard .l,
+.phubstat .l,
+.phubstat .s {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubnumcard .v,
+.phubstat .v {
+  font-size: var(--fs-stat);
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.phubnumcard .v small {
+  margin-left: 2px;
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  color: var(--mut);
+}
+.phubnumcard .d {
+  margin-top: 2px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.phubstats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.phubstats.four {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.phubstat {
+  text-align: center;
+}
+.phubstat .l {
+  overflow-wrap: anywhere;
+}
+/* BMI の目安帯のメーター（薄い帯＝JFA の目標。判定語は出さない） */
+.phubmeter {
+  position: relative;
+  display: block;
+  height: 8px;
+  margin: 4px 0 6px;
+  background: var(--surface-container);
+  border-radius: var(--r-full);
+}
+.phubmeter .pm-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: var(--accent-tint-strong);
+}
+.phubmeter .pm-dot {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+/* 一覧（測定・怪我・出欠履歴）。行末に「編集」「削除」 */
+.phublist {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.phubrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 10px 6px 10px 14px;
+  border-top: 1px solid var(--outline);
+}
+.phubrow:first-child {
+  border-top: 0;
+}
+.phubrow-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.phubrow-main b {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+.phubrow-main span {
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}
+.phubrow-main small {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.phubrow-act {
+  flex: none;
+  display: flex;
+}
+.phubrow-st {
+  flex: none;
+  padding-right: 10px;
+  font-weight: 700;
+}
+.phubrowbtn {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.phubrowbtn.danger {
+  color: var(--danger);
+}
+.phubadd {
+  width: 100%;
+  min-height: 44px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-lowest);
+  border: 1px dashed var(--outline-strong);
+  border-radius: var(--r-lg);
+  cursor: pointer;
+}
+.phubtag {
+  display: inline-block;
+  padding: 1px 8px;
+  font-size: var(--fs-body-s);
+  font-weight: 600;
+  color: var(--mut);
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-full);
+}
+.phubtag.st-out {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.phubtag.st-rec {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.phubnotes {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.phubnotes button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0;
+  font-size: var(--fs-body);
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--outline);
+  cursor: pointer;
+}
+.phubnotes button span {
+  flex: none;
+  width: 88px;
+  color: var(--mut);
+}
+
+/* 体力：合計・評価、種目ごとのカード、測定回 */
+.phubsum {
+  font-size: var(--fs-title);
+  line-height: 1.5;
+}
+.phubsum b {
+  font-size: var(--fs-headline);
+  font-variant-numeric: tabular-nums;
+}
+.phubsum-d {
+  display: block;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubfcards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.phubfcard {
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.phubfcard-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.phubfcard-v {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-top: 4px;
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.phubdiff {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--mut);
+}
+.phubdiff.up {
+  color: var(--primary-dim);
+}
+.phubdiff.down {
+  color: var(--danger);
+}
+.phubscore {
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  color: var(--mut);
+}
+.phubfcard-d {
+  margin-bottom: 4px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubsession {
+  padding: 10px 14px;
+  border-top: 1px solid var(--outline);
+}
+.phubsession:first-child {
+  border-top: 0;
+}
+.phubsession-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.phubsession-h span {
+  flex: 1;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubsession ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.phubsession li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--fs-body);
+}
+.phubsession li span {
+  flex: 1;
+  min-width: 0;
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.phubsession li small {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+
+/* §3-10 編集フォームのシート（スマホ＝下から。.teamapp／.profapp のどちらの下でも効く）。
+   z-index は下部タブ(40)・既存シート(60)より上、トースト(90)より下（検証メッセージをシートの上に出すため） */
+.phubsheetback {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(21, 35, 60, 0.4);
+}
+.phubsheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 560px;
+  max-height: 92dvh;
+  margin: 0 auto;
+  background: var(--surface);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  box-shadow: var(--elev-3);
+  animation: wsheetup var(--dur-l) var(--ease-decel);
+}
+.phubsheet-h {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 56px;
+  padding: 6px 8px 6px 18px;
+  border-bottom: 1px solid var(--outline);
+}
+.phubsheet-h h2 {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 700;
+}
+.phubsheet-x {
+  min-height: 44px;
+  padding: 0 12px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.phubsheet-b {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px 16px calc(env(safe-area-inset-bottom) + 18px);
+}
+.phubsheet .formfield,
+.phubsheet .formrow,
+.phubsheet .formgrid {
+  margin: 0 0 14px;
+}
+.phubsheet .formrow .formfield {
+  margin: 0;
+}
+.phubsheet .bigbtn {
+  width: 100%;
+  min-height: 48px;
+  margin: 6px 0 4px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: 0;
+  border-radius: var(--r-lg);
+}
+.phubsheet .bigbtn.ghost {
+  margin-top: 12px;
+}
+.phubro {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 13px;
+  color: var(--mut);
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+/* キャプテン・削除（スタッフが既存の選手を編集するときだけ、フォームの末尾） */
+.phubmanage {
+  margin-top: 10px;
+  padding-top: 6px;
+  border-top: 1px solid var(--outline);
+}
+.phubdel {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--danger);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+/* 選択肢のセグメント（評定 1〜5・性別・学期制・参加者など） */
+.phubseg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.phubseg button {
+  flex: 1 1 0;
+  min-width: 56px;
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.phubseg button.on {
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-color: var(--accent);
+}
+
+/* §4 グラフ（依存なしの SVG。.noteapp の .chart-line には依存しない）。文字は SVG の中でも 12px */
+.phub .tchart,
+.phub .rchart {
+  width: 100%;
+  overflow: hidden;
+}
+.phub .tchart svg,
+.phub .rchart svg {
+  display: block;
+  max-width: 100%;
+}
+.phub .tc-grid,
+.phub .rc-spoke,
+.phub .rc-ring {
+  fill: none;
+  stroke: var(--outline);
+  stroke-width: 1;
+}
+.phub .rc-ring {
+  stroke: var(--outline-strong);
+}
+.phub .tchart text,
+.phub .rchart text {
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  fill: var(--mut);
+}
+.phub .tchart text.tc-val {
+  font-weight: 700;
+  fill: var(--ink);
+}
+.phub .rchart text.rc-axis {
+  fill: var(--ink);
+}
+.phub .tchart .tc-tip text.tc-tiptext {
+  fill: var(--surface-lowest);
+}
+.phub .tchart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phub .tl-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.phub .tl-note {
+  margin-left: auto;
+}
+.phub .tl-sw {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+}
+.phub .tl-sw.dash,
+.phub .tl-sw.dot {
+  height: 0;
+  background: none;
+  border-top: 2px dashed currentColor;
+  border-radius: 0;
+}
+.phub .tl-sw.dot {
+  border-top-style: dotted;
+}
+.phub .tl-sw.bar {
+  width: 3px;
+  height: 12px;
+}
+.phub .tl-sw.tri {
+  width: 0;
+  height: 0;
+  background: none;
+  border-radius: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid var(--primary-dim);
+}
+/* 教科ごとの横棒（自分＝--accent の棒、平均＝--mut の細い線、目標＝小さな三角） */
+.phub .sbars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.phub .sbar {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.phub .sbar-l {
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}
+.phub .sbar-track {
+  position: relative;
+  height: 12px;
+  background: var(--surface-container);
+  border-radius: var(--r-full);
+}
+.phub .sbar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+}
+.phub .sbar-avg {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--mut);
+}
+.phub .sbar-tgt {
+  position: absolute;
+  top: 100%;
+  width: 0;
+  height: 0;
+  margin: 1px 0 0 -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid var(--primary-dim);
+}
+.phub .sbar-v {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
+}
+.phub .sbar-v b {
+  font-size: var(--fs-title-s);
+}
+.phub .sbar-v small {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phub .sbars-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+/* レポート：SeasonReport の CSS は .noteapp 配下にしか無いので .noteapp の div で包む。.noteapp 単独に高さ・グリッドの
+   指定は無い（確認済み）ので打ち消すのは、ハブの左右の余白と二重になる .formgrid の 16px だけ */
+.phub-report {
+  min-width: 0;
+}
+.phub-report .formgrid {
+  margin-left: 0;
+  margin-right: 0;
+}
+/* 文字は 12px 以上（.noteapp の入力ラベル 11px・レポートの紙の小見出し 10〜11px をハブの中だけ 12px に） */
+.phub-report .formfield label,
+.phub-report .repsl,
+.phub-report .repfoot {
+  font-size: var(--fs-body-s);
+}
+
+/* ---- 個人ページ 第3段：テスト（§3-5）・成績表（§3-6）・進路（§3-7）----
+   第2段の部品（.phubcard／.phublist／.phubrow／.phubtag／.phubsheet／.phubseg／グラフ）に足す分だけ。 */
+.phubempty.compact {
+  padding: 16px;
+}
+.phubempty.compact b {
+  margin-bottom: 0;
+}
+.phubrowbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.phubtag.st-ok {
+  color: var(--primary-dim);
+  border-color: var(--primary-dim);
+}
+.phubtag.st-acc {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.phubpre {
+  white-space: pre-wrap;
+}
+.phubtoggle {
+  align-self: flex-start;
+}
+
+/* グラフの最新値ラベルに縁取り（目標線・参照線と重なっても読めるように） */
+.phub .tchart text.tc-val {
+  paint-order: stroke;
+  stroke: var(--surface-lowest);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+/* 数値のタイル（テストカードの合計・順位・目標） */
+.phubfacts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.phubfacts:empty {
+  display: none;
+}
+.phubfact {
+  min-width: 0;
+  padding: 8px 12px;
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+}
+.phubfact .l,
+.phubfact .d {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubfact .v {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.phubfact .v small {
+  margin-left: 4px;
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  color: var(--mut);
+}
+.phubfact .d.up {
+  color: var(--primary-dim);
+}
+.phubfact .d.down {
+  color: var(--danger);
+}
+
+/* テストのカード */
+.phubexams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+.phubexam {
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.phubexam-h {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -6px -8px 0 0;
+}
+.phubexam-title {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding-top: 8px;
+}
+.phubexam-title b {
+  font-size: var(--fs-title-s);
+  overflow-wrap: anywhere;
+}
+.phubexam-meta {
+  margin: 0 0 12px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubexam-note {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--outline);
+}
+.phubexam-note > span {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+
+/* 成績の目標カード */
+.phubgoal-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -6px -8px 4px 0;
+}
+.phubgoal-h .phubcard-t {
+  margin: 0;
+}
+.phubgoal-main {
+  font-size: var(--fs-title);
+  line-height: 1.5;
+}
+.phubgoal-main b {
+  font-size: var(--fs-stat);
+  font-variant-numeric: tabular-nums;
+}
+.phubgoal-main small,
+.phubgoal-sub {
+  margin-left: 6px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubgoal-sub {
+  margin-left: 0;
+}
+.phubgoal-meta {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubgoal-bar {
+  height: 8px;
+  margin: 10px 0 8px;
+  overflow: hidden;
+  background: var(--surface-container);
+  border-radius: var(--r-full);
+}
+.phubgoal-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: inherit;
+}
+.phubgoal-bar.done i {
+  background: var(--primary-dim);
+}
+.phubgoal-now {
+  font-size: var(--fs-body);
+}
+.phubgoal-now b {
+  font-size: var(--fs-title);
+  font-variant-numeric: tabular-nums;
+}
+.phubgoal-gap {
+  margin-left: 10px;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+.phubgoal-gap b {
+  font-size: var(--fs-headline);
+}
+.phubgoal-gap.ok {
+  color: var(--primary-dim);
+}
+.phubgoal-act {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--outline);
+}
+.phubgoal-act .l {
+  display: block;
+  margin-bottom: 2px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+
+/* 通知表の表（行＝教科・列＝学期。横スクロールのコンテナに入れ、左の教科の列は固定） */
+.phubtablewrap {
+  overflow-x: auto;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  -webkit-overflow-scrolling: touch;
+}
+.phubtable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+}
+.phubtable th,
+.phubtable td {
+  padding: 8px 10px;
+  text-align: center;
+  white-space: nowrap;
+  border-top: 1px solid var(--outline);
+}
+/* --phubcol は GradesSection が、見える列数できっちり収まる幅を入れる（左端の列が教科列の下で欠けないように） */
+.phubtable td {
+  min-width: var(--phubcol, 64px);
+}
+.phubtable thead th {
+  padding: 0 4px;
+  border-top: 0;
+  font-size: var(--fs-body-s);
+  font-weight: 600;
+  color: var(--mut);
+  vertical-align: bottom;
+}
+.phubtable thead th:first-child,
+.phubtable tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 92px;
+  padding-left: 14px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--surface-lowest);
+  box-shadow: 1px 0 0 var(--outline);
+}
+.phubtable thead th:first-child {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubtable thead th button {
+  width: 100%;
+  min-height: 44px;
+  padding: 4px 6px;
+  font-size: var(--fs-body-s);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.phubtable thead th button span {
+  display: block;
+}
+.phubtable td .d {
+  margin-left: 4px;
+  font-size: var(--fs-body-s);
+  font-weight: 600;
+}
+.phubtable td .d.up {
+  color: var(--primary-dim);
+}
+.phubtable td .d.down {
+  color: var(--danger);
+}
+.phubtable td small {
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  color: var(--mut);
+}
+.phubtable td.na {
+  color: var(--mut);
+}
+.phubtable tr.sum th,
+.phubtable tr.sum td {
+  font-weight: 700;
+  background: var(--surface-low);
+}
+.phubtable tr.first th,
+.phubtable tr.first td {
+  border-top-color: var(--outline-strong);
+}
+.phubtable tr.t-att th,
+.phubtable tr.t-att td {
+  color: var(--mut);
+  font-weight: 400;
+}
+.phubcomments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.phubcomments li {
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.phubcomments li b {
+  margin-right: 8px;
+  font-size: var(--fs-body-s);
+  font-weight: 600;
+  color: var(--mut);
+}
+
+/* 志望校（第 1〜第 5 希望） */
+.phubchoices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.phubchoice {
+  min-width: 0;
+  padding: 14px 14px 6px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.phubchoice-h {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.phubrank {
+  flex: none;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--accent);
+}
+.phubchoice-name {
+  min-width: 0;
+  font-size: var(--fs-title-s);
+  overflow-wrap: anywhere;
+}
+.phubchoice-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 6px;
+}
+.phubchoice-dl {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0 0;
+}
+.phubchoice-dl > div {
+  display: flex;
+  gap: 12px;
+}
+.phubchoice-dl dt {
+  flex: 0 0 84px;
+  padding-top: 1px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubchoice-dl dd {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.phubchoice-act {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin: 6px -8px 0 0;
+}
+.phubmile .now {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* 次のアクション（済みのチェック・期限切れの強調） */
+.phubchk {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-left: -10px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.phubchk .box {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--on-primary);
+  background: var(--surface-lowest);
+  border: 2px solid var(--outline-strong);
+  border-radius: var(--r-sm);
+}
+.phubchk[aria-checked="true"] .box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.phubaction.done .phubrow-main > span {
+  color: var(--mut);
+  text-decoration: line-through;
+}
+.phubaction.overdue .phubrow-main > span,
+.phubaction.overdue .phubrow-main small {
+  color: var(--danger);
+}
+.phubrow-main .phubmeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 8px;
+}
+.phubrow-main .phubmeta > span {
+  font-size: var(--fs-body-s);
+}
+/* 文章が主役の行（活動・面談）：スマホでは「編集・削除」を本文の下へ回して本文の幅を確保する */
+.phubrow.stack {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+.phubrow.stack .phubrow-main {
+  flex: 1 1 100%;
+}
+.phubrow.stack .phubrow-act {
+  margin: 0 0 0 auto;
+}
+.phubrow-main .phubsoft {
+  color: var(--mut);
+}
+
+/* フォームの中：小見出し・教科ごとの点の入力・評定のセグメント */
+.phubsheet-sec {
+  margin: 4px 2px 8px;
+  font-size: var(--fs-body);
+  font-weight: 700;
+}
+.phubsheet-live {
+  margin: -4px 2px 14px;
+}
+.phubsheet-more {
+  margin: 0 0 14px;
+}
+.phubscores {
+  display: grid;
+  grid-template-columns: 72px repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 14px;
+}
+.phubscores-h,
+.phubscore-row {
+  display: contents;
+}
+.phubscores-h span {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  text-align: center;
+}
+.phubscores-sep {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubscore-row label {
+  font-size: var(--fs-body);
+}
+.phubscores input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 10px;
+  text-align: right;
+  font-size: 15px;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  outline: none;
+}
+.phubscores input::placeholder {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.phubrates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+.phubrate {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.phubrate > span {
+  flex: 0 0 72px;
+  font-size: var(--fs-body);
+}
+.phubrate .phubseg {
+  flex: 1;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.phubrate .phubseg button {
+  min-width: 0;
+  padding: 0;
+}
+
+/* ---- 個人ページ 第5段（レビュー修正）---- */
+/* フォームの補足文：既存の .fieldhint は 11px で他の画面にも効くので触らず、ハブ・選手フォームだけ 12px にする */
+.phubhint {
+  font-size: var(--fs-body-s);
+}
+/* 単位つきのラベル（「50m走（秒）」「握力（kg）」）を大文字化しない（既存の .formfield label は uppercase＋letter-spacing） */
+.phubsheet .formfield label {
+  text-transform: none;
+  letter-spacing: 0;
+}
+/* 体力の測定回の見出し行：日付・区分のタグ・「n 種目」・削除。狭いときは折り返す（タグは伸ばさない） */
+.phubsession-h {
+  flex-wrap: wrap;
+}
+.phubsession-h .phubtag {
+  flex: none;
+}
+/* 種目管理シート（TeamHub）の種目名の横の「新体力テスト」タグ（player-hub §1-4） */
+.cmpnm .phubtag {
+  margin-left: 8px;
+  vertical-align: 1px;
+}
+/* レポートの「印刷 / PDF保存」「画像で保存」：.noteapp .bigbtn の左右 16px を外し、日付欄の左端に揃える */
+.phub-report .reportacts .bigbtn {
+  margin-left: 0;
+  margin-right: 0;
 }
 
 /* ============================================================
@@ -20376,6 +22058,350 @@ body:has(.mhead) .grouppick-item {
   .coachapp:has(.nbmain) .scroll .notecard.unread {
     box-shadow: inset 3px 0 0 var(--accent);
   }
+  /* player-hub §2-2: 選手のプロフィール画面(.profapp)。スマホの下部タブ分の余白を外し（.scroll{padding-bottom:0}
+     より詳細度が高い基底の .profapp .scroll を戻す）、PCトップバーのユーザー名を出す */
+  .profapp .scroll {
+    padding: 8px 24px 32px;
+  }
+  .profapp .hdrusr {
+    display: inline;
+    margin-left: auto;
+    color: var(--mut);
+    font-size: 12px;
+  }
+  /* PCのヘッダーは .setapp／.libapp（レール直結画面）と同じ様式：白い帯・下に 1px の罫・ロゴは 18px／青いチーム名のピル */
+  .app.profapp {
+    max-width: none;
+  }
+  .profapp header {
+    background: var(--surface-lowest);
+    border-bottom: 0;
+    box-shadow: 0 1px 0 var(--outline);
+    padding: 10px 18px;
+  }
+  .profapp .logo {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    line-height: 1.05;
+  }
+  .profapp .tag.team {
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  /* player-hub（個人ページ .phub）PC の密度：操作部品は 32px・四角（--r-md）。基底はスマホ（44px・丸め） */
+  .phub {
+    max-width: 1040px;
+    padding-top: 0;
+  }
+  .phubhead {
+    padding: 16px 18px;
+    border-radius: var(--r-md);
+  }
+  .phubedit {
+    width: 32px;
+    height: 32px;
+    margin: 0;
+    border: 1px solid var(--outline);
+  }
+  .phubkpi {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .phubkpi-item {
+    min-height: 0;
+  }
+  .phubkpi-item:hover {
+    background: var(--surface-container);
+  }
+  .phubbody.withnav {
+    display: grid;
+    grid-template-columns: 160px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+  .phubnav {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .phubnav button {
+    height: 32px;
+    padding: 0 12px;
+    text-align: left;
+    font-size: var(--fs-body);
+    font-weight: 600;
+    color: var(--ink);
+    background: none;
+    border: 0;
+    border-radius: var(--r-md);
+    cursor: pointer;
+  }
+  .phubnav button:hover {
+    background: var(--surface-container);
+  }
+  .phubnav button.on {
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .phubcard,
+  .phubkv,
+  .phublist,
+  .phubnumcard,
+  .phubstat,
+  .phubfcard,
+  .phubempty,
+  .phublink {
+    border-radius: var(--r-md);
+  }
+  .phubkv-row {
+    min-height: 36px;
+  }
+  .phubrow {
+    min-height: 48px;
+  }
+  .phubrowbtn {
+    min-width: 0;
+    min-height: 32px;
+  }
+  .phubadd,
+  .phubdel {
+    min-height: 32px;
+    border-radius: var(--r-md);
+  }
+  .phubadd {
+    width: auto;
+    align-self: flex-start;
+    padding: 0 16px;
+  }
+  .phublink {
+    min-height: 40px;
+  }
+  .phubnums {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .phubstats.four {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .phubfcards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .phubnotes button {
+    min-height: 32px;
+  }
+  .phubseg button {
+    min-height: 32px;
+    border-radius: var(--r-md);
+  }
+  .phubtag,
+  .phubgroup {
+    border-radius: var(--r-sm);
+  }
+  /* 編集フォームのシートはハブの内容の上に重ねる中央のダイアログ（幅 560px。レール 208px を除いた領域の中央） */
+  .phubsheetback {
+    left: 208px;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .phubsheet {
+    width: 560px;
+    max-width: 100%;
+    max-height: min(86dvh, 820px);
+    border-radius: var(--r-lg);
+    animation: wdialogin var(--dur-m) var(--ease-decel);
+  }
+  .phubsheet-h {
+    min-height: 48px;
+  }
+  .phubsheet-x {
+    min-height: 32px;
+  }
+  .phubsheet .bigbtn {
+    min-height: 36px;
+    font-size: var(--fs-body);
+    border-radius: var(--r-md);
+  }
+  .phubro {
+    min-height: 32px;
+    border-radius: var(--r-md);
+  }
+  .phubsheet .phubseg button {
+    min-width: 0;
+  }
+  /* PC のグラフは細めに（文字は 12px のまま） */
+  .phub .sbar {
+    grid-template-columns: 80px minmax(0, 1fr) 88px;
+  }
+  /* player-hub 第3段（テスト・成績表・進路）PC の密度：操作部品は 32px・四角（--r-md）。テストのカードは 2 列 */
+  .phubexams {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+  .phubfacts {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  }
+  .phubexam,
+  .phubchoice,
+  .phubtablewrap {
+    border-radius: var(--r-md);
+  }
+  .phubtable th,
+  .phubtable td {
+    padding: 6px 12px;
+  }
+  .phubtable thead th button {
+    min-height: 32px;
+  }
+  .phubchk {
+    width: 32px;
+    height: 32px;
+  }
+  .phubscores input {
+    min-height: 32px;
+  }
+  .phubrate .phubseg button {
+    min-height: 32px;
+  }
+  .phubchoice-act {
+    margin-bottom: 4px;
+  }
+  .phubrow.stack {
+    flex-wrap: nowrap;
+  }
+  .phubrow.stack .phubrow-main {
+    flex: 1;
+  }
+  .phubrow.stack .phubrow-act {
+    margin: 0;
+  }
+  /* player-hub §3（狭いハブ）：名簿の 3 列（220｜300｜個人ページ）では 1024〜1300px 台で個人ページが 250〜500px になる。
+     PlayerHub が自分の幅を測って 560px 未満のとき .narrow を付け（縦メニュー・.withnav は描かずチップ列 .phubtabs にする）、
+     ここで 4 列のマスは 2 列に、2 列のカードは 1 列に、横に並べていた行は折り返して本文の幅を確保する */
+  .phub.narrow .phubkpi,
+  .phub.narrow .phubnums,
+  .phub.narrow .phubstats.four {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .phub.narrow .phubstats:not(.four) {
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  }
+  .phub.narrow .phubfcards,
+  .phub.narrow .phubexams {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .phub.narrow .sbar {
+    grid-template-columns: 64px minmax(0, 1fr) 72px;
+  }
+  .phub.narrow .phubsession ul {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .phub.narrow .phub-report .formgrid {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .phub.narrow .phubrow.stack {
+    flex-wrap: wrap;
+  }
+  .phub.narrow .phubrow.stack .phubrow-main {
+    flex: 1 1 100%;
+  }
+  .phub.narrow .phubrow.stack .phubrow-act {
+    margin: 0 0 0 auto;
+  }
+  /* 名簿（.teammain）の中の編集シートの「保存」：1 つ目の PC ブロックの右ペインのボタン降格
+     （.teammain .bigbtn:not(.ghost)＝白地）が効いて主ボタンが無くなるので、選手側（.profapp）と同じ accent に戻す */
+  .teammain .phubsheet .bigbtn:not(.ghost) {
+    background: var(--accent);
+    color: var(--on-primary);
+    border: 0;
+  }
+  .teammain .phubsheet .bigbtn:not(.ghost):hover {
+    background: var(--accent-strong);
+  }
+  /* player-hub §2-1（名簿 PC だけの調整）：名簿タブは 3 列（絞り込み 220px｜一覧 300px｜個人ページ 1fr）。
+     1つ目のPCブロックの .teamapp:has(.teammain)（300px｜1fr。行は auto auto 1fr）は触らず、詳細度を上げて
+     ここで上書きする（名簿タブが絞り込み列を開いているときだけルートに .rosside-open が付く。
+     試合記録・出欠タブ、絞り込み列を畳んだ名簿は今の 2 列のまま）。.rosside は .scroll の外の兄弟で、
+     .scroll を 2 列目・.teammain を 3 列目へ送る。末尾の 1600px 追随ブロックにも 220px 340px 1fr を足してある */
+  .teamapp.rosside-open:has(.teammain) {
+    grid-template-columns: 220px 300px minmax(0, 1fr);
+  }
+  .teamapp.rosside-open .rosside {
+    grid-row: 3;
+    grid-column: 1;
+    display: block;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 14px calc(env(safe-area-inset-bottom) + 24px);
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+  }
+  .teamapp.rosside-open:has(.teammain) .scroll {
+    grid-column: 2;
+  }
+  .teamapp.rosside-open:has(.teammain) .teammain {
+    grid-column: 3;
+  }
+  /* 「‹ 絞り込みを隠す」。.nbside-hide と同じ右寄せのテキストボタン（PCは32px） */
+  .rosside-hide {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    min-height: 32px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .rosside .rosfsec:first-of-type .rosfsec-h {
+    padding-top: 6px;
+  }
+  /* 選んだ行を見える位置へ寄せるとき、上に貼り付く表の見出し(thead)の下に隠れないようにする */
+  .ptable-row.sel {
+    scroll-margin: 44px 0 8px;
+  }
+  /* 絞り込み列の行は 36px に詰める（15 行前後が 1 画面に収まるように。指サイズ 44px は下の pointer: coarse で戻す） */
+  .rosfrows {
+    border-radius: var(--r-md);
+  }
+  .rosfrow {
+    min-height: 36px;
+  }
+  .rosfrow:hover {
+    background: var(--surface-low);
+  }
+  .rosfsec-h {
+    padding: 10px 4px 4px;
+  }
+  .rosfmanage {
+    min-height: 32px;
+  }
+  /* 一覧の列(300px)の操作行：畳んでいるときだけ出る「絞り込み」と検索欄は他のPCの操作部品と同じ 32px・四角 */
+  .rostop {
+    padding: 0 0 8px;
+  }
+  .rostop .rosfilterbtn {
+    gap: 4px;
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+    font-weight: 400;
+  }
+  .rostop .search {
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: var(--r-md);
+    font-size: 13px;
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -20465,6 +22491,10 @@ body:has(.mhead) .grouppick-item {
   .teamapp:has(.teammain) {
     grid-template-columns: 340px minmax(0, 1fr);
   }
+  /* player-hub §2-1: 名簿タブ（絞り込み列を開いているとき）は 220px｜340px｜1fr */
+  .teamapp.rosside-open:has(.teammain) {
+    grid-template-columns: 220px 340px minmax(0, 1fr);
+  }
   .coachapp:has(.nbmain) {
     grid-template-columns: 340px minmax(0, 1fr);
   }
@@ -20537,12 +22567,52 @@ body:has(.mhead) .grouppick-item {
   .noteapp .nbtop .nbunread,
   .noteapp .nbtop .ngchip,
   .noteapp .drawclose,
-  .nbside-hide {
+  .nbside-hide,
+  .rosside-hide,
+  .rostop .rosfilterbtn,
+  .rostop .search,
+  .rosfrow,
+  .rosfmanage {
     min-height: 44px;
   }
   .cmpselect {
     height: auto;
     padding: 10px 12px;
     font-size: 15px;
+  }
+  /* player-hub: 個人ページの操作部品も指サイズ 44px へ戻す */
+  .phubnav button,
+  .phubrowbtn,
+  .phubadd,
+  .phubdel,
+  .phubseg button,
+  .phubsheet-x,
+  .phubnotes button {
+    min-height: 44px;
+  }
+  .phubnav button {
+    height: 44px;
+  }
+  .phubedit {
+    width: 44px;
+    height: 44px;
+  }
+  .phubrowbtn {
+    min-width: 44px;
+  }
+  /* player-hub 第3段 */
+  .phubtable thead th button,
+  .phubscores input,
+  .phubrate .phubseg button {
+    min-height: 44px;
+  }
+  /* player-hub 第5段：「シーズンレポートを見る ›」と編集シートの「保存」（PC で 40px・36px に詰めた分） */
+  .phublink,
+  .phubsheet .bigbtn {
+    min-height: 44px;
+  }
+  .phubchk {
+    width: 44px;
+    height: 44px;
   }
 }

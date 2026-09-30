@@ -18,6 +18,7 @@ import {
   IconMore,
   IconNote,
   IconSetPiece,
+  IconUser,
   IconWhistle,
 } from "./icons";
 
@@ -109,7 +110,8 @@ const STAFF_MTAB: readonly MtabDef[] = [
   },
 ];
 
-/** 選手・保護者用：ホーム／ノート／チーム／その他 の4つ（コーチングタブが無い。mobile-redesign-v2 §1） */
+/** 選手・保護者用：ホーム／ノート／チーム／プロフィール／その他 の5つ（コーチングタブが無い。mobile-redesign-v2 §1。
+ *  プロフィールは右から2番目＝player-hub §2-2） */
 const PLAYER_MTAB: readonly MtabDef[] = [
   {
     key: "home",
@@ -128,6 +130,7 @@ const PLAYER_MTAB: readonly MtabDef[] = [
     target: "team",
     screens: new Set(["team", "chat"]),
   },
+  { key: "profile", label: "プロフィール", icon: <IconUser />, target: "profile", screens: new Set(["profile"]) },
   {
     key: "other",
     label: "その他",
@@ -203,7 +206,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
     }).filter((n) => n.ts > seen).length;
   }, [coach, board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, teamCtx.team, seenVer]);
 
-  // 下部タブ(.mtab)。項目数はスタッフ5・選手/保護者4（mobile-redesign-v2 §1）。
+  // 下部タブ(.mtab)。項目数はスタッフ5・選手/保護者5（mobile-redesign-v2 §1・player-hub §2-2）。
   // チャット未読は既存の未読計算が無いため出さない。STAFF_MTAB/PLAYER_MTABの並びが
   // そのままタブの並びになる（並び替えは配列の並びを変えるだけで済む）
   type MtabItem = {
@@ -250,6 +253,8 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         { item: { key: "notebook", label: "サッカーノート", icon: <IconNote />, badge: noteUnread, onSelect: () => board.setScreen("notebook") } },
         // ラベルはHomeMenuの選手向けタイルと揃える
         { item: { key: "team", label: "チーム", icon: <IconCalendarCheck />, onSelect: () => board.setScreen("team") } },
+        // player-hub §2-2: チームの後・チャットの前
+        { item: { key: "profile", label: "プロフィール", icon: <IconUser />, onSelect: () => board.setScreen("profile") } },
         { item: { key: "chat", label: "チャット", icon: <IconChat />, onSelect: () => board.setScreen("chat") } },
       ];
 

@@ -36,6 +36,16 @@ export function IconUsers(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** プロフィール（人物 1 人。選手の下部タブ・レール。IconUsers と同じ線幅・viewBox） */
+export function IconUser(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </Svg>
+  );
+}
+
 /** 新規作成（プラス枠） */
 export function IconPlusSquare(p: SVGProps<SVGSVGElement>) {
   return (

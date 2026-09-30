@@ -965,7 +965,9 @@ export type ScreenName =
   | "articles"
   | "settings"
   /** 「その他」ハブ（新設・スマホ専用。mobile-redesign-v2 §2）。PCレールには出さない */
-  | "other";
+  | "other"
+  /** 選手の「プロフィール」（個人ページ。player-hub §2-2）。選手だけの画面：下部タブ右から2番目・PCレール */
+  | "profile";
 
 interface BoardContextValue {
   state: BoardState;

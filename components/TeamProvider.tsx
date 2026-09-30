@@ -329,6 +329,8 @@ function sampleTeam(): TeamData {
       { id: "cmp2", name: "練習試合", note: "" },
     ],
     fitnessTests: DEFAULT_FITNESS_TESTS,
+    // 標準種目は全部そろっているので補完済み（player-hub §1-4。立てないと、全部削除した直後の再読み込みで復活する）
+    fitnessStdSeeded: true,
     matches: [
       {
         id: "m1",
@@ -572,6 +574,18 @@ interface TeamContextValue {
   addFitnessRecord: (playerId: string, rec: FitnessRecord) => void;
   /** index は対象選手の fitness 配列内の位置 */
   removeFitnessRecord: (playerId: string, index: number) => void;
+  /**
+   * 測定回の一括追加（player-hub §1-4）。1 回の updatePlayer で足す（続けて addFitnessRecord を呼ぶと
+   * 古い Player で上書きして片方が消えるため）。同じ (testId, date) の既存の記録は置き換える
+   */
+  addFitnessRecords: (playerId: string, recs: FitnessRecord[]) => void;
+  /** 日付＋種目で削除する（記録に id が無く index が並べ替えでずれるため。同じ (testId, date) はすべて消す） */
+  removeFitnessRecordBy: (playerId: string, testId: string, date: string) => void;
+  /**
+   * 測定回（日付）ごとまとめて削除する（player-hub §3-4。removeFitnessRecordBy を種目ごとに続けて呼ぶと
+   * 古い Player で上書きして 1 件しか消えないので、1 回の updatePlayer で消す）
+   */
+  removeFitnessSession: (playerId: string, date: string) => void;
   summary: (eventId: string) => {
     yes: number;
     maybe: number;
@@ -1290,7 +1304,11 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   const updateFitnessTest = useCallback((test: FitnessTest) => {
     setTeam((t) => ({
       ...t,
-      fitnessTests: (t.fitnessTests ?? []).map((x) => (x.id === test.id ? test : x)),
+      // player-hub §1-4: 種目管理シートは id・名前・単位・向きだけで組み直すので、
+      // 新体力テストの印(standardKey)は既存の種目から引き継ぐ（消えると得点・レーダーから外れ、読み込みで重複して足される）
+      fitnessTests: (t.fitnessTests ?? []).map((x) =>
+        x.id === test.id ? { ...test, standardKey: test.standardKey ?? x.standardKey } : x
+      ),
     }));
   }, []);
   const removeFitnessTest = useCallback(
@@ -1328,6 +1346,38 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       const list = p.fitness ?? [];
       if (index < 0 || index >= list.length) return;
       board.updatePlayer({ ...p, fitness: list.filter((_, i) => i !== index) });
+    },
+    [board]
+  );
+  const addFitnessRecords = useCallback(
+    (playerId: string, recs: FitnessRecord[]) => {
+      if (recs.length === 0) return;
+      const p = board.state.players.find((x) => x.id === playerId);
+      if (!p) return;
+      const replaced = (p.fitness ?? []).filter((f) => !recs.some((r) => r.testId === f.testId && r.date === f.date));
+      board.updatePlayer({ ...p, fitness: [...recs, ...replaced] });
+    },
+    [board]
+  );
+  const removeFitnessRecordBy = useCallback(
+    (playerId: string, testId: string, date: string) => {
+      const p = board.state.players.find((x) => x.id === playerId);
+      if (!p) return;
+      const list = p.fitness ?? [];
+      const rest = list.filter((f) => !(f.testId === testId && f.date === date));
+      if (rest.length === list.length) return;
+      board.updatePlayer({ ...p, fitness: rest });
+    },
+    [board]
+  );
+  const removeFitnessSession = useCallback(
+    (playerId: string, date: string) => {
+      const p = board.state.players.find((x) => x.id === playerId);
+      if (!p) return;
+      const list = p.fitness ?? [];
+      const rest = list.filter((f) => f.date !== date);
+      if (rest.length === list.length) return;
+      board.updatePlayer({ ...p, fitness: rest });
     },
     [board]
   );
@@ -1402,6 +1452,9 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       removeFitnessTest,
       addFitnessRecord,
       removeFitnessRecord,
+      addFitnessRecords,
+      removeFitnessRecordBy,
+      removeFitnessSession,
       summary,
     }),
     [
@@ -1449,6 +1502,9 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       removeFitnessTest,
       addFitnessRecord,
       removeFitnessRecord,
+      addFitnessRecords,
+      removeFitnessRecordBy,
+      removeFitnessSession,
       summary,
     ]
   );

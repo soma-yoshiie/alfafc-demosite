@@ -8,6 +8,8 @@ import type {
   DrillDoc,
   EventSquad,
   FitnessRecord,
+  FitnessStandardKey,
+  FitnessTest,
   Library,
   NotebookEntry,
   Point,
@@ -22,6 +24,8 @@ import type { UserArticle } from "./articles";
 import type { CoachLabState } from "./coachlab";
 import { emptyCoachLabState } from "./coachlab";
 import { ensureGradeGroups, ensureGroupColors, gradeGroupsFor } from "./groups";
+import { isStandardKey, STANDARD_KEYS, standardKeyForName, standardTestId } from "./fitnessScore";
+import { normalizeProfile, type PlayerProfile } from "./profile";
 import {
   DEFAULT_FITNESS_TESTS,
   FITNESS_TEST_1000M,
@@ -59,10 +63,16 @@ const CALFILTER_KEY = "soccer_tactics_calfilter_v2";
 // calendar-plan-a §11-1: PCの絞り込みパネル(.calside)の開閉状態。値は"open"/"closed"のみ
 const CALSIDE_OPEN_KEY = "soccer_tactics_calside_v1";
 const NBSIDE_OPEN_KEY = "soccer_tactics_nbside_v1";
+const ROSSIDE_OPEN_KEY = "soccer_tactics_rosside_v1";
 const GROUPFILTER_KEY = "soccer_tactics_groupfilter_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
 const COACHLAB_KEY = "soccer_tactics_coachlab_v1";
+// player-hub §1-1: 選手のプロフィール（成長・テスト・成績表・進路）。Record<playerId, PlayerProfile>。
+// BoardState.players には足さない（共有戦術の取り込みで丸ごと置き換わる・300ms デバウンス保存は容量超過を黙って無視する）
+const PROFILE_KEY = "soccer_tactics_profile_v1";
+// player-hub §1-5: デモのサンプル(3 人分)を入れ終えたマーカー。消したあとに勝手に再投入しないため
+const PROFILE_SEED_KEY = "soccer_tactics_profile_seed_v1";
 
 /* ---- 体力測定：旧形式(id/name/value:string)→新形式(testId/value:number)の後方互換変換 ---- */
 
@@ -126,13 +136,17 @@ function migrateFitness(fitness: unknown): FitnessRecord[] {
  * loadState()・loadTeam()の先頭でこの関数を呼び、旧デモの署名に一致するときだけ
  * 新デモへ書き換える（ユーザーが自分で選手を足した・学校区分を変えたチームには触らない）。 */
 const DEMO_SEED_KEY = "soccer_tactics_demo_seed_v1";
-/** 移行判定の版。判定条件を変えたら上げる（旧版のマーカーが残るブラウザで判定し直すため） */
-const DEMO_SEED_VERSION = "3";
+/** 移行判定の版。判定条件を変えたら上げる（旧版のマーカーが残るブラウザで判定し直すため）。
+ *  "4"（player-hub §1-5）: 旧デモ→新デモの判定は"3"で済んでいるため繰り返さず、
+ *  p08/p10 への新体力テストの標準種目の測定サンプル追加だけを一度走らせる */
+const DEMO_SEED_VERSION = "4";
 const OLD_DEMO_TEAM_NAME = "アルファラスFC U-12";
 
 /**
  * 設定の「デモデータを入れ直す」用。このアプリの保存データ（soccer_tactics_* と alfa-* の
  * 補助キー）をすべて消す。ログイン情報（alfa_coach_account_v1 / alfa_session_v1）は残す。
+ * 選手のプロフィール（PROFILE_KEY）とそのサンプル投入済みマーカー（PROFILE_SEED_KEY）も
+ * soccer_tactics_ で始まるのでここで消える（player-hub §1-5）。
  * 呼び出し側で location.reload() すると初回起動と同じ新しいデモが入る
  */
 export function resetAppData(): void {
@@ -186,19 +200,14 @@ function stripRemovedGroupIds(ids: unknown, removedIds: string[]): string[] | un
 }
 
 /**
- * 旧デモ（p01〜p16・小5/6・「アルファラスFC U-12」）を中学年代の新デモ（70人）へ移行する。
- * 完了マーカー(DEMO_SEED_KEY)に"2"を書いた後は、判定結果によらず以後は何もしない
- * （loadState()/loadTeam()のどちらが先に呼ばれても実質1回だけ判定・移行する）。
+ * 旧デモ（p01〜p16・小5/6・「アルファラスFC U-12」）を中学年代の新デモ（70人）へ移行する本体。
+ * マーカーの管理は呼び出し側（migrateOldDemo）。マーカーが"3"より前のブラウザでだけ呼ばれる。
  */
-export function migrateOldDemo(): void {
-  if (typeof window === "undefined") return;
+function migrateOldDemoRoster(): void {
   try {
-    // マーカーは"3"。"2"の時代は署名が厳しすぎて（人数16以下・全員が旧サンプルid・チーム名が
+    // 署名判定の経緯：マーカー"2"の時代は署名が厳しすぎて（人数16以下・全員が旧サンプルid・チーム名が
     // 旧名のまま）、数週間デモを触って選手を足したりチーム名を変えたりしたブラウザでは
-    // 一度も移行されないまま"2"が書かれ、以後は再判定もされなかった。版を上げて判定し直す
-    if (window.localStorage.getItem(DEMO_SEED_KEY) === DEMO_SEED_VERSION) return;
-    window.localStorage.setItem(DEMO_SEED_KEY, DEMO_SEED_VERSION);
-
+    // 一度も移行されないまま"2"が書かれ、以後は再判定もされなかった。版を"3"に上げて判定し直した
     const stateRaw = window.localStorage.getItem(KEY);
     if (!stateRaw) return;
     const state = JSON.parse(stateRaw) as { players?: unknown; teamName?: unknown } & Record<string, unknown>;
@@ -314,6 +323,58 @@ export function migrateOldDemo(): void {
   } catch {
     /* 壊れたデータで例外が出ても以後の読み込みを妨げない */
   }
+}
+
+/**
+ * デモ名簿（p08・p10）に、新体力テストの標準種目（握力・長座体前屈・20mシャトルラン・ハンドボール投げ）の
+ * 測定サンプルを足す（player-hub §1-5）。lib/sampleTeam.ts のサンプルのうち標準種目の id（ft_std_*）の記録だけを対象にし、
+ * すでに同じ (testId, date) がある選手には足さない（スタッフが消した既存の記録を復活させない）。
+ * 名簿に p08／p10 がいない（デモ名簿でない・削除済み）ときは何もしない
+ */
+function addDemoFitnessSamples(): void {
+  try {
+    const stateRaw = window.localStorage.getItem(KEY);
+    if (!stateRaw) return;
+    const state = JSON.parse(stateRaw) as { players?: unknown } & Record<string, unknown>;
+    if (!Array.isArray(state.players)) return;
+    let changed = false;
+    const players = (state.players as Array<Record<string, unknown>>).map((p) => {
+      if (p?.id !== "p08" && p?.id !== "p10") return p;
+      const sample = SAMPLE_PLAYERS.find((x) => x.id === p.id);
+      if (!sample) return p;
+      const have = Array.isArray(p.fitness) ? (p.fitness as FitnessRecord[]) : [];
+      const add = (sample.fitness ?? []).filter(
+        (r) => r.testId.startsWith("ft_std_") && !have.some((h) => h.testId === r.testId && h.date === r.date)
+      );
+      if (add.length === 0) return p;
+      changed = true;
+      return { ...p, fitness: [...have, ...add] };
+    });
+    if (changed) window.localStorage.setItem(KEY, JSON.stringify({ ...state, players }));
+  } catch {
+    /* 壊れたデータで例外が出ても以後の読み込みを妨げない */
+  }
+}
+
+/**
+ * 旧デモの移行と、デモのサンプル追加を版つきで一度だけ走らせる。マーカー(DEMO_SEED_KEY)が現行の版の
+ * ブラウザでは何もしない（loadState()/loadTeam()のどちらが先に呼ばれても実質1回だけ）。
+ * 旧デモ→新デモの判定（migrateOldDemoRoster）はマーカー"3"で済んでいるので、"3"のブラウザでは繰り返さない
+ * （判定条件が変わっていないため。繰り返すと、移行済みでチーム設定が未保存のブラウザで学年などを上書きしかねない）
+ */
+export function migrateOldDemo(): void {
+  if (typeof window === "undefined") return;
+  let prev: string | null;
+  try {
+    prev = window.localStorage.getItem(DEMO_SEED_KEY);
+    if (prev === DEMO_SEED_VERSION) return;
+    window.localStorage.setItem(DEMO_SEED_KEY, DEMO_SEED_VERSION);
+  } catch {
+    return;
+  }
+  if (prev !== "3") migrateOldDemoRoster();
+  // 旧デモ移行で新デモの名簿が入った直後でも、保存済みの p08/p10 に標準種目の測定サンプルが無ければ足す
+  addDemoFitnessSamples();
 }
 
 /** localStorage から状態を復元（SSR/未保存時は null） */
@@ -610,6 +671,62 @@ function normalizeAnnouncement(a: Announcement): Announcement {
   };
 }
 
+/**
+ * 体力測定の種目マスタに「新体力テストの種目」の印（standardKey）を補う（player-hub §1-4）。
+ * ・印の無い種目は名前から推定して付ける（「50m走」「立ち幅跳び／とび」「反復横跳び／とび」「上体起こし」
+ *   「1500m走／持久走」ほか。同じ印は 1 つの種目にしか付けない）。記録（Player.fitness）には触らない。
+ *   「1000m走」は推定しない：標準の持久走の得点表は男子 1500m・女子 1000m なので、男子の 1000m の記録を
+ *   当てると実際より高い得点になる（クラブ独自の種目のまま）
+ * ・名前が「1000m走」で standardKey "endurance" が付いて保存されている種目（旧版の補完で付いたもの）は、その印を外す
+ *   （正規化は毎回走るが、外したあとは該当しないので冪等）。外した結果マスタに持久走の印が 1 つも無くなるときは、
+ *   標準の持久走（ft_std_endurance）を末尾に足す（標準種目の数を保つ。足すのは印を外したその 1 回だけ）
+ * ・標準種目が足りない旧データには、足りない分を ft_std_<key> の id で末尾に足す（マスタが増えるだけ）。
+ *   足すのは「補完を 1 回も済ませていない（seed=true）印が 1 つも保存されていない旧マスタ」のときだけ。
+ *   補完を済ませたかは TeamData.fitnessStdSeeded（loadTeam が立てて保存する）で覚え、印の有無から推定しない：
+ *   推定だと、スタッフが標準種目を全部削除してクラブ独自の種目だけ残したとき（印が 0 件）、読み込みのたびに復活してしまう。
+ *   空配列（全削除）も触らない
+ * 保存済みの印が不正な値なら外す。元の配列は書き換えない
+ */
+function normalizeFitnessTests(tests: FitnessTest[], seed: boolean): FitnessTest[] {
+  let valid = tests.filter((t): t is FitnessTest => !!t && typeof t === "object" && typeof t.name === "string");
+  // 「1000m走」に付いた標準の持久走の印を外す（上の説明）
+  let stripped = false;
+  valid = valid.map((t) => {
+    if (t.standardKey !== "endurance" || t.name.replace(/\s+/g, "") !== "1000m走") return t;
+    stripped = true;
+    const rest: FitnessTest = { ...t };
+    delete rest.standardKey;
+    return rest;
+  });
+  const hadMark = valid.some((t) => isStandardKey(t.standardKey));
+  const used = new Set<string>(valid.filter((t) => isStandardKey(t.standardKey)).map((t) => t.standardKey as string));
+  const next = valid.map((t): FitnessTest => {
+    if (isStandardKey(t.standardKey)) return t;
+    const rest: FitnessTest = { ...t };
+    delete rest.standardKey; // 不正な値が保存されていたら外す
+    const key = standardKeyForName(t.name);
+    if (!key || used.has(key)) return rest;
+    used.add(key);
+    return { ...rest, standardKey: key };
+  });
+  const addStandard = (key: FitnessStandardKey) => {
+    const def = DEFAULT_FITNESS_TESTS.find((d) => d.standardKey === key);
+    if (!def) return;
+    used.add(key);
+    const id = standardTestId(key);
+    if (next.some((t) => t.id === id)) return; // 同じ id の種目が（印なしで）すでにあるときは足さない（id の重複を避ける）
+    next.push({ ...def, id });
+  };
+  if (stripped && !used.has("endurance")) addStandard("endurance");
+  if (seed && valid.length > 0 && !hadMark) {
+    for (const key of STANDARD_KEYS) {
+      if (used.has(key)) continue;
+      addStandard(key);
+    }
+  }
+  return next;
+}
+
 /* ---- チーム（出欠・連絡） ---- */
 export function loadTeam(): TeamData | null {
   if (typeof window === "undefined") return null;
@@ -627,7 +744,13 @@ export function loadTeam(): TeamData | null {
     if (!Array.isArray(data.groups)) data.groups = [];
     // 旧データ（種目マスタ未導入）は初回のみデフォルト種目を補完する。
     // 空配列（スタッフが全種目を削除した状態）は意図的な状態として上書きしない。
-    if (!Array.isArray(data.fitnessTests)) data.fitnessTests = DEFAULT_FITNESS_TESTS;
+    // player-hub §1-4: 種目に新体力テストの印（standardKey）を補い、足りない標準種目を足す
+    // 標準種目の補完は 1 回だけ（fitnessStdSeeded が立っていれば二度と足さない。立てて保存するのは次の saveTeam）
+    data.fitnessTests = normalizeFitnessTests(
+      Array.isArray(data.fitnessTests) ? data.fitnessTests : DEFAULT_FITNESS_TESTS,
+      data.fitnessStdSeeded !== true
+    );
+    data.fitnessStdSeeded = true;
     // groups-editing-and-place-history §3: 読み込み正規化
     // schoolStage未定義（旧データ）は"junior"とみなす（当面は中学年代から広めるため、
     // 従来の既定"elementary"から変更）。未設定だったときだけ、一度きりensureGradeGroupsで
@@ -677,6 +800,60 @@ export function saveTeam(team: TeamData): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/* ---- 選手のプロフィール（成長・テスト・成績表・進路。player-hub §1-1） ---- */
+
+/**
+ * 全選手のプロフィール。形の壊れ・配列の欠落は normalizeProfile で補う。
+ * 存在しない選手 id の記録も捨てない（名簿から消えた選手の記録は残す。表示しないだけ）
+ */
+export function loadProfiles(): Record<string, PlayerProfile> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PROFILE_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    const out: Record<string, PlayerProfile> = {};
+    for (const [id, v] of Object.entries(data as Record<string, unknown>)) {
+      if (v && typeof v === "object") out[id] = normalizeProfile(v, id);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** プロフィールを保存する。成否を返す（容量超過などで書けなかったら false。呼び出し側がトーストで知らせる） */
+export function saveProfiles(profiles: Record<string, PlayerProfile>): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    window.localStorage.setItem(PROFILE_KEY, JSON.stringify(profiles));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** デモのサンプル(lib/sampleProfiles.ts)を入れ終えたか（player-hub §1-5） */
+export function hasProfileSeedMarker(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(PROFILE_SEED_KEY) !== null;
+  } catch {
+    // 読めない環境では入れない（保存もできないため）
+    return true;
+  }
+}
+
+export function markProfileSeeded(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PROFILE_SEED_KEY, "1");
+  } catch {
+    /* 無視 */
   }
 }
 
@@ -781,6 +958,29 @@ export function saveNbSideOpen(open: boolean): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(NBSIDE_OPEN_KEY, open ? "open" : "closed");
+  } catch {
+    /* 無視 */
+  }
+}
+
+/**
+ * PCの名簿（チーム運営 › 名簿）の絞り込み列(.rosside)の開閉状態（player-hub §2-1）。
+ * loadNbSideOpenと同じ作法：既定はtrue（開いた状態）。隠すと一覧と個人ページの2列になる。
+ * 値は"open"/"closed"の文字列のみ持つ（壊れている・未保存なら既定のtrueへフォールバック）。
+ */
+export function loadRosSideOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(ROSSIDE_OPEN_KEY) !== "closed";
+  } catch {
+    return true;
+  }
+}
+
+export function saveRosSideOpen(open: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(ROSSIDE_OPEN_KEY, open ? "open" : "closed");
   } catch {
     /* 無視 */
   }

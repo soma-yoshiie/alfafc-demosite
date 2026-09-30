@@ -5,10 +5,8 @@ import type React from "react";
 import type {
   AttendanceStatus,
   CalFilter,
-  DominantFoot,
   EventCategory,
   EventSquad,
-  FitnessRecord,
   FitnessTest,
   GoalOrigin,
   Group,
@@ -24,7 +22,7 @@ import type {
   TeamGroup,
 } from "@/lib/types";
 import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL, STAGE_GRADES } from "@/lib/types";
-import { ALL_POSITIONS, groupOf } from "@/lib/formations";
+import { groupOf } from "@/lib/formations";
 import { buildEventSquad } from "@/lib/squad";
 import { LEAGUE_STANDINGS } from "@/lib/sampleLeague";
 import {
@@ -50,10 +48,12 @@ import {
   loadCalSideOpen,
   loadGroupFilter,
   loadLastEventCategory,
+  loadRosSideOpen,
   saveCalFilter,
   saveCalSideOpen,
   saveGroupFilter,
   saveLastEventCategory,
+  saveRosSideOpen,
 } from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
 import { attendanceRate } from "@/lib/teamStats";
@@ -61,7 +61,6 @@ import { aggregateTech, matchSummary, perMatchTech, perPlayerTech } from "@/lib/
 import {
   DRIBBLE_PCT_MIN_ATTEMPTS,
   PASS_PCT_MIN_ATTEMPTS,
-  playerSeasonStats,
   rankings,
   SHOT_PCT_MIN_ATTEMPTS,
 } from "@/lib/playerStats";
@@ -87,10 +86,13 @@ import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import { IconDownload, IconEdit, IconFilter, IconPlus } from "./icons";
 import { GroupChips, useGroupFilter } from "./GroupChips";
-import { fmtFitnessValue } from "@/lib/fitness";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
 import ChatHome, { useChatHeaderAction } from "./ChatHome";
+import PlayerHub from "./PlayerHub";
+import { PlayerBasicForm } from "./hub/PlayerBasicForm";
+import type { PlayerFormDraft } from "./hub/PlayerBasicForm";
+import type { HubSection } from "./hub/common";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -195,14 +197,6 @@ function ruleDesc(rule: RecurrenceRule): string {
 }
 
 const STATUS_MARK: Record<AttendanceStatus, string> = { yes: "○", maybe: "△", no: "×" };
-
-/** 利き足の表示ラベル（未設定は「—」） */
-function footLabel(f?: DominantFoot): string {
-  if (f === "right") return "右足";
-  if (f === "left") return "左足";
-  if (f === "both") return "両足";
-  return "—";
-}
 
 /**
  * 得点・アシストのランキング集計（試合記録の goals を走査）。
@@ -334,9 +328,8 @@ type SheetState =
   // groups-everywhere §5: 選手フォームの「グループ」欄「＋ 管理」から開いた場合の戻り先。
   // 予定フォーム経由(from/date)とは別軸のため独立したフィールドにする
   | { type: "groups"; from?: TeamEvent; date?: string; returnToPlayerForm?: Player | null }
-  | { type: "playerDetail"; playerId: string }
   | { type: "playerForm"; player?: Player }
-  /** 体力測定の種目管理。playerForm(選手編集)から開いた場合、戻り先の選手を保持する */
+  /** 体力測定の種目管理。個人ページの「種目を管理 ›」から開く（returnTo があれば閉じたとき選手フォームへ戻る） */
   | { type: "fitnessTests"; returnTo?: Player }
   | null;
 
@@ -418,6 +411,30 @@ function Inner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchGroupIds, matchGroupEff]);
   const [rosSel, setRosSel] = useState<string | null>(null);
+  // player-hub §2-1: 名簿の絞り込み（学年／グループ＝useGroupFilter("roster")の単一選択、ポジション区分、状態）。
+  // スマホは選手を選ぶと個人ページを全画面で開いて RosterTab がアンマウントされるため、検索語・絞り込み・
+  // 個人ページのセクションも Inner で持つ（PC は一覧と個人ページが並ぶので、選手を替えても同じセクションのまま）
+  const [rosQ, setRosQ] = useState("");
+  const [rosPos, setRosPos] = useState<RosPos>("all");
+  const [rosStatus, setRosStatus] = useState<RosStatus>("all");
+  const [rosGroupIds, setRosGroupIds] = useGroupFilter("roster");
+  // 保存済みIDが削除済みなら「すべて」とみなす（試合記録の matchGroupEff と同じ作法）
+  const rosGroup = resolveFilterGroup(rosGroupIds, team.groups);
+  const rosGroupEff = rosGroup?.id ?? null;
+  useEffect(() => {
+    if (rosGroupIds.length > 0 && !rosGroupEff) setRosGroupIds([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rosGroupIds, rosGroupEff]);
+  const [rosSection, setRosSection] = useState<HubSection>("overview");
+  // PCの絞り込み列(.rosside)の開閉（既定＝開いている）。スマホの絞り込みシートの開閉は rosFilterSheet
+  const [rosSideOpen, setRosSideOpen] = useState(() => loadRosSideOpen());
+  useEffect(() => {
+    saveRosSideOpen(rosSideOpen);
+  }, [rosSideOpen]);
+  const [rosFilterSheet, setRosFilterSheet] = useState(false);
+  // スマホの一覧⇄個人ページは同じ .scroll を使い回すので、一覧の位置を覚えておく（戻ったとき同じ位置へ）
+  const rosScrollRef = useRef<HTMLDivElement>(null);
+  const rosListTop = useRef(0);
   const [attSel, setAttSel] = useState<AttSel>({ kind: "overview" });
   const [attPeriod, setAttPeriod] = useState<AttPeriod>("all");
 
@@ -449,6 +466,29 @@ function Inner() {
     tabs.push(["chat", "チャット"]);
   }
   const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "cal";
+  // player-hub §2-1: スマホは名簿で選手を選ぶと個人ページを全画面で開く（rosSel）。チーム運営のヘッダーと
+  // セグメントは出さず、ハブ自身のヘッダー（選手名＋戻る）だけにする。PCは絞り込み列(.rosside)を
+  // 名簿タブのときだけ左に足す（開いているとき。畳んでいる間は一覧の「絞り込み」ボタンで戻す）
+  const rosFull = !pc && showRos && activeTab === "ros" && !!rosSel;
+  const rosSideOn = pc && showRos && activeTab === "ros" && rosSideOpen;
+  const rosPlayer = rosSel ? players.find((p) => p.id === rosSel) : undefined;
+  const rosFilterOn = !!rosGroup || rosPos !== "all" || rosStatus !== "all";
+  const pickRos = (id: string) => {
+    if (!pc) {
+      rosListTop.current = rosScrollRef.current?.scrollTop ?? 0;
+      setRosSection("overview");
+    }
+    setRosSel(id);
+  };
+  // PC幅になったらスマホの絞り込みシートは閉じる（PCは左の .rosside を使う）
+  useEffect(() => {
+    if (pc) setRosFilterSheet(false);
+  }, [pc]);
+  // スマホの一覧⇄個人ページ：個人ページは先頭から、一覧へ戻ったら開く前の位置へ
+  useEffect(() => {
+    const el = rosScrollRef.current;
+    if (el) el.scrollTop = rosFull ? 0 : rosListTop.current;
+  }, [rosFull]);
   // mobile-redesign-v2 §3-3: 右のヘッダーアクション（タブ連動で1つだけ・スタッフのみ）。
   // PCのヘッダーCTA(.teamcta)と同じ対象・同じラベルにする。
   // Phase D-1(C2 major): ログインロール(board.auth.role)だけでなく閲覧ロール(isCoach=
@@ -521,9 +561,6 @@ function Inner() {
       if (sheet?.type === "matchView" && activeTab === "rec") {
         setRecSel({ kind: "match", id: sheet.id });
         setSheet(null);
-      } else if (sheet?.type === "playerDetail" && activeTab === "ros") {
-        setRosSel(sheet.playerId);
-        setSheet(null);
       } else if (sheet?.type === "attendance" && activeTab === "att") {
         setAttSel({ kind: "event", id: sheet.eventId });
         setSheet(null);
@@ -549,13 +586,48 @@ function Inner() {
     // home/attのintentはPC・モバイルどちらでもカレンダーへ丸める（mobile-redesign-v2 §3-1）
     const targetTab: Tab = intent.tab === "att" || intent.tab === "home" ? "cal" : intent.tab;
     setTab(targetTab);
-    if (intent.playerId) setRosSel(intent.playerId);
+    // 個人ページはPC・スマホとも開く（スマホは全画面）。他画面から来たときは「基本」から
+    if (intent.playerId) {
+      setRosSel(intent.playerId);
+      setRosSection("overview");
+    }
     if (intent.eventId) setSheet({ type: "eventView", id: intent.eventId });
     board.setTeamIntent(null);
   }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer]);
 
+  // player-hub §2-1: 絞り込みの中身（PCの左列 .rosside とスマホのシートで同じ部品）と、個人ページ（PCは右ペイン、
+  // スマホは全画面）。編集は右上の小さなボタン → 選手フォーム(playerForm)、「種目を管理 ›」は fitnessTests シート
+  const rosFilterPanel = (
+    <RosterFilterPanel
+      groups={team.groups}
+      groupId={rosGroupEff}
+      onGroup={(id) => setRosGroupIds(id ? [id] : [])}
+      pos={rosPos}
+      onPos={setRosPos}
+      status={rosStatus}
+      onStatus={setRosStatus}
+      onManageGroups={() => {
+        setRosFilterSheet(false);
+        setSheet({ type: "groups" });
+      }}
+    />
+  );
+  const rosHub = rosSel ? (
+    <PlayerHub
+      key={rosSel}
+      playerId={rosSel}
+      viewer="staff"
+      nav="inline"
+      section={rosSection}
+      onSection={setRosSection}
+      onEditBasic={() => rosPlayer && setSheet({ type: "playerForm", player: rosPlayer })}
+      onDeleted={() => setRosSel(null)}
+      onManageFitnessTests={() => setSheet({ type: "fitnessTests" })}
+    />
+  ) : null;
+
   return (
-    <div className="app teamapp">
+    <div className={`app teamapp${rosSideOn ? " rosside-open" : ""}`}>
       {pc ? (
         <header>
           {/* board-squad-and-pc-polish §1: 左にレール(.conrail)があるため「‹ ホーム」は不要 */}
@@ -593,6 +665,8 @@ function Inner() {
             </button>
           )}
         </header>
+      ) : rosFull ? (
+        <MobileHeader title={rosPlayer?.name ?? "選手"} onBack={() => setRosSel(null)} />
       ) : (
         // mobile-redesign-v2 §3-3: タイトルは変更なし。右のアクションはタブ連動で
         // headerAction(スタッフのみ)1つだけだったが、案A §3-2でカレンダータブのときだけ
@@ -670,16 +744,18 @@ function Inner() {
       )}
 
       {/* mobile-redesign §1-7: 既存の上部タブ帯を.mseg様式に統一（PCでは従来どおり.fbar自体が非表示） */}
-      <MobileSegments
-        wrapClassName="fbar"
-        ariaLabel="チーム運営の表示切替"
-        items={tabs.map(([t, label]) => ({
-          key: t,
-          label,
-          on: activeTab === t,
-          onSelect: () => setTab(t),
-        }))}
-      />
+      {!rosFull && (
+        <MobileSegments
+          wrapClassName="fbar"
+          ariaLabel="チーム運営の表示切替"
+          items={tabs.map(([t, label]) => ({
+            key: t,
+            label,
+            on: activeTab === t,
+            onSelect: () => setTab(t),
+          }))}
+        />
+      )}
 
       {/* PC専用の第2ペインを出す(=グリッドが発火する)のは、元来の3ペイン構成である
           コーチのrec/ros/attタブのみ。それ以外(home/calタブ・選手ロール)でsheetを開くと
@@ -693,7 +769,17 @@ function Inner() {
         return (
           <>
             {/* paddingは基底CSS(.teamapp .scroll)へ移設（PCで上書きできるように） */}
-            <div className="scroll">
+            {/* player-hub §2-1: 名簿タブのPCだけ、一覧(.scroll)の左に絞り込み列を置く（.scroll の外の兄弟。
+                PC reset の .teamapp.rosside-open:has(.teammain) が 3 列グリッドにする） */}
+            {rosSideOn && (
+              <aside className="rosside" aria-label="選手の絞り込み">
+                <button type="button" className="rosside-hide" onClick={() => setRosSideOpen(false)}>
+                  ‹ 絞り込みを隠す
+                </button>
+                {rosFilterPanel}
+              </aside>
+            )}
+            <div className="scroll" ref={rosScrollRef}>
               {sheetInline ? (
                 <SheetHost
                   key={sheetKey(sheet)}
@@ -706,6 +792,7 @@ function Inner() {
                   setCalFilter={setCalFilter}
                   calMine={calMine}
                   setCalMine={setCalMine}
+                  onPlayerDeleted={() => setRosSel(null)}
                 />
               ) : (
                 <>
@@ -746,9 +833,25 @@ function Inner() {
                       setMatchGroupIds={setMatchGroupIds}
                     />
                   )}
-                  {activeTab === "ros" && isCoach && board.auth.role === "coach" && (
-                    <RosterTab players={players} setSheet={setSheet} rosSel={rosSel} setRosSel={setRosSel} />
-                  )}
+                  {activeTab === "ros" &&
+                    showRos &&
+                    (rosFull ? (
+                      rosHub
+                    ) : (
+                      <RosterTab
+                        players={players}
+                        rosSel={rosSel}
+                        onPick={pickRos}
+                        q={rosQ}
+                        setQ={setRosQ}
+                        group={rosGroup}
+                        pos={rosPos}
+                        status={rosStatus}
+                        showFilterBtn={!rosSideOn}
+                        filterOn={rosFilterOn}
+                        onFilter={() => (pc ? setRosSideOpen(true) : setRosFilterSheet(true))}
+                      />
+                    ))}
                   {/* chat-plan-a §3-5: スマホ＝お知らせ｜メッセージ、PC＝お知らせだけ。詳細・作成・スレッドは board シート */}
                   {activeTab === "chat" && <ChatHome pc={pc} lockSegment={pc ? "ann" : undefined} />}
                 </>
@@ -772,6 +875,7 @@ function Inner() {
                     setCalFilter={setCalFilter}
                     calMine={calMine}
                     setCalMine={setCalMine}
+                    onPlayerDeleted={() => setRosSel(null)}
                   />
                 ) : (
                   <>
@@ -785,7 +889,7 @@ function Inner() {
                       ))}
                     {activeTab === "ros" &&
                       (rosSel ? (
-                        <RosPlayerPane key={rosSel} playerId={rosSel} players={players} isCoach={isCoach} setSheet={setSheet} setRosSel={setRosSel} />
+                        rosHub
                       ) : (
                         <div className="empty-msg" style={{ margin: "auto" }}>
                           <b>選手が選択されていません</b>
@@ -831,7 +935,14 @@ function Inner() {
           setCalFilter={setCalFilter}
           calMine={calMine}
           setCalMine={setCalMine}
+          onPlayerDeleted={() => setRosSel(null)}
         />
+      )}
+      {/* player-hub §2-1: スマホの名簿の絞り込みシート（PCは左の .rosside を使うのでシートは出さない） */}
+      {!pc && showRos && (
+        <RosterFilterSheet open={rosFilterSheet} onClose={() => setRosFilterSheet(false)}>
+          {rosFilterPanel}
+        </RosterFilterSheet>
       )}
     </div>
   );
@@ -860,7 +971,6 @@ function sheetKey(s: SheetState): string {
         (s.prefill ? `pf-${s.prefill.date ?? ""}-${s.prefill.opponent ?? ""}-${s.prefill.eventId ?? ""}` : "new"))
     );
   if (s.type === "matchView") return "mv-" + s.id;
-  if (s.type === "playerDetail") return "pd-" + s.playerId;
   if (s.type === "playerForm") return "pf-" + (s.player?.id ?? "new");
   return s.type;
 }
@@ -2065,32 +2175,170 @@ function MatchesTab({
 }
 
 /* ---------------- 名簿（チーム運営内） ---------------- */
+
+/** player-hub §2-1: 名簿の絞り込み（ポジション区分・状態。学年／グループは useGroupFilter("roster")） */
+type RosPos = "all" | Group;
+type RosStatus = "all" | "injured" | "captain";
+const ROS_POS_OPTIONS: { key: RosPos; label: string }[] = [
+  { key: "all", label: "すべて" },
+  { key: "gk", label: "GK" },
+  { key: "df", label: "DF" },
+  { key: "mf", label: "MF" },
+  { key: "fw", label: "FW" },
+];
+const ROS_STATUS_OPTIONS: { key: RosStatus; label: string }[] = [
+  { key: "all", label: "すべて" },
+  { key: "injured", label: "怪我中" },
+  { key: "captain", label: "キャプテン" },
+];
+
+/**
+ * 名簿の絞り込みの中身（player-hub §2-1）。PCは名簿タブの左の常設列(.rosside)、スマホは下からのシート
+ * (RosterFilterSheet)の中身として、同じ部品をどちらからも呼ぶ。行の文法は提出の NotebookFilterPanel と同じ
+ * （学年・グループは左に色の丸チェック、ポジション・状態は右に四角のチェック。いずれも単一選択）。
+ * CSS は .teamapp でも効くよう .rosf* の名前で用意してある
+ */
+function RosterFilterPanel({
+  groups,
+  groupId,
+  onGroup,
+  pos,
+  onPos,
+  status,
+  onStatus,
+  onManageGroups,
+}: {
+  groups: TeamGroup[];
+  /** 選択中の学年／グループのID。null=すべて */
+  groupId: string | null;
+  onGroup: (id: string | null) => void;
+  pos: RosPos;
+  onPos: (v: RosPos) => void;
+  status: RosStatus;
+  onStatus: (v: RosStatus) => void;
+  /** 「グループを編集…」（グループ管理シートを開く） */
+  onManageGroups?: () => void;
+}) {
+  const grades = groups.filter((g) => g.kind === "grade");
+  const customs = groups.filter((g) => g.kind === "custom");
+  // color: undefined=ポジション・状態の行（右に四角のチェック）／文字列=学年・グループの行（左に色の丸チェック。
+  // 「すべて」だけ --mut）
+  const row = (key: string, label: string, on: boolean, onClick: () => void, color?: string) => (
+    <button key={key} type="button" className={`rosfrow${on ? " on" : ""}`} aria-pressed={on} onClick={onClick}>
+      {color !== undefined && (
+        <span
+          className={`calchk${on ? " on" : ""}`}
+          style={{ background: on ? color : "transparent", borderColor: on ? "transparent" : color }}
+        />
+      )}
+      <span className="rosfname">{label}</span>
+      {color === undefined && <span className={`calchk sq${on ? " on" : ""}`} />}
+    </button>
+  );
+  const sec = (title: string, rows: React.ReactNode) => (
+    <div className="rosfsec" key={title}>
+      <div className="rosfsec-h">{title}</div>
+      <div className="rosfrows">{rows}</div>
+    </div>
+  );
+  const groupRows = (list: TeamGroup[]) =>
+    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(g.id), g.color ?? "var(--mut)"));
+  const allRow = row("g-all", "すべて", groupId === null, () => onGroup(null), "var(--mut)");
+  return (
+    <div className="rosfpanel">
+      {grades.length > 0 && sec("学年", [allRow, ...groupRows(grades)])}
+      {customs.length > 0 && sec("グループ", [...(grades.length === 0 ? [allRow] : []), ...groupRows(customs)])}
+      {onManageGroups && (
+        <button type="button" className="rosfmanage" onClick={onManageGroups}>
+          グループを編集…
+        </button>
+      )}
+      {sec(
+        "ポジション",
+        ROS_POS_OPTIONS.map((o) => row(`p-${o.key}`, o.label, pos === o.key, () => onPos(o.key)))
+      )}
+      {sec(
+        "状態",
+        ROS_STATUS_OPTIONS.map((o) => row(`s-${o.key}`, o.label, status === o.key, () => onStatus(o.key)))
+      )}
+    </div>
+  );
+}
+
+/** スマホの名簿の絞り込みシート（見出し「表示する選手」＋右上「完了」）。中身は RosterFilterPanel */
+function RosterFilterSheet({
+  open,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Sheet open={open} onClose={onClose}>
+      <div className="rosfsheet">
+        <div className="rosfhead">
+          <b>表示する選手</b>
+          <button type="button" className="rosfdone" onClick={onClose}>
+            完了
+          </button>
+        </div>
+        {children}
+      </div>
+    </Sheet>
+  );
+}
+
 function RosterTab({
   players,
-  setSheet,
   rosSel,
-  setRosSel,
+  onPick,
+  q,
+  setQ,
+  group,
+  pos,
+  status,
+  showFilterBtn,
+  filterOn,
+  onFilter,
 }: {
   players: Player[];
-  setSheet: (s: SheetState) => void;
   rosSel?: string | null;
-  setRosSel?: (id: string | null) => void;
+  /** 行を選んだ（PC＝右ペインに個人ページ、スマホ＝個人ページを全画面で開く） */
+  onPick: (id: string) => void;
+  q: string;
+  setQ: (v: string) => void;
+  /** 絞り込み中の学年／グループ（null=すべて） */
+  group: TeamGroup | null;
+  pos: RosPos;
+  status: RosStatus;
+  /** false=PCで絞り込み列(.rosside)が開いているので「絞り込み」ボタンを出さない */
+  showFilterBtn: boolean;
+  /** 何か絞っているか（「絞り込み」ボタンの点） */
+  filterOn: boolean;
+  onFilter: () => void;
 }) {
   const board = useBoard();
   const team = useTeam();
   const pc = usePc();
   const schoolStage = team.team.schoolStage ?? "elementary";
-  const [q, setQ] = useState("");
   const kw = q.trim().toLowerCase();
-  // groups-everywhere §5: グループ絞り込み（単一選択・localStorageに保存）
-  const [filterIds, setFilterIds] = useGroupFilter("roster");
-  const filterGroup = filterIds[0] ? team.groups.find((g) => g.id === filterIds[0]) ?? null : null;
+  const captainId = board.state.captain;
+  // 他画面（ベンチのタップなど）から開いたとき、選ばれた行が一覧の画面外なら見える位置へ（見えていれば動かさない）
+  useEffect(() => {
+    if (pc && rosSel) document.querySelector<HTMLElement>(".roslist .sel")?.scrollIntoView({ block: "nearest" });
+  }, [pc, rosSel]);
   const list = players.filter(
     (p) =>
       (!kw || p.name.toLowerCase().includes(kw) || p.position.toLowerCase().includes(kw)) &&
-      (!filterGroup || playerInGroup(p, filterGroup))
+      (!group || playerInGroup(p, group)) &&
+      (pos === "all" || groupOf(p.position) === pos) &&
+      (status === "all" ||
+        (status === "injured" ? (p.injuries ?? []).some((x) => x.status !== "ok") : captainId === p.id))
   );
-  // 学年ごとの見出しで区切る（「中3（23）」）。学年未設定は末尾にまとめる
+  // 学年ごとの見出しで区切る（「中3（23）」）。学年未設定は末尾にまとめる。学年昇順、同じ学年は背番号昇順
+  // （背番号なしは末尾。同じ背番号は名簿の並びのまま）
   const buckets: { grade: number | null; label: string; players: Player[] }[] = [];
   list.forEach((p) => {
     const key = p.grade ?? null;
@@ -2106,38 +2354,64 @@ function RosterTab({
     if (b.grade == null) return -1;
     return a.grade - b.grade;
   });
-  const onRowClick = (id: string) => {
-    if (setRosSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
-      setRosSel(id);
-    } else {
-      setSheet({ type: "playerDetail", playerId: id });
-    }
-  };
+  buckets.forEach((b) =>
+    b.players.sort((x, y) => (x.number ?? Number.MAX_SAFE_INTEGER) - (y.number ?? Number.MAX_SAFE_INTEGER))
+  );
+  // 一覧の上の「選択中」1行：絞っている条件だけを「・」でつなぐ（学年／グループはその色の点付き）
+  const selParts: React.ReactNode[] = [];
+  if (group) {
+    selParts.push(
+      <span key="g">
+        <i className="rosseldot" style={{ background: group.color ?? "var(--mut)" }} />
+        {group.label}
+      </span>
+    );
+  }
+  if (pos !== "all") selParts.push(ROS_POS_OPTIONS.find((o) => o.key === pos)?.label);
+  if (status !== "all") selParts.push(ROS_STATUS_OPTIONS.find((o) => o.key === status)?.label);
   return (
     <>
-      <div className="controls" style={{ padding: "12px 0 8px" }}>
+      <div className="rostop">
+        {showFilterBtn && (
+          <button type="button" className="rosfilterbtn" onClick={onFilter}>
+            <IconFilter />
+            絞り込み
+            {filterOn && <span className="dot" />}
+          </button>
+        )}
         <input
           className="search"
+          aria-label="選手を検索"
           placeholder="名前・ポジションで検索"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
       </div>
-      {/* groups-everywhere §5: すべて／学年／カスタムの絞り込み。グループが無ければ出さない */}
-      {team.groups.length > 0 && (
-        <GroupChips
-          groups={team.groups}
-          value={filterIds}
-          onChange={setFilterIds}
-          allowAll
-          onManage={() => setSheet({ type: "groups" })}
-        />
-      )}
+      <div className="rossel">
+        {selParts.length === 0
+          ? "すべて"
+          : selParts.map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 && " ・ "}
+                {part}
+              </Fragment>
+            ))}
+      </div>
       {list.length === 0 ? (
         <div className="empty-msg">
-          <b>選手がいません</b>
-          <br />
-          下のボタンから追加できます
+          {players.length === 0 ? (
+            <>
+              <b>選手がいません</b>
+              <br />
+              {pc ? "「＋ 新規選手を追加」から追加できます" : "右上の「選手を追加」から追加できます"}
+            </>
+          ) : (
+            <>
+              <b>条件に合う選手がいません</b>
+              <br />
+              絞り込みや検索を変えてください
+            </>
+          )}
         </div>
       ) : pc ? (
         <div className="roslist">
@@ -2166,18 +2440,18 @@ function RosterTab({
                         key={p.id}
                         className={`ptable-row${rosSel === p.id ? " sel" : ""}`}
                         tabIndex={0}
-                        onClick={() => onRowClick(p.id)}
+                        onClick={() => onPick(p.id)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            onRowClick(p.id);
+                            onPick(p.id);
                           }
                         }}
                       >
                         <td className="num">{p.number ?? "—"}</td>
                         <td className="ptable-nm col-name">
                           {p.name}
-                          {board.state.captain === p.id ? " (C)" : ""}
+                          {captainId === p.id ? " (C)" : ""}
                           {/* 最終修正: 左ペインが狭く「グループ」列だとバッジが右端で切れるため、氏名の下に置く */}
                           <div className="ptable-sub">
                             <PlayerGroupBadges p={p} groups={team.groups} />
@@ -2207,13 +2481,13 @@ function RosterTab({
                 <div
                   key={p.id}
                   className={`prow${rosSel === p.id ? " sel" : ""}`}
-                  onClick={() => onRowClick(p.id)}
+                  onClick={() => onPick(p.id)}
                 >
                   <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
                   <div className="meta">
                     <div className="nm">
                       {p.name}
-                      {board.state.captain === p.id ? " (C)" : ""}
+                      {captainId === p.id ? " (C)" : ""}
                     </div>
                     <div className="sub">
                       背番号 {p.number ?? "—"}
@@ -2230,17 +2504,6 @@ function RosterTab({
           </div>
         ))}
         </div>
-      )}
-      {/* mobile-redesign-v2 §3-3: 名簿の全幅緑ボタンはスマホでは描画しない
-          （スマホはヘッダー右上の「選手を追加」に一本化。PCは変更しない） */}
-      {pc && (
-        <button
-          className="bigbtn"
-          style={{ width: "100%", margin: "8px 0 0" }}
-          onClick={() => setSheet({ type: "playerForm" })}
-        >
-          ＋ 新規選手を追加
-        </button>
       )}
       {/* mobile-redesign-v2 §3-3: 通常時は出さないrolebarの代わりに、名簿タブ末尾へ
           「選手・保護者の見え方を確認」を1行置く（既存のselectをそのまま使う） */}
@@ -2516,104 +2779,6 @@ function MatchDetailBody({
             onClick={() => {
               if (window.confirm("この試合記録を削除しますか？")) {
                 team.removeMatch(m.id);
-                onDelete();
-              }
-            }}
-          >
-            削除する
-          </button>
-        </>
-      )}
-    </>
-  );
-}
-
-/**
- * 選手プロフィールUI本体。選手詳細シート(モバイル)とPC右ペイン(ros/選手選択)の両方から使う共有ボディ
- */
-function PlayerDetailBody({
-  p,
-  isCoach,
-  onEdit,
-  onDelete,
-  hideFitness,
-}: {
-  p: Player;
-  isCoach: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-  /** PC名簿詳細(RosPlayerPane)は体力測定をより詳しいセクション(最新値・前回差・履歴)として
-   * 別途描画するため、こちらの簡易一覧は二重表示を避けて非表示にする（モバイルは既定=表示のまま） */
-  hideFitness?: boolean;
-}) {
-  const board = useBoard();
-  const team = useTeam();
-  const isCaptain = board.state.captain === p.id;
-  return (
-    <>
-      <h2>
-        {p.name}
-        <span>{p.position}</span>
-      </h2>
-      <div className="detail">
-        <div className="dsec">
-          <div className="dsec-h">基本情報</div>
-          <div className="dline">背番号 {p.number ?? "—"}</div>
-          <div className="dline">ポジション {p.position}</div>
-          <div className="dline">利き足 {footLabel(p.dominantFoot)}</div>
-          {p.height != null && <div className="dline">身長 {p.height}cm</div>}
-          {p.weight != null && <div className="dline">体重 {p.weight}kg</div>}
-          {p.email && <div className="dline">{p.email}</div>}
-          {isCaptain && <div className="dline">キャプテン (C)</div>}
-        </div>
-        {p.injuries && p.injuries.length > 0 && (
-          <div className="dsec">
-            <div className="dsec-h">怪我の記録</div>
-            {p.injuries.map((inj) => (
-              <div key={inj.id} className="dline">
-                {fmtDate(inj.date)} {inj.area} {INJURY_STATUS_LABEL[inj.status]}
-              </div>
-            ))}
-          </div>
-        )}
-        {!hideFitness && p.fitness && p.fitness.length > 0 && (
-          <div className="dsec">
-            <div className="dsec-h">体力測定</div>
-            {p.fitness.map((f, i) => {
-              const test = team.team.fitnessTests?.find((t) => t.id === f.testId);
-              return (
-                <div key={`${f.testId}-${i}`} className="dline">
-                  {test?.name ?? "削除済みの種目"} {f.value}
-                  {test?.unit ?? ""}（{fmtDate(f.date)}）
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-      {isCoach && (
-        <>
-          {/* v2 目視レビュー(major-1/2): スマホの詳細シートの主操作は3シートとも --accent 地に統一
-              （.accent は .teamapp:has(.mhead) 配下でだけ効く。PC は従来どおり） */}
-          <button className="bigbtn accent" onClick={onEdit}>
-            編集する
-          </button>
-          <button
-            className="bigbtn ghost"
-            onClick={() => {
-              board.setCaptain(isCaptain ? null : p.id);
-            }}
-          >
-            {isCaptain ? "キャプテンを解除" : "キャプテンにする"}
-          </button>
-          <button
-            className="bigbtn ghost"
-            style={{ color: "var(--red)" }}
-            onClick={() => {
-              if (window.confirm(`${p.name}を名簿から削除しますか？出欠の記録も削除されます`)) {
-                board.deletePlayer(p.id);
-                team.removePlayerAnswers(p.id);
-                if (team.viewer.memberPlayerId === p.id) team.setViewer("coach", null);
                 onDelete();
               }
             }}
@@ -3218,183 +3383,6 @@ function RecPlayerPane({
   );
 }
 
-/* ---------------- 名簿タブ・PC右ペイン ---------------- */
-
-/**
- * rosSel選択時の右ペイン。PlayerDetailBody(基本情報・怪我履歴)に加え、
- * PC専用の詳細セクション(今季成績/出席/ノート提出/体力測定)を追加する(R3)。
- * PlayerDetailBody自体の簡易な体力測定表示はここでは二重表示になるためhideFitnessで隠し、
- * 代わりに種目ごとの最新値・前回差(意味色)・履歴展開を持つ詳しい表示をこちらで描画する
- */
-function RosPlayerPane({
-  playerId,
-  players,
-  isCoach,
-  setSheet,
-  setRosSel,
-}: {
-  playerId: string;
-  players: Player[];
-  isCoach: boolean;
-  setSheet: (s: SheetState) => void;
-  setRosSel: (id: string | null) => void;
-}) {
-  const board = useBoard();
-  const team = useTeam();
-  const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
-  const p = players.find((x) => x.id === playerId);
-  const stats = p ? playerSeasonStats(p.id, team.team.matches, board.notebook) : null;
-  const attRow = p ? perPlayerAttendance(team.team, [p], "all")[0] : null;
-  const myNotes = p ? board.notebook.filter((n) => n.playerId === p.id) : [];
-  const lastNote = [...myNotes].sort((a, b) =>
-    a.date < b.date ? 1 : a.date > b.date ? -1 : b.ts - a.ts
-  )[0];
-
-  // 体力測定: 種目ごとに記録を新しい順へグルーピングし、最新値・前回差を出す
-  const fitnessByTest = new Map<string, FitnessRecord[]>();
-  (p?.fitness ?? []).forEach((f) => {
-    const list = fitnessByTest.get(f.testId) ?? [];
-    list.push(f);
-    fitnessByTest.set(f.testId, list);
-  });
-  fitnessByTest.forEach((list) => list.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0)));
-  // 種目定義(team.team.fitnessTests)に無いtestId(種目を削除した後も記録は残る)の記録が
-  // 無言で欠落しないよう、記録側のtestId集合も行として列挙する。他画面(PlayerDetailBody等)と
-  // 同じ「削除済みの種目」ラベルで、単位なし・差分は値のみ(意味色なし)で描画する
-  const knownTests = (team.team.fitnessTests ?? []).filter(
-    (t) => (fitnessByTest.get(t.id)?.length ?? 0) > 0
-  );
-  const knownTestIds = new Set(knownTests.map((t) => t.id));
-  const orphanTestIds = Array.from(fitnessByTest.keys()).filter((id) => !knownTestIds.has(id));
-  const testsWithRecords: { id: string; name: string; unit: string; lowerIsBetter?: boolean }[] = [
-    ...knownTests.map((t) => ({ id: t.id, name: t.name, unit: t.unit, lowerIsBetter: t.lowerIsBetter })),
-    ...orphanTestIds.map((id) => ({ id, name: "削除済みの種目", unit: "", lowerIsBetter: undefined })),
-  ];
-  const toggleTest = (id: string) =>
-    setExpandedTests((cur) => {
-      const next = new Set(cur);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-
-  return (
-    <div className="tmdetail screenbody">
-      {p && stats ? (
-        <>
-          <PlayerDetailBody
-            p={p}
-            isCoach={isCoach}
-            onEdit={() => setSheet({ type: "playerForm", player: p })}
-            onDelete={() => setRosSel(null)}
-            hideFitness
-          />
-
-          <div className="sech">今季成績</div>
-          <div className="hdash">
-            <div className="hstat"><div className="hstat-n">{stats.apps}</div><div className="hstat-l">出場</div></div>
-            <div className="hstat"><div className="hstat-n">{stats.goals}</div><div className="hstat-l">得点</div></div>
-            <div className="hstat"><div className="hstat-n">{stats.assists}</div><div className="hstat-l">アシスト</div></div>
-          </div>
-          <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
-          <div className="hdash">
-            <div className="hstat">
-              <div className="hstat-n">{stats.shotPct ?? "—"}{stats.shotPct != null ? "%" : ""}</div>
-              <div className="hstat-l">シュート決定率（{stats.noteGoals}/{stats.shots}）</div>
-            </div>
-            <div className="hstat">
-              <div className="hstat-n">{stats.passPct ?? "—"}{stats.passPct != null ? "%" : ""}</div>
-              <div className="hstat-l">パス成功率（試行{stats.passAtt}）</div>
-            </div>
-            <div className="hstat">
-              <div className="hstat-n">{stats.dribblePct ?? "—"}{stats.dribblePct != null ? "%" : ""}</div>
-              <div className="hstat-l">ドリブル成功率（試行{stats.dribbleAtt}）</div>
-            </div>
-          </div>
-
-          <div className="sech">出席</div>
-          <div className="hdash">
-            <div className="hstat"><div className="hstat-n">{attRow?.pct ?? 0}%</div><div className="hstat-l">出席率</div></div>
-            <div className="hstat"><div className="hstat-n">{attRow?.yes ?? 0}</div><div className="hstat-l">出席</div></div>
-            <div className="hstat"><div className="hstat-n">{attRow?.no ?? 0}</div><div className="hstat-l">欠席</div></div>
-            <div className="hstat"><div className="hstat-n">{attRow?.maybe ?? 0}</div><div className="hstat-l">未定</div></div>
-          </div>
-
-          <div className="sech">ノート提出</div>
-          <div className="dline">
-            提出件数 {myNotes.length}件
-            {lastNote ? ` ・ 直近 ${fmtDate(lastNote.date)}` : ""}
-          </div>
-
-          <div className="sech">体力測定</div>
-          {testsWithRecords.length === 0 ? (
-            <div className="empty-msg">記録がありません。</div>
-          ) : (
-            <div className="list">
-              {testsWithRecords.map((t) => {
-                const recs = fitnessByTest.get(t.id)!;
-                const latest = recs[0];
-                const prev = recs[1];
-                const diff = prev != null ? Math.round((latest.value - prev.value) * 100) / 100 : null;
-                // 意味色: lowerIsBetter(小さい方が良い)を踏まえ、改善=緑・悪化=赤。
-                // 削除済みの種目(lowerIsBetter不明)は方向を判定できないため常にnull(色なし・値のみ)
-                const improved =
-                  diff != null && diff !== 0 && t.lowerIsBetter != null
-                    ? (t.lowerIsBetter ? diff < 0 : diff > 0)
-                    : null;
-                const expanded = expandedTests.has(t.id);
-                return (
-                  <div
-                    key={t.id}
-                    className="cmprow"
-                    style={{ cursor: "pointer", flexWrap: "wrap" }}
-                    onClick={() => toggleTest(t.id)}
-                  >
-                    <div className="cmpinfo">
-                      <div className="cmpnm">{t.name}</div>
-                      <div className="cmpsub">{fmtDate(latest.date)}</div>
-                    </div>
-                    <div className="sgoals">
-                      {fmtFitnessValue(latest.value, t.unit)}
-                      {diff != null && (
-                        <span
-                          style={{
-                            marginLeft: 6,
-                            color:
-                              improved === true ? "var(--lime)" : improved === false ? "var(--red)" : "var(--mut)",
-                          }}
-                        >
-                          {diff > 0 ? `+${diff}` : diff}{t.unit}
-                        </span>
-                      )}
-                    </div>
-                    {expanded && (
-                      <div style={{ width: "100%", marginTop: 6 }}>
-                        {recs.map((r, i) => (
-                          <div key={i} className="dline">
-                            {fmtDate(r.date)} {fmtFitnessValue(r.value, t.unit)}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {isCoach && (
-            <button className="dynadd" onClick={() => setSheet({ type: "playerForm", player: p })}>
-              ＋ 測定記録を追加
-            </button>
-          )}
-        </>
-      ) : (
-        <div className="empty-msg">この選手は見つかりません。</div>
-      )}
-    </div>
-  );
-}
-
 /* ---------------- 出欠タブ・PC右ペイン ---------------- */
 
 /** AttOverviewPaneのkpicard2で切り替える月別推移の指標。既定は平均出席率 */
@@ -3775,6 +3763,7 @@ function SheetHost({
   setCalFilter,
   calMine = true,
   setCalMine,
+  onPlayerDeleted,
 }: {
   sheet: SheetState;
   setSheet: (s: SheetState) => void;
@@ -3789,6 +3778,8 @@ function SheetHost({
   /** 選手・保護者向け「自分の予定」絞り込み中か（groups-everywhere §3）。日別シートに適用する */
   calMine?: boolean;
   setCalMine?: (v: boolean) => void;
+  /** 選手フォームから選手を削除したとき（名簿の選択を外す） */
+  onPlayerDeleted?: () => void;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -3846,7 +3837,8 @@ function SheetHost({
       return;
     }
     if (sheet?.type === "fitnessTests") {
-      setSheet(sheet.returnTo ? { type: "playerForm", player: sheet.returnTo } : { type: "playerForm" });
+      // 個人ページの「種目を管理 ›」から開いた場合は（returnTo無し）閉じて個人ページへ戻る
+      setSheet(sheet.returnTo ? { type: "playerForm", player: sheet.returnTo } : null);
       return;
     }
     setSheet(null);
@@ -3989,28 +3981,11 @@ function SheetHost({
   // 大会管理
   const [mgrComp, setMgrComp] = useState("");
 
-  // 選手フォーム
+  // 選手フォーム（player-hub §2-1: 入力欄は個人ページと共有の PlayerBasicForm）。グループ欄の「＋ 管理」で
+  // グループ管理シートへ行って戻ると（SheetHost は同じキーのまま）フォームが作り直されるため、入力中の値は
+  // この ref に写して復元する。フォームを閉じると SheetHost ごと作り直されて空に戻る
   const pf = sheet?.type === "playerForm" ? sheet.player : undefined;
-  const [pfName, setPfName] = useState(pf?.name ?? "");
-  const [pfNumber, setPfNumber] = useState(pf?.number != null ? String(pf.number) : "");
-  const [pfPosition, setPfPosition] = useState<Position>(pf?.position ?? ALL_POSITIONS[0]);
-  const [pfHeight, setPfHeight] = useState(pf?.height != null ? String(pf.height) : "");
-  const [pfWeight, setPfWeight] = useState(pf?.weight != null ? String(pf.weight) : "");
-  const [pfFoot, setPfFoot] = useState<"" | DominantFoot>(pf?.dominantFoot ?? "");
-  const [pfEmail, setPfEmail] = useState(pf?.email ?? "");
-  // 学年（範囲とラベルはschoolStageとSTAGE_GRADES/gradeLabelで決まる。学年グループの
-  // 所属判定・名簿表示用。""=未設定）
-  const [pfGrade, setPfGrade] = useState(pf?.grade != null ? String(pf.grade) : "");
-  // 所属カスタムグループ（groups-everywhere §5。学年グループはgradeから自動のためここには含めない）
-  const [pfGroupIds, setPfGroupIds] = useState<string[]>(pf?.groupIds ?? []);
-
-  // 体力測定：記録一覧は保存中のplayers(常に最新)から読む(pfはシート起動時点のスナップショットのため、
-  // 追加/削除の直後は反映されない)。新規作成時(pf未定義)はまだ選手idが無いため対象外
-  const livePf = pf ? players.find((x) => x.id === pf.id) ?? pf : undefined;
-  const [fitTestId, setFitTestId] = useState(team.team.fitnessTests?.[0]?.id ?? "");
-  const [fitDate, setFitDate] = useState(todayStr());
-  const [fitValue, setFitValue] = useState("");
-  const fitTest = (team.team.fitnessTests ?? []).find((t) => t.id === fitTestId);
+  const pfKeep = useRef<PlayerFormDraft | null>(null);
 
   // 体力測定：種目管理（カテゴリ管理[2938行目付近]と同じ構造で編集/削除/追加）
   const [newTestName, setNewTestName] = useState("");
@@ -4741,7 +4716,11 @@ function SheetHost({
               ) : (
                 <>
                   <div className="cmpinfo">
-                    <div className="cmpnm">{t.name}</div>
+                    <div className="cmpnm">
+                      {t.name}
+                      {/* player-hub §1-4: 新体力テストの種目の印（小さなタグ。個人ページの「体力」の種目カードと同じ見た目） */}
+                      {t.standardKey && <span className="phubtag">新体力テスト</span>}
+                    </div>
                     <div className="cmpsub">
                       単位: {t.unit}
                       {t.lowerIsBetter ? " ・ 小さい方が良い" : ""}
@@ -5694,264 +5673,18 @@ function SheetHost({
           })()}
       </Sheet>
 
-      {/* 選手プロフィール。UI本体はPlayerDetailBody（PC右ペイン ros/選手選択 と共有） */}
-      <Sheet open={sheet?.type === "playerDetail"} onClose={pane ? paneBack : close} pane={pane}>
-        {sheet?.type === "playerDetail" &&
-          (() => {
-            const p = players.find((x) => x.id === sheet.playerId);
-            if (!p) return null;
-            return (
-              <PlayerDetailBody
-                p={p}
-                isCoach={isCoach}
-                onEdit={() => setSheet({ type: "playerForm", player: p })}
-                onDelete={close}
-              />
-            );
-          })()}
-      </Sheet>
-
-      {/* 選手フォーム（新規追加・編集） */}
+      {/* 選手フォーム（新規追加・編集）。入力欄は個人ページと共有の PlayerBasicForm（player-hub §2-1）。
+          末尾にスタッフだけ「キャプテンにする／解除」「この選手を削除」（個人ページ・一覧からはボタン列を外した） */}
       <Sheet open={sheet?.type === "playerForm"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>{pf ? "選手を編集" : "選手を追加"}</h2>
-        <div className="formfield">
-          <label>名前</label>
-          <input value={pfName} onChange={(e) => setPfName(e.target.value)} placeholder="例）山田 太郎" />
-        </div>
-        <div className="formrow">
-          <div className="formfield">
-            <label>背番号</label>
-            <input
-              type="number"
-              value={pfNumber}
-              onChange={(e) => setPfNumber(e.target.value)}
-              placeholder="未設定可"
-            />
-          </div>
-          <div className="formfield">
-            <label>ポジション</label>
-            <select value={pfPosition} onChange={(e) => setPfPosition(e.target.value as Position)}>
-              {ALL_POSITIONS.map((pos) => (
-                <option key={pos} value={pos}>
-                  {pos}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="formrow">
-          <div className="formfield">
-            <label>身長（cm）</label>
-            <input
-              type="number"
-              value={pfHeight}
-              onChange={(e) => setPfHeight(e.target.value)}
-              placeholder="未設定可"
-            />
-          </div>
-          <div className="formfield">
-            <label>体重（kg）</label>
-            <input
-              type="number"
-              value={pfWeight}
-              onChange={(e) => setPfWeight(e.target.value)}
-              placeholder="未設定可"
-            />
-          </div>
-        </div>
-        <div className="formfield">
-          <label>利き足</label>
-          <select value={pfFoot} onChange={(e) => setPfFoot(e.target.value as "" | DominantFoot)}>
-            <option value="">未設定</option>
-            <option value="right">右足</option>
-            <option value="left">左足</option>
-            <option value="both">両足</option>
-          </select>
-        </div>
-        <div className="formfield">
-          <label>学年</label>
-          <select value={pfGrade} onChange={(e) => setPfGrade(e.target.value)}>
-            <option value="">未設定</option>
-            {STAGE_GRADES[team.team.schoolStage ?? "elementary"].map((n) => (
-              <option key={n} value={n}>
-                {gradeLabel(team.team.schoolStage ?? "elementary", n)}
-              </option>
-            ))}
-          </select>
-        </div>
-        {/* groups-everywhere §5: 所属カスタムグループ（学年グループはgradeから自動のため出さない） */}
-        <div className="formfield">
-          <label>グループ</label>
-          <GroupChips
-            groups={team.groups.filter((g) => g.kind === "custom")}
-            value={pfGroupIds}
-            onChange={setPfGroupIds}
-            multi
-            onManage={() => setSheet({ type: "groups", returnToPlayerForm: pf ?? null })}
-          />
-          {team.groups.filter((g) => g.kind === "custom").length === 0 && (
-            <div className="fieldhint">カスタムグループがありません。「＋ 管理」から追加できます。</div>
-          )}
-        </div>
-        <div className="formfield">
-          <label>メール（任意）</label>
-          <input value={pfEmail} onChange={(e) => setPfEmail(e.target.value)} placeholder="ログイン用メール" />
-        </div>
-
-        {/* 体力測定（R4a）: 既存選手の編集時のみ。新規作成時はまだ選手idが無いため、
-            保存後に選手詳細(RosPlayerPane)の「＋ 測定記録を追加」から行う */}
-        {pf && (
-          <div className="formfield">
-            <label>体力測定</label>
-            {(livePf?.fitness ?? []).length === 0 ? (
-              <div className="dsec-e">記録なし</div>
-            ) : (
-              <div className="list" style={{ marginBottom: 10 }}>
-                {(livePf?.fitness ?? []).map((f, i) => {
-                  const test = (team.team.fitnessTests ?? []).find((t) => t.id === f.testId);
-                  return (
-                    <div key={`${f.testId}-${i}`} className="catrow">
-                      <div className="cmpinfo">
-                        <div className="cmpnm">{test?.name ?? "削除済みの種目"}</div>
-                        <div className="cmpsub">
-                          {fmtDate(f.date)} ・ {f.value}
-                          {test ? test.unit : ""}
-                        </div>
-                      </div>
-                      <button
-                        className="msgdel"
-                        aria-label="削除"
-                        onClick={() => team.removeFitnessRecord(pf.id, i)}
-                      >
-                        <E n="trash" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            {(team.team.fitnessTests ?? []).length === 0 ? (
-              <div className="evnote">種目が登録されていません。「種目を管理」から追加してください。</div>
-            ) : (
-              <>
-                <div className="formgrid">
-                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
-                    <label>種目</label>
-                    <select value={fitTestId} onChange={(e) => setFitTestId(e.target.value)}>
-                      {(team.team.fitnessTests ?? []).map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
-                    <label>計測日</label>
-                    <input type="date" value={fitDate} onChange={(e) => setFitDate(e.target.value)} />
-                  </div>
-                </div>
-                <div className="formgrid">
-                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
-                    <label>記録{fitTest ? `（${fitTest.unit}）` : ""}</label>
-                    <input
-                      value={fitValue}
-                      onChange={(e) => setFitValue(e.target.value.replace(/[^0-9.]/g, ""))}
-                      placeholder="数値のみ"
-                      inputMode="decimal"
-                    />
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="dynadd"
-                  onClick={() => {
-                    const v = Number(fitValue);
-                    if (!fitTestId || fitValue.trim() === "" || Number.isNaN(v)) {
-                      board.toast("種目と記録を入力してください");
-                      return;
-                    }
-                    team.addFitnessRecord(pf.id, { testId: fitTestId, value: v, date: fitDate });
-                    setFitValue("");
-                  }}
-                >
-                  ＋ 記録を追加
-                </button>
-              </>
-            )}
-            <button
-              type="button"
-              className="seclink"
-              style={{ display: "inline-block", marginTop: 8 }}
-              onClick={() => setSheet({ type: "fitnessTests", returnTo: pf })}
-            >
-              種目を管理 ›
-            </button>
-          </div>
-        )}
-
-        <button
-          className="bigbtn"
-          onClick={() => {
-            const nm = pfName.trim();
-            if (!nm) {
-              board.toast("名前を入力してください");
-              return;
-            }
-            const number = pfNumber.trim() === "" ? null : parseInt(pfNumber, 10);
-            const height = pfHeight.trim() === "" ? undefined : parseFloat(pfHeight);
-            const weight = pfWeight.trim() === "" ? undefined : parseFloat(pfWeight);
-            const dominantFoot = pfFoot === "" ? undefined : pfFoot;
-            const email = pfEmail.trim() || undefined;
-            const grade = pfGrade.trim() === "" ? null : parseInt(pfGrade, 10);
-            // Phase D-1(C1-major): pfGroupIdsはフォームを開いた時点のpf.groupIdsを初期値とする
-            // 独立したstateのため、「＋管理」からグループ管理シートのメンバー編集で同じ選手の
-            // 所属を変えてから戻ると、保存時にその変更が古い値で上書きされてしまう。フォームを
-            // 開いた時点(base)・フォーム内でのチップ操作(pfGroupIds)・保存直前の最新値(remote)の
-            // 3-wayマージで、フォーム内の追加/削除だけを反映しつつフォーム外での変更を保持する
-            const baseGroupIds = pf?.groupIds ?? [];
-            const remoteGroupIds = pf ? players.find((x) => x.id === pf.id)?.groupIds ?? [] : [];
-            const mergedGroupIds = new Set(remoteGroupIds);
-            new Set([...baseGroupIds, ...pfGroupIds]).forEach((id) => {
-              const inBase = baseGroupIds.includes(id);
-              const inLocal = pfGroupIds.includes(id);
-              if (inLocal && !inBase) mergedGroupIds.add(id);
-              if (!inLocal && inBase) mergedGroupIds.delete(id);
-            });
-            const groupIds = mergedGroupIds.size > 0 ? [...mergedGroupIds] : undefined;
-            if (pf) {
-              // ...pf は選手フォームを開いた時点のスナップショットのため、同フォーム内で
-              // team.addFitnessRecord/removeFitnessRecordが保存した最新のfitnessを含まない。
-              // livePf(常に最新のplayersから引く)をベースにし、基本情報だけを差分適用する
-              board.updatePlayer({
-                ...(livePf ?? pf),
-                name: nm,
-                number,
-                position: pfPosition,
-                height,
-                weight,
-                dominantFoot,
-                email,
-                grade,
-                groupIds,
-              });
-            } else {
-              board.addPlayer({
-                name: nm,
-                number,
-                position: pfPosition,
-                height,
-                weight,
-                dominantFoot,
-                email,
-                grade,
-                groupIds,
-              });
-            }
-            close();
-          }}
-        >
-          保存する
-        </button>
+        <PlayerBasicForm
+          player={pf}
+          viewer="staff"
+          keep={pfKeep}
+          onDone={() => close()}
+          onDeleted={onPlayerDeleted}
+          onManageGroups={() => setSheet({ type: "groups", returnToPlayerForm: pf ?? null })}
+        />
       </Sheet>
 
     </>

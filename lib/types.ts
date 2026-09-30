@@ -26,7 +26,23 @@ export interface FitnessTest {
   unit: string;
   /** true＝数値が小さいほど良い記録（例: 走タイム）。未設定＝大きいほど良い（既定） */
   lowerIsBetter?: boolean;
+  /** 新体力テストの種目の印（player-hub §1-3/§1-4）。付いた種目は lib/fitnessScore.ts の得点表で採点する。
+   *  未設定＝クラブ独自の種目（得点なし） */
+  standardKey?: FitnessStandardKey;
 }
+
+/** 新体力テスト（文部科学省・12〜19歳）の9種目（player-hub §1-3）。持久走(endurance)と20mシャトルラン(shuttle)は
+ *  どちらか一方で採点する（lib/fitnessScore.ts） */
+export type FitnessStandardKey =
+  | "grip"
+  | "situp"
+  | "sitreach"
+  | "sidestep"
+  | "endurance"
+  | "shuttle"
+  | "sprint50"
+  | "longjump"
+  | "handball";
 
 /**
  * 体力測定の記録1件。種目は FitnessTest.id で参照する（TeamData.fitnessTests）。
@@ -1171,6 +1187,9 @@ export interface TeamData {
   series?: EventSeries[];
   /** 体力測定の種目マスタ（チーム共通登録）。旧データは未定義＝storage.ts でデフォルト種目を補完 */
   fitnessTests?: FitnessTest[];
+  /** 新体力テストの標準種目の補完を済ませた（player-hub §1-4）。立つと loadTeam は標準種目を二度と足さない
+   *  （スタッフが標準種目を全部削除してクラブ独自の種目だけ残しても、読み込みのたびに復活させない） */
+  fitnessStdSeeded?: true;
   /** 学校区分（学年グループの範囲・ラベルを決める）。旧データは未定義＝"elementary"（groups-everywhere §1） */
   schoolStage?: SchoolStage;
 }
