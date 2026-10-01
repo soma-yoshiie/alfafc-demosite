@@ -67,6 +67,7 @@ import {
   gradeGroupsFor,
   membersOf,
 } from "@/lib/groups";
+import { linkAllMatches, linkedEventIds, removeMatchEvent, retitleMatchEvents, syncMatchEvent } from "@/lib/matchEvents";
 import { useBoard } from "./BoardProvider";
 
 let seq = 0;
@@ -561,6 +562,8 @@ interface TeamContextValue {
   /** 大会を追加し、生成したIDを返す */
   addCompetition: (name: string, note?: string) => string;
   removeCompetition: (id: string) => void;
+  /** p15 §3: 大会の名前・メモを直す（名前は trim。空なら何もしない。toast「大会を保存しました」） */
+  updateCompetition: (c: Competition) => void;
   /** リーグ順位表（p14 §3）。未保存＝デモの既定値 */
   league: LeagueTable;
   /** リーグ順位表を保存する（updatedAt・updatedBy を付け、toast「順位表を保存しました」） */
@@ -617,7 +620,9 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   // 初回シード（sampleTeam）・loadTeam()の一度きりの補完・§2の移行・setSchoolStage・
   // addGradeGroupに一本化した
   const [team, setTeam] = useState<TeamData>(() => {
-    const t = loadTeam() ?? sampleTeam();
+    const t0 = loadTeam() ?? sampleTeam();
+    // p15 §6: 既存の試合記録とカレンダーの紐づけを 1 回だけ行う（サンプルにも掛かる。id は呼ぶたびに別でよい）
+    const t = t0.matchEventsLinked === true ? t0 : linkAllMatches(t0, () => nid("e"));
     return { ...t, schoolStage: t.schoolStage ?? "junior", groups: t.groups ?? [] };
   });
   const [viewer, setViewerState] = useState<TeamViewer>(() =>
@@ -971,6 +976,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
         // でもない）だけを削除し、再生成対象にする。
         const attendance = { ...t.attendance };
         const keepDates = new Set<string>();
+        // p15 レビュー F2: 試合記録が紐づいている回も作り直さない（id が変わると紐づけが外れ、同じ試合を二重に記録できてしまう）
+        const recorded = linkedEventIds(t.matches);
         const events = t.events.flatMap((x) => {
           if (x.seriesId !== seriesId || x.date < anchor.date) return [x];
           const hasAttendance = Object.keys(attendance[x.id] ?? {}).length > 0;
@@ -978,7 +985,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
             keepDates.add(x.date);
             return [x];
           }
-          if (hasAttendance || x.squad) {
+          if (hasAttendance || x.squad || recorded.has(x.id)) {
             keepDates.add(x.date);
             return [{ ...x, ...cleanPatch }];
           }
@@ -1230,20 +1237,34 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
 
   const addMatch = useCallback(
     (m: Omit<MatchRecord, "id">) => {
-      setTeam((t) => ({ ...t, matches: [{ ...m, id: nid("m") }, ...t.matches] }));
+      // p15 §6: 記録と予定を同じ更新関数の中で同時に更新する
+      setTeam((t) => {
+        const r = syncMatchEvent(t, { ...m, id: nid("m") }, () => nid("e"));
+        return { ...t, events: r.events, matches: [r.match, ...t.matches] };
+      });
       board.toast("試合結果を記録しました");
     },
     [board]
   );
   const updateMatch = useCallback((m: MatchRecord) => {
-    setTeam((t) => ({
-      ...t,
-      matches: t.matches.map((x) => (x.id === m.id ? m : x)),
-    }));
+    // p15 §6: 古い記録を編集して保存したとき、ここで予定に紐づく
+    setTeam((t) => {
+      const r = syncMatchEvent(t, m, () => nid("e"));
+      return { ...t, events: r.events, matches: t.matches.map((x) => (x.id === m.id ? r.match : x)) };
+    });
   }, []);
   const removeMatch = useCallback(
     (id: string) => {
-      setTeam((t) => ({ ...t, matches: t.matches.filter((x) => x.id !== id) }));
+      // p15 §6: 自動で作った予定（fromMatch）と出欠も一緒に消す
+      setTeam((t) => {
+        const target = t.matches.find((x) => x.id === id);
+        const rm = target ? removeMatchEvent(t, target) : null;
+        return {
+          ...t,
+          ...(rm ? { events: rm.events, attendance: rm.attendance } : {}),
+          matches: t.matches.filter((x) => x.id !== id),
+        };
+      });
       board.toast("試合記録を削除しました");
     },
     [board]
@@ -1273,15 +1294,29 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     },
     [board, authRole, authName]
   );
+  const updateCompetition = useCallback(
+    (c: Competition) => {
+      const nm = c.name.trim();
+      if (!nm) return;
+      setTeam((t) => {
+        const competitions = t.competitions.map((x) =>
+          x.id === c.id ? { ...x, name: nm, note: c.note?.trim() || undefined } : x
+        );
+        // レビュー F6: 自動で作った予定の題名（「大会名 vs 相手」）も新しい大会名に合わせる
+        return { ...t, competitions, events: retitleMatchEvents(t.events, t.matches, competitions) };
+      });
+      board.toast("大会を保存しました");
+    },
+    [board]
+  );
   const removeCompetition = useCallback((id: string) => {
-    setTeam((t) => ({
-      ...t,
-      competitions: t.competitions.filter((c) => c.id !== id),
+    setTeam((t) => {
+      const competitions = t.competitions.filter((c) => c.id !== id);
       // 紐づく試合は大会未設定に戻す（記録は残す）
-      matches: t.matches.map((m) =>
-        m.competitionId === id ? { ...m, competitionId: undefined } : m
-      ),
-    }));
+      const matches = t.matches.map((m) => (m.competitionId === id ? { ...m, competitionId: undefined } : m));
+      // レビュー F6: 自動で作った予定の題名・大会も合わせる
+      return { ...t, competitions, matches, events: retitleMatchEvents(t.events, matches, competitions) };
+    });
   }, []);
 
   const removePlayerAnswers = useCallback((playerId: string) => {
@@ -1466,6 +1501,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       removeMatch,
       addCompetition,
       removeCompetition,
+      updateCompetition,
       league,
       setLeague,
       removePlayerAnswers,
@@ -1518,6 +1554,7 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       removeMatch,
       addCompetition,
       removeCompetition,
+      updateCompetition,
       league,
       setLeague,
       removePlayerAnswers,

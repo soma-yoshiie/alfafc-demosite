@@ -783,6 +783,17 @@ export function loadTeam(): TeamData | null {
     data.matches = data.matches.map((m) =>
       m.groupIds !== undefined && !Array.isArray(m.groupIds) ? { ...m, groupIds: undefined } : m
     );
+    // p15 §5/§6: matches の place・eventId が文字列でなければ、events の fromMatch が true でなければ落とす
+    data.matches = data.matches.map((m) => {
+      const bad = (typeof m.place !== "string" && m.place !== undefined) || (typeof m.eventId !== "string" && m.eventId !== undefined);
+      return bad
+        ? { ...m, place: typeof m.place === "string" ? m.place : undefined, eventId: typeof m.eventId === "string" ? m.eventId : undefined }
+        : m;
+    });
+    data.events = data.events.map((e) =>
+      e.fromMatch !== undefined && (e.fromMatch as unknown) !== true ? { ...e, fromMatch: undefined } : e
+    );
+    if (data.matchEventsLinked !== undefined && (data.matchEventsLinked as unknown) !== true) data.matchEventsLinked = undefined;
     // board-squad-and-pc-polish §3: events の squad の形が壊れていれば消す
     data.events = data.events.map((e) =>
       e.squad !== undefined && !isValidEventSquad(e.squad) ? { ...e, squad: undefined } : e

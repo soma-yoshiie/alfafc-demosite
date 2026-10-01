@@ -3515,10 +3515,10 @@ body:has(.mhead) .billtoggle button.on {
 }
 /* 絞り込みパネルの丸チェック（グループ。表示中=グループ色で塗り+白いチェック、
    非表示=グループ色の1.5px枠だけ。色自体はJS側のインラインstyleで渡す） */
-/* p14 §1-2: チェックは 16px（スマホ・PC 共通。行の高さ 44px は変えない） */
+/* p14 §1-2: チェックは 16px（スマホ・PC 共通。行の高さ 44px は変えない）→ p15 §1: 14px（ほんの少し小さく） */
 .calchk {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   flex: 0 0 auto;
   border-radius: 50%;
   border: 1.5px solid var(--line);
@@ -3532,9 +3532,9 @@ body:has(.mhead) .billtoggle button.on {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 7px;
-  height: 4px;
-  margin: -4px 0 0 -4px;
+  width: 6px;
+  height: 3px;
+  margin: -3px 0 0 -3.5px;
   /* レビュー指摘(§8「新規hexを書かない」): 色付きの丸の上の白いレ点は--on-primaryへ */
   border-left: 1.5px solid var(--on-primary);
   border-bottom: 1.5px solid var(--on-primary);
@@ -13112,6 +13112,45 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .calev-time {
   display: none;
 }
+/* p15 §6-5: 紐づく試合記録があるとき、時刻の代わりにスコアを出す（スマホ・PCとも表示） */
+.calev-score {
+  font-weight: 700;
+}
+/* p15 §6-5: リスト表示・日別シート・出欠カードの題名の後ろに付ける試合結果のタグ（勝・分・敗＋スコア） */
+/* レビュー指摘: 結果があるときは題名を flex にし、文字だけを省略してタグは常に見せる（スマホで見切れていた） */
+.evtitle.hasres,
+.agtitle.hasres {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.evttext {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.evresult {
+  display: inline-block;
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.evresult.w {
+  background: var(--primary-container);
+  color: var(--primary-dim);
+}
+.evresult.d {
+  background: var(--surface-container);
+  color: var(--mut);
+}
+.evresult.l {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
 /* 「＋N」（4件以上で2件に減らしたときの残り件数。§4-2「＋N件」を短くしたもの） */
 .calmore {
   font-size: 12px;
@@ -22104,7 +22143,7 @@ body:has(.mhead) .grouppick-item {
     min-height: 24px;
     gap: 6px;
     padding: 0 4px;
-    font-size: 13px;
+    font-size: 14px; /* p15 §1: 13→14（文字をほんの少し大きく） */
     border-radius: var(--r-xs);
   }
   .calside .calfilterpanel-row:hover {
@@ -22119,7 +22158,7 @@ body:has(.mhead) .grouppick-item {
     min-height: 24px;
     padding: 0 4px;
     gap: 6px;
-    font-size: 13px;
+    font-size: 14px; /* p15 §1: 13→14（文字をほんの少し大きく） */
   }
   .calside .calfilterpanel-manage {
     min-height: 24px;
@@ -22406,7 +22445,7 @@ body:has(.mhead) .grouppick-item {
     border-bottom: 0;
     background: none;
     border-radius: var(--r-xs);
-    font-size: 13px;
+    font-size: 14px; /* p15 §1: 13→14（文字をほんの少し大きく） */
   }
   .noteapp .nbfrow .calchk.sq {
     order: -1;
@@ -22763,7 +22802,7 @@ body:has(.mhead) .grouppick-item {
     border-bottom: 0;
     background: none;
     border-radius: var(--r-xs);
-    font-size: 13px;
+    font-size: 14px; /* p15 §1: 13→14（文字をほんの少し大きく） */
   }
   .rosfrow .calchk.sq {
     order: -1;

@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { GOAL_ORIGIN_LABELS } from "@/lib/types";
 import type { MatchRecord, Player } from "@/lib/types";
 import { matchTargetLabel } from "@/lib/groups";
+import { eventOfMatch } from "@/lib/matchEvents";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { IconEdit } from "./icons";
@@ -12,7 +13,7 @@ import { HubEmpty, HubHead, fmtYMD, usePc } from "./hub/common";
 
 /**
  * 試合の詳細（p14 §5。specs/filter-compact-and-match-hub.md）。名簿の個人ページ（PlayerHub）と同じ骨格・同じ
- * クラス（.phub*）で組む：ヘッダーカード（勝敗・相手・日付・大会・対象・試合時間）＋4 マスの KPI ＋ページ内メニュー
+ * クラス（.phub*）で組む：ヘッダーカード（勝敗・スコア・相手・日付・大会・対象・試合時間）＋ページ内メニュー
  * （基本／得点・失点／メンバー）＋本文。PC のスタッフは右ペイン（RecMatchPane）、スマホ・PC の選手は全画面／差し替え表示で使う。
  *
  * - メニューの形・狭いときの扱い・セクション切替時のスクロール戻しは PlayerHub と同じ（useWidth・NARROW_ON/OFF）。
@@ -122,7 +123,7 @@ export function MatchHub({
     }
   }, [sec, chips, rootRef]);
 
-  // KPI のマスを押して切り替えたときも、選んだチップが横スクロールの見える範囲に入るようにする
+  // 切り替えたとき、選んだチップが横スクロールの見える範囲に入るようにする
   useEffect(() => {
     const row = rootRef.current?.querySelector<HTMLElement>(".phubtabs");
     const on = row?.querySelector<HTMLElement>("button.on");
@@ -158,7 +159,8 @@ export function MatchHub({
     ? (m.groupIds ?? []).map((id) => team.groups.find((g) => g.id === id)).filter((g): g is NonNullable<typeof g> => !!g)
     : [];
 
-  const scorerCount = new Set(m.goals.map((g) => g.playerId)).size;
+  // p15 §5: 試合会場。記録の値が無ければ、紐づくカレンダーの予定の場所
+  const placeText = m.place ?? eventOfMatch(m, team.team.events)?.place ?? "";
   const lineup = m.lineup ?? [];
   const conceded = m.conceded ?? [];
 
@@ -198,6 +200,7 @@ export function MatchHub({
             { k: "対象", v: targetGroups.length > 0 ? groupPills : "全体" },
             { k: "試合時間", v: half ?? "" },
             { k: "フォーメーション", v: m.formation ?? "" },
+            { k: "試合会場", v: placeText },
           ] as { k: string; v: React.ReactNode }[]
         ).map((r) => (
           <div className="phubkv-row" key={r.k}>
@@ -338,6 +341,10 @@ export function MatchHub({
         <div className="phubhead-top">
           <div className="phubid">
             <span className={`mres ${resCls}`}>{resLabel}</span>
+            {/* p15 §4: 4 つの枠は外し、スコアはバッジの下（個人ページの背番号と同じ位置・同じクラス） */}
+            <span className="phubno">
+              {m.ourScore} - {m.theirScore}
+            </span>
           </div>
           <div className="phubwho">
             <h2 className="phubname">vs {m.opponent}</h2>
@@ -353,35 +360,6 @@ export function MatchHub({
               <IconEdit />
             </button>
           )}
-        </div>
-        <div className="phubkpi">
-          <button type="button" className="phubkpi-item" onClick={() => go("overview")}>
-            <span className="v">
-              {m.ourScore} - {m.theirScore}
-            </span>
-            <span className="l">スコア</span>
-          </button>
-          <button type="button" className="phubkpi-item" onClick={() => go("goals")}>
-            <span className="v">
-              {scorerCount}
-              <small>人</small>
-            </span>
-            <span className="l">得点者</span>
-          </button>
-          <button type="button" className="phubkpi-item" onClick={() => go("members")}>
-            <span className="v">
-              {lineup.length}
-              <small>人</small>
-            </span>
-            <span className="l">先発</span>
-          </button>
-          <button type="button" className="phubkpi-item" onClick={() => go("members")}>
-            <span className="v">
-              {m.subs.length}
-              <small>回</small>
-            </span>
-            <span className="l">交代</span>
-          </button>
         </div>
       </div>
 

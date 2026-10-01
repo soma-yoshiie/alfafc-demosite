@@ -12,6 +12,7 @@ import type {
 } from "./types";
 import { localDateStr, longestWeeklyStreak } from "./dates";
 import { deliverableTargetsPlayer, eventTargetsPlayer } from "./groups";
+import { isResultOnlyEvent } from "./matchEvents";
 import { buildSlots } from "./formations";
 
 export interface SeasonRange {
@@ -76,7 +77,10 @@ export function buildSeasonReport(
   if (team) {
     const groups = team.groups ?? [];
     team.events
-      .filter((e) => inRange(e.date, range) && eventTargetsPlayer(e, player, groups))
+      // p15 レビュー F1: 試合結果を映すためだけの予定（自動で作成・出欠なし）は分母に入れない
+      .filter(
+        (e) => inRange(e.date, range) && eventTargetsPlayer(e, player, groups) && !isResultOnlyEvent(e, team.attendance)
+      )
       .forEach((e) => {
         total++;
         if (team.attendance[e.id]?.[player.id]?.status === "yes") yes++;

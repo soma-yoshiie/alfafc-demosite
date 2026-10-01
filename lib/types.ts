@@ -611,6 +611,8 @@ export interface TeamEvent {
   optInPlayerIds?: string[];
   /** 試合のスタメン・ベンチ（board-squad-and-pc-polish §3）。戦術ボードから登録。試合以外は常に未定義 */
   squad?: EventSquad;
+  /** p15 §6: 試合記録から自動で作った予定の印（記録と同期し、記録を消したら一緒に消す） */
+  fromMatch?: true;
 }
 
 /**
@@ -867,6 +869,10 @@ export interface MatchRecord {
   conceded?: MatchConceded[];
   /** groups-phase2 §3: 対象グループ。未定義または空＝チーム全体 */
   groupIds?: string[];
+  /** p15 §5: 試合会場。未定義＝紐づく予定の場所を表示する */
+  place?: string;
+  /** p15 §6: 紐づくカレンダーの予定ID。見つからないIDは「紐づけなし」と同じに扱う */
+  eventId?: string;
 }
 
 /* ===== サッカーノート（選手が提出する振り返り） ===== */
@@ -1194,6 +1200,8 @@ export interface TeamData {
   schoolStage?: SchoolStage;
   /** リーグ順位表（p14 §3）。未定義＝デモの既定値（lib/sampleLeague.ts の DEFAULT_LEAGUE） */
   league?: LeagueTable;
+  /** p15 §6: 既存の試合記録とカレンダーの予定の紐づけ（一括処理）を済ませた印 */
+  matchEventsLinked?: true;
 }
 
 /** リーグ順位表の 1 行（p14 §3）。試合数・勝点・順位は保存せず計算する */

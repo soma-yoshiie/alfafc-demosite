@@ -6,6 +6,7 @@ import { NOTE_KIND_LABEL } from "@/lib/types";
 import { playerSeasonStats } from "@/lib/playerStats";
 import { monthlyAttendance, perPlayerAttendance } from "@/lib/attendanceStats";
 import { eventTargetsPlayer } from "@/lib/groups";
+import { isResultOnlyEvent } from "@/lib/matchEvents";
 import { localDateStr } from "@/lib/dates";
 import { useBoard } from "../BoardProvider";
 import { useTeam } from "../TeamProvider";
@@ -46,10 +47,13 @@ export default function ActivitySection({ p }: HubSectionProps) {
   const history = useMemo(
     () =>
       [...team.team.events]
-        .filter((e) => e.date <= today && eventTargetsPlayer(e, p, team.groups))
+        // p15 レビュー: 試合結果を映すためだけの予定（自動で作成・出欠なし）は履歴に出さない（「未記録」で埋まるため）
+        .filter(
+          (e) => e.date <= today && eventTargetsPlayer(e, p, team.groups) && !isResultOnlyEvent(e, team.team.attendance)
+        )
         .sort((a, b) => (a.date === b.date ? (b.time ?? "").localeCompare(a.time ?? "") : a.date < b.date ? 1 : -1))
         .slice(0, 10),
-    [team.team.events, team.groups, p, today]
+    [team.team.events, team.team.attendance, team.groups, p, today]
   );
   const notes = useMemo(
     () =>

@@ -20,6 +20,7 @@ import { computeStandings, leagueMiniRows, leaguePositionOf } from "@/lib/sample
 import { NOTE_KIND_LABEL } from "@/lib/types";
 import type { EventCategory, MatchRecord, Player, TeamData, TeamEvent } from "@/lib/types";
 import { eventTargetsPlayer } from "@/lib/groups";
+import { linkedEventIds } from "@/lib/matchEvents";
 import type { useBoard } from "./BoardProvider";
 import type { useTeam } from "./TeamProvider";
 
@@ -372,12 +373,15 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
 
   /* ---------------- 区画1: ヒーロー(次の予定/試合) ---------------- */
   const nextEvent = useMemo<TeamEvent | null>(() => {
+    // p15 レビュー F5: 試合記録が紐づいた予定（＝結果が出ている試合）は「次の予定」にしない
+    // （当日に記録を付けると、終わった試合がヒーローと出欠の催促に出てしまうため）
+    const done = linkedEventIds(team.team.matches);
     const list = [...team.team.events]
-      .filter((e) => e.date >= todayISO)
+      .filter((e) => e.date >= todayISO && !done.has(e.id))
       .filter((e) => !mePlayer || eventTargetsPlayer(e, mePlayer, team.groups))
       .sort((a, b) => (`${a.date} ${a.time ?? ""}` < `${b.date} ${b.time ?? ""}` ? -1 : 1));
     return list[0] ?? null;
-  }, [team.team.events, todayISO, mePlayer, team.groups]);
+  }, [team.team.events, team.team.matches, todayISO, mePlayer, team.groups]);
 
   const isMatch = nextEvent?.kind === "match";
   // タイトルから対戦相手を抽出できた試合予定だけを対戦カード表示にする。抽出できなければ非試合と同じ「タイトル+カテゴリ」表示にフォールバック

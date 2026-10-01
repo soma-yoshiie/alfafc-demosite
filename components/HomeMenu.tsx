@@ -11,6 +11,7 @@ import { E } from "./Emoji";
 import LogoMark from "./Logo";
 import { StatBody } from "./SheetManager";
 import MobileHome from "./MobileHome";
+import { linkedEventIds } from "@/lib/matchEvents";
 import {
   useMatchdayData,
   useReducedMotion,
@@ -120,7 +121,9 @@ export default function HomeMenu() {
   const todayInfo = useMemo(() => {
     const team = teamCtx.team;
     const todayISO = localDateStr();
-    const events = team?.events ?? [];
+    // p15 レビュー F5: 試合記録が紐づいた予定（結果が出ている試合）は「今日やること」の対象にしない
+    const done = linkedEventIds(team?.matches ?? []);
+    const events = (team?.events ?? []).filter((e) => !done.has(e.id));
     const todayEvents = events.filter((e) => e.date === todayISO);
     const nextEvent = [...events]
       .filter((e) => e.date >= todayISO)

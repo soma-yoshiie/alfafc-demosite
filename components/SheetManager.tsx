@@ -52,6 +52,7 @@ import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
 import { localDateStr, weekStart } from "@/lib/dates";
 import { planAutoAssign, type AssignPair } from "@/lib/autoAssign";
 import { groupsOfPlayer, playerInGroup, resolveFilterGroup } from "@/lib/groups";
+import { linkedEventIds } from "@/lib/matchEvents";
 import { useBoard, type KpiMetric, type StatMetric } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { GroupChips, useGroupFilter } from "./GroupChips";
@@ -2553,13 +2554,15 @@ function SquadToEventSheet() {
   const board = useBoard();
   const team = useTeam();
   const today = localDateStr();
+  const done = useMemo(() => linkedEventIds(team.team.matches), [team.team.matches]);
   const matches = useMemo(
     () =>
       team.team.events
-        .filter((e) => e.kind === "match" && isUpcomingOrOngoing(e, today))
+        // p15 レビュー F5: 試合記録が紐づいた予定（結果が出ている試合）はメンバー登録の候補にしない
+        .filter((e) => e.kind === "match" && isUpcomingOrOngoing(e, today) && !done.has(e.id))
         .sort(byStartAsc)
         .slice(0, 10),
-    [team.team.events, today]
+    [team.team.events, done, today]
   );
 
   const register = (ev: TeamEvent) => {
