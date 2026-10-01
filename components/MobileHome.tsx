@@ -26,7 +26,6 @@ import {
   relTime,
   PULSE_METRICS,
   TOPIC_LABELS,
-  LEAGUE_MINI_ROWS,
   type BoardCtx,
   type TeamCtx,
   type PulseMetric,
@@ -376,9 +375,9 @@ function MobileStaffHome({
             aria-pressed={metric === "rank"}
             onClick={() => setMetricIdx(3)}
           >
-            <span className="kv">{d.leagueRank.rank}位</span>
+            <span className="kv">{d.leagueRank.rank != null ? `${d.leagueRank.rank}位` : "—"}</span>
             <span className="kl">リーグ順位</span>
-            <span className="mdb-kpidelta">{d.leagueRank.size}チーム中</span>
+            <span className="mdb-kpidelta">{d.leagueRank.rank != null ? `${d.leagueRank.size}チーム中` : "未登録"}</span>
           </button>
         </div>
 
@@ -387,13 +386,19 @@ function MobileStaffHome({
           {metric === "rank" ? (
             <table className="ptable">
               <tbody>
-                {LEAGUE_MINI_ROWS.map((r) =>
+                {/* p14 §3: 自チームの行が無い・0 チームのときは 1 行だけ */}
+                {d.leagueRank.rank == null && (
+                  <tr className="mdb-rankgap" key="none">
+                    <td colSpan={3}>順位表が未登録です</td>
+                  </tr>
+                )}
+                {(d.leagueRank.rank == null ? [] : d.leagueMini).map((r) =>
                   "gap" in r ? (
                     <tr className="mdb-rankgap" key="gap">
                       <td colSpan={3}>…</td>
                     </tr>
                   ) : (
-                    <tr key={r.rank} className={r.own ? "own" : undefined}>
+                    <tr key={r.id} className={r.own ? "own" : undefined}>
                       <td className="num">{r.rank}</td>
                       <td className="col-name">{r.name}</td>
                       <td className="num leaguepts">{r.pts}</td>

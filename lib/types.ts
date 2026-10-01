@@ -1192,6 +1192,28 @@ export interface TeamData {
   fitnessStdSeeded?: true;
   /** 学校区分（学年グループの範囲・ラベルを決める）。旧データは未定義＝"elementary"（groups-everywhere §1） */
   schoolStage?: SchoolStage;
+  /** リーグ順位表（p14 §3）。未定義＝デモの既定値（lib/sampleLeague.ts の DEFAULT_LEAGUE） */
+  league?: LeagueTable;
+}
+
+/** リーグ順位表の 1 行（p14 §3）。試合数・勝点・順位は保存せず計算する */
+export interface LeagueRow {
+  id: string;
+  /** チーム名。自チームの行（own）は表示時にチーム名（board.state.teamName）へ差し替える */
+  name: string;
+  win: number;
+  draw: number;
+  loss: number;
+  gf: number;
+  ga: number;
+  own?: true;
+}
+export interface LeagueTable {
+  /** 見出し。未設定は「リーグ順位表」 */
+  title?: string;
+  rows: LeagueRow[];
+  updatedAt?: number;
+  updatedBy?: string;
 }
 
 /** デモ用の閲覧者ロール。coach=管理 / member=選手・保護者 */

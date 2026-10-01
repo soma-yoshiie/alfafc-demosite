@@ -23,7 +23,6 @@ import {
   relTime,
   PULSE_METRICS,
   TOPIC_LABELS,
-  LEAGUE_MINI_ROWS,
   ROW_H,
   type BoardCtx,
   type TeamCtx,
@@ -505,6 +504,7 @@ function MatchdayBoard({
     winPct,
     winDelta,
     leagueRank,
+    leagueMini,
     topicMetricIdx,
     topic,
     topicMax,
@@ -793,9 +793,9 @@ function MatchdayBoard({
               )}
             </button>
             <button type="button" className={`kpitile mdb-tile-rank${metric === "rank" ? " on" : ""}`} onClick={() => setMetricIdx(3)}>
-              <div className="kv">{leagueRank.rank}位</div>
+              <div className="kv">{leagueRank.rank != null ? `${leagueRank.rank}位` : "—"}</div>
               <div className="kl">リーグ順位</div>
-              <span className="mdb-kpidelta">{leagueRank.size}チーム中</span>
+              <span className="mdb-kpidelta">{leagueRank.rank != null ? `${leagueRank.size}チーム中` : "未登録"}</span>
             </button>
           </div>
           <div className="kpichart">
@@ -803,13 +803,19 @@ function MatchdayBoard({
             {metric === "rank" ? (
               <table className="ptable mdb-ranktable">
                 <tbody>
-                  {LEAGUE_MINI_ROWS.map((r) =>
+                  {/* p14 §3: 自チームの行が無い・0 チームのときは 1 行だけ */}
+                  {leagueRank.rank == null && (
+                    <tr className="mdb-rankgap" key="none">
+                      <td colSpan={3}>順位表が未登録です</td>
+                    </tr>
+                  )}
+                  {(leagueRank.rank == null ? [] : leagueMini).map((r) =>
                     "gap" in r ? (
                       <tr className="mdb-rankgap" key="gap">
                         <td colSpan={3}>…</td>
                       </tr>
                     ) : (
-                      <tr key={r.rank} className={r.own ? "own" : undefined}>
+                      <tr key={r.id} className={r.own ? "own" : undefined}>
                         <td className="num">{r.rank}</td>
                         <td className="col-name">{r.name}</td>
                         <td className="num leaguepts">{r.pts}</td>

@@ -17,6 +17,8 @@ import type {
   EventSquad,
   FitnessRecord,
   FitnessTest,
+  LeagueRow,
+  LeagueTable,
   MatchRecord,
   RecurrenceRule,
   SchoolStage,
@@ -45,6 +47,7 @@ import {
   type NewAnnouncementInput,
 } from "@/lib/chat";
 import { addDaysStr, localDateStr } from "@/lib/dates";
+import { DEFAULT_LEAGUE } from "@/lib/sampleLeague";
 import {
   DEFAULT_FITNESS_TESTS,
   SAMPLE_CUSTOM_GROUPS,
@@ -558,6 +561,10 @@ interface TeamContextValue {
   /** 大会を追加し、生成したIDを返す */
   addCompetition: (name: string, note?: string) => string;
   removeCompetition: (id: string) => void;
+  /** リーグ順位表（p14 §3）。未保存＝デモの既定値 */
+  league: LeagueTable;
+  /** リーグ順位表を保存する（updatedAt・updatedBy を付け、toast「順位表を保存しました」） */
+  setLeague: (t: { title?: string; rows: LeagueRow[] }) => void;
   /** 名簿から選手を削除する際に、全イベントの出欠回答からその選手分を除去する */
   removePlayerAnswers: (playerId: string) => void;
   /* ---- 体力測定：種目マスタ（チーム共通） ---- */
@@ -730,6 +737,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   // groups-editing-and-place-history §3: 既定を"junior"に変更（実際にはstate初期化で
   // 常に埋まっているため、ここは万一未設定のときの保険）
   const schoolStage: SchoolStage = team.schoolStage ?? "junior";
+  /** p14 §3: リーグ順位表の実効値（未保存はデモの既定値） */
+  const league = useMemo<LeagueTable>(() => team.league ?? DEFAULT_LEAGUE, [team.league]);
 
   /**
    * 学校区分を変更する。学年グループをensureGradeGroupsで整え直す（改名は保持・範囲外は削除）。
@@ -1253,6 +1262,17 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     },
     [board]
   );
+  /** p14 §3: 順位表の保存。updatedBy は ProfileProvider と同じ作法（スタッフ="staff:名前"） */
+  const authRole = board.auth.role;
+  const authName = board.auth.name;
+  const setLeague = useCallback(
+    (t: { title?: string; rows: LeagueRow[] }) => {
+      const by = authRole === "coach" ? "staff:" + authName : "player";
+      setTeam((prev) => ({ ...prev, league: { title: t.title, rows: t.rows, updatedAt: Date.now(), updatedBy: by } }));
+      board.toast("順位表を保存しました");
+    },
+    [board, authRole, authName]
+  );
   const removeCompetition = useCallback((id: string) => {
     setTeam((t) => ({
       ...t,
@@ -1446,6 +1466,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       removeMatch,
       addCompetition,
       removeCompetition,
+      league,
+      setLeague,
       removePlayerAnswers,
       addFitnessTest,
       updateFitnessTest,
@@ -1496,6 +1518,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       removeMatch,
       addCompetition,
       removeCompetition,
+      league,
+      setLeague,
       removePlayerAnswers,
       addFitnessTest,
       updateFitnessTest,

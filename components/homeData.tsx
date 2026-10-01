@@ -16,7 +16,7 @@ import { localDateStr } from "@/lib/dates";
 import { attendanceRate } from "@/lib/teamStats";
 import { monthlyWinPct, weeklyAttendancePct, weeklyNoteCounts } from "@/lib/homeStats";
 import type { TrendPoint } from "@/lib/homeStats";
-import { LEAGUE_STANDINGS, leaguePosition } from "@/lib/sampleLeague";
+import { computeStandings, leagueMiniRows, leaguePositionOf } from "@/lib/sampleLeague";
 import { NOTE_KIND_LABEL } from "@/lib/types";
 import type { EventCategory, MatchRecord, Player, TeamData, TeamEvent } from "@/lib/types";
 import { eventTargetsPlayer } from "@/lib/groups";
@@ -30,12 +30,6 @@ export const TOPIC_LABELS = ["得点", "アシスト", "出席", "ノート提�
 export const TOPIC_UNITS = ["点", "A", "%", "件"];
 export const PULSE_METRICS = ["notes", "att", "win", "rank"] as const;
 export type PulseMetric = (typeof PULSE_METRICS)[number];
-/** リーグ順位タイル用の簡易順位表: 上位5チーム＋自チーム行(6位以下=圏外のときのみ、区切り行つきで追加) */
-export const LEAGUE_MINI_ROWS: ((typeof LEAGUE_STANDINGS)[number] | { gap: true })[] = (() => {
-  const top5 = LEAGUE_STANDINGS.slice(0, 5);
-  const own = LEAGUE_STANDINGS.find((r) => r.own);
-  return own && own.rank > 5 ? [...top5, { gap: true } as const, own] : top5;
-})();
 export const ROW_H = 40; // .mdb-feeditem の行高(px)。JSのtranslateY計算とCSSの高さを一致させる
 
 export function useReducedMotion(): boolean {
@@ -462,9 +456,14 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
   }, [winSeries]);
   const winDelta = trendDelta(winSeries);
 
-  // リーグ順位タイルの値: lib/sampleLeague.ts の固定順位表(デモ用)から自チームの順位/参加チーム数を取得。
-  // 期間推移の概念がないためデルタ(先週比等)は算出しない
-  const leagueRank = leaguePosition();
+  // リーグ順位タイルの値: チームの順位表（p14 §3。未保存は lib/sampleLeague.ts の既定値）から自チームの順位/参加チーム数と簡易順位表を計算。
+  // 自チームの行が無い・0 チームのときは rank が null（表示側で「—」「未登録」）。期間推移の概念がないためデルタ(先週比等)は算出しない
+  const standings = useMemo(
+    () => computeStandings(team.league, board.state.teamName ?? "マイチーム"),
+    [team.league, board.state.teamName]
+  );
+  const leagueRank = leaguePositionOf(standings);
+  const leagueMini = useMemo(() => leagueMiniRows(standings), [standings]);
 
   /* ---------------- 区画4左: 今月のトピック ---------------- */
   const ym = todayISO.slice(0, 7);
@@ -561,6 +560,7 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
     winPct,
     winDelta,
     leagueRank,
+    leagueMini,
     topicMetricIdx,
     topic,
     topicMax,

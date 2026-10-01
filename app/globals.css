@@ -3515,9 +3515,10 @@ body:has(.mhead) .billtoggle button.on {
 }
 /* 絞り込みパネルの丸チェック（グループ。表示中=グループ色で塗り+白いチェック、
    非表示=グループ色の1.5px枠だけ。色自体はJS側のインラインstyleで渡す） */
+/* p14 §1-2: チェックは 16px（スマホ・PC 共通。行の高さ 44px は変えない） */
 .calchk {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   flex: 0 0 auto;
   border-radius: 50%;
   border: 1.5px solid var(--line);
@@ -3530,13 +3531,13 @@ body:has(.mhead) .billtoggle button.on {
   content: "";
   position: absolute;
   left: 50%;
-  top: 44%;
-  width: 9px;
-  height: 5px;
-  margin: -3px 0 0 -5px;
+  top: 50%;
+  width: 7px;
+  height: 4px;
+  margin: -4px 0 0 -4px;
   /* レビュー指摘(§8「新規hexを書かない」): 色付きの丸の上の白いレ点は--on-primaryへ */
-  border-left: 2px solid var(--on-primary);
-  border-bottom: 2px solid var(--on-primary);
+  border-left: 1.5px solid var(--on-primary);
+  border-bottom: 1.5px solid var(--on-primary);
   transform: rotate(-45deg);
 }
 /* 種類（カテゴリ）の四角いチェック。色は固定ネイビー（--blue）。
@@ -9290,6 +9291,21 @@ body:has(.mhead) .noteapp .nbtop .ngchip {
   font-weight: 700;
   cursor: pointer;
 }
+/* p14 §1-1: サッカーノートの絞り込みパネル最下段「絞り込みを編集…」（.rosfmanage と同じ値） */
+.noteapp .nbfmanage {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 2px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
 
 /* 予定のグループ行（開閉ボタン） */
 .noteapp .evgrow {
@@ -14405,7 +14421,7 @@ body:has(.mhead) .grouppick-item {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 「グループを編集…」（.calfilterpanel-manage と同じテキストボタン） */
+/* 「絞り込みを編集…」（.calfilterpanel-manage と同じテキストボタン。p14 §1-1 で文言変更） */
 .rosfmanage {
   display: flex;
   align-items: center;
@@ -14448,6 +14464,60 @@ body:has(.mhead) .grouppick-item {
 /* PC の左の絞り込み列(.rosside)はスマホでは描かない（PlayerHub と同じ流儀で念のため） */
 .rosside {
   display: none;
+}
+/* p14 §4: 試合記録の一覧の行をコンパクトに（.reclist の中だけ。ホームの「直近の試合」＝.mhome-root .mh-panel .matchcard と
+   基底の .matchcard/.mres/.mopp/.msub/.mscore 単体のルールは変えない）。相手名は .moppname で 1 行・省略記号 */
+.reclist .matchcard {
+  gap: 8px;
+  padding: 6px 12px; /* 統括調整: 8→6px（スマホの行 約 52px。タップ領域は min-height 48px で確保） */
+  margin-bottom: 6px;
+  border-radius: var(--r-lg);
+  min-height: 48px;
+}
+.reclist .mres {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 700;
+}
+.reclist .mopp {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+.reclist .moppname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reclist .mopp .evgroups {
+  /* レビュー ux-1: 対象グループが多いときは相手名を優先し、バッジの方を省略記号にする（全文は title） */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+}
+.reclist .msub {
+  margin-top: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.reclist .mscore {
+  font-family: var(--font-ui);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.reclist .mscore span {
+  margin: 0 2px;
 }
 /* 選手フォーム（TeamHub のシート）末尾のキャプテン・削除：ホームインジケータの分を空ける */
 .sheetBody .phubmanage {
@@ -14930,6 +15000,193 @@ body:has(.mhead) .grouppick-item {
 }
 .phubrowbtn.danger {
   color: var(--danger);
+}
+/* p14 §5-1 試合の詳細（MatchHub）：ヘッダーの勝敗バッジの「分」は --mut（基底の .mres.d は gold）、
+   先発の行をスタッフ用のボタンにしたときのボタン既定の打ち消し（罫線は .phubrow と同じ付き方） */
+.mhub .mres.d {
+  background: var(--mut);
+}
+.mhub button.phubrow {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid var(--outline);
+  background: none;
+  text-align: left;
+  font: inherit;
+  font-family: var(--font-ui);
+  color: inherit;
+  cursor: pointer;
+}
+.mhub button.phubrow:first-child {
+  border-top: 0;
+}
+/* レビュー mhub-2: 「フォーメーション」(8 文字) が 88px のラベル欄で折れないよう、試合の詳細だけ欄を広げる */
+.mhub .phubkv dt {
+  flex-basis: 100px;
+}
+/* p14 §3: リーグ順位表（PCの右ペインの見出し行・入口行・閲覧／編集シート・スマホの表） */
+.leaguehead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 12px 2px 8px;
+}
+.leaguehead .sech {
+  margin: 0;
+}
+/* .phubedit の張り出し（-8px）は個人ページのカード用なので、見出し行の中では打ち消す */
+.leaguehead .phubedit {
+  margin: 0;
+}
+.leaguehead + .phubupd {
+  margin: -4px 2px 8px;
+}
+.leaguewrap {
+  overflow-x: auto;
+}
+.sheet .leaguewrap {
+  margin: 0 16px 8px;
+}
+.lgview-upd .phubupd {
+  margin: 0 16px 12px;
+}
+/* 入口行（試合記録タブ。スマホ・PCの選手）。.phublink の見た目に、行間と右端の「N位 / Mチーム ›」だけ足す */
+.lglink {
+  margin: 0 0 8px;
+}
+.lglink > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lglink-v {
+  flex: none;
+  margin-left: 8px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  white-space: nowrap;
+}
+/* 順位表（.ptable は PC 専用なので、スマホの閲覧シートでは自前で定義する。ホームの .mhome-root .mh-chart .ptable と同じ値） */
+.teamapp:has(.mhead) .leaguetable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.teamapp:has(.mhead) .leaguetable th,
+.teamapp:has(.mhead) .leaguetable td {
+  padding: 8px 4px; /* 統括調整: 390px 幅で 8 列（勝点まで）が横スクロールなしに収まる寸法 */
+  color: var(--ink);
+  border-bottom: 1px solid var(--outline);
+  white-space: nowrap;
+}
+.teamapp:has(.mhead) .leaguetable th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mut);
+  text-align: left;
+}
+.teamapp:has(.mhead) .leaguetable tbody tr:last-child td {
+  border-bottom: 0;
+}
+.teamapp:has(.mhead) .leaguetable th.num,
+.teamapp:has(.mhead) .leaguetable td.num {
+  text-align: right;
+}
+/* チーム名の列だけ残りの幅を使い、長い名前は省略記号 */
+.teamapp:has(.mhead) .leaguetable .col-name {
+  width: 99%;
+  max-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.teamapp:has(.mhead) .leaguetable tr.own td {
+  background: var(--accent-tint);
+  font-weight: 700;
+}
+.teamapp:has(.mhead) .leaguetable .leaguepts {
+  font-weight: 700;
+}
+/* 編集シート: チームごとに 1 枚のカード（1 行目＝チーム名＋削除、2 行目＝勝/分/敗/得点/失点の 5 欄） */
+.lgedit-row {
+  margin: 0 16px 8px;
+  padding: 10px 12px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.lgedit-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lgedit-row .lgedit-name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.lgedit-ownname {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+.lgedit-ownname b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lgedit-own {
+  flex: none;
+}
+.lgedit-nums {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+.lgedit-nums label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--mut);
+}
+.lgedit-nums input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px;
+  text-align: center;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-size: 15px;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.lgedit-del {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--mut);
+  cursor: pointer;
+}
+.lgedit-del svg {
+  width: 18px;
+  height: 18px;
 }
 .phubadd {
   width: 100%;
@@ -21682,28 +21939,52 @@ body:has(.mhead) .grouppick-item {
      §11-1: パネルは本文領域の左端に置き、カレンダー本体が残りの幅をすべて使うよう
      max-width:noneにする（940px上限をやめる。中央寄せ時に左レールとの間へ空白ができていた
      不具合の修正） */
+  /* p14 §1-3: 列幅 184px。カレンダータブだけ .scroll の余白を外し、絞り込み列を左上へ貼り付ける
+     （TSX は変えず CSS だけ。.cal は .scroll の直下の子）。margin は基底寄りブロックの 0 auto を 0 へ */
+  .teamapp .scroll:has(> .cal) {
+    padding: 0;
+  }
   .teamapp .cal {
     display: grid;
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 184px minmax(0, 1fr);
     align-items: start;
-    gap: 24px;
+    gap: 0;
     max-width: none;
+    margin: 0;
+    min-height: 100%;
+    padding-top: 0; /* 統括調整: 基底の .cal の 12px を外して列を上の帯へ付ける（本体側の .calmain が持つ） */
+  }
+  /* 列の白地と右の罫線（列は sticky なので、地は疑似要素を全高に伸ばして描く）。
+     ::before は背景の役。.calside は sticky（positioned）、.calmain は DOM 順で後なので上に描かれる */
+  .teamapp .cal::before {
+    content: "";
+    grid-column: 1;
+    grid-row: 1;
+    align-self: stretch;
+    background: var(--surface-lowest);
+    border-right: 1px solid var(--outline);
   }
   .calside {
+    grid-column: 1;
+    grid-row: 1;
     position: sticky;
     top: 0;
+    padding: 8px 8px 16px 10px; /* p14 §1-3 統括調整: 右だけ 8px（つまみの行 166px を 184px の列に収める） */
   }
   /* §11-1: 「‹ 絞り込みを隠す」。ボタン自体は.calside幅いっぱい(タップ領域確保)だが、
      文字は右寄せのテキストボタンに見せる（パネル本体は左寄せのまま） */
   .calside-hide {
-    display: block;
+    display: flex; /* p14 §1-3: 24px・12px に詰める（flex で右寄せ・縦中央） */
+    align-items: center;
+    justify-content: flex-end;
     width: 100%;
-    margin: 0 0 12px;
+    min-height: 24px;
+    margin: 0;
     padding: 0;
     border: 0;
     background: none;
     color: var(--accent);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 700;
     text-align: right;
     cursor: pointer;
@@ -21713,8 +21994,15 @@ body:has(.mhead) .grouppick-item {
   .cal.side-hidden {
     grid-template-columns: minmax(0, 1fr);
   }
+  .teamapp .cal.side-hidden::before {
+    display: none;
+  }
   .cal.side-hidden .calside {
     display: none;
+  }
+  .cal.side-hidden .calmain {
+    grid-column: 1;
+    padding-left: 32px;
   }
   /* レビュー指摘対応: グリッドの子(.calmain)にmargin:0 auto(かつwidth:auto)を付けると、
      stretchされず内容の幅まで縮んで中央寄せされてしまう。月表示はグリッドの中身が
@@ -21725,10 +22013,13 @@ body:has(.mhead) .grouppick-item {
      §11-1: パネルの右にできていた空白を無くすため、720px上限もやめてstretchにする
      （カレンダー本体は残りの幅をすべて使う。月グリッド・リスト表示とも幅いっぱいになる） */
   .calmain {
+    grid-column: 2;
+    grid-row: 1;
     width: 100%;
     max-width: none;
     justify-self: stretch;
     min-width: 0;
+    padding: 28px 32px 40px 24px; /* p14 §1-3: .scroll の余白(16px)と基底の .cal の上余白(12px)を外した分を本体が持つ */
   }
   /* §11-1: 中央の年月・矢印は今までどおり中央寄せのまま、.calshow（隠しているときだけ
      出す「絞り込み」）を左端にabsolute配置するための基点 */
@@ -21775,8 +22066,66 @@ body:has(.mhead) .grouppick-item {
   /* レビュー指摘対応: 200px幅の.calside内では「全員向けの予定を含める」(14px/700+gap10px+
      つまみ40px)が収まらず「る」だけ折り返していた。PCだけ詰める */
   .calside .calfilter-toggle {
+    min-height: 28px; /* p14 §1-3: 書き換え（44→28・つまみも小さく） */
+    margin-top: 6px;
+    padding: 2px 0 2px 4px;
+    font-size: 12px;
+    gap: 4px;
+    white-space: nowrap; /* 統括調整: 184px の列で「全員向けの予定を含める」が 1 行に収まる寸法（つまみ 26px＋間 4px＋132px） */
+  }
+  .calside .calfilter-toggle > span {
+    width: 26px;
+    height: 16px;
+  }
+  .calside .calfilter-toggle > span::after {
+    width: 12px;
+    height: 12px;
+    top: 1px;
+    left: 1px;
+  }
+  .calside .calfilter-toggle input:checked + span::after {
+    transform: translateX(10px);
+  }
+  /* p14 §1-3: .calside の中の密度（行 24px・見出し 8px 2px 2px・行間なし） */
+  .calside .calfilterpanel-sec {
+    margin-bottom: 0;
+  }
+  .calside .calfilterpanel-sech {
+    padding: 8px 2px 2px;
+  }
+  .calside .calfilterpanel-sec:first-of-type .calfilterpanel-sech {
+    padding-top: 2px;
+  }
+  .calside .calfilterpanel-all {
+    min-height: 20px;
+    padding: 0 2px;
+  }
+  .calside .calfilterpanel-row {
+    min-height: 24px;
+    gap: 6px;
+    padding: 0 4px;
     font-size: 13px;
-    gap: 8px;
+    border-radius: var(--r-xs);
+  }
+  .calside .calfilterpanel-row:hover {
+    background: var(--surface-low);
+  }
+  .calside .grouppick {
+    gap: 0 10px;
+    margin: 0;
+    padding: 0;
+  }
+  .calside .calfilterpanel-catchip {
+    min-height: 24px;
+    padding: 0 4px;
+    gap: 6px;
+    font-size: 13px;
+  }
+  .calside .calfilterpanel-manage {
+    min-height: 24px;
+    margin-top: 6px;
+    padding: 0 4px;
+    font-size: 12px;
   }
 
   /* === chat-plan-a §3-4・§3-6（PC だけの調整） ===
@@ -21950,7 +22299,7 @@ body:has(.mhead) .grouppick-item {
     min-height: 32px;
   }
   /* === notebook-staff-redesign §3（PC だけの調整） ===
-     ・スタッフの提出タブのグリッドを 3 列（絞り込み 220px｜一覧 320px｜詳細 1fr）にする。1つ目のPCブロックの
+     ・スタッフの提出タブのグリッドを 3 列（絞り込み 184px｜一覧 320px｜詳細 1fr。p14 §1-3 で 220→184）にする。1つ目のPCブロックの
        .coachapp:has(.nbmain)（2列。.fbar/.nbgroupbar 用の行つき）は触らず、詳細度を上げてここで上書きする
        （末尾の 1600px 追随ブロックの .coachapp:has(.nbmain) にも負けないよう .noteapp を足して 0,3,0 にする）。
        スタッフには .fbar/.nbgroupbar が無くなったので、行は header と本体の 2 本でよい。
@@ -21964,7 +22313,7 @@ body:has(.mhead) .grouppick-item {
     grid-row: 2;
   }
   .coachapp.noteapp:has(.nbside) {
-    grid-template-columns: 220px 320px minmax(0, 1fr);
+    grid-template-columns: 184px 320px minmax(0, 1fr);
   }
   .coachapp.noteapp.nbside-hidden:has(.nbmain) {
     grid-template-columns: 320px minmax(0, 1fr);
@@ -21974,7 +22323,8 @@ body:has(.mhead) .grouppick-item {
     grid-column: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 12px 14px calc(env(safe-area-inset-bottom) + 24px);
+    /* p14 §1-3: 列を左上へ詰める */
+    padding: 8px 10px calc(env(safe-area-inset-bottom) + 16px);
     border-right: 1px solid var(--outline);
     background: var(--surface-lowest);
   }
@@ -21984,24 +22334,29 @@ body:has(.mhead) .grouppick-item {
   .coachapp.noteapp:has(.nbside) .nbmain {
     grid-column: 3;
   }
-  /* 「‹ 絞り込みを隠す」。.calside-hide と同じ右寄せのテキストボタン（PCは32px） */
+  /* 「‹ 絞り込みを隠す」。.calside-hide と同じ右寄せのテキストボタン（PCは24px。p14 §1-3） */
   .nbside-hide {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     width: 100%;
-    min-height: 32px;
+    min-height: 24px; /* p14 §1-3: 32→24 */
+    margin: 0;
     padding: 0;
     border: 0;
     background: none;
     color: var(--accent);
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 12px; /* p14 §1-3: 13→12 */
     font-weight: 700;
     cursor: pointer;
   }
+  /* p14 §1-3: セクション見出しは 8px 2px 2px、列の先頭だけ padding-top 2px */
+  .noteapp .nbfsec-h {
+    padding: 8px 2px 2px;
+  }
   .nbside .nbfsec:first-of-type .nbfsec-h {
-    padding-top: 6px;
+    padding-top: 2px;
   }
   /* PC のヘッダー（スタッフ）：右寄せの起点は .hdrcta の margin-left:auto だけだったが、スタッフは「＋ 配信」
      （notebook-staff-redesign §2）を外したので、ベルと「監督・管理者」がロゴの右隣に寄ってしまう。
@@ -22037,11 +22392,33 @@ body:has(.mhead) .grouppick-item {
   .coachapp.noteapp:has(.nbmain) .scroll {
     scrollbar-width: thin;
   }
+  /* p14 §1-3: 行の束の枠・罫線を無くして文字だけのリストにする。行は 24px・チェックは全部左へ */
   .noteapp .nbfrows {
-    border-radius: var(--r-md);
+    border: 0;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
+  }
+  .noteapp .nbfrow {
+    min-height: 24px;
+    padding: 0 4px;
+    gap: 6px;
+    border-bottom: 0;
+    background: none;
+    border-radius: var(--r-xs);
+    font-size: 13px;
+  }
+  .noteapp .nbfrow .calchk.sq {
+    order: -1;
   }
   .noteapp .nbfrow:hover {
     background: var(--surface-low);
+  }
+  .noteapp .nbfmanage {
+    min-height: 24px;
+    margin-top: 6px;
+    padding: 0 4px;
+    font-size: 12px;
   }
   /* 予定別の行：一覧の列(約280px)では「日付・種類・予定名」と「提出 N／M・未読 k」が1行に入らず予定名が
      1〜2文字に潰れていたので、右側を常に2行目（左寄せ）へ回し、シェブロンは1行目の右端に残す */
@@ -22322,13 +22699,13 @@ body:has(.mhead) .grouppick-item {
   .teammain .phubsheet .bigbtn:not(.ghost):hover {
     background: var(--accent-strong);
   }
-  /* player-hub §2-1（名簿 PC だけの調整）：名簿タブは 3 列（絞り込み 220px｜一覧 300px｜個人ページ 1fr）。
+  /* player-hub §2-1（名簿 PC だけの調整）：名簿タブは 3 列（絞り込み 184px｜一覧 300px｜個人ページ 1fr）。
      1つ目のPCブロックの .teamapp:has(.teammain)（300px｜1fr。行は auto auto 1fr）は触らず、詳細度を上げて
      ここで上書きする（名簿タブが絞り込み列を開いているときだけルートに .rosside-open が付く。
-     試合記録・出欠タブ、絞り込み列を畳んだ名簿は今の 2 列のまま）。.rosside は .scroll の外の兄弟で、
-     .scroll を 2 列目・.teammain を 3 列目へ送る。末尾の 1600px 追随ブロックにも 220px 340px 1fr を足してある */
+     出欠タブと、絞り込み列を畳んだ名簿・試合記録は今の 2 列のまま。p14 §2-2 で試合記録タブも同じ器＝.rosside-open で 3 列）。.rosside は .scroll の外の兄弟で、
+     .scroll を 2 列目・.teammain を 3 列目へ送る。末尾の 1600px 追随ブロックにも 184px 340px 1fr を足してある（p14 §1-3: 220→184） */
   .teamapp.rosside-open:has(.teammain) {
-    grid-template-columns: 220px 300px minmax(0, 1fr);
+    grid-template-columns: 184px 300px minmax(0, 1fr);
   }
   .teamapp.rosside-open .rosside {
     grid-row: 3;
@@ -22336,7 +22713,8 @@ body:has(.mhead) .grouppick-item {
     display: block;
     min-height: 0;
     overflow-y: auto;
-    padding: 12px 14px calc(env(safe-area-inset-bottom) + 24px);
+    /* p14 §1-3: 列を左上へ詰める */
+    padding: 8px 10px calc(env(safe-area-inset-bottom) + 16px);
     border-right: 1px solid var(--outline);
     background: var(--surface-lowest);
   }
@@ -22346,44 +22724,61 @@ body:has(.mhead) .grouppick-item {
   .teamapp.rosside-open:has(.teammain) .teammain {
     grid-column: 3;
   }
-  /* 「‹ 絞り込みを隠す」。.nbside-hide と同じ右寄せのテキストボタン（PCは32px） */
+  /* 「‹ 絞り込みを隠す」。.nbside-hide と同じ右寄せのテキストボタン（PCは24px。p14 §1-3） */
   .rosside-hide {
     display: flex;
     align-items: center;
     justify-content: flex-end;
     width: 100%;
-    min-height: 32px;
+    min-height: 24px; /* p14 §1-3: 32→24 */
+    margin: 0;
     padding: 0;
     border: 0;
     background: none;
     color: var(--accent);
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 12px; /* p14 §1-3: 13→12 */
     font-weight: 700;
     cursor: pointer;
   }
   .rosside .rosfsec:first-of-type .rosfsec-h {
-    padding-top: 6px;
+    padding-top: 2px; /* p14 §1-3: 6→2 */
   }
   /* 選んだ行を見える位置へ寄せるとき、上に貼り付く表の見出し(thead)の下に隠れないようにする */
   .ptable-row.sel {
     scroll-margin: 44px 0 8px;
   }
-  /* 絞り込み列の行は 36px に詰める（15 行前後が 1 画面に収まるように。指サイズ 44px は下の pointer: coarse で戻す） */
+  /* 絞り込み列の行は 24px に詰める（p14 §1-3: 36→24。行の束の枠・罫線は無くして文字だけのリストにし、
+     四角のチェックも左へ。指サイズ 44px は下の pointer: coarse で戻す） */
   .rosfrows {
-    border-radius: var(--r-md);
+    border: 0;
+    border-radius: 0;
+    background: none;
+    overflow: visible;
   }
   .rosfrow {
-    min-height: 36px;
+    min-height: 24px;
+    padding: 0 4px;
+    gap: 6px;
+    border-bottom: 0;
+    background: none;
+    border-radius: var(--r-xs);
+    font-size: 13px;
+  }
+  .rosfrow .calchk.sq {
+    order: -1;
   }
   .rosfrow:hover {
     background: var(--surface-low);
   }
   .rosfsec-h {
-    padding: 10px 4px 4px;
+    padding: 8px 2px 2px;
   }
   .rosfmanage {
-    min-height: 32px;
+    min-height: 24px;
+    margin-top: 6px;
+    padding: 0 4px;
+    font-size: 12px;
   }
   /* 一覧の列(300px)の操作行：畳んでいるときだけ出る「絞り込み」と検索欄は他のPCの操作部品と同じ 32px・四角 */
   .rostop {
@@ -22401,6 +22796,81 @@ body:has(.mhead) .grouppick-item {
     padding: 6px 10px;
     border-radius: var(--r-md);
     font-size: 13px;
+  }
+  /* p14 §2-2: 試合記録の選手・保護者（.teammain なし）は 2 列（絞り込み 184px｜一覧）。スタッフは上の
+     .teamapp.rosside-open:has(.teammain)（184px｜300px｜1fr）がそのまま効く。.rosside は .scroll の外の兄弟で
+     grid-row:3・grid-column:1（上の .teamapp.rosside-open .rosside）。ヘッダーと rolebar は全幅 */
+  .teamapp.rosside-open:not(:has(.teammain)) {
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    grid-template-columns: 184px minmax(0, 1fr);
+    height: 100dvh;
+  }
+  .teamapp.rosside-open:not(:has(.teammain)) header {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+  .teamapp.rosside-open:not(:has(.teammain)) .rolebar {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+  .teamapp.rosside-open:not(:has(.teammain)) .scroll {
+    grid-row: 3;
+    grid-column: 2;
+  }
+  /* p14 §4: 試合記録の行（PCスタッフの左列）。既存の .teamapp:has(.teammain) .scroll .matchcard 系より詳細度を上げて上書き */
+  /* 統括調整: 1 本目の PC ブロックの .teamapp .reclist（grid 用の align-items:start）が flex 縦並びにも残り、
+     行が内容の幅に縮む／列からはみ出す（スコアが切れる）ので、行を列幅いっぱいに伸ばす */
+  .teamapp:has(.teammain) .reclist {
+    align-items: stretch;
+  }
+  .teamapp:has(.teammain) .scroll .reclist .matchcard {
+    gap: 8px;
+    padding: 4px 8px;
+    min-height: 0;
+  }
+  .teamapp:has(.teammain) .reclist .mopp .evgroups {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .teamapp:has(.teammain) .reclist .mres {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+  }
+  .teamapp:has(.teammain) .reclist .mopp {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .teamapp:has(.teammain) .reclist .mscore {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  /* p14 §3: 順位表の見出し行の鉛筆と編集シートのカード・削除は PC で小さく・四角に（指サイズは下の (pointer: coarse) で戻す） */
+  .leaguehead .phubedit {
+    width: 32px;
+    height: 32px;
+  }
+  /* 統括調整: 絞り込み列を開いた 1440px 幅では表が約 380px になり「勝点」列が横スクロールの外へ出ていた。
+     セルの左右を詰め、チーム名の列だけ省略記号にして 8 列を常に収める */
+  .ptable.leaguetable thead th {
+    padding: 0 5px 6px;
+  }
+  .ptable.leaguetable tbody td {
+    padding: 6px 5px;
+  }
+  .ptable.leaguetable .col-name {
+    max-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lgedit-row {
+    border-radius: var(--r-md);
+  }
+  .lgedit-del {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-md);
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -22491,9 +22961,9 @@ body:has(.mhead) .grouppick-item {
   .teamapp:has(.teammain) {
     grid-template-columns: 340px minmax(0, 1fr);
   }
-  /* player-hub §2-1: 名簿タブ（絞り込み列を開いているとき）は 220px｜340px｜1fr */
+  /* player-hub §2-1: 名簿タブ（絞り込み列を開いているとき）は 184px｜340px｜1fr（p14 §1-3: 220→184） */
   .teamapp.rosside-open:has(.teammain) {
-    grid-template-columns: 220px 340px minmax(0, 1fr);
+    grid-template-columns: 184px 340px minmax(0, 1fr);
   }
   .coachapp:has(.nbmain) {
     grid-template-columns: 340px minmax(0, 1fr);
@@ -22572,13 +23042,26 @@ body:has(.mhead) .grouppick-item {
   .rostop .rosfilterbtn,
   .rostop .search,
   .rosfrow,
-  .rosfmanage {
+  .rosfmanage,
+  /* p14 §1-3: PC で 24px に詰めた絞り込みの行・リンクも 44px へ戻す */
+  .noteapp .nbfrow,
+  .noteapp .nbfmanage,
+  .calside-hide,
+  .calside .calfilterpanel-row,
+  .calside .calfilterpanel-catchip,
+  .calside .calfilterpanel-all,
+  .calside .calfilter-toggle,
+  .calside .calfilterpanel-manage {
     min-height: 44px;
   }
   .cmpselect {
     height: auto;
     padding: 10px 12px;
     font-size: 15px;
+  }
+  /* p14 §4: PC で詰めた試合記録の行も指サイズ 44px へ戻す */
+  .teamapp:has(.teammain) .scroll .reclist .matchcard {
+    min-height: 44px;
   }
   /* player-hub: 個人ページの操作部品も指サイズ 44px へ戻す */
   .phubnav button,
@@ -22612,6 +23095,12 @@ body:has(.mhead) .grouppick-item {
     min-height: 44px;
   }
   .phubchk {
+    width: 44px;
+    height: 44px;
+  }
+  /* p14 §3: PC で 32px に詰めた順位表の鉛筆・削除も指サイズ 44px へ戻す */
+  .leaguehead .phubedit,
+  .lgedit-del {
     width: 44px;
     height: 44px;
   }

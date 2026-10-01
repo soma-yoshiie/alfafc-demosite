@@ -10,6 +10,8 @@ import type {
   FitnessRecord,
   FitnessStandardKey,
   FitnessTest,
+  LeagueRow,
+  LeagueTable,
   Library,
   NotebookEntry,
   Point,
@@ -64,6 +66,8 @@ const CALFILTER_KEY = "soccer_tactics_calfilter_v2";
 const CALSIDE_OPEN_KEY = "soccer_tactics_calside_v1";
 const NBSIDE_OPEN_KEY = "soccer_tactics_nbside_v1";
 const ROSSIDE_OPEN_KEY = "soccer_tactics_rosside_v1";
+// p14 §2-2: PCの試合記録の絞り込み列(.rosside)の開閉状態。値は"open"/"closed"のみ
+const RECSIDE_OPEN_KEY = "soccer_tactics_recside_v1";
 const GROUPFILTER_KEY = "soccer_tactics_groupfilter_v1";
 const TEAM_LOGO_KEY = "soccer_tactics_teamlogo_v1";
 const USER_ARTICLES_KEY = "soccer_tactics_user_articles_v1";
@@ -783,10 +787,51 @@ export function loadTeam(): TeamData | null {
     data.events = data.events.map((e) =>
       e.squad !== undefined && !isValidEventSquad(e.squad) ? { ...e, squad: undefined } : e
     );
+    // p14 §3: リーグ順位表の形が壊れていれば消す（未定義＝既定値）
+    if (data.league !== undefined) {
+      const lg = normalizeLeague(data.league);
+      if (lg) data.league = lg;
+      else delete data.league;
+    }
     return data;
   } catch {
     return null;
   }
+}
+
+/** p14 §3: 数値は 0 以上の整数に丸める（数でない・NaN は 0） */
+function leagueInt(v: unknown): number {
+  const n = typeof v === "number" ? Math.round(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** p14 §3: 保存されたリーグ順位表の正規化。rows が配列でなければ null。own は高々 1 行 */
+function normalizeLeague(raw: unknown): LeagueTable | null {
+  const t = raw as Partial<LeagueTable> | null;
+  if (!t || typeof t !== "object" || !Array.isArray(t.rows)) return null;
+  let ownSeen = false;
+  const rows: LeagueRow[] = [];
+  for (const r of t.rows as Partial<LeagueRow>[]) {
+    if (!r || typeof r !== "object" || typeof r.id !== "string" || typeof r.name !== "string") continue;
+    const isOwn = r.own === true && !ownSeen;
+    if (isOwn) ownSeen = true;
+    rows.push({
+      id: r.id,
+      name: r.name,
+      win: leagueInt(r.win),
+      draw: leagueInt(r.draw),
+      loss: leagueInt(r.loss),
+      gf: leagueInt(r.gf),
+      ga: leagueInt(r.ga),
+      ...(isOwn ? { own: true as const } : {}),
+    });
+  }
+  return {
+    title: typeof t.title === "string" ? t.title : undefined,
+    rows,
+    updatedAt: typeof t.updatedAt === "number" ? t.updatedAt : undefined,
+    updatedBy: typeof t.updatedBy === "string" ? t.updatedBy : undefined,
+  };
 }
 
 /**
@@ -981,6 +1026,28 @@ export function saveRosSideOpen(open: boolean): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(ROSSIDE_OPEN_KEY, open ? "open" : "closed");
+  } catch {
+    /* 無視 */
+  }
+}
+
+/**
+ * PCの試合記録（チーム運営 › 試合記録）の絞り込み列(.rosside)の開閉状態（p14 §2-2）。
+ * loadRosSideOpenと同じ作法：既定はtrue（開いた状態）。値は"open"/"closed"のみ。
+ */
+export function loadRecSideOpen(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(RECSIDE_OPEN_KEY) !== "closed";
+  } catch {
+    return true;
+  }
+}
+
+export function saveRecSideOpen(open: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(RECSIDE_OPEN_KEY, open ? "open" : "closed");
   } catch {
     /* 無視 */
   }

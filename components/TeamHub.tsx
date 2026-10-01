@@ -5,11 +5,14 @@ import type React from "react";
 import type {
   AttendanceStatus,
   CalFilter,
+  Competition,
   EventCategory,
   EventSquad,
   FitnessTest,
   GoalOrigin,
   Group,
+  LeagueRow,
+  LeagueTable,
   MatchConceded,
   MatchGoal,
   MatchRecord,
@@ -24,7 +27,7 @@ import type {
 import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL, STAGE_GRADES } from "@/lib/types";
 import { groupOf } from "@/lib/formations";
 import { buildEventSquad } from "@/lib/squad";
-import { LEAGUE_STANDINGS } from "@/lib/sampleLeague";
+import { computeStandings, leaguePositionOf, type Standing } from "@/lib/sampleLeague";
 import {
   addDays,
   byStartAsc,
@@ -48,11 +51,13 @@ import {
   loadCalSideOpen,
   loadGroupFilter,
   loadLastEventCategory,
+  loadRecSideOpen,
   loadRosSideOpen,
   saveCalFilter,
   saveCalSideOpen,
   saveGroupFilter,
   saveLastEventCategory,
+  saveRecSideOpen,
   saveRosSideOpen,
 } from "@/lib/storage";
 import { localDateStr } from "@/lib/dates";
@@ -84,15 +89,18 @@ import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
-import { IconDownload, IconEdit, IconFilter, IconPlus } from "./icons";
+import { IconDownload, IconEdit, IconFilter, IconPlus, IconTrash } from "./icons";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
 import ChatHome, { useChatHeaderAction } from "./ChatHome";
 import PlayerHub from "./PlayerHub";
+import { MatchHub } from "./MatchHub";
+import type { MatchHubSection } from "./MatchHub";
 import { PlayerBasicForm } from "./hub/PlayerBasicForm";
 import type { PlayerFormDraft } from "./hub/PlayerBasicForm";
 import type { HubSection } from "./hub/common";
+import { LastUpdated } from "./hub/common";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -318,7 +326,6 @@ type SheetState =
           元のeventViewへ復帰するために使う。competitionIdは予定に設定された大会をそのまま初期値へ引き継ぐ */
       prefill?: { date?: string; opponent?: string; eventId?: string; competitionId?: string };
     }
-  | { type: "matchView"; id: string }
   | { type: "competitions" }
   // Phase D-1(C1-major): 予定フォームからの「＋ 管理」を挟んでも編集中の入力(title/date/
   // evGroupIdsなど)を失わないよう、呼び出し元(from=編集中のev、date=新規時の初期日)を
@@ -331,6 +338,10 @@ type SheetState =
   | { type: "playerForm"; player?: Player }
   /** 体力測定の種目管理。個人ページの「種目を管理 ›」から開く（returnTo があれば閉じたとき選手フォームへ戻る） */
   | { type: "fitnessTests"; returnTo?: Player }
+  /** p14 §3-3: 順位表の閲覧（スマホ・PCの選手の入口行から。スタッフは「編集する」で league へ） */
+  | { type: "leagueView" }
+  /** p14 §3-4: 順位表の編集。from:"view" は leagueView から開いた印（閉じたら leagueView へ戻る） */
+  | { type: "league"; from?: "view" }
   | null;
 
 /** 試合記録タブ・PC右ペインの選択状態（既定 summary） */
@@ -432,6 +443,20 @@ function Inner() {
     saveRosSideOpen(rosSideOpen);
   }, [rosSideOpen]);
   const [rosFilterSheet, setRosFilterSheet] = useState(false);
+  // p14 §2-2: 試合記録の絞り込み（PCの列 .rosside の開閉＝既定で開く／スマホのシートの開閉）。
+  // 絞り込みの状態そのもの(cmp / matchGroupIds)は上の試合記録の state を使う
+  const [recSideOpen, setRecSideOpen] = useState(() => loadRecSideOpen());
+  useEffect(() => {
+    saveRecSideOpen(recSideOpen);
+  }, [recSideOpen]);
+  const [recFilterSheet, setRecFilterSheet] = useState(false);
+  // p14 §5-2: 試合の詳細（MatchHub）。スマホとPCの選手・保護者で開いている試合のid（PCのスタッフは右ペインの recSel を使う
+  // ので常に null）と、詳細のセクション。一覧⇄詳細のスクロール位置（スマホ）は名簿と同じ作法で recListTop に覚える
+  const [recOpen, setRecOpen] = useState<string | null>(null);
+  const [recSection, setRecSection] = useState<MatchHubSection>("overview");
+  // レビュー nav-1: スマホで試合の詳細（メンバー）から選手の個人ページへ移ったときの戻り先
+  const [rosBack, setRosBack] = useState<{ id: string; section: MatchHubSection } | null>(null);
+  const recListTop = useRef(0);
   // スマホの一覧⇄個人ページは同じ .scroll を使い回すので、一覧の位置を覚えておく（戻ったとき同じ位置へ）
   const rosScrollRef = useRef<HTMLDivElement>(null);
   const rosListTop = useRef(0);
@@ -468,12 +493,35 @@ function Inner() {
   const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "cal";
   // player-hub §2-1: スマホは名簿で選手を選ぶと個人ページを全画面で開く（rosSel）。チーム運営のヘッダーと
   // セグメントは出さず、ハブ自身のヘッダー（選手名＋戻る）だけにする。PCは絞り込み列(.rosside)を
-  // 名簿タブのときだけ左に足す（開いているとき。畳んでいる間は一覧の「絞り込み」ボタンで戻す）
+  // 名簿・試合記録タブのときに左に足す（p14 §2-2。開いているとき。畳んでいる間は一覧の「絞り込み」ボタンで戻す）
   const rosFull = !pc && showRos && activeTab === "ros" && !!rosSel;
   const rosSideOn = pc && showRos && activeTab === "ros" && rosSideOpen;
+  // p14 §2-2: 試合記録の絞り込み。選手で非公開(!isCoach && !matchesPublic)のときは絞り込みごと出さない。
+  // PC専用の第2ペイン(.teammain)を出す条件・シートをインラインで出す条件は、下の return 内の IIFE から
+  // ここへ出した（recSideOn が sheetInline を使うため）
+  const recVisible = isCoach || board.matchesPublic;
+  const recFilterOn = cmp !== "all" || !!matchGroupEff;
+  const hasOther = team.team.matches.some((m) => !m.competitionId);
+  // レビュー tsx-2: 選手・保護者で絞る対象（大会・学年・グループ）が 1 つも無いときは、空の列・空のシートを出さない
+  // （スタッフは管理リンクがあるので常に出す）
+  const recHasFilter = isCoach || team.team.competitions.length > 0 || hasOther || team.groups.length > 0;
+  const showTeammain = pc && isCoach && (activeTab === "rec" || activeTab === "ros" || activeTab === "att");
+  const sheetInTeammain = showTeammain && sheet != null;
+  // showTeammain対象外(home/calタブ、または選手ロール)でsheetが開いているときは、
+  // .scroll内のタブ本体を出さず、代わりにSheetHost(pane)を.scroll直下に全幅表示する
+  const sheetInline = pc && sheet != null && !sheetInTeammain;
+  // p14 §5-2: 詳細を開いている間（PCの選手・保護者）は絞り込み列を出さない
+  const recSideOn = pc && activeTab === "rec" && recSideOpen && recVisible && recHasFilter && !sheetInline && !recOpen;
+  // p14 §5-2: スマホは試合の詳細を全画面で開く（名簿の rosFull と同じ。非公開の選手は recOpen を無視して鍵メッセージ）
+  const recFull = !pc && activeTab === "rec" && recVisible && !!recOpen;
+  // PCの選手・保護者は .scroll の中身を詳細に差し替える。recDetail＝一覧の代わりに詳細を出している（スマホ／PCの選手）
+  const recPcOpen = pc && !isCoach && activeTab === "rec" && recVisible && !!recOpen;
+  const recDetail = recFull || recPcOpen;
+  const recMatch = recOpen ? team.team.matches.find((x) => x.id === recOpen) : undefined;
   const rosPlayer = rosSel ? players.find((p) => p.id === rosSel) : undefined;
   const rosFilterOn = !!rosGroup || rosPos !== "all" || rosStatus !== "all";
   const pickRos = (id: string) => {
+    setRosBack(null);
     if (!pc) {
       rosListTop.current = rosScrollRef.current?.scrollTop ?? 0;
       setRosSection("overview");
@@ -482,13 +530,38 @@ function Inner() {
   };
   // PC幅になったらスマホの絞り込みシートは閉じる（PCは左の .rosside を使う）
   useEffect(() => {
-    if (pc) setRosFilterSheet(false);
+    if (pc) {
+      setRosFilterSheet(false);
+      setRosBack(null);
+    }
+  }, [pc]);
+  // p14 §2-2: 試合記録の絞り込みシートも同じ（PCは左の .rosside を使う）
+  useEffect(() => {
+    if (pc) setRecFilterSheet(false);
   }, [pc]);
   // スマホの一覧⇄個人ページ：個人ページは先頭から、一覧へ戻ったら開く前の位置へ
   useEffect(() => {
     const el = rosScrollRef.current;
+    // p14 §5-2: rosScrollRef は試合の詳細(recFull)と共用。他方のタブへ移った拍子の変化では位置を触らない
+    if (!rosFull && activeTab !== "ros") return;
     if (el) el.scrollTop = rosFull ? 0 : rosListTop.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rosFull]);
+  // p14 §5-2: 試合の詳細も同じ。詳細は先頭から、一覧へ戻ったら開く前の位置へ
+  // （レビュー tsx-1: PCの選手・保護者の差し替え表示も同じ扱いにするため recFull でなく recDetail を見る）
+  useEffect(() => {
+    const el = rosScrollRef.current;
+    if (!recDetail && activeTab !== "rec") return;
+    if (el) el.scrollTop = recDetail ? 0 : recListTop.current;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recDetail]);
+  // p14 §5-2: スマホで開いた詳細のままPC幅になったスタッフは、右ペインの詳細（recSel）へ変換する
+  useEffect(() => {
+    if (pc && isCoach && recOpen) {
+      setRecSel({ kind: "match", id: recOpen });
+      setRecOpen(null);
+    }
+  }, [pc, isCoach, recOpen]);
   // mobile-redesign-v2 §3-3: 右のヘッダーアクション（タブ連動で1つだけ・スタッフのみ）。
   // PCのヘッダーCTA(.teamcta)と同じ対象・同じラベルにする。
   // Phase D-1(C2 major): ログインロール(board.auth.role)だけでなく閲覧ロール(isCoach=
@@ -512,6 +585,8 @@ function Inner() {
   // 「絞り込み」を出す（コーチ・選手/保護者どちらも。プレビュー中の閲覧ロールisCoachで出し分ける）。
   // コーチは「絞り込み」→「＋予定を追加」の順、選手は「絞り込み」だけになるようheaderActionの前に置く
   const showCalFilterAction = activeTab === "cal";
+  // p14 §2-2: 試合記録タブのときも「絞り込み」を出す（recVisible のときだけ。絞り込み→＋の順）
+  const showRecFilterAction = activeTab === "rec" && recVisible && recHasFilter;
   const calFilterHasHidden = isCoach
     ? calFilterEff.hiddenGroupIds.length > 0 ||
       calFilterEff.hideAllTargets ||
@@ -540,6 +615,7 @@ function Inner() {
             on: activeTab === t,
             onSelect: () => {
               setSheet(null);
+              setRecOpen(null);
               setTab(t);
             },
           };
@@ -552,16 +628,13 @@ function Inner() {
 
   // 保険effect: モバイル経路でシートが開いた状態のままPC幅になった場合、
   // 対応する右ペインの選択stateへ変換してシートを閉じる（ChatScreen.tsx 36-56 の教訓に倣う）。
-  // 対応タブを表示中でない場合は変換しない（例: homeタブ経由でmatchViewを開いた場合など）
+  // 対応タブを表示中でない場合は変換しない（p14 §5: 試合の詳細はシートでなくなったので recOpen 側の effect で変換）
   useEffect(() => {
     if (!isCoach || typeof window === "undefined") return;
     const mql = window.matchMedia(PC_MQ);
     const sync = () => {
       if (!mql.matches) return;
-      if (sheet?.type === "matchView" && activeTab === "rec") {
-        setRecSel({ kind: "match", id: sheet.id });
-        setSheet(null);
-      } else if (sheet?.type === "attendance" && activeTab === "att") {
+      if (sheet?.type === "attendance" && activeTab === "att") {
         setAttSel({ kind: "event", id: sheet.eventId });
         setSheet(null);
       }
@@ -586,12 +659,17 @@ function Inner() {
     // home/attのintentはPC・モバイルどちらでもカレンダーへ丸める（mobile-redesign-v2 §3-1）
     const targetTab: Tab = intent.tab === "att" || intent.tab === "home" ? "cal" : intent.tab;
     setTab(targetTab);
+    // p14 §5-2: teamIntent で来たときも試合の詳細は閉じる
+    setRecOpen(null);
+    setRosBack(null);
     // 個人ページはPC・スマホとも開く（スマホは全画面）。他画面から来たときは「基本」から
     if (intent.playerId) {
       setRosSel(intent.playerId);
       setRosSection("overview");
     }
     if (intent.eventId) setSheet({ type: "eventView", id: intent.eventId });
+    // p14 §1-1: サッカーノートの「絞り込みを編集…」からグループ管理を開く
+    if (intent.openGroups) setSheet({ type: "groups" });
     board.setTeamIntent(null);
   }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer]);
 
@@ -612,6 +690,47 @@ function Inner() {
       }}
     />
   );
+  // p14 §2-2: 試合記録の絞り込みの中身（PCの左列 .rosside とスマホのシートで同じ部品）。
+  // 「大会を登録・管理…」「絞り込みを編集…」はスタッフだけ。スマホはシートを閉じてから管理シートを開く
+  const recFilterPanel = (
+    <RecFilterPanel
+      comps={team.team.competitions}
+      hasOther={hasOther}
+      cmp={cmp}
+      onCmp={setCmp}
+      groups={team.groups}
+      groupId={matchGroupEff}
+      onGroup={(id) => setMatchGroupIds(id ? [id] : [])}
+      onManageCompetitions={
+        isCoach
+          ? () => {
+              setRecFilterSheet(false);
+              setSheet({ type: "competitions" });
+            }
+          : undefined
+      }
+      onManageGroups={
+        isCoach
+          ? () => {
+              setRecFilterSheet(false);
+              setSheet({ type: "groups" });
+            }
+          : undefined
+      }
+    />
+  );
+  // p14 §2-3 / §5-2: 一覧の行を押したとき。PCのスタッフ＝右ペインの詳細、それ以外＝一覧の位置を覚えて詳細を開く
+  // （スマホは全画面 recFull、PCの選手・保護者は .scroll の差し替え）。どちらも「基本」から
+  const onOpenMatch = (id: string) => {
+    if (pc && isCoach) {
+      setRecSel({ kind: "match", id });
+    } else {
+      recListTop.current = rosScrollRef.current?.scrollTop ?? 0;
+      setRecOpen(id);
+    }
+    setRecSection("overview");
+  };
+  const recHubEdit = () => recMatch && setSheet({ type: "match", record: recMatch });
   const rosHub = rosSel ? (
     <PlayerHub
       key={rosSel}
@@ -627,7 +746,7 @@ function Inner() {
   ) : null;
 
   return (
-    <div className={`app teamapp${rosSideOn ? " rosside-open" : ""}`}>
+    <div className={`app teamapp${rosSideOn || recSideOn ? " rosside-open" : ""}`}>
       {pc ? (
         <header>
           {/* board-squad-and-pc-polish §1: 左にレール(.conrail)があるため「‹ ホーム」は不要 */}
@@ -666,7 +785,22 @@ function Inner() {
           )}
         </header>
       ) : rosFull ? (
-        <MobileHeader title={rosPlayer?.name ?? "選手"} onBack={() => setRosSel(null)} />
+        <MobileHeader
+          title={rosPlayer?.name ?? "選手"}
+          onBack={() => {
+            setRosSel(null);
+            // レビュー nav-1: 試合の詳細（メンバー）から来たときは、その試合の同じセクションへ戻る
+            if (rosBack) {
+              setTab("rec");
+              setRecOpen(rosBack.id);
+              setRecSection(rosBack.section);
+              setRosBack(null);
+            }
+          }}
+        />
+      ) : recFull ? (
+        // p14 §5-2: 試合の詳細の全画面。絞り込み・＋のアクションは出さない
+        <MobileHeader title={recMatch ? `vs ${recMatch.opponent}` : "試合記録"} onBack={() => setRecOpen(null)} />
       ) : (
         // mobile-redesign-v2 §3-3: タイトルは変更なし。右のアクションはタブ連動で
         // headerAction(スタッフのみ)1つだけだったが、案A §3-2でカレンダータブのときだけ
@@ -675,12 +809,18 @@ function Inner() {
         <MobileHeader
           title={board.auth.role === "coach" ? "チーム運営" : "チーム"}
           actions={
-            (showCalFilterAction || headerAction) && (
+            (showCalFilterAction || showRecFilterAction || headerAction) && (
               <>
                 {showCalFilterAction && (
                   <MobileHeaderAction label="絞り込み" onClick={() => setSheet({ type: "calfilter" })}>
                     <IconFilter />
                     {calFilterHasHidden && <span className="dot" />}
+                  </MobileHeaderAction>
+                )}
+                {showRecFilterAction && (
+                  <MobileHeaderAction label="絞り込み" onClick={() => setRecFilterSheet(true)}>
+                    <IconFilter />
+                    {recFilterOn && <span className="dot" />}
                   </MobileHeaderAction>
                 )}
                 {headerAction && (
@@ -744,7 +884,7 @@ function Inner() {
       )}
 
       {/* mobile-redesign §1-7: 既存の上部タブ帯を.mseg様式に統一（PCでは従来どおり.fbar自体が非表示） */}
-      {!rosFull && (
+      {!rosFull && !recFull && (
         <MobileSegments
           wrapClassName="fbar"
           ariaLabel="チーム運営の表示切替"
@@ -752,7 +892,10 @@ function Inner() {
             key: t,
             label,
             on: activeTab === t,
-            onSelect: () => setTab(t),
+            onSelect: () => {
+              setRecOpen(null);
+              setTab(t);
+            },
           }))}
         />
       )}
@@ -761,11 +904,7 @@ function Inner() {
           コーチのrec/ros/attタブのみ。それ以外(home/calタブ・選手ロール)でsheetを開くと
           グリッドが破綻するため、そちらは.scroll直下の全幅表示(画面切替方式)へ回す */}
       {(() => {
-        const showTeammain = pc && isCoach && (activeTab === "rec" || activeTab === "ros" || activeTab === "att");
-        const sheetInTeammain = showTeammain && sheet != null;
-        // showTeammain対象外(home/calタブ、または選手ロール)でsheetが開いているときは、
-        // .scroll内のタブ本体を出さず、代わりにSheetHost(pane)を.scroll直下に全幅表示する
-        const sheetInline = pc && sheet != null && !sheetInTeammain;
+        // showTeammain / sheetInTeammain / sheetInline は p14 §2-2 で Inner の上へ移した（recSideOn が使う）
         return (
           <>
             {/* paddingは基底CSS(.teamapp .scroll)へ移設（PCで上書きできるように） */}
@@ -777,6 +916,15 @@ function Inner() {
                   ‹ 絞り込みを隠す
                 </button>
                 {rosFilterPanel}
+              </aside>
+            )}
+            {/* p14 §2-2: 試合記録タブのPCも同じ器（.rosside。名簿とは排他）。畳んでいる間は一覧の先頭の「絞り込み」で戻す */}
+            {recSideOn && (
+              <aside className="rosside" aria-label="試合記録の絞り込み">
+                <button type="button" className="rosside-hide" onClick={() => setRecSideOpen(false)}>
+                  ‹ 絞り込みを隠す
+                </button>
+                {recFilterPanel}
               </aside>
             )}
             <div className="scroll" ref={rosScrollRef}>
@@ -820,17 +968,57 @@ function Inner() {
                       setCalSideOpen={setCalSideOpen}
                     />
                   )}
-                  {activeTab === "rec" && (
+                  {activeTab === "rec" && recFull && (
+                    <MatchHub
+                      key={recOpen}
+                      matchId={recOpen!}
+                      players={players}
+                      canEdit={isCoach}
+                      onEdit={recHubEdit}
+                      onDeleted={() => setRecOpen(null)}
+                      section={recSection}
+                      onSection={setRecSection}
+                      onOpenPlayer={(pid) => {
+                        // レビュー nav-1: スマホは個人ページの「戻る」でこの試合へ戻れるよう、戻り先を覚えてから名簿へ
+                        setRosBack({ id: recOpen!, section: recSection });
+                        setRecOpen(null);
+                        setTab("ros");
+                        setRosSel(pid);
+                        setRosSection("overview");
+                      }}
+                    />
+                  )}
+                  {/* p14 §5-2: PCの選手・保護者は一覧の代わりに詳細を出す（絞り込み列は recSideOn で外れる） */}
+                  {recPcOpen && (
+                    <div className="mhubpane">
+                      <div className="tmback" onClick={() => setRecOpen(null)}>
+                        ‹ 試合記録
+                      </div>
+                      <MatchHub
+                        key={recOpen}
+                        matchId={recOpen}
+                        players={players}
+                        canEdit={false}
+                        onEdit={recHubEdit}
+                        onDeleted={() => setRecOpen(null)}
+                        section={recSection}
+                        onSection={setRecSection}
+                      />
+                    </div>
+                  )}
+                  {activeTab === "rec" && !recDetail && (
                     <MatchesTab
                       isCoach={isCoach}
                       players={players}
-                      setSheet={setSheet}
                       recSel={recSel}
                       setRecSel={setRecSel}
                       cmp={cmp}
-                      setCmp={setCmp}
                       matchGroup={matchGroupEff}
-                      setMatchGroupIds={setMatchGroupIds}
+                      showFilterBtn={pc && !recSideOn && recHasFilter}
+                      filterOn={recFilterOn}
+                      onFilter={() => (pc ? setRecSideOpen(true) : setRecFilterSheet(true))}
+                      onOpenMatch={onOpenMatch}
+                      onOpenLeague={() => setSheet({ type: "leagueView" })}
                     />
                   )}
                   {activeTab === "ros" &&
@@ -881,9 +1069,17 @@ function Inner() {
                   <>
                     {activeTab === "rec" &&
                       (recSel.kind === "summary" ? (
-                        <RecSummaryPane cmp={cmp} matchGroup={matchGroupEff} players={players} setRecSel={setRecSel} />
+                        <RecSummaryPane cmp={cmp} matchGroup={matchGroupEff} players={players} setRecSel={setRecSel} setSheet={setSheet} />
                       ) : recSel.kind === "match" ? (
-                        <RecMatchPane id={recSel.id} players={players} setRecSel={setRecSel} setSheet={setSheet} isCoach={isCoach} />
+                        <RecMatchPane
+                          id={recSel.id}
+                          players={players}
+                          setRecSel={setRecSel}
+                          setSheet={setSheet}
+                          isCoach={isCoach}
+                          section={recSection}
+                          onSection={setRecSection}
+                        />
                       ) : (
                         <RecPlayerPane id={recSel.id} players={players} setRecSel={setRecSel} />
                       ))}
@@ -944,6 +1140,16 @@ function Inner() {
           {rosFilterPanel}
         </RosterFilterSheet>
       )}
+      {/* p14 §2-2: スマホの試合記録の絞り込みシート（見出し「表示する試合」。ヘッダーの「絞り込み」から開く） */}
+      {!pc && recVisible && (
+        <RosterFilterSheet
+          title="表示する試合"
+          open={recFilterSheet}
+          onClose={() => setRecFilterSheet(false)}
+        >
+          {recFilterPanel}
+        </RosterFilterSheet>
+      )}
     </div>
   );
 }
@@ -970,7 +1176,6 @@ function sheetKey(s: SheetState): string {
         // groups-phase2 §3-2: prefill.eventIdをキーに含める（別の予定から開いたら作り直す）
         (s.prefill ? `pf-${s.prefill.date ?? ""}-${s.prefill.opponent ?? ""}-${s.prefill.eventId ?? ""}` : "new"))
     );
-  if (s.type === "matchView") return "mv-" + s.id;
   if (s.type === "playerForm") return "pf-" + (s.player?.id ?? "new");
   return s.type;
 }
@@ -1678,7 +1883,7 @@ function CalendarTab({
  * スマホは下からのシート(SheetHostのtype:"calfilter")の中身として、PCはCalendarTabの
  * .calside（常時表示・compact=true）として、同じ中身をどちらからも呼ぶ。
  * コーチは学年/グループ/種類の3セクション＋「全員向けの予定を含める」トグル＋
- * 「グループを編集…」リンク、選手・保護者は「自分の予定だけ」トグル＋種類セクションのみ。
+ * 「絞り込みを編集…」リンク（p14 §1-1 で文言変更）、選手・保護者は「自分の予定だけ」トグル＋種類セクションのみ。
  */
 function CalFilterPanel({
   filter,
@@ -1701,7 +1906,7 @@ function CalFilterPanel({
   setCalMine: (v: boolean) => void;
   groups: TeamGroup[];
   categories: EventCategory[];
-  /** 「グループを編集…」リンク。省略時はリンク自体を出さない */
+  /** 「絞り込みを編集…」リンク。省略時はリンク自体を出さない */
   onManageGroups?: () => void;
   /** true=PCの常設パネル（見出し行・完了ボタンを出さない） */
   compact?: boolean;
@@ -1838,7 +2043,7 @@ function CalFilterPanel({
             // 統括の最終調整: div[role=button]だとEnter/Spaceで動かないため実ボタンにする
             // （見た目は.calfilterpanel-manageのまま。ボタン既定のスタイルはCSS側で外す）
             <button type="button" className="calfilterpanel-manage" onClick={onManageGroups}>
-              グループを編集…
+              絞り込みを編集…
             </button>
           )}
         </>
@@ -1936,36 +2141,46 @@ function ColorChoiceList({
 function MatchesTab({
   isCoach,
   players,
-  setSheet,
   recSel,
   setRecSel,
   cmp,
-  setCmp,
   matchGroup,
-  setMatchGroupIds,
+  showFilterBtn,
+  filterOn,
+  onFilter,
+  onOpenMatch,
+  onOpenLeague,
 }: {
   isCoach: boolean;
   players: Player[];
-  setSheet: (s: SheetState) => void;
   recSel?: RecSel;
   setRecSel?: (s: RecSel) => void;
   cmp: string;
-  setCmp: (v: string) => void;
   /** groups-phase2 §3-3: 絞り込み中グループ（単一選択。nullは「すべて」） */
   matchGroup: string | null;
-  setMatchGroupIds: (ids: string[]) => void;
+  /** p14 §2-3: true=PCで絞り込み列(.rosside)を畳んでいるので、一覧の先頭に「絞り込み」ボタン(.rostop)を出す */
+  showFilterBtn: boolean;
+  /** 何か絞っているか（「絞り込み」ボタンの点） */
+  filterOn: boolean;
+  onFilter: () => void;
+  /** p14 §2-3: 行を押した（PCスタッフ＝右ペイン、それ以外＝詳細。分岐は Inner 側） */
+  onOpenMatch: (id: string) => void;
+  /** p14 §3-3: 順位表の入口行（スマホ・PCの選手）を押した（leagueView シートを開く） */
+  onOpenLeague: () => void;
 }) {
   const board = useBoard();
   const team = useTeam();
   const pc = usePc();
   const comps = team.team.competitions;
+  // p14 §3-3: 順位表の入口行の見出しと順位（順位は表と同じ computeStandings から）
+  const leagueTitle = team.league.title || "リーグ順位表";
+  const leaguePos = leaguePositionOf(computeStandings(team.league, board.state.teamName ?? "マイチーム"));
   const cmpName = (m: MatchRecord): string | null =>
     m.competitionId
       ? comps.find((c) => c.id === m.competitionId)?.name ?? "（削除された大会）"
       : m.competition || null;
 
   const allMatches = [...team.team.matches].sort((a, b) => (a.date < b.date ? 1 : -1));
-  const hasOther = allMatches.some((m) => !m.competitionId);
   // groups-phase2 §3-3: 選択グループが対象、または対象が全体の記録に絞る（カレンダーと同じ考え方）
   const matches = allMatches.filter(
     (m) =>
@@ -1975,6 +2190,18 @@ function MatchesTab({
   const filterLabel =
     cmp === "all" ? null : cmp === "none" ? "その他" : comps.find((c) => c.id === cmp)?.name ?? null;
   const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
+  // p14 §2-3: 「選択中」1行の中身（グループが先、大会が後。グループはその色の点付き）
+  const selGroup = matchGroup ? team.groups.find((g) => g.id === matchGroup) ?? null : null;
+  const selParts: React.ReactNode[] = [];
+  if (selGroup) {
+    selParts.push(
+      <span key="g">
+        <i className="rosseldot" style={{ background: selGroup.color ?? "var(--mut)" }} />
+        {selGroup.label}
+      </span>
+    );
+  }
+  if (filterLabel) selParts.push(filterLabel);
 
   let w = 0,
     d = 0,
@@ -2023,52 +2250,38 @@ function MatchesTab({
         </div>
       )}
 
-      {/* 大会フィルタ。PCはコンパクトなselect1個、モバイルは従来のチップ列(横スクロール) */}
-      {(comps.length > 0 || hasOther) &&
-        (pc ? (
-          <select className="cmpselect" value={cmp} onChange={(e) => setCmp(e.target.value)}>
-            <option value="all">すべて</option>
-            {comps.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-            {hasOther && <option value="none">その他</option>}
-          </select>
-        ) : (
-          <div className="cmpbar">
-            <button className={`cmpchip${cmp === "all" ? " on" : ""}`} onClick={() => setCmp("all")}>
-              すべて
-            </button>
-            {comps.map((c) => (
-              <button
-                key={c.id}
-                className={`cmpchip${cmp === c.id ? " on" : ""}`}
-                onClick={() => setCmp(c.id)}
-              >
-                {c.name}
-              </button>
-            ))}
-            {hasOther && (
-              <button className={`cmpchip${cmp === "none" ? " on" : ""}`} onClick={() => setCmp("none")}>
-                その他
-              </button>
-            )}
-          </div>
-        ))}
-      {isCoach && (
-        <button className="cmpmanage" onClick={() => setSheet({ type: "competitions" })}>
-          ＋ 大会を登録・管理
-        </button>
+      {/* p14 §2-3: 大会の select／チップ列・「大会を登録・管理」・グループのチップ列は絞り込みパネル
+          (RecFilterPanel。PCは左の .rosside、スマホはヘッダーの「絞り込み」のシート)へ移した。
+          PCで列を畳んでいる間だけ、一覧の先頭の「絞り込み」ボタンで列を開く */}
+      {showFilterBtn && (
+        <div className="rostop">
+          <button type="button" className="rosfilterbtn" onClick={onFilter}>
+            <IconFilter />
+            絞り込み
+            {filterOn && <span className="dot" />}
+          </button>
+        </div>
       )}
-      {/* groups-phase2 §3-3: グループ絞り込み（単一選択。選手・保護者の公開表示にも出す。onManageは付けない） */}
-      {team.groups.length > 0 && (
-        <GroupChips
-          groups={team.groups}
-          value={matchGroup ? [matchGroup] : []}
-          onChange={setMatchGroupIds}
-          allowAll
-        />
+      {/* 選択中の 1 行（名簿の .rossel と同じ文法。グループ→大会の順。未選択は「すべて」） */}
+      <div className="rossel">
+        {selParts.length === 0
+          ? "すべて"
+          : selParts.map((part, i) => (
+              <Fragment key={i}>
+                {i > 0 && " ・ "}
+                {part}
+              </Fragment>
+            ))}
+      </div>
+
+      {/* p14 §3-3: 順位表の入口（PCのスタッフは右ペインに表があるので出さない）。押すと leagueView シート */}
+      {!(pc && isCoach) && (
+        <button type="button" className="phublink lglink" onClick={onOpenLeague}>
+          <span>{leagueTitle}</span>
+          <span className="lglink-v">
+            {leaguePos.rank != null ? `${leaguePos.rank}位 / ${leaguePos.size}チーム` : "未登録"} ›
+          </span>
+        </button>
       )}
 
       {matches.length > 0 && (
@@ -2139,18 +2352,23 @@ function MatchesTab({
               <div
                 key={m.id}
                 className={`matchcard${selected ? " sel" : ""}`}
-                onClick={() => {
-                  if (isCoach && setRecSel && typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
-                    setRecSel({ kind: "match", id: m.id });
-                  } else {
-                    setSheet({ type: "matchView", id: m.id });
+                // p14 §2-3: クリック処理は onOpenMatch に一本化。キーボード(Enter/Space)でも開く
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenMatch(m.id)}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget) return;
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onOpenMatch(m.id);
                   }
                 }}
               >
                 <div className={`mres ${win ? "w" : draw ? "d" : "l"}`}>{win ? "勝" : draw ? "分" : "敗"}</div>
                 <div className="mmid">
                   <div className="mopp">
-                    vs {m.opponent}
+                    {/* p14 §4: 相手名だけを 1 行で省略できるよう包む（バッジは後ろのまま） */}
+                    <span className="moppname">vs {m.opponent}</span>
                     {/* groups-phase2 §3-3: 対象バッジ（全体のときは出さない） */}
                     <MatchGroupsBadge m={m} groups={team.groups} />
                   </div>
@@ -2193,6 +2411,87 @@ const ROS_STATUS_OPTIONS: { key: RosStatus; label: string }[] = [
 ];
 
 /**
+ * 試合記録の絞り込みの中身（p14 §2-1）。名簿の RosterFilterPanel と同じ器・同じ .rosf* のクラスで、
+ * PCは試合記録タブの左の常設列(.rosside)、スマホは下からのシート(RosterFilterSheet)の中身になる。
+ * 大会は右に四角のチェック、学年・グループは左に色の丸チェック（どちらも単一選択）。
+ * 「大会を登録・管理…」は大会セクションの直下、「絞り込みを編集…」は一番下（どちらもスタッフだけ）
+ */
+function RecFilterPanel({
+  comps,
+  hasOther,
+  cmp,
+  onCmp,
+  groups,
+  groupId,
+  onGroup,
+  onManageCompetitions,
+  onManageGroups,
+}: {
+  comps: Competition[];
+  /** 大会に属さない試合があるか（「その他」の行を出す） */
+  hasOther: boolean;
+  /** 選択中の大会。"all"=すべて／"none"=その他／それ以外は大会ID */
+  cmp: string;
+  onCmp: (v: string) => void;
+  groups: TeamGroup[];
+  /** 選択中の学年／グループのID。null=すべて */
+  groupId: string | null;
+  onGroup: (id: string | null) => void;
+  onManageCompetitions?: () => void;
+  onManageGroups?: () => void;
+}) {
+  const grades = groups.filter((g) => g.kind === "grade");
+  const customs = groups.filter((g) => g.kind === "custom");
+  // color: undefined=大会の行（右に四角のチェック）／文字列=学年・グループの行（左に色の丸チェック。「すべて」だけ --mut）
+  const row = (key: string, label: string, on: boolean, onClick: () => void, color?: string) => (
+    <button key={key} type="button" className={`rosfrow${on ? " on" : ""}`} aria-pressed={on} onClick={onClick}>
+      {color !== undefined && (
+        <span
+          className={`calchk${on ? " on" : ""}`}
+          style={{ background: on ? color : "transparent", borderColor: on ? "transparent" : color }}
+        />
+      )}
+      <span className="rosfname">{label}</span>
+      {color === undefined && <span className={`calchk sq${on ? " on" : ""}`} />}
+    </button>
+  );
+  const sec = (title: string, rows: React.ReactNode) => (
+    <div className="rosfsec" key={title}>
+      <div className="rosfsec-h">{title}</div>
+      <div className="rosfrows">{rows}</div>
+    </div>
+  );
+  const groupRows = (list: TeamGroup[]) =>
+    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(g.id), g.color ?? "var(--mut)"));
+  const allRow = row("g-all", "すべて", groupId === null, () => onGroup(null), "var(--mut)");
+  const hasComps = comps.length > 0 || hasOther;
+  return (
+    <div className="rosfpanel">
+      {hasComps &&
+        sec("大会", [
+          row("c-all", "すべて", cmp === "all", () => onCmp("all")),
+          ...comps.map((c) => row(`c-${c.id}`, c.name, cmp === c.id, () => onCmp(c.id))),
+          ...(hasOther ? [row("c-none", "その他", cmp === "none", () => onCmp("none"))] : []),
+        ])}
+      {/* 大会が 0 件で「その他」も無いときは、スタッフにだけ「大会を登録・管理…」を見出しなしで出す */}
+      {onManageCompetitions && (
+        <button type="button" className="rosfmanage" onClick={onManageCompetitions}>
+          大会を登録・管理…
+        </button>
+      )}
+      {grades.length > 0 && sec("学年", [allRow, ...groupRows(grades)])}
+      {customs.length > 0 && sec("グループ", [...(grades.length === 0 ? [allRow] : []), ...groupRows(customs)])}
+      {/* p14 §1-1: 「絞り込みを編集…」はパネルの一番下 */}
+      {onManageGroups && (
+        <button type="button" className="rosfmanage" onClick={onManageGroups}>
+          絞り込みを編集…
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
  * 名簿の絞り込みの中身（player-hub §2-1）。PCは名簿タブの左の常設列(.rosside)、スマホは下からのシート
  * (RosterFilterSheet)の中身として、同じ部品をどちらからも呼ぶ。行の文法は提出の NotebookFilterPanel と同じ
  * （学年・グループは左に色の丸チェック、ポジション・状態は右に四角のチェック。いずれも単一選択）。
@@ -2216,7 +2515,7 @@ function RosterFilterPanel({
   onPos: (v: RosPos) => void;
   status: RosStatus;
   onStatus: (v: RosStatus) => void;
-  /** 「グループを編集…」（グループ管理シートを開く） */
+  /** 「絞り込みを編集…」（グループ管理シートを開く。p14 §1-1 で文言変更・一番下へ移動） */
   onManageGroups?: () => void;
 }) {
   const grades = groups.filter((g) => g.kind === "grade");
@@ -2248,11 +2547,6 @@ function RosterFilterPanel({
     <div className="rosfpanel">
       {grades.length > 0 && sec("学年", [allRow, ...groupRows(grades)])}
       {customs.length > 0 && sec("グループ", [...(grades.length === 0 ? [allRow] : []), ...groupRows(customs)])}
-      {onManageGroups && (
-        <button type="button" className="rosfmanage" onClick={onManageGroups}>
-          グループを編集…
-        </button>
-      )}
       {sec(
         "ポジション",
         ROS_POS_OPTIONS.map((o) => row(`p-${o.key}`, o.label, pos === o.key, () => onPos(o.key)))
@@ -2261,25 +2555,35 @@ function RosterFilterPanel({
         "状態",
         ROS_STATUS_OPTIONS.map((o) => row(`s-${o.key}`, o.label, status === o.key, () => onStatus(o.key)))
       )}
+      {/* p14 §1-1: 「絞り込みを編集…」はパネルの一番下（状態の後） */}
+      {onManageGroups && (
+        <button type="button" className="rosfmanage" onClick={onManageGroups}>
+          絞り込みを編集…
+        </button>
+      )}
     </div>
   );
 }
 
-/** スマホの名簿の絞り込みシート（見出し「表示する選手」＋右上「完了」）。中身は RosterFilterPanel */
+/** スマホの名簿の絞り込みシート（見出し「表示する選手」＋右上「完了」）。中身は RosterFilterPanel。
+ *  p14 §2-2: 試合記録の絞り込み（見出し「表示する試合」・中身は RecFilterPanel）でも共用する */
 function RosterFilterSheet({
   open,
   onClose,
+  title = "表示する選手",
   children,
 }: {
   open: boolean;
   onClose: () => void;
+  /** p14 §2-2: 試合記録でも共用するため見出しを差し替えられる（既定は名簿の「表示する選手」） */
+  title?: string;
   children: React.ReactNode;
 }) {
   return (
     <Sheet open={open} onClose={onClose}>
       <div className="rosfsheet">
         <div className="rosfhead">
-          <b>表示する選手</b>
+          <b>{title}</b>
           <button type="button" className="rosfdone" onClick={onClose}>
             完了
           </button>
@@ -2654,146 +2958,90 @@ function AttendanceRecordBody({ eventId, players }: { eventId: string; players: 
   );
 }
 
-/**
- * 試合詳細UI本体。試合詳細シート(モバイル)とPC右ペイン(rec/match)の両方から使う共有ボディ。
- * onEdit/onDelete で「閉じ方」だけ呼び出し側(シート=setSheet(null) / ペイン=summaryへ戻る)に委ねる
- */
-function MatchDetailBody({
-  m,
-  players,
-  isCoach,
-  onEdit,
-  onDelete,
-}: {
-  m: MatchRecord;
-  players: Player[];
-  isCoach: boolean;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  const team = useTeam();
-  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? "—";
-  const win = m.ourScore > m.theirScore;
-  const draw = m.ourScore === m.theirScore;
-  return (
-    <>
-      <h2>
-        vs {m.opponent}
-        {/* v2 目視レビュー(major-3): 一覧の「勝/分/敗」と揃える（英字バッジをやめる） */}
-        <span>{win ? "勝" : draw ? "分" : "敗"}</span>
-      </h2>
-      <div className="mvscore">
-        {m.ourScore} <small>-</small> {m.theirScore}
-      </div>
-      <div className="mvmeta">
-        {fmtDate(m.date)}
-        {(() => {
-          const cn = m.competitionId
-            ? team.team.competitions.find((c) => c.id === m.competitionId)?.name
-            : m.competition;
-          return cn ? <> ・ <E n="trophy" /> {cn}</> : "";
-        })()}
-        {halfLabel(m) ? <> ・ {halfLabel(m)}</> : ""}
-      </div>
-      <div className="detail">
-        {/* groups-phase2 §3-2: 対象行（全体のときは出さない。グループが1つも無いチームでも出さない） */}
-        {team.groups.length > 0 && matchTargetLabel(m, team.groups) !== "全体" && (
-          <div className="dsec">
-            <div className="dline">
-              <E n="users" /> 対象: <MatchGroupsBadge m={m} groups={team.groups} full />
-            </div>
-          </div>
-        )}
-        {(m.formation || (m.lineup && m.lineup.length > 0)) && (
-          <div className="dsec">
-            <div className="dsec-h"><E n="clipboard" /> フォーメーション</div>
-            {m.formation && <div className="dline">{m.formation}</div>}
-            {m.lineup && m.lineup.length > 0 && (
-              <div className="dline">
-                {m.lineup.map((l, i) => (
-                  <span key={i}>
-                    {i > 0 ? " ・ " : ""}
-                    {l.pos}: {nameOf(l.playerId)}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        <div className="dsec">
-          <div className="dsec-h"><E n="ball" /> 得点者</div>
-          {m.goals.length === 0 ? (
-            <div className="dsec-e">記録なし</div>
-          ) : (
-            m.goals.map((g, i) => (
-              <div key={i} className="dline">
-                {g.minute != null ? `${g.minute}' ` : ""}
-                {nameOf(g.playerId)}
-                {g.assistPlayerId ? `（A: ${nameOf(g.assistPlayerId)}）` : ""}
-                {g.origin ? ` ・ ${GOAL_ORIGIN_LABELS[g.origin]}` : ""}
-              </div>
-            ))
-          )}
-        </div>
-        {m.conceded && m.conceded.length > 0 && (
-          <div className="dsec">
-            <div className="dsec-h"><E n="ball" /> 失点</div>
-            {m.conceded.map((c, i) => (
-              <div key={i} className="dline">
-                {c.minute != null ? `${c.minute}' ` : ""}
-                {c.origin ? GOAL_ORIGIN_LABELS[c.origin] : "形態未記録"}
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="dsec">
-          <div className="dsec-h"><E n="refresh" /> 交代</div>
-          {m.subs.length === 0 ? (
-            <div className="dsec-e">記録なし</div>
-          ) : (
-            m.subs.map((s, i) => (
-              <div key={i} className="dline">
-                {s.minute != null ? `${s.minute}' ` : ""}
-                {nameOf(s.outPlayerId)} → {nameOf(s.inPlayerId)}
-              </div>
-            ))
-          )}
-        </div>
-        {m.note && (
-          <div className="dsec">
-            <div className="dsec-h"><E n="note" /> メモ</div>
-            <div className="dline">{m.note}</div>
-          </div>
-        )}
-      </div>
-      {isCoach && (
-        <>
-          {/* v2 目視レビュー(major-2): スマホでは主操作を --accent 地に（PC は ghost のまま。
-              .accent の規則は .teamapp:has(.mhead) 配下限定） */}
-          <button className="bigbtn ghost accent" onClick={onEdit}>
-            編集する
-          </button>
-          <button
-            className="bigbtn ghost"
-            style={{ color: "var(--red)" }}
-            onClick={() => {
-              if (window.confirm("この試合記録を削除しますか？")) {
-                team.removeMatch(m.id);
-                onDelete();
-              }
-            }}
-          >
-            削除する
-          </button>
-        </>
-      )}
-    </>
-  );
-}
-
 /* ----------------------------------------------------------------
    試合記録タブ・PC右ペイン
    ---------------------------------------------------------------- */
+
+/** p14 §3-4: 編集シートの 1 行（数値は入力中の文字列） */
+type LeagueDraftRow = { id: string; name: string; own?: true; win: string; draw: string; loss: string; gf: string; ga: string };
+const LEAGUE_NUM_KEYS = ["win", "draw", "loss", "gf", "ga"] as const;
+const LEAGUE_NUM_LABEL: Record<(typeof LEAGUE_NUM_KEYS)[number], string> = {
+  win: "勝",
+  draw: "分",
+  loss: "敗",
+  gf: "得点",
+  ga: "失点",
+};
+/** 編集の初期行。並びは今の順位順。自チームの行が無いデータ（壊れた・全部消した）は先頭に補う */
+function leagueDraftRows(league: LeagueTable, ownName: string): LeagueDraftRow[] {
+  const rows: LeagueDraftRow[] = computeStandings(league, ownName).map((r) => ({
+    id: r.id,
+    name: r.name,
+    ...(r.own ? { own: true as const } : {}),
+    win: String(r.win),
+    draw: String(r.draw),
+    loss: String(r.loss),
+    gf: String(r.gf),
+    ga: String(r.ga),
+  }));
+  if (!rows.some((r) => r.own)) {
+    rows.unshift({
+      id: "lg_" + Date.now().toString(36) + "_own",
+      name: ownName,
+      own: true,
+      win: "0",
+      draw: "0",
+      loss: "0",
+      gf: "0",
+      ga: "0",
+    });
+  }
+  return rows;
+}
+/** 空欄＝0、全角数字も受ける。0 以上の整数だけ（それ以外は null） */
+function parseLeagueInt(v: string): number | null {
+  const t = v.trim().replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
+  if (t === "") return 0;
+  if (!/^\d+$/.test(t)) return null;
+  const n = Number(t);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** p14 §3: 順位表（順位／チーム／試合／勝／分／敗／得失／勝点）。PCの右ペインとスマホ・選手の leagueView シートで共用 */
+function LeagueTableView({ rows }: { rows: Standing[] }) {
+  return (
+    <div className="leaguewrap">
+      <table className="ptable leaguetable">
+        <thead>
+          <tr>
+            <th className="num">順位</th>
+            <th className="col-name">チーム</th>
+            <th className="num">試合</th>
+            <th className="num">勝</th>
+            <th className="num">分</th>
+            <th className="num">敗</th>
+            <th className="num">得失</th>
+            <th className="num">勝点</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className={r.own ? "own" : undefined}>
+              <td className="num">{r.rank}</td>
+              <td className="col-name">{r.name}</td>
+              <td className="num">{r.played}</td>
+              <td className="num">{r.win}</td>
+              <td className="num">{r.draw}</td>
+              <td className="num">{r.loss}</td>
+              <td className="num">{r.diff > 0 ? `+${r.diff}` : r.diff}</td>
+              <td className="num leaguepts">{r.pts}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /** RecSummaryPaneのkpicard2で切り替える月別推移の指標。既定は勝率 */
 type RecKpiMetric = "played" | "winPct" | "goals" | "conceded";
@@ -2807,15 +3055,20 @@ function RecSummaryPane({
   matchGroup,
   players,
   setRecSel,
+  setSheet,
 }: {
   cmp: string;
   /** groups-phase2 §3-3: 絞り込み中グループ（単一選択。nullは「すべて」） */
   matchGroup: string | null;
   players: Player[];
   setRecSel: (s: RecSel) => void;
+  /** p14 §3-2: 順位表の鉛筆から編集シートを開く */
+  setSheet: (s: SheetState) => void;
 }) {
   const board = useBoard();
   const team = useTeam();
+  // p14 §3: 順位表（計算済み。自チームの行はチーム名へ差し替え）
+  const standings = computeStandings(team.league, board.state.teamName ?? "マイチーム");
   const [mode, setMode] = useState<RecSummaryMode>("team");
   const [recMetric, setRecMetric] = useState<RecKpiMetric>("winPct");
   const comps = team.team.competitions;
@@ -2867,43 +3120,28 @@ function RecSummaryPane({
         <RecPlayerRankingsBody players={players} matches={matches} />
       ) : (
         /* 2カラム化: 左(主役・広い)=リーグ順位表 / 右(サイド)=既存サマリーの縦積み。
-           リーグ順位表はデモ用の固定データ(lib/sampleLeague.ts)。大会フィルタ(cmp)には連動せず常に全体を表示する */
+           リーグ順位表はチームの順位表(p14 §3。未保存は lib/sampleLeague.ts の既定値)。大会フィルタ(cmp)には連動せず常に全体を表示する */
         <div className="recsplit">
           <div className="recleague">
-            <div className="sech">リーグ順位表</div>
-            <div className="leaguewrap">
-              <table className="ptable leaguetable">
-                <thead>
-                  <tr>
-                    <th className="num">順位</th>
-                    <th className="col-name">チーム</th>
-                    <th className="num">試合</th>
-                    <th className="num">勝</th>
-                    <th className="num">分</th>
-                    <th className="num">敗</th>
-                    <th className="num">得失</th>
-                    <th className="num">勝点</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {LEAGUE_STANDINGS.map((r) => {
-                    const diff = r.gf - r.ga;
-                    return (
-                      <tr key={r.rank} className={r.own ? "own" : undefined}>
-                        <td className="num">{r.rank}</td>
-                        <td className="col-name">{r.name}</td>
-                        <td className="num">{r.played}</td>
-                        <td className="num">{r.win}</td>
-                        <td className="num">{r.draw}</td>
-                        <td className="num">{r.loss}</td>
-                        <td className="num">{diff > 0 ? `+${diff}` : diff}</td>
-                        <td className="num leaguepts">{r.pts}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            {/* p14 §3-2: 見出し行＋鉛筆（順位表の編集シートを開く）。0 チームなら表の代わりに案内 */}
+            <div className="leaguehead">
+              <div className="sech">{team.league.title || "リーグ順位表"}</div>
+              <button
+                type="button"
+                className="phubedit"
+                aria-label="順位表を編集"
+                title="順位表を編集"
+                onClick={() => setSheet({ type: "league" })}
+              >
+                <IconEdit />
+              </button>
             </div>
+            <LastUpdated at={team.league.updatedAt} by={team.league.updatedBy} />
+            {standings.length === 0 ? (
+              <div className="empty-msg">順位表が未登録です。右上の編集から登録できます。</div>
+            ) : (
+              <LeagueTableView rows={standings} />
+            )}
           </div>
 
           <div className="recside">
@@ -3227,38 +3465,41 @@ function RecPlayerRankingsBody({
   );
 }
 
-/** match: 試合詳細＋「‹ サマリー」戻りリンク */
+/** match: 試合の詳細（MatchHub。p14 §5-2）＋「‹ サマリー」戻りリンク。カードで包まず名簿の個人ページと同じ置き方 */
 function RecMatchPane({
   id,
   players,
   setRecSel,
   setSheet,
   isCoach,
+  section,
+  onSection,
 }: {
   id: string;
   players: Player[];
   setRecSel: (s: RecSel) => void;
   setSheet: (s: SheetState) => void;
   isCoach: boolean;
+  section: MatchHubSection;
+  onSection: (s: MatchHubSection) => void;
 }) {
   const team = useTeam();
   const m = team.team.matches.find((x) => x.id === id);
   return (
-    <div className="tmdetail screenbody">
+    <div className="mhubpane">
       <div className="tmback" onClick={() => setRecSel({ kind: "summary" })}>
         ‹ サマリー
       </div>
-      {m ? (
-        <MatchDetailBody
-          m={m}
-          players={players}
-          isCoach={isCoach}
-          onEdit={() => setSheet({ type: "match", record: m })}
-          onDelete={() => setRecSel({ kind: "summary" })}
-        />
-      ) : (
-        <div className="empty-msg">この試合記録は削除されました。</div>
-      )}
+      <MatchHub
+        key={id}
+        matchId={id}
+        players={players}
+        canEdit={isCoach}
+        onEdit={() => m && setSheet({ type: "match", record: m })}
+        onDeleted={() => setRecSel({ kind: "summary" })}
+        section={section}
+        onSection={onSection}
+      />
     </div>
   );
 }
@@ -3836,6 +4077,11 @@ function SheetHost({
       setSheet({ type: "eventView", id: sheet.prefill.eventId });
       return;
     }
+    // p14 §3-4: 順位表の編集は、閲覧シートから開いたときだけ閲覧へ戻る（PCスタッフはサマリーへ＝null）
+    if (sheet?.type === "league" && sheet.from === "view") {
+      setSheet({ type: "leagueView" });
+      return;
+    }
     if (sheet?.type === "fitnessTests") {
       // 個人ページの「種目を管理 ›」から開いた場合は（returnTo無し）閉じて個人ページへ戻る
       setSheet(sheet.returnTo ? { type: "playerForm", player: sheet.returnTo } : null);
@@ -3986,6 +4232,55 @@ function SheetHost({
   // この ref に写して復元する。フォームを閉じると SheetHost ごと作り直されて空に戻る
   const pf = sheet?.type === "playerForm" ? sheet.player : undefined;
   const pfKeep = useRef<PlayerFormDraft | null>(null);
+
+  // p14 §3-4: 順位表の編集。数値は文字列で持ち、保存時に検証して数値にする。開くたびに SheetHost が
+  // 作り直される（key=league）ので、初期値は開いた時点の順位表（並びは今の順位順）
+  const lgOwnName = board.state.teamName ?? "マイチーム";
+  // 閲覧シート（leagueView）の表。計算済みの順位表（自チームの行はチーム名へ差し替え）
+  const leagueViewRows = computeStandings(team.league, lgOwnName);
+  const [lgTitle, setLgTitle] = useState(() => (sheet?.type === "league" ? team.league.title ?? "" : ""));
+  const [lgRows, setLgRows] = useState<LeagueDraftRow[]>(() =>
+    sheet?.type === "league" ? leagueDraftRows(team.league, lgOwnName) : []
+  );
+  // 「＋ チームを追加」直後の行（チーム名にフォーカスを移す）
+  const [lgFocusId, setLgFocusId] = useState<string | null>(null);
+  const lgNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const lgSeq = useRef(0);
+  useEffect(() => {
+    if (!lgFocusId) return;
+    lgNameRefs.current[lgFocusId]?.focus();
+    setLgFocusId(null);
+  }, [lgFocusId]);
+  const lgPatch = (id: string, patch: Partial<LeagueDraftRow>) =>
+    setLgRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  const saveLeague = () => {
+    // 検証: チーム名（自チームの行は対象外）→ 数値（空欄＝0。0 以上の整数だけ）
+    if (lgRows.some((r) => !r.own && !r.name.trim())) {
+      board.toast("チーム名を入力してください");
+      return;
+    }
+    const rows: LeagueRow[] = [];
+    for (const r of lgRows) {
+      const nums = LEAGUE_NUM_KEYS.map((k) => parseLeagueInt(r[k]));
+      if (nums.some((n) => n == null)) {
+        board.toast("数値は 0 以上の整数で入力してください");
+        return;
+      }
+      const [win, draw, loss, gf, ga] = nums as number[];
+      rows.push({
+        id: r.id,
+        name: r.own ? lgOwnName : r.name.trim(),
+        win,
+        draw,
+        loss,
+        gf,
+        ga,
+        ...(r.own ? { own: true as const } : {}),
+      });
+    }
+    team.setLeague({ title: lgTitle.trim() || undefined, rows });
+    paneBack();
+  };
 
   // 体力測定：種目管理（カテゴリ管理[2938行目付近]と同じ構造で編集/削除/追加）
   const [newTestName, setNewTestName] = useState("");
@@ -5601,6 +5896,112 @@ function SheetHost({
         </button>
       </Sheet>
 
+      {/* p14 §3-3: 順位表の閲覧（スマホ・PCの選手の入口行から。表は横スクロール可）。スタッフだけ「編集する」 */}
+      <Sheet open={sheet?.type === "leagueView"} onClose={pane ? paneBack : close} pane={pane}>
+        <h2>{team.league.title || "リーグ順位表"}</h2>
+        {sheet?.type === "leagueView" && (
+          <>
+            {leagueViewRows.length === 0 ? (
+              <div className="empty-msg">順位表が未登録です。</div>
+            ) : (
+              <LeagueTableView rows={leagueViewRows} />
+            )}
+            <div className="lgview-upd">
+              <LastUpdated at={team.league.updatedAt} by={team.league.updatedBy} />
+            </div>
+            {isCoach && (
+              <button className="bigbtn ghost accent" onClick={() => setSheet({ type: "league", from: "view" })}>
+                編集する
+              </button>
+            )}
+          </>
+        )}
+      </Sheet>
+
+      {/* p14 §3-4: 順位表の編集（名称・チームごとの勝/分/敗/得点/失点）。順位・試合数・勝点は自動計算 */}
+      <Sheet open={sheet?.type === "league"} onClose={paneBack} pane={pane}>
+        <h2>順位表を編集</h2>
+        <div className="formfield">
+          <label>名称</label>
+          <input
+            value={lgTitle}
+            onChange={(e) => setLgTitle(e.target.value)}
+            placeholder="リーグ順位表（例：春季リーグ U-12）"
+          />
+        </div>
+        <div className="lgedit">
+          {lgRows.map((r) => (
+            <div key={r.id} className="lgedit-row">
+              <div className="lgedit-top">
+                {r.own ? (
+                  <div className="lgedit-name lgedit-ownname">
+                    <b>{lgOwnName}</b>
+                    <span className="phubtag lgedit-own">自チーム</span>
+                  </div>
+                ) : (
+                  <div className="formfield lgedit-name">
+                    <input
+                      ref={(el) => {
+                        lgNameRefs.current[r.id] = el;
+                      }}
+                      value={r.name}
+                      onChange={(e) => lgPatch(r.id, { name: e.target.value })}
+                      placeholder="チーム名"
+                      aria-label="チーム名"
+                    />
+                  </div>
+                )}
+                {!r.own && (
+                  <button
+                    type="button"
+                    className="lgedit-del"
+                    aria-label="このチームを削除"
+                    title="このチームを削除"
+                    onClick={() => setLgRows((rows) => rows.filter((x) => x.id !== r.id))}
+                  >
+                    <IconTrash />
+                  </button>
+                )}
+              </div>
+              <div className="lgedit-nums">
+                {LEAGUE_NUM_KEYS.map((k) => (
+                  <label key={k}>
+                    <span>{LEAGUE_NUM_LABEL[k]}</span>
+                    <input
+                      inputMode="numeric"
+                      placeholder="0"
+                      value={r[k]}
+                      onChange={(e) => lgPatch(r.id, { [k]: e.target.value })}
+                      aria-label={`${r.own ? lgOwnName : r.name || "チーム"} ${LEAGUE_NUM_LABEL[k]}`}
+                    />
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="formfield">
+          <button
+            type="button"
+            className="dynadd"
+            onClick={() => {
+              lgSeq.current += 1;
+              const id = "lg_" + Date.now().toString(36) + "_" + lgSeq.current;
+              setLgRows((rows) => [...rows, { id, name: "", win: "", draw: "", loss: "", gf: "", ga: "" }]);
+              setLgFocusId(id);
+            }}
+          >
+            ＋ チームを追加
+          </button>
+        </div>
+        <div className="evnote" style={{ margin: "0 16px 12px" }}>
+          順位は 勝点（勝 3・分 1）→ 得失点差 → 得点 の順に自動で並びます。試合数は 勝＋分＋敗 です。
+        </div>
+        <button className="bigbtn" onClick={saveLeague}>
+          保存する
+        </button>
+      </Sheet>
+
       {/* 大会の登録・管理 */}
       <Sheet open={sheet?.type === "competitions"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>大会の登録・管理</h2>
@@ -5653,24 +6054,6 @@ function SheetHost({
             })
           )}
         </div>
-      </Sheet>
-
-      {/* 試合詳細。UI本体はMatchDetailBody（PC右ペイン rec/match と共有） */}
-      <Sheet open={sheet?.type === "matchView"} onClose={pane ? paneBack : close} pane={pane}>
-        {sheet?.type === "matchView" &&
-          (() => {
-            const m = team.team.matches.find((x) => x.id === sheet.id);
-            if (!m) return null;
-            return (
-              <MatchDetailBody
-                m={m}
-                players={players}
-                isCoach={isCoach}
-                onEdit={() => setSheet({ type: "match", record: m })}
-                onDelete={close}
-              />
-            );
-          })()}
       </Sheet>
 
       {/* 選手フォーム（新規追加・編集）。入力欄は個人ページと共有の PlayerBasicForm（player-hub §2-1）。

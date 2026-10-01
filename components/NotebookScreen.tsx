@@ -303,6 +303,17 @@ export default function NotebookScreen() {
         setFilterIds(id ? [id] : []);
         setSelNote(null);
       }}
+      // p14 §1-1: パネル最下段「絞り込みを編集…」（スタッフだけ）。チームのグループ管理シートを開く
+      // （intent → setScreen の順。Bench.tsx の名簿への遷移と同じ作法）
+      onManageGroups={
+        isCoach
+          ? () => {
+              setFilterSheet(false);
+              board.setTeamIntent({ tab: "ros", openGroups: true });
+              board.setScreen("team");
+            }
+          : undefined
+      }
     />
   );
   const startWrite = (k: NoteKind) => {
@@ -1540,6 +1551,7 @@ function NotebookFilterPanel({
   groups,
   groupId,
   onGroup,
+  onManageGroups,
 }: {
   kind: NoteKind | "all";
   onKind: (k: NoteKind | "all") => void;
@@ -1549,6 +1561,8 @@ function NotebookFilterPanel({
   /** 選択中の学年／グループのID。null=すべて */
   groupId: string | null;
   onGroup: (id: string | null) => void;
+  /** 「絞り込みを編集…」（p14 §1-1）。省略時はリンク自体を出さない */
+  onManageGroups?: () => void;
 }) {
   const grades = groups.filter((g) => g.kind === "grade");
   const customs = groups.filter((g) => g.kind === "custom");
@@ -1590,6 +1604,12 @@ function NotebookFilterPanel({
         (["all", "unread", "nocomment", "commented"] as NoteStatus[]).map((st) =>
           row(`s-${st}`, NOTE_STATUS_LABEL[st], status === st, () => onStatus(st))
         )
+      )}
+      {/* p14 §1-1: 一番下に「絞り込みを編集…」（名簿・カレンダーと同じ） */}
+      {onManageGroups && (
+        <button type="button" className="nbfmanage" onClick={onManageGroups}>
+          絞り込みを編集…
+        </button>
       )}
     </div>
   );
