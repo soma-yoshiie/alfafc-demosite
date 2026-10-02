@@ -57,14 +57,38 @@ export function IconPlusSquare(p: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** 練習メニュー（コーン） */
+/** p17 §4: ナビ用の 32×32 部品。周りの 24×24・線幅 2 のアイコンと線の太さをそろえるため線幅は 2.67（2×32/24） */
+function Svg32(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.67}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    />
+  );
+}
+
+/** 練習メニュー（トレーニングコーン。p17 §4: 中身を差し替え。PDF の形を枠の中央へ 3 だけ右に寄せた） */
 export function IconCone(p: SVGProps<SVGSVGElement>) {
   return (
-    <Svg {...p}>
-      <path d="M12 3 6.5 20h11z" />
-      <path d="M8.7 12h6.6" />
-      <path d="M4.5 20h15" />
-    </Svg>
+    <Svg32 {...p}>
+      <path d="M14 5L24 24L8 24ZM11.7 17H20.3M11 13H18.2M6 27H26" />
+    </Svg32>
+  );
+}
+
+/** 戦術ボード（ピッチ。p17 §4: クリップボードから替えた。ConsoleShell/CoachingHub/HomeMenu の入口で使う） */
+export function IconPitch(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg32 {...p}>
+      <rect x="5" y="3" width="22" height="26" rx="1.5" />
+      <path d="M5 16H27M11 3V8H21V3M11 29V24H21V29" />
+      <circle cx="16" cy="16" r="4" />
+    </Svg32>
   );
 }
 
@@ -428,7 +452,7 @@ export function IconFilm(p: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** 戦術ボード（クリップボード。ConsoleShell/HomeMenuのレール・メニューで共用） */
+/** クリップボード（p17 §4: 戦術ボードの入口は IconPitch に替えた。今は使う所が無い） */
 export function IconClipboard(p: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...p}>
@@ -560,4 +584,55 @@ export function IconFilter(p: SVGProps<SVGSVGElement>) {
       <path d="M10 19h4" />
     </Svg>
   );
+}
+
+/* ===== p17 §3: サッカーノートの種類のアイコン（PDF の SVG。32×32・線幅 1.8・色は currentColor） ===== */
+function Svg32Note(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 32 32"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...props}
+    />
+  );
+}
+
+/** 試合＝交差するフラッグ */
+export function IconNoteMatch(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg32Note {...p}>
+      <path d="M6 27L21 4L28 9L23 15L17 11M26 27L11 4L4 9L9 15L15 11" />
+    </Svg32Note>
+  );
+}
+
+/** 練習＝ボール */
+export function IconNotePractice(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg32Note {...p}>
+      <circle cx="16" cy="16" r="11" />
+      <path d="M16 10L21.7 14.1L19.5 20.7L12.5 20.7L10.3 14.1ZM16 10V5M21.7 14.1L26.5 12.7M19.5 20.7L22.5 25M12.5 20.7L9.5 25M10.3 14.1L5.5 12.7" />
+    </Svg32Note>
+  );
+}
+
+/** 自主練＝選手＋ボール */
+export function IconNoteSolo(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg32Note {...p}>
+      <circle cx="11" cy="6" r="2.5" />
+      <path d="M10 11L15 12L18 16M13 12L11 19L17 22L19 26M11 19L7 26M10 13L6 17" />
+      <circle cx="25" cy="25" r="3" />
+    </Svg32Note>
+  );
+}
+
+/** ノートの種類のアイコン（提出カード・詳細ヘッダー・検索結果で共用） */
+export function NoteKindIcon({ kind }: { kind: "match" | "practice" | "solo" }) {
+  return kind === "match" ? <IconNoteMatch /> : kind === "practice" ? <IconNotePractice /> : <IconNoteSolo />;
 }

@@ -60,7 +60,7 @@ import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
-import { IconBell, IconFilter } from "./icons";
+import { IconBell, IconFilter, NoteKindIcon } from "./icons";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const PLAY_KINDS: PlayKind[] = ["receive", "shot", "miss"];
@@ -1247,6 +1247,20 @@ function NoteList({
     );
   }, [listView, isCoach, kind, team.categories]);
 
+  // p17 §1: 明日以降の「これからの予定」（サッカーノートに反映する予定だけ。近い順）。
+  // events と同じ読み方（予定別へ切り替えるたびに loadTeam() を読み直す）・同じ種類の絞り込み
+  const upcoming = useMemo(() => {
+    if (listView !== "byEvent") return [];
+    const today = todayStr();
+    return (loadTeam()?.events ?? [])
+      .filter((e) => e.date > today)
+      .filter((e) => eventNoteTarget(e, team.categories))
+      .sort((a, b) => a.date.localeCompare(b.date) || (a.time ?? "").localeCompare(b.time ?? ""))
+      .filter((e) => !isCoach || kind === "all" || (kind !== "solo" && (e.kind === "match") === (kind === "match")));
+  }, [listView, isCoach, kind, team.categories]);
+  // p17 §1: これからの予定は 5 件まで。6 件以上は「ほか N 件を表示」で全部出す（画面を離れたら戻る）
+  const [soonAll, setSoonAll] = useState(false);
+
   // 未提出チップの並び：学年順（team.groups の学年グループの並び）→背番号順。学年が無い選手は末尾
   const rosterOrder = useMemo(() => {
     if (!isCoach) return [] as Player[];
@@ -1447,6 +1461,27 @@ function NoteList({
         )
       ) : (
         <>
+          {/* p17 §1: これからの予定（明日以降。提出はまだ無いので押せない行）。1 件以上あるときだけ出す */}
+          {upcoming.length > 0 && (
+            <>
+              <div className="evgsech">これからの予定</div>
+              {(soonAll ? upcoming : upcoming.slice(0, 5)).map((ev) => (
+                <div key={ev.id} className="evgrow soon">
+                  <span className="evgrowdate">{fmt(ev.date)}</span>
+                  <span className={`evgrowkind ${ev.kind}`}>{categoryOf(ev, team.categories).label}</span>
+                  <span className="evgrowtitle">{ev.title || NOTE_KIND_LABEL[ev.kind]}</span>
+                  <span className="evgrowcount soon">これから</span>
+                </div>
+              ))}
+              {upcoming.length > 5 && (
+                <button type="button" className="evgmore" onClick={() => setSoonAll((v) => !v)}>
+                  {soonAll ? "たたむ" : `ほか ${upcoming.length - 5} 件を表示`}
+                </button>
+              )}
+              <div className="evgsech">今日までの予定</div>
+            </>
+          )}
+          {/* p17 レビュー: 0 件の文言は今日までの予定の話なので、これからの予定の区画の後ろ（見出しの下）に置く */}
           {events.length === 0 && (
             <div className="evnote" style={{ margin: "2px 2px 8px" }}>
               {/* notebook-staff-redesign §3-4: スタッフが種類で絞って0件のときは、その旨を出す
@@ -1673,7 +1708,14 @@ function NoteCard({
       className={`notecard${selected ? " sel" : ""}${staffView ? " staffview" : ""}${unread ? " unread" : ""}`}
       onClick={onClick}
     >
-      <div className="notecond">{entry.condition ? <ConditionIcon c={entry.condition} /> : NOTE_KIND_LABEL[entry.kind].slice(0, 1)}</div>
+      {/* p17 §3: 体調の顔・漢字 1 文字をやめ、種類のアイコン（色は .k-種類） */}
+      {/* p17 レビュー: 種類の文字タグを出さないカード（showKind なし）では、アイコンの枠に種類の名前を持たせる */}
+      <div
+        className={`notecond k-${entry.kind}`}
+        {...(showKind ? {} : { role: "img", "aria-label": `${NOTE_KIND_LABEL[entry.kind]}ノート` })}
+      >
+        <NoteKindIcon kind={entry.kind} />
+      </div>
       <div className="notemain">
         <div className="notetop">
           {who && <span className="notewho">{who}</span>}
@@ -1703,7 +1745,8 @@ function NoteCard({
             <span className="notetag">未読</span>
           ) : null}
         </div>
-        <div className="notebody">{summarize(entry)}</div>
+        {/* p17 §2: スタッフの提出カードは本文の抜粋を出さない（選手側は今のまま） */}
+        {!staffView && <div className="notebody">{summarize(entry)}</div>}
       </div>
       <span className="convchev">›</span>
     </button>
@@ -2797,12 +2840,23 @@ function NoteDetail({
   return (
     <div className="notedetail">
       <div className="notedhead">
-        <div className="notecond big">{entry.condition ? <ConditionIcon c={entry.condition} /> : NOTE_KIND_LABEL[entry.kind].slice(0, 1)}</div>
+        {/* p17 §3: 詳細ヘッダーも種類のアイコン。体調は日付の並びに小さく残す */}
+        <div className={`notecond big k-${entry.kind}`}>
+          <NoteKindIcon kind={entry.kind} />
+        </div>
         <div>
           <div className="notewho">{who}</div>
           <div className="notedate">
             {NOTE_KIND_LABEL[entry.kind]}ノート ・ {fmt(entry.date)}
-            {entry.condition ? ` ・ ${NOTE_CONDITION_LABEL[entry.condition]}` : ""}
+            {entry.condition && (
+              <>
+                {" ・ "}
+                <span className="notecondmini" title={NOTE_CONDITION_LABEL[entry.condition]} aria-label={`体調 ${NOTE_CONDITION_LABEL[entry.condition]}`}>
+                  <ConditionIcon c={entry.condition} />
+                </span>
+                {NOTE_CONDITION_LABEL[entry.condition]}
+              </>
+            )}
           </div>
         </div>
       </div>

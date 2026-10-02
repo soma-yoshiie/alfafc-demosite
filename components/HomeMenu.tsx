@@ -32,7 +32,7 @@ import {
 import {
   IconCalendarCheck,
   IconChat,
-  IconClipboard,
+  IconPitch,
   IconCog,
   IconCone,
   IconFolder,
@@ -364,7 +364,7 @@ export default function HomeMenu() {
           {coach ? (
             <>
               <Tile
-                icon={<IconClipboard />}
+                icon={<IconPitch />}
                 label="戦術ボード"
                 desc="スタメンを並べて動きをアニメで確認"
                 onClick={() => board.setScreen("board")}

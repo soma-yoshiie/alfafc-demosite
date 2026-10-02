@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useBoard } from "./BoardProvider";
 import { MenuGroup, MenuRow } from "./MobileRows";
 import { MobileHeader } from "./MobileHeader";
-import { IconClipboard, IconCone, IconFolder, IconSetPiece } from "./icons";
+import { IconPitch, IconCone, IconFolder, IconSetPiece } from "./icons";
 import { loadDrills } from "@/lib/storage";
 import type { SavedDrill, SavedPlay, SavedSetPiece } from "@/lib/types";
 
@@ -108,7 +108,7 @@ export default function CoachingHub() {
   }, [board.library.plays, board.library.setPieces, board.screen]);
 
   const recentIcon: Record<RecentKind, React.ReactNode> = {
-    play: <IconClipboard />,
+    play: <IconPitch />,
     drill: <IconCone />,
     setpiece: <IconSetPiece />,
   };
@@ -120,7 +120,7 @@ export default function CoachingHub() {
       <div className="scroll">
         <MenuGroup>
           <MenuRow
-            icon={<IconClipboard />}
+            icon={<IconPitch />}
             label="戦術ボード"
             desc="スタメンを並べて動きをアニメで確認"
             onClick={() => board.setScreen("board")}

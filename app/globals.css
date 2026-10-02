@@ -25,6 +25,10 @@
   /* アクセントのティント2段: tint=選択・情報面・リング用 / strong=枠線用 */
   --accent-tint: rgba(44, 111, 214, 0.1);
   --accent-tint-strong: rgba(44, 111, 214, 0.18);
+  /* p17 §3: サッカーノートの種類のアイコンの色（添付 PDF の色。試合=青／練習=緑／自主練=黄土色） */
+  --note-match: #365d91;
+  --note-practice: #267b6e;
+  --note-solo: #91702f;
 
   /* ---- プライマリ（緑）: CTA・達成・ポジティブ指標のみ ---- */
   --primary: #15803d;
@@ -8674,21 +8678,43 @@ body:has(.mhead) .teamapp .dynrow select {
   transform: scale(0.99);
 }
 .noteapp .notecond {
+  /* p17 §3: 漢字・顔文字の枠をやめ、種類の SVG（地・枠なし。色は .k-種類。currentColor）。28px の枠にアイコン 24px */
   flex: 0 0 auto;
-  width: 42px;
-  height: 42px;
-  border-radius: var(--r-md);
-  background: var(--surface-low);
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
   color: var(--mut);
 }
+.noteapp .notecond svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
 .noteapp .notecond.big {
-  width: 54px;
-  height: 54px;
-  font-size: 30px;
+  width: 40px;
+  height: 40px;
+}
+.noteapp .notecond.big svg {
+  width: 32px;
+  height: 32px;
+}
+.noteapp .notecond.k-match {
+  color: var(--note-match);
+}
+.noteapp .notecond.k-practice {
+  color: var(--note-practice);
+}
+.noteapp .notecond.k-solo {
+  color: var(--note-solo);
+}
+/* p17 §3: 詳細ヘッダーの日付の並びに残す体調の顔（16px） */
+.noteapp .notecondmini {
+  display: inline-block;
+  font-size: 16px;
+  margin-right: 3px;
+  vertical-align: -3px;
 }
 .noteapp .notemain {
   flex: 1;
@@ -8794,6 +8820,12 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .notecard.staffview .notetag,
 .noteapp .notecard.staffview .dlvtag {
   font-size: 12px;
+}
+/* p17 §2: スタッフの提出カードは本文の抜粋を出さない薄い行（余白を詰め、タップ領域は min-height で確保）。
+   選手側のカード(.staffview が無い)には掛けない */
+.noteapp .notecard.staffview {
+  padding: 8px 12px;
+  min-height: 52px;
 }
 .noteapp .notebody {
   font-size: 13px;
@@ -9406,6 +9438,47 @@ body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
 }
 .noteapp .evgrow.on .evgrowchev {
   transform: rotate(90deg);
+}
+
+/* p17 §1: 予定別の「これからの予定」（明日以降。提出はまだ無いので開閉しない・押せない行） */
+.noteapp .evgsech {
+  margin: 10px 2px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.noteapp .evgrow.soon {
+  cursor: default;
+}
+.noteapp .evgrow.soon:hover {
+  background: var(--surface-lowest);
+}
+.noteapp .evgrow.soon:active {
+  transform: none;
+}
+.noteapp .evgrow.soon .evgrowtitle {
+  color: var(--ink);
+}
+.noteapp .evgrowcount.soon {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--mut);
+  background: none;
+}
+.noteapp .evgmore {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
 }
 
 /* 展開部（中身は既存の .notecards/.notecard をそのまま使う） */
@@ -23004,6 +23077,25 @@ body:has(.mhead) .grouppick-item {
     height: 32px;
     border-radius: var(--r-md);
   }
+  /* p17 §2: スタッフの提出カード（本文の抜粋なし）をPCの一覧の列で 2 行・約 52px に。
+     上の .coachapp:has(.nbmain) .scroll .notecard の padding(8px 10px) と基底の min-height(52px) を上書き */
+  .coachapp:has(.nbmain) .scroll .notecard.staffview {
+    padding: 4px 10px; /* 統括調整: 6→4px・行間 0・間 6px で 2 行 約 55px（実測で 61px だった） */
+    min-height: 0;
+  }
+  .coachapp:has(.nbmain) .scroll .notecard.staffview .notetop {
+    row-gap: 0;
+    column-gap: 6px;
+  }
+  /* p17 §1: PCの一覧の列では「これからの予定」の行も他の予定の行と同じ密度・「ほか N 件」は 32px */
+  .coachapp:has(.nbmain) .scroll .evgrow.soon:hover {
+    background: none;
+  }
+  /* レビュー F1: 「これから」は短いので 1 行目の右に置いたままにする（2 行目へ回すルールは、行が折り返さず
+     予定名が幅 0 に潰れていたので外した）。「ほか N 件」は選手側の PC も同じ 32px */
+  .noteapp .evgmore {
+    min-height: 32px;
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -23168,6 +23260,7 @@ body:has(.mhead) .grouppick-item {
   .noteapp .nbtop .nbfilterbtn,
   .noteapp .nbtop .nbunread,
   .noteapp .nbtop .ngchip,
+  .noteapp .evgmore,
   .noteapp .drawclose,
   .nbside-hide,
   .rosside-hide,

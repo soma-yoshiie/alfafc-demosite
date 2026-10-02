@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { MatchNote, NoteKind, NotebookEntry, Player, PracticeNote, SoloNote, TeamGroup } from "@/lib/types";
 import { NOTE_KIND_LABEL, SOLO_KIND_LABEL } from "@/lib/types";
 import { E, ConditionIcon } from "./Emoji";
+import { NoteKindIcon } from "./icons";
 import { MultiLine, Sparkline } from "./Charts";
 import { loadTeam } from "@/lib/storage";
 import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
@@ -237,7 +238,10 @@ export function NoteSearch({
         <div className="notecards">
           {results.map((n) => (
             <button key={n.id} className="notecard" onClick={() => onOpen(n.id)}>
-              <div className="notecond">{n.condition ? <ConditionIcon c={n.condition} /> : NOTE_KIND_LABEL[n.kind].slice(0, 1)}</div>
+              {/* p17 §3: 種類のアイコン（体調の顔・漢字 1 文字をやめる） */}
+              <div className={`notecond k-${n.kind}`}>
+                <NoteKindIcon kind={n.kind} />
+              </div>
               <div className="notemain">
                 <div className="notetop">
                   {isCoach && <span className="notewho">{nameOf(n.playerId)}</span>}

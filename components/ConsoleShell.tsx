@@ -10,7 +10,7 @@ import LogoMark from "./Logo";
 import {
   IconCalendarCheck,
   IconChat,
-  IconClipboard,
+  IconPitch,
   IconCog,
   IconCone,
   IconFolder,
@@ -238,7 +238,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
   const entries: Entry[] = coach
     ? [
         { item: { key: "home", label: "ホーム", icon: <IconHome />, onSelect: () => board.setScreen("home") } },
-        { sec: "コーチング", item: { key: "board", label: "戦術ボード", icon: <IconClipboard />, onSelect: () => board.setScreen("board") } },
+        { sec: "コーチング", item: { key: "board", label: "戦術ボード", icon: <IconPitch />, onSelect: () => board.setScreen("board") } },
         { item: { key: "drill", label: "練習メニュー", icon: <IconCone />, onSelect: () => board.setScreen("drill") } },
         { item: { key: "setpiece", label: "セットプレーデザイン", icon: <IconSetPiece />, onSelect: () => board.setScreen("setpiece") } },
         { item: { key: "library", label: "ライブラリ", icon: <IconFolder />, onSelect: () => board.setScreen("library") } },
