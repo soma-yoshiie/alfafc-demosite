@@ -17,6 +17,7 @@ import type {
   EventSquad,
   FitnessRecord,
   FitnessTest,
+  LeagueResult,
   LeagueRow,
   LeagueTable,
   MatchRecord,
@@ -57,6 +58,7 @@ import {
 import {
   addDays,
   BUILTIN_CATEGORIES,
+  categoryNoteTarget,
   diffDays,
   expandRule,
 } from "@/lib/calendarUtils";
@@ -495,7 +497,8 @@ interface TeamContextValue {
   setEventSquad: (eventId: string, squad: EventSquad | null) => void;
   /** イベントカテゴリの実効値（組込み2種 + カスタム） */
   categories: EventCategory[];
-  addCategory: (label: string, color: string) => string;
+  /** p16 §5: noteTarget=サッカーノートに反映するか（未指定は未定義のまま＝カスタムは反映しない） */
+  addCategory: (label: string, color: string, noteTarget?: boolean) => string;
   updateCategory: (c: EventCategory) => void;
   removeCategory: (id: string) => void;
   /** グループ（学年＋カスタム）マスタ。学年グループは常にensureGradeGroups済み */
@@ -567,7 +570,8 @@ interface TeamContextValue {
   /** リーグ順位表（p14 §3）。未保存＝デモの既定値 */
   league: LeagueTable;
   /** リーグ順位表を保存する（updatedAt・updatedBy を付け、toast「順位表を保存しました」） */
-  setLeague: (t: { title?: string; rows: LeagueRow[] }) => void;
+  /** p16 §6: mode=="results" のとき rows は results から数え直した値（保存側で渡す）。manual は results を渡さない */
+  setLeague: (t: { title?: string; rows: LeagueRow[]; mode?: "manual" | "results"; results?: LeagueResult[] }) => void;
   /** 名簿から選手を削除する際に、全イベントの出欠回答からその選手分を除去する */
   removePlayerAnswers: (playerId: string) => void;
   /* ---- 体力測定：種目マスタ（チーム共通） ---- */
@@ -684,20 +688,22 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     const stored = team.categories ?? [];
     const builtins = BUILTIN_CATEGORIES.map((b) => {
       const ov = stored.find((c) => c.id === b.id);
-      return ov ? { ...b, color: ov.color } : b;
+      // p16 §5: 色に加えて noteTarget の上書きもマージする
+      return ov ? { ...b, color: ov.color, noteTarget: ov.noteTarget } : b;
     });
     const customs = stored.filter((c) => !BUILTIN_CATEGORIES.some((b) => b.id === c.id));
     return [...builtins, ...customs];
   }, [team.categories]);
 
   const addCategory = useCallback(
-    (label: string, color: string) => {
+    (label: string, color: string, noteTarget?: boolean) => {
       const nm = label.trim();
       const id = nid("cat");
       if (nm) {
-        const c: EventCategory = { id, label: nm, color };
+        // p16 §5: noteTarget は true のときだけ保存する（未指定・false は未定義＝カスタムの既定「反映しない」）
+        const c: EventCategory = { id, label: nm, color, ...(noteTarget ? { noteTarget: true } : {}) };
         setTeam((t) => ({ ...t, categories: [...(t.categories ?? []), c] }));
-        board.toast(`カテゴリ「${nm}」を追加しました`);
+        board.toast(`種類「${nm}」を追加しました`);
       }
       return id;
     },
@@ -709,7 +715,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
       const stored = t.categories ?? [];
       if (builtin) {
         const exists = stored.some((x) => x.id === c.id);
-        const entry: EventCategory = { id: builtin.id, label: builtin.label, color: c.color };
+        // p16 §5: 組込みも noteTarget（練習・試合を反映しない／する）を保存する
+        const entry: EventCategory = { id: builtin.id, label: builtin.label, color: c.color, noteTarget: c.noteTarget };
         return {
           ...t,
           categories: exists
@@ -724,13 +731,21 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
   const removeCategory = useCallback((id: string) => {
-    setTeam((t) => ({
-      ...t,
-      categories: (t.categories ?? []).filter((c) => c.id !== id),
-      events: t.events.map((e) =>
-        e.categoryId === id ? { ...e, categoryId: undefined } : e
-      ),
-    }));
+    setTeam((t) => {
+      // p16 統括の裁定: 種類を消すと予定は組込み（練習・試合）の扱いへ落ちるが、サッカーノートへの反映は
+      // 消す前のまま保つ（「反映しない」種類を消した途端、その予定が予定別に並び始めないように）
+      const removed = (t.categories ?? []).find((c) => c.id === id);
+      const keep = removed ? categoryNoteTarget(removed) : undefined;
+      return {
+        ...t,
+        categories: (t.categories ?? []).filter((c) => c.id !== id),
+        events: t.events.map((e) =>
+          e.categoryId === id
+            ? { ...e, categoryId: undefined, ...(e.noteTarget === undefined && keep === false ? { noteTarget: false } : {}) }
+            : e
+        ),
+      };
+    });
   }, []);
 
   /**
@@ -1287,9 +1302,20 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   const authRole = board.auth.role;
   const authName = board.auth.name;
   const setLeague = useCallback(
-    (t: { title?: string; rows: LeagueRow[] }) => {
+    (t: { title?: string; rows: LeagueRow[]; mode?: "manual" | "results"; results?: LeagueResult[] }) => {
       const by = authRole === "coach" ? "staff:" + authName : "player";
-      setTeam((prev) => ({ ...prev, league: { title: t.title, rows: t.rows, updatedAt: Date.now(), updatedBy: by } }));
+      setTeam((prev) => ({
+        ...prev,
+        league: {
+          title: t.title,
+          rows: t.rows,
+          // p16 §6: results は mode==="results" のときだけ保存する
+          ...(t.mode ? { mode: t.mode } : {}),
+          ...(t.mode === "results" && t.results ? { results: t.results } : {}),
+          updatedAt: Date.now(),
+          updatedBy: by,
+        },
+      }));
       board.toast("順位表を保存しました");
     },
     [board, authRole, authName]

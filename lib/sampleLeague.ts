@@ -1,5 +1,5 @@
 import { SAMPLE_TEAM_NAME } from "./sampleTeam";
-import type { LeagueRow, LeagueTable } from "./types";
+import type { LeagueResult, LeagueRow, LeagueTable } from "./types";
 
 /**
  * デモ用のリーグ順位表の既定値（13チーム総当たり想定）。
@@ -74,6 +74,34 @@ export function computeStandings(table: LeagueTable, ownName: string): Standing[
     .sort((a, b) => b.r.pts - a.r.pts || b.r.diff - a.r.diff || b.r.gf - a.r.gf || a.i - b.i)
     .map((x) => x.r);
   return sorted.map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
+/**
+ * p16 §6: 試合結果から勝・分・敗・得点・失点を数え直した行を返す（id・name・own はそのまま）。
+ * 存在しないチーム id を指す結果（どちらか一方でも）は無視する
+ */
+export function rowsFromResults(rows: LeagueRow[], results: LeagueResult[]): LeagueRow[] {
+  const acc = new Map<string, LeagueRow>(rows.map((r) => [r.id, { ...r, win: 0, draw: 0, loss: 0, gf: 0, ga: 0 }]));
+  for (const m of results) {
+    const a = acc.get(m.aId);
+    const b = acc.get(m.bId);
+    if (!a || !b) continue;
+    a.gf += m.aScore;
+    a.ga += m.bScore;
+    b.gf += m.bScore;
+    b.ga += m.aScore;
+    if (m.aScore > m.bScore) {
+      a.win += 1;
+      b.loss += 1;
+    } else if (m.aScore < m.bScore) {
+      b.win += 1;
+      a.loss += 1;
+    } else {
+      a.draw += 1;
+      b.draw += 1;
+    }
+  }
+  return rows.map((r) => acc.get(r.id) as LeagueRow);
 }
 
 /** 自チームの順位と参加チーム数（自チームの行が無ければ rank は null） */

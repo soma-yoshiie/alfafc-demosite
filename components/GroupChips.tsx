@@ -18,6 +18,7 @@ export function GroupChips({
   allLabel = "すべて",
   multi = false,
   onManage,
+  dots,
 }: {
   groups: TeamGroup[];
   /** 選択中のグループID。単一選択(multi=false)でも配列（0〜1件）で統一する */
@@ -29,6 +30,8 @@ export function GroupChips({
   multi?: boolean;
   /** 末尾に「＋ 管理」チップを出す（グループ管理シートを開く） */
   onManage?: () => void;
+  /** 各グループのラベルの前に色の点を出す（p16 §3。「全員」には付けない） */
+  dots?: boolean;
 }) {
   const toggle = (id: string) => {
     if (multi) {
@@ -57,6 +60,7 @@ export function GroupChips({
           aria-pressed={value.includes(g.id)}
           onClick={() => toggle(g.id)}
         >
+          {dots && g.color && <i className="grouppick-dot" style={{ background: g.color }} />}
           {g.label}
         </button>
       ))}

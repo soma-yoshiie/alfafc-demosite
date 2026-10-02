@@ -561,6 +561,8 @@ export interface EventCategory {
   // 選択肢は lib/groups.ts の COLOR_CHOICES（7色）＋カスタム色（ColorChoiceListの「カスタム…」）
   color: string;
   builtin?: boolean; // true = 削除・改名不可（practice/match）
+  /** p16 §5: この種類の予定をサッカーノートの予定別に出すか。未定義＝組込み（練習・試合）は true、それ以外は false */
+  noteTarget?: boolean;
 }
 
 /* ===== 繰り返しルール ===== */
@@ -613,6 +615,8 @@ export interface TeamEvent {
   squad?: EventSquad;
   /** p15 §6: 試合記録から自動で作った予定の印（記録と同期し、記録を消したら一緒に消す） */
   fromMatch?: true;
+  /** p16 §5: サッカーノートの予定別に出すかの上書き。未定義＝種類（EventCategory.noteTarget）に従う */
+  noteTarget?: boolean;
 }
 
 /**
@@ -1216,10 +1220,26 @@ export interface LeagueRow {
   ga: number;
   own?: true;
 }
+/** リーグ内の 1 試合（p16 §6）。チームは LeagueRow.id で指す */
+export interface LeagueResult {
+  id: string;
+  aId: string;
+  bId: string;
+  aScore: number;
+  bScore: number;
+  /** YYYY-MM-DD（任意） */
+  date?: string;
+  /** 取り込み元の試合記録（自チームの記録から取り込んだとき）。同じ記録を二重に取り込まないために持つ */
+  matchId?: string;
+}
 export interface LeagueTable {
   /** 見出し。未設定は「リーグ順位表」 */
   title?: string;
   rows: LeagueRow[];
+  /** 入力の方法（p16 §6）。未定義＝"manual"（数値を直接入力） */
+  mode?: "manual" | "results";
+  /** mode==="results" のときの試合結果。rows にはここから数え直した値を保存する */
+  results?: LeagueResult[];
   updatedAt?: number;
   updatedBy?: string;
 }

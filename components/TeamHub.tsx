@@ -11,6 +11,7 @@ import type {
   FitnessTest,
   GoalOrigin,
   Group,
+  LeagueResult,
   LeagueRow,
   LeagueTable,
   MatchConceded,
@@ -27,14 +28,16 @@ import type {
 import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL, STAGE_GRADES } from "@/lib/types";
 import { groupOf } from "@/lib/formations";
 import { buildEventSquad } from "@/lib/squad";
-import { computeStandings, leaguePositionOf, type Standing } from "@/lib/sampleLeague";
+import { computeStandings, leaguePositionOf, rowsFromResults, type Standing } from "@/lib/sampleLeague";
 import {
   addDays,
   byStartAsc,
   calEventVisible,
+  categoryNoteTarget,
   categoryOf,
   diffDays,
   eventEndDate,
+  eventNoteTarget,
   gmapsDirUrl,
   gmapsEmbedUrl,
   gmapsSearchUrl,
@@ -2104,22 +2107,29 @@ function CalFilterPanel({
           {allCatsShown ? "すべて解除" : "すべて選択"}
         </button>
       </div>
-      <div className="grouppick">
-        {categories.map((c) => {
-          const on = !filter.hiddenCategoryIds.includes(c.id);
-          return (
-            <button
-              type="button"
-              key={c.id}
-              className="calfilterpanel-catchip"
-              onClick={() => toggleCategory(c.id)}
-            >
-              <span className={`calchk sq${on ? " on" : ""}`} />
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* p16 §1: 種類も学年・グループと同じ縦 1 列の行にする */}
+      {categories.map((c) => {
+        const on = !filter.hiddenCategoryIds.includes(c.id);
+        return (
+          <div
+            key={c.id}
+            className="calfilterpanel-row"
+            role="button"
+            tabIndex={0}
+            aria-pressed={on}
+            onClick={() => toggleCategory(c.id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggleCategory(c.id);
+              }
+            }}
+          >
+            <span className={`calchk sq${on ? " on" : ""}`} />
+            <span>{c.label}</span>
+          </div>
+        );
+      })}
     </div>
   );
 
@@ -3129,6 +3139,20 @@ function leagueDraftRows(league: LeagueTable, ownName: string): LeagueDraftRow[]
   }
   return rows;
 }
+/** p16 §6-2: 編集シートの試合結果 1 行（スコアは入力中の文字列。保存時に検証して数値にする） */
+type LeagueResultDraft = { id: string; aId: string; bId: string; aScore: string; bScore: string; date: string; matchId?: string };
+/** p16 §6-2: 結果の下書きを数え直し用の結果にする（チーム未選択・同じチームどうしは除く。スコアが不正なら 0 として数える） */
+function leagueDraftResultsLoose(results: LeagueResultDraft[]): LeagueResult[] {
+  return results
+    .filter((m) => m.aId && m.bId && m.aId !== m.bId)
+    .map((m) => ({
+      id: m.id,
+      aId: m.aId,
+      bId: m.bId,
+      aScore: parseLeagueInt(m.aScore) ?? 0,
+      bScore: parseLeagueInt(m.bScore) ?? 0,
+    }));
+}
 /** 空欄＝0、全角数字も受ける。0 以上の整数だけ（それ以外は null） */
 function parseLeagueInt(v: string): number | null {
   const t = v.trim().replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
@@ -3136,6 +3160,12 @@ function parseLeagueInt(v: string): number | null {
   if (!/^\d+$/.test(t)) return null;
   const n = Number(t);
   return Number.isSafeInteger(n) ? n : null;
+}
+
+/** p16 §6-3: 試合結果から作った順位表のとき「試合結果 N 件から作成」（.phubupd と同じ見た目。「最終更新」の下） */
+function LeagueSource({ league }: { league: LeagueTable }) {
+  if (league.mode !== "results") return null;
+  return <div className="phubupd">試合結果 {league.results?.length ?? 0} 件から作成</div>;
 }
 
 /** p14 §3: 順位表（順位／チーム／試合／勝／分／敗／得失／勝点）。PCの右ペインとスマホ・選手の leagueView シートで共用 */
@@ -3275,6 +3305,7 @@ function RecSummaryPane({
               </button>
             </div>
             <LastUpdated at={team.league.updatedAt} by={team.league.updatedBy} />
+            <LeagueSource league={team.league} />
             {standings.length === 0 ? (
               <div className="empty-msg">順位表が未登録です。右上の編集から登録できます。</div>
             ) : (
@@ -4288,6 +4319,14 @@ function SheetHost({
   const [applyScope, setApplyScope] = useState<"only" | "following">("only");
   const editSeries = !!(ev && ev.seriesId && !ev.detached);
   const kind: TeamEventKind = categoryId === "match" ? "match" : "practice";
+  // p16 §5-3: サッカーノートに反映するか。null＝利用者がまだトグルを触っていない（選んでいる種類の
+  // 既定に従う）。編集で予定に上書き（boolean）があれば触った扱いにする
+  const [noteTouched, setNoteTouched] = useState<boolean | null>(
+    typeof ev?.noteTarget === "boolean" ? ev.noteTarget : null
+  );
+  const catNoteDefault = (id: string): boolean =>
+    categoryNoteTarget(categoryOf({ kind: id === "match" ? "match" : "practice", categoryId: id } as TeamEvent, team.categories));
+  const noteOn = noteTouched ?? catNoteDefault(categoryId);
   // 対象グループ（複数選択。空＝全員対象）
   const [evGroupIds, setEvGroupIds] = useState<string[]>(ev?.groupIds ?? []);
 
@@ -4304,6 +4343,9 @@ function SheetHost({
   const [catEditId, setCatEditId] = useState<string | null>(null);
   const [catEditLabel, setCatEditLabel] = useState("");
   const [catEditColor, setCatEditColor] = useState("");
+  // p16 §5-2: 種類ごとの「サッカーノートに反映する」（編集行・新規追加）
+  const [catEditNote, setCatEditNote] = useState(false);
+  const [newCatNote, setNewCatNote] = useState(false);
   // レビュー指摘対応（calendar-plan-a §11-3）: グループ管理と同じ作り（ColorChoiceListが
   // 縦に長い）なので、編集行を開いたときに同じくスクロールして見える位置に寄せる
   const catEditRowRef = useRef<HTMLDivElement>(null);
@@ -4458,6 +4500,90 @@ function SheetHost({
   const [lgRows, setLgRows] = useState<LeagueDraftRow[]>(() =>
     sheet?.type === "league" ? leagueDraftRows(team.league, lgOwnName) : []
   );
+  // p16 §6-2: 入力の方法（開いたときは保存済みの mode。未定義は数値）と試合結果の下書き。取り込む大会は既定「すべての大会」
+  const [lgMode, setLgMode] = useState<"manual" | "results">(() =>
+    sheet?.type === "league" && team.league.mode === "results" ? "results" : "manual"
+  );
+  const [lgResults, setLgResults] = useState<LeagueResultDraft[]>(() =>
+    sheet?.type === "league" && team.league.mode === "results"
+      ? (team.league.results ?? []).map((m) => ({
+          id: m.id,
+          aId: m.aId,
+          bId: m.bId,
+          aScore: String(m.aScore),
+          bScore: String(m.bScore),
+          date: m.date ?? "",
+          ...(m.matchId ? { matchId: m.matchId } : {}),
+        }))
+      : []
+  );
+  const [lgImportComp, setLgImportComp] = useState("all");
+  // 「数値 → 結果」へ切り替えた直後の注意を出す印
+  const [lgWarn, setLgWarn] = useState(false);
+  // 結果から数えた各チームの 勝-分-敗（結果の入力中に右へ出す。読み取り専用）
+  const lgCounted = rowsFromResults(
+    lgRows.map((r) => ({ id: r.id, name: r.name, win: 0, draw: 0, loss: 0, gf: 0, ga: 0 })),
+    leagueDraftResultsLoose(lgResults)
+  );
+  const lgChangeMode = (next: "manual" | "results") => {
+    if (next === lgMode) return;
+    // 結果 → 数値: 数値の欄へその時点の結果から数えた値を入れる（結果の下書きは残す）。
+    // 結果が 1 件も無いときは、手で入れた数値を 0 で潰さないよう触らない
+    if (next === "manual" && leagueDraftResultsLoose(lgResults).length > 0) {
+      const byId = new Map(lgCounted.map((r) => [r.id, r]));
+      setLgRows((rows) =>
+        rows.map((r) => {
+          const c = byId.get(r.id);
+          return c
+            ? { ...r, win: String(c.win), draw: String(c.draw), loss: String(c.loss), gf: String(c.gf), ga: String(c.ga) }
+            : r;
+        })
+      );
+    }
+    setLgWarn(next === "results");
+    setLgMode(next);
+  };
+  const lgResPatch = (id: string, patch: Partial<LeagueResultDraft>) =>
+    setLgResults((rs) => rs.map((m) => (m.id === id ? { ...m, ...patch } : m)));
+  const lgDeleteTeam = (id: string) => {
+    const n = lgResults.filter((m) => m.aId === id || m.bId === id).length;
+    if (n > 0 && !window.confirm(`このチームの試合結果（${n} 件）も削除されます。よろしいですか？`)) return;
+    setLgRows((rows) => rows.filter((x) => x.id !== id));
+    if (n > 0) setLgResults((rs) => rs.filter((m) => m.aId !== id && m.bId !== id));
+  };
+  // 試合記録から取り込む: 相手名がチーム一覧の名前と一致（trim 後の完全一致）し、まだ取り込んでいない記録だけ
+  const lgImportMatches = () => {
+    const own = lgRows.find((r) => r.own);
+    if (!own) return;
+    const taken = new Set(lgResults.map((m) => m.matchId).filter(Boolean));
+    const added: LeagueResultDraft[] = [];
+    let missed = 0;
+    for (const m of team.team.matches) {
+      if (lgImportComp !== "all" && m.competitionId !== lgImportComp) continue;
+      if (taken.has(m.id)) continue;
+      const opp = lgRows.find((r) => !r.own && r.name.trim() !== "" && r.name.trim() === m.opponent.trim());
+      if (!opp) {
+        missed += 1;
+        continue;
+      }
+      lgSeq.current += 1;
+      added.push({
+        id: "lgr_" + Date.now().toString(36) + "_" + lgSeq.current,
+        aId: own.id,
+        bId: opp.id,
+        aScore: String(m.ourScore),
+        bScore: String(m.theirScore),
+        date: m.date,
+        matchId: m.id,
+      });
+    }
+    if (added.length > 0) setLgResults((rs) => [...rs, ...added]);
+    // p16 レビュー: 0 件のときは「取り込める試合記録がありません」（取り込めない記録があればその件数を続ける）
+    const missedNote = missed > 0 ? `（相手がチーム一覧に無い ${missed} 件は取り込めません）` : "";
+    board.toast(
+      added.length === 0 ? `取り込める試合記録がありません${missedNote}` : `${added.length} 件を取り込みました${missedNote}`
+    );
+  };
   // 「＋ チームを追加」直後の行（チーム名にフォーカスを移す）
   const [lgFocusId, setLgFocusId] = useState<string | null>(null);
   const lgNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
@@ -4473,6 +4599,49 @@ function SheetHost({
     // 検証: チーム名（自チームの行は対象外）→ 数値（空欄＝0。0 以上の整数だけ）
     if (lgRows.some((r) => !r.own && !r.name.trim())) {
       board.toast("チーム名を入力してください");
+      return;
+    }
+    if (lgMode === "results") {
+      // p16 レビュー: 結果が 0 件のまま保存すると全チームの数値が 0 に置き換わる（切り替えて見ただけで手入力が消える）ので止める
+      if (lgResults.length === 0) {
+        board.toast("試合結果を 1 件以上入れてください");
+        return;
+      }
+      // p16 §6-2: 試合結果から数え直した値を rows に入れ、results と mode も一緒に保存する
+      const results: LeagueResult[] = [];
+      for (const m of lgResults) {
+        if (!m.aId || !m.bId || m.aId === m.bId) {
+          board.toast("試合結果のチームを選んでください（同じチームどうしは入力できません）");
+          return;
+        }
+        const aScore = parseLeagueInt(m.aScore);
+        const bScore = parseLeagueInt(m.bScore);
+        if (aScore == null || bScore == null) {
+          board.toast("数値は 0 以上の整数で入力してください");
+          return;
+        }
+        results.push({
+          id: m.id,
+          aId: m.aId,
+          bId: m.bId,
+          aScore,
+          bScore,
+          ...(m.date ? { date: m.date } : {}),
+          ...(m.matchId ? { matchId: m.matchId } : {}),
+        });
+      }
+      const base: LeagueRow[] = lgRows.map((r) => ({
+        id: r.id,
+        name: r.own ? lgOwnName : r.name.trim(),
+        win: 0,
+        draw: 0,
+        loss: 0,
+        gf: 0,
+        ga: 0,
+        ...(r.own ? { own: true as const } : {}),
+      }));
+      team.setLeague({ title: lgTitle.trim() || undefined, rows: rowsFromResults(base, results), mode: "results", results });
+      paneBack();
       return;
     }
     const rows: LeagueRow[] = [];
@@ -4494,7 +4663,7 @@ function SheetHost({
         ...(r.own ? { own: true as const } : {}),
       });
     }
-    team.setLeague({ title: lgTitle.trim() || undefined, rows });
+    team.setLeague({ title: lgTitle.trim() || undefined, rows, mode: "manual" });
     paneBack();
   };
 
@@ -4535,26 +4704,17 @@ function SheetHost({
       <Sheet open={sheet?.type === "event"} onClose={pane ? paneBack : close} pane={pane}>
         <h2>{ev ? "予定を編集" : "予定を追加"}</h2>
         <div className="formfield">
-          <label>カテゴリ</label>
+          <label>種類</label>
+          {/* p16 §2: 種類の選択に色は出さない（選択中は CSS の --accent） */}
           <div className="catpick">
             {team.categories.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 className={`evcatchip${categoryId === c.id ? " on" : ""}`}
-                style={categoryId === c.id ? { borderColor: c.color, color: c.color } : undefined}
+                aria-pressed={categoryId === c.id}
                 onClick={() => setCategoryId(c.id)}
               >
-                <span
-                  style={{
-                    width: 9,
-                    height: 9,
-                    borderRadius: "50%",
-                    background: c.color,
-                    flex: "0 0 auto",
-                    display: "inline-block",
-                  }}
-                />
                 {c.label}
               </button>
             ))}
@@ -4568,6 +4728,15 @@ function SheetHost({
               ＋ 管理
             </button>
           </div>
+        </div>
+        {/* p16 §5-3: サッカーノートの予定別に出すか。種類を切り替えても触るまでは種類の既定に従う */}
+        <div className="formfield">
+          <label className="daytoggle notetoggle">
+            <input type="checkbox" checked={noteOn} onChange={(e) => setNoteTouched(e.target.checked)} />
+            <span />
+            サッカーノートに反映する
+          </label>
+          <div className="fieldhint phubhint">オンにすると、サッカーノートの予定別に出ます</div>
         </div>
         {/* §2: 対象（グループの複数選択）。「全員」＝選択中のグループを全部外す */}
         <div className="formfield">
@@ -4593,6 +4762,8 @@ function SheetHost({
                   )
                 }
               >
+                {/* p16 §3: 対象に設定済みの色の点（全員には付けない） */}
+                {g.color && <i className="grouppick-dot" style={{ background: g.color }} />}
                 {g.label}
               </button>
             ))}
@@ -4802,6 +4973,8 @@ function SheetHost({
               // 消さずに残す（updateSeriesFollowingはこのsquadを引き継がないので
               // シリーズの他の回には影響しない）
               squad: kind === "match" ? ev?.squad : undefined,
+              // p16 §5-3: 選んでいる種類の既定と同じなら保存しない（種類の設定に従う）。違えば上書き
+              noteTarget: noteOn === catNoteDefault(categoryId) ? undefined : noteOn,
             };
             saveLastEventCategory(categoryId);
             if (!ev) {
@@ -4831,11 +5004,11 @@ function SheetHost({
         </button>
       </Sheet>
 
-      {/* カテゴリ管理 */}
+      {/* 種類の管理（p16 §4: 旧「カテゴリ管理」） */}
       {/* Phase D-1(C1-major): 予定フォームから開いた場合はPC/モバイル共通でpaneBackへ戻す
           (=編集中の予定フォームへ復帰。paneBackはfrom/dateが無いとき安全にnullへ落ちる) */}
       <Sheet open={sheet?.type === "categories"} onClose={paneBack} pane={pane}>
-        <h2>カテゴリ管理</h2>
+        <h2>種類の管理</h2>
         <div className="list">
           {team.categories.map((c) => (
             <div key={c.id} className="catrow">
@@ -4846,15 +5019,22 @@ function SheetHost({
                       {c.label}
                     </div>
                   ) : (
-                    <input
-                      value={catEditLabel}
-                      onChange={(e) => setCatEditLabel(e.target.value)}
-                      style={{ marginBottom: 8 }}
-                      autoFocus
-                    />
+                    // 統括調整: 名前の入力欄は .formfield に入れてフォームと同じ見た目にする（素の input のままだった）
+                    <div className="formfield" style={{ margin: "0 0 8px" }}>
+                      <label>名前</label>
+                      <input value={catEditLabel} onChange={(e) => setCatEditLabel(e.target.value)} autoFocus />
+                    </div>
                   )}
                   {/* calendar-plan-a §11-3: 色の選択肢をiPhoneカレンダー式の縦リストにする */}
                   <ColorChoiceList value={catEditColor} onChange={setCatEditColor} />
+                  {/* p16 §5-2: 組込み（練習・試合）も色とこのトグルは変えられる */}
+                  <div className="formfield" style={{ margin: "10px 0 0" }}>
+                    <label className="daytoggle notetoggle">
+                      <input type="checkbox" checked={catEditNote} onChange={(e) => setCatEditNote(e.target.checked)} />
+                      <span />
+                      サッカーノートに反映する
+                    </label>
+                  </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button
                       className="bigbtn"
@@ -4868,6 +5048,7 @@ function SheetHost({
                           id: c.id,
                           label: c.builtin ? c.label : catEditLabel.trim(),
                           color: catEditColor,
+                          noteTarget: catEditNote,
                         });
                         setCatEditId(null);
                       }}
@@ -4897,7 +5078,10 @@ function SheetHost({
                   />
                   <div className="cmpinfo">
                     <div className="cmpnm">{c.label}</div>
-                    {c.builtin && <div className="cmpsub">名前固定</div>}
+                    {/* p16 §5-2: サッカーノートへの反映（実効値）を名前の下に出す */}
+                    <div className="cmpsub">
+                      {c.builtin ? "名前固定・" : ""}サッカーノート：{categoryNoteTarget(c) ? "反映する" : "反映しない"}
+                    </div>
                   </div>
                   <button
                     className="msgdel"
@@ -4906,6 +5090,7 @@ function SheetHost({
                       setCatEditId(c.id);
                       setCatEditLabel(c.label);
                       setCatEditColor(c.color);
+                      setCatEditNote(categoryNoteTarget(c));
                     }}
                   >
                     <IconEdit />
@@ -4917,7 +5102,7 @@ function SheetHost({
                       onClick={() => {
                         if (
                           window.confirm(
-                            `「${c.label}」を削除しますか？（予定は残ります。カテゴリなしになります）`
+                            `「${c.label}」を削除しますか？（予定は残ります。種類なしになります）`
                           )
                         )
                           team.removeCategory(c.id);
@@ -4932,7 +5117,7 @@ function SheetHost({
           ))}
         </div>
         <div className="formfield">
-          <label>新しいカテゴリを追加</label>
+          <label>新しい種類を追加</label>
           <input
             value={newCatLabel}
             onChange={(e) => setNewCatLabel(e.target.value)}
@@ -4940,6 +5125,11 @@ function SheetHost({
           />
           {/* calendar-plan-a §11-3: 色の選択肢をiPhoneカレンダー式の縦リストにする */}
           <ColorChoiceList value={newCatColor} onChange={setNewCatColor} />
+          <label className="daytoggle notetoggle">
+            <input type="checkbox" checked={newCatNote} onChange={(e) => setNewCatNote(e.target.checked)} />
+            <span />
+            サッカーノートに反映する
+          </label>
         </div>
         <button
           className="bigbtn"
@@ -4948,9 +5138,10 @@ function SheetHost({
               board.toast("名前を入力してください");
               return;
             }
-            team.addCategory(newCatLabel, newCatColor);
+            team.addCategory(newCatLabel, newCatColor, newCatNote);
             setNewCatLabel("");
             setNewCatColor(DEFAULT_CATEGORY_COLOR);
+            setNewCatNote(false);
           }}
         >
           追加する
@@ -5486,6 +5677,12 @@ function SheetHost({
                         )}
                       </div>
                     )}
+                    {/* p16 §5-5: サッカーノートの予定別に出るか（スタッフだけ） */}
+                    {isCoach && (
+                      <div className="dline">
+                        サッカーノート：{eventNoteTarget(e, team.categories) ? "反映する" : "反映しない"}
+                      </div>
+                    )}
                   </div>
                   {/* board-squad-and-pc-polish §3: 試合のメンバー（スタメン／ベンチ）。
                       選手・保護者は登録が無ければ欄ごと出さない */}
@@ -5858,7 +6055,7 @@ function SheetHost({
           <>
             <div className="formfield">
               <label>対象</label>
-              <GroupChips groups={team.groups} value={mGroupIds} onChange={setMGroupIds} multi allowAll allLabel="全体" />
+              <GroupChips groups={team.groups} value={mGroupIds} onChange={setMGroupIds} multi allowAll allLabel="全体" dots />
             </div>
             <div className="formfield">
               {/* review #1回目: 既存の.daytoggleはON時に--lime(=--primary)を使うが、
@@ -6166,6 +6363,7 @@ function SheetHost({
             )}
             <div className="lgview-upd">
               <LastUpdated at={team.league.updatedAt} by={team.league.updatedBy} />
+              <LeagueSource league={team.league} />
             </div>
             {isCoach && (
               <button className="bigbtn ghost accent" onClick={() => setSheet({ type: "league", from: "view" })}>
@@ -6187,6 +6385,31 @@ function SheetHost({
             placeholder="リーグ順位表（例：春季リーグ U-12）"
           />
         </div>
+        {/* p16 §6-2: 入力の方法（RecSummaryPane の「チーム成績｜個人成績」と同じ .toolseg/.tseg） */}
+        <div className="formfield">
+          <label>入力の方法</label>
+          <div className="toolseg lgedit-modeseg" role="tablist" aria-label="入力の方法">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lgMode === "manual"}
+              className={`tseg${lgMode === "manual" ? " on" : ""}`}
+              onClick={() => lgChangeMode("manual")}
+            >
+              数値を入力
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={lgMode === "results"}
+              className={`tseg${lgMode === "results" ? " on" : ""}`}
+              onClick={() => lgChangeMode("results")}
+            >
+              試合結果を入力
+            </button>
+          </div>
+        </div>
+        {lgMode === "results" && <div className="sech lgedit-sech">チーム</div>}
         <div className="lgedit">
           {lgRows.map((r) => (
             <div key={r.id} className="lgedit-row">
@@ -6209,32 +6432,39 @@ function SheetHost({
                     />
                   </div>
                 )}
+                {lgMode === "results" &&
+                  (() => {
+                    const c = lgCounted.find((x) => x.id === r.id);
+                    return c ? <span className="lgedit-sum" title="結果から数えた 勝-分-敗">{`${c.win}-${c.draw}-${c.loss}`}</span> : null;
+                  })()}
                 {!r.own && (
                   <button
                     type="button"
                     className="lgedit-del"
                     aria-label="このチームを削除"
                     title="このチームを削除"
-                    onClick={() => setLgRows((rows) => rows.filter((x) => x.id !== r.id))}
+                    onClick={() => lgDeleteTeam(r.id)}
                   >
                     <IconTrash />
                   </button>
                 )}
               </div>
-              <div className="lgedit-nums">
-                {LEAGUE_NUM_KEYS.map((k) => (
-                  <label key={k}>
-                    <span>{LEAGUE_NUM_LABEL[k]}</span>
-                    <input
-                      inputMode="numeric"
-                      placeholder="0"
-                      value={r[k]}
-                      onChange={(e) => lgPatch(r.id, { [k]: e.target.value })}
-                      aria-label={`${r.own ? lgOwnName : r.name || "チーム"} ${LEAGUE_NUM_LABEL[k]}`}
-                    />
-                  </label>
-                ))}
-              </div>
+              {lgMode === "manual" && (
+                <div className="lgedit-nums">
+                  {LEAGUE_NUM_KEYS.map((k) => (
+                    <label key={k}>
+                      <span>{LEAGUE_NUM_LABEL[k]}</span>
+                      <input
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={r[k]}
+                        onChange={(e) => lgPatch(r.id, { [k]: e.target.value })}
+                        aria-label={`${r.own ? lgOwnName : r.name || "チーム"} ${LEAGUE_NUM_LABEL[k]}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -6252,8 +6482,135 @@ function SheetHost({
             ＋ チームを追加
           </button>
         </div>
+        {lgMode === "results" && (
+          <>
+            <div className="sech lgedit-sech">試合結果（{lgResults.length} 件）</div>
+            <div className="lgedit">
+              {lgResults.map((m) => {
+                const nameOf = (r: LeagueDraftRow) => (r.own ? lgOwnName : r.name.trim() || "（名前未入力）");
+                return (
+                  <div key={m.id} className="lgres-row">
+                    <div className="lgres-teams">
+                      <div className="formfield">
+                        <select
+                          value={m.aId}
+                          onChange={(e) => lgResPatch(m.id, { aId: e.target.value })}
+                          aria-label="チーム A"
+                        >
+                          <option value="">チームを選ぶ</option>
+                          {lgRows.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {nameOf(r)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="formfield">
+                        <select
+                          value={m.bId}
+                          onChange={(e) => lgResPatch(m.id, { bId: e.target.value })}
+                          aria-label="チーム B"
+                        >
+                          <option value="">チームを選ぶ</option>
+                          {lgRows.map((r) => (
+                            <option key={r.id} value={r.id}>
+                              {nameOf(r)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="lgres-score">
+                      <input
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={m.aScore}
+                        onChange={(e) => lgResPatch(m.id, { aScore: e.target.value })}
+                        aria-label="チーム A の得点"
+                      />
+                      <span aria-hidden>-</span>
+                      <input
+                        inputMode="numeric"
+                        placeholder="0"
+                        value={m.bScore}
+                        onChange={(e) => lgResPatch(m.id, { bScore: e.target.value })}
+                        aria-label="チーム B の得点"
+                      />
+                      <div className="formfield lgres-date">
+                        <input
+                          type="date"
+                          value={m.date}
+                          onChange={(e) => lgResPatch(m.id, { date: e.target.value })}
+                          aria-label="日付（任意）"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="lgedit-del"
+                        aria-label="この試合結果を削除"
+                        title="この試合結果を削除"
+                        onClick={() => setLgResults((rs) => rs.filter((x) => x.id !== m.id))}
+                      >
+                        <IconTrash />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="formfield">
+              <button
+                type="button"
+                className="dynadd"
+                onClick={() => {
+                  lgSeq.current += 1;
+                  const own = lgRows.find((r) => r.own);
+                  setLgResults((rs) => [
+                    ...rs,
+                    {
+                      id: "lgr_" + Date.now().toString(36) + "_" + lgSeq.current,
+                      aId: own?.id ?? "",
+                      bId: "",
+                      aScore: "",
+                      bScore: "",
+                      date: "",
+                    },
+                  ]);
+                }}
+              >
+                ＋ 試合結果を追加
+              </button>
+            </div>
+            {/* 試合記録から取り込む（相手名がチーム一覧と一致し、まだ取り込んでいない自チームの記録だけ） */}
+            <div className="formfield">
+              <label>取り込む大会</label>
+              <select value={lgImportComp} onChange={(e) => setLgImportComp(e.target.value)} aria-label="取り込む大会">
+                <option value="all">すべての大会</option>
+                {team.team.competitions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="formfield">
+              <button type="button" className="dynadd" onClick={lgImportMatches}>
+                試合記録から取り込む
+              </button>
+            </div>
+          </>
+        )}
+        {/* 数値 → 結果へ切り替えたときの注意（結果が 0 件のうちは別の文言） */}
+        {lgMode === "results" && lgResults.length === 0 ? (
+          <div className="lgedit-warn">試合結果を 1 件以上入れると順位表が作られます。</div>
+        ) : (
+          lgMode === "results" &&
+          lgWarn && <div className="lgedit-warn">保存すると、順位表の数値は試合結果から数え直した値に置き換わります。</div>
+        )}
         <div className="evnote" style={{ margin: "0 16px 12px" }}>
-          順位は 勝点（勝 3・分 1）→ 得失点差 → 得点 の順に自動で並びます。試合数は 勝＋分＋敗 です。
+          {lgMode === "results"
+            ? "入力した試合結果から、勝・分・敗・得点・失点を数えて順位表を作ります。順位は 勝点（勝 3・分 1）→ 得失点差 → 得点 の順です。"
+            : "順位は 勝点（勝 3・分 1）→ 得失点差 → 得点 の順に自動で並びます。試合数は 勝＋分＋敗 です。"}
         </div>
         <button className="bigbtn" onClick={saveLeague}>
           保存する

@@ -10,6 +10,7 @@ import type {
   FitnessRecord,
   FitnessStandardKey,
   FitnessTest,
+  LeagueResult,
   LeagueRow,
   LeagueTable,
   Library,
@@ -769,6 +770,15 @@ export function loadTeam(): TeamData | null {
     // カレンダーの絞り込みと色の作り直し（案A §1）: 色未設定のグループ（旧データ）に
     // 未使用パレット色を補う。一度色が付けば保存後は毎回ここを通っても変化しない
     data.groups = ensureGroupColors(data.groups);
+    // p16 §5: 種類・予定の noteTarget が boolean でなければ落とす
+    if (Array.isArray(data.categories)) {
+      data.categories = data.categories.map((c) =>
+        c.noteTarget !== undefined && typeof c.noteTarget !== "boolean" ? { ...c, noteTarget: undefined } : c
+      );
+    }
+    data.events = data.events.map((e) =>
+      e.noteTarget !== undefined && typeof e.noteTarget !== "boolean" ? { ...e, noteTarget: undefined } : e
+    );
     // events の optInPlayerIds が配列でなければ除去する
     data.events = data.events.map((e) =>
       e.optInPlayerIds !== undefined && !Array.isArray(e.optInPlayerIds)
@@ -837,9 +847,32 @@ function normalizeLeague(raw: unknown): LeagueTable | null {
       ...(isOwn ? { own: true as const } : {}),
     });
   }
+  // p16 §6: 入力の方法と試合結果。壊れていれば落とす（結果は 0 以上の整数・存在するチームの別々の 2 つを指すものだけ）
+  const mode = t.mode === "manual" || t.mode === "results" ? t.mode : undefined;
+  let results: LeagueResult[] | undefined;
+  if (Array.isArray(t.results)) {
+    const ids = new Set(rows.map((r) => r.id));
+    results = [];
+    for (const m of t.results as Partial<LeagueResult>[]) {
+      if (!m || typeof m !== "object") continue;
+      if (typeof m.id !== "string" || typeof m.aId !== "string" || typeof m.bId !== "string") continue;
+      if (m.aId === m.bId || !ids.has(m.aId) || !ids.has(m.bId)) continue;
+      results.push({
+        id: m.id,
+        aId: m.aId,
+        bId: m.bId,
+        aScore: leagueInt(m.aScore),
+        bScore: leagueInt(m.bScore),
+        ...(typeof m.date === "string" && m.date ? { date: m.date } : {}),
+        ...(typeof m.matchId === "string" && m.matchId ? { matchId: m.matchId } : {}),
+      });
+    }
+  }
   return {
     title: typeof t.title === "string" ? t.title : undefined,
     rows,
+    ...(mode ? { mode } : {}),
+    ...(results ? { results } : {}),
     updatedAt: typeof t.updatedAt === "number" ? t.updatedAt : undefined,
     updatedBy: typeof t.updatedBy === "string" ? t.updatedBy : undefined,
   };

@@ -38,6 +38,14 @@ export function categoryOf(e: TeamEvent, cats: EventCategory[]): EventCategory {
   );
 }
 
+/** p16 §5: 種類の既定（未定義なら 組込み＝true／それ以外＝false） */
+export const categoryNoteTarget = (c: EventCategory): boolean => c.noteTarget ?? c.builtin === true;
+
+/** p16 §5: 予定がサッカーノートの対象か（予定の上書き → 種類の設定。種類が消えた予定は kind の組込みに落ちる） */
+export function eventNoteTarget(e: TeamEvent, cats: EventCategory[]): boolean {
+  return e.noteTarget ?? categoryNoteTarget(categoryOf(e, cats));
+}
+
 /* ===== カレンダーのグループ（対象）絞り込み ===== */
 
 /** 全員対象（groupIds未指定または空）かどうか */

@@ -52,6 +52,7 @@ import {
 import { attendanceRate } from "@/lib/teamStats";
 import { deliverableTargetsPlayer, eventTargetPlayers, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
+import { categoryOf, eventNoteTarget } from "@/lib/calendarUtils";
 import { DeliverBlock, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
 import { useGroupFilter } from "./GroupChips";
@@ -322,8 +323,11 @@ export default function NotebookScreen() {
   };
 
   // 作成シート：今日の予定種別に応じて選択肢の並びとバッジを出し分け
+  // p16 §5-4: サッカーノートの対象の予定だけを見る（保護者会など対象外の種類は並びに影響させない）
   const todayEventKinds = new Set(
-    (loadTeam()?.events ?? []).filter((e) => e.date === todayStr()).map((e) => e.kind)
+    (loadTeam()?.events ?? [])
+      .filter((e) => e.date === todayStr() && eventNoteTarget(e, team.categories))
+      .map((e) => e.kind)
   );
   const noteKindOrder: NoteKind[] = todayEventKinds.has("match")
     ? ["match", "practice", "solo"]
@@ -1219,12 +1223,20 @@ function NoteList({
 
   // 予定はlocalStorage直読み（作成シートの todayEventKinds と同じ作法）。
   // 予定別へ切り替えるたびに読み直すので、他画面での予定編集も反映される
+  // p16 レビュー: 対象で絞る前に、今日までの予定が 1 件でもあるか（0 件のときの文言の出し分け用）
+  const hasPastEvents = useMemo(() => {
+    if (listView !== "byEvent") return false;
+    const today = todayStr();
+    return (loadTeam()?.events ?? []).some((e) => e.date <= today);
+  }, [listView]);
   const events = useMemo(() => {
     if (listView !== "byEvent") return [];
     const today = todayStr();
     return (
       (loadTeam()?.events ?? [])
         .filter((e) => e.date <= today)
+        // p16 §5-4: サッカーノートの対象の予定だけ。30件に切る前に絞る（対象外の予定で30件が埋まらないように）
+        .filter((e) => eventNoteTarget(e, team.categories))
         .sort((a, b) => b.date.localeCompare(a.date))
         // notebook-staff-redesign §3-4: 対象は今日までの予定30件（今のまま）。種類で絞るのは30件を取った後
         // （絞った後の30件にすると、より古い予定まで遡ってしまう）
@@ -1233,7 +1245,7 @@ function NoteList({
         // 「提出 0／M」を出さない。自主練は予定に紐づかないので予定行は0件）
         .filter((e) => !isCoach || kind === "all" || (kind !== "solo" && (e.kind === "match") === (kind === "match")))
     );
-  }, [listView, isCoach, kind]);
+  }, [listView, isCoach, kind, team.categories]);
 
   // 未提出チップの並び：学年順（team.groups の学年グループの並び）→背番号順。学年が無い選手は末尾
   const rosterOrder = useMemo(() => {
@@ -1443,7 +1455,10 @@ function NoteList({
                 ? "自主練は予定に紐づきません。下の「予定に紐づかない提出」を開いてください。"
                 : isCoach && kind !== "all"
                   ? `今日までの直近の予定に${NOTE_KIND_LABEL[kind]}はありません。`
-                  : "カレンダーに今日までの予定がありません。"}
+                  : hasPastEvents
+                    ? // p16 レビュー: 予定はあるがサッカーノートの対象が 0 件のとき（「予定がありません」と出さない）
+                      "サッカーノートに反映する予定がありません。種類の管理や予定のフォームで変えられます。"
+                    : "カレンダーに今日までの予定がありません。"}
             </div>
           )}
           {grouped.list.map(({ ev, notes, targetCount, submitted, missing, hasSub }) =>
@@ -1451,7 +1466,8 @@ function NoteList({
               ev.id,
               <>
                 <span className="evgrowdate">{fmt(ev.date)}</span>
-                <span className={`evgrowkind ${ev.kind}`}>{NOTE_KIND_LABEL[ev.kind]}</span>
+                {/* 統括調整（p16 §5）: 予定の種類の名前を出す（保護者会・ミーティングなどを反映したとき「練習」と出さない） */}
+                <span className={`evgrowkind ${ev.kind}`}>{categoryOf(ev, team.categories).label}</span>
                 <span className="evgrowtitle">{ev.title || NOTE_KIND_LABEL[ev.kind]}</span>
               </>,
               isCoach ? (

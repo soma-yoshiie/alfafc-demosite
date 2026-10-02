@@ -3435,19 +3435,7 @@ body:has(.mhead) .billtoggle button.on {
   font-size: 14px;
   color: var(--ink);
 }
-.calfilterpanel-catchip {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 44px;
-  border: 0;
-  background: none;
-  padding: 7px 4px;
-  font-size: 13px;
-  color: var(--ink);
-  cursor: pointer;
-}
+/* p16 §1: 種類は .calfilterpanel-row の縦 1 列にしたので .calfilterpanel-catchip は廃止 */
 .calfilterpanel-manage {
   /* 統括の最終調整: <button>化に伴いボタン既定の地色・枠・フォントを外す */
   background: none;
@@ -9344,6 +9332,11 @@ body:has(.mhead) .noteapp .nbtop .ngchip {
   border-radius: var(--r-full);
   background: var(--surface-container);
   color: var(--mut);
+  /* p16 レビュー: 利用者が付けた種類の名前が入るので、長い名前は省略して予定名を潰さない */
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .noteapp .evgrowkind.match {
   background: var(--accent-tint);
@@ -13317,9 +13310,11 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   cursor: pointer;
   white-space: nowrap;
 }
+/* p16 §2: 選択中は種類の色（インライン style）に頼らず .grouppick-item.on と同じ青にする */
 .evcatchip.on {
-  border-width: 1.5px;
-  background: var(--panel);
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
 }
 /* Phase D-1(C1-minor): 対象欄(grouppick-item.manage、下記)の「＋ 管理」がaccentなのに対し
    カテゴリ欄のこちらは--lime-dim(濃緑)のままで、同じ予定フォーム内で2色に割れていた。
@@ -13362,6 +13357,15 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .grouppick-item.manage {
   color: var(--accent);
   border-style: dashed;
+}
+/* p16 §3: 対象チップのラベルの前の色の点（グループの色） */
+.grouppick-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  /* 点と文字の間は .grouppick-item の gap: 6px に任せる（margin を足すと 12px 空く。レビュー指摘） */
+  border-radius: 50%;
+  flex: none;
 }
 /* Phase D-1(C2-minor): 35px(.evcatchipに合わせた高さ)はv1 §8の44pxタップ領域を満たさない。
    対象欄は複数選択でタップ回数が増えるため、スマホ限定で底上げする
@@ -15226,6 +15230,105 @@ body:has(.mhead) .grouppick-item {
 .lgedit-del svg {
   width: 18px;
   height: 18px;
+}
+/* p16 §6-3: 「最終更新」の下に並べる「試合結果 N 件から作成」（.phubupd を流用。行間だけ詰める） */
+.leaguehead + .phubupd + .phubupd {
+  margin: -8px 2px 8px;
+}
+.lgview-upd .phubupd + .phubupd {
+  margin-top: -8px;
+}
+/* p16 §6-2: 順位表の編集の「試合結果を入力」。入力方法の切替・見出し・結果カード・注意 */
+.lgedit-modeseg {
+  margin-left: 0;
+}
+.lgedit-modeseg .tseg {
+  flex: 1;
+  justify-content: center;
+  min-height: 44px;
+}
+/* p16 レビュー: 基底の .tseg.on は緑の塗り（スマホ）。下の主ボタン「保存する」と同じ色になるので、
+   この切り替えだけ青（PC の見た目と同じ）にする。基底の .tseg.on 自体は変えない（ほかの画面も使う） */
+.lgedit-modeseg .tseg.on {
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+/* p16 レビュー: 今回足した「サッカーノートに反映する」のトグルは、スマホでも ON を青に（基底の .daytoggle は緑。
+   既存の「終日」などは変えない）。タップの高さは 44px（スマホだけ） */
+.formfield label.daytoggle.notetoggle input:checked + span {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.teamapp:has(.mhead) .formfield label.daytoggle.notetoggle {
+  min-height: 44px;
+}
+.lgedit-sech {
+  margin: 12px 18px 8px;
+}
+.lgedit-sum {
+  flex: none;
+  font-size: 12px;
+  color: var(--mut);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.lgedit-warn {
+  margin: 0 16px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--warn);
+}
+.lgres-row {
+  margin: 0 16px 8px;
+  padding: 10px 12px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.lgres-teams {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 6px;
+}
+.lgres-teams .formfield,
+.lgres-score .formfield {
+  margin: 0;
+  min-width: 0;
+}
+.lgres-teams select {
+  min-width: 0;
+  min-height: 44px;
+}
+.lgres-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  min-width: 0;
+}
+.lgres-score > input {
+  flex: none;
+  width: 56px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px;
+  text-align: center;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-size: 15px;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+.lgres-date {
+  flex: 1;
+}
+.lgres-date input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 8px;
 }
 .phubadd {
   width: 100%;
@@ -22149,17 +22252,6 @@ body:has(.mhead) .grouppick-item {
   .calside .calfilterpanel-row:hover {
     background: var(--surface-low);
   }
-  .calside .grouppick {
-    gap: 0 10px;
-    margin: 0;
-    padding: 0;
-  }
-  .calside .calfilterpanel-catchip {
-    min-height: 24px;
-    padding: 0 4px;
-    gap: 6px;
-    font-size: 14px; /* p15 §1: 13→14（文字をほんの少し大きく） */
-  }
   .calside .calfilterpanel-manage {
     min-height: 24px;
     margin-top: 6px;
@@ -22903,7 +22995,8 @@ body:has(.mhead) .grouppick-item {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .lgedit-row {
+  .lgedit-row,
+  .lgres-row {
     border-radius: var(--r-md);
   }
   .lgedit-del {
@@ -23087,7 +23180,6 @@ body:has(.mhead) .grouppick-item {
   .noteapp .nbfmanage,
   .calside-hide,
   .calside .calfilterpanel-row,
-  .calside .calfilterpanel-catchip,
   .calside .calfilterpanel-all,
   .calside .calfilter-toggle,
   .calside .calfilterpanel-manage {
