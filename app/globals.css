@@ -1773,19 +1773,12 @@ header {
 .pos.df {
   background: var(--blue);
 }
+/* p18 §2: MF だけ緑だった（意味のない色分けの名残）。ほかの 3 つと同じ黒（--ink）にそろえる */
 .pos.mf {
-  background: var(--lime);
+  background: var(--ink);
 }
 .pos.fw {
   background: var(--orange);
-}
-/* mobile-redesign-v2 §3-4(緑残存の自動走査対応): table未記載だが、名簿(緑残存走査の
-   対象画面)でMFのポジションバッジだけ--lime(=--primaryの緑)のまま残っていた
-   （gk/df/fwは--gold/--blue/--orangeが既に--ink相当のためこの中でmfだけが唯一の残存緑）。
-   他の3ポジションと同じ--ink基調に揃える。PCの.ptable .pos(名簿の表形式)は
-   .teamapp:has(.mhead)が発火しないため現状の色分けのまま不変 */
-.teamapp:has(.mhead) .pos.mf {
-  background: var(--ink);
 }
 .prow .meta {
   flex: 1;
@@ -9440,47 +9433,6 @@ body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
   transform: rotate(90deg);
 }
 
-/* p17 §1: 予定別の「これからの予定」（明日以降。提出はまだ無いので開閉しない・押せない行） */
-.noteapp .evgsech {
-  margin: 10px 2px 4px;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--mut);
-}
-.noteapp .evgrow.soon {
-  cursor: default;
-}
-.noteapp .evgrow.soon:hover {
-  background: var(--surface-lowest);
-}
-.noteapp .evgrow.soon:active {
-  transform: none;
-}
-.noteapp .evgrow.soon .evgrowtitle {
-  color: var(--ink);
-}
-.noteapp .evgrowcount.soon {
-  font-family: var(--font-ui);
-  font-size: 12px;
-  letter-spacing: 0;
-  color: var(--mut);
-  background: none;
-}
-.noteapp .evgmore {
-  display: block;
-  width: 100%;
-  min-height: 44px;
-  padding: 0 2px;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font-family: var(--font-ui);
-  font-size: 13px;
-  font-weight: 700;
-  text-align: left;
-  cursor: pointer;
-}
-
 /* 展開部（中身は既存の .notecards/.notecard をそのまま使う） */
 .noteapp .evgnotes {
   margin: 0 0 10px 4px;
@@ -12494,6 +12446,188 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 /* ---- 区画間の縦リズム(v1 §8-3-18: セクション間24px＞カード間12px) ---- */
 .mhome-root .mh-section {
   margin-top: 24px;
+}
+
+/* ---- p18 §3-4: ホームの共通の部品（HomePanels.tsx。スマホ・PC 共通。PC だけの調整は PC reset） ---- */
+.hp-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  color: var(--ink);
+}
+.hp-h small {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--mut);
+}
+.hp-link,
+.hp-more {
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.hp-more {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.hp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  margin: 0;
+  padding: 6px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.hp-row:last-child {
+  border-bottom: 0;
+}
+.hp-row svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.hp-ic {
+  flex: 0 0 auto;
+  display: flex;
+  width: 20px;
+  height: 20px;
+  color: var(--mut);
+}
+.hp-ic.k-match {
+  color: var(--note-match);
+}
+.hp-ic.k-practice {
+  color: var(--note-practice);
+}
+.hp-ic.k-solo {
+  color: var(--note-solo);
+}
+.hp-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.hp-row-main b {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 700;
+}
+.hp-row-main > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--mut);
+}
+.hp-row-time {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--mut);
+  white-space: nowrap;
+}
+.hp-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+.hp-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--mut);
+}
+.hp-empty {
+  padding: 12px 2px;
+  font-size: 12px;
+  color: var(--mut);
+}
+.hp-goallist {
+  margin: 0;
+}
+.hp-goalrow {
+  border-bottom: 1px solid var(--outline);
+}
+.hp-goalrow:last-child {
+  border-bottom: 0;
+}
+.hp-goallist dt {
+  margin: 0;
+  padding: 8px 2px 0;
+  font-size: 12px;
+  color: var(--mut);
+}
+.hp-goallist dd {
+  margin: 0;
+}
+.hp-goal {
+  /* 1 行だけの目標でも、見出しのすぐ下から始める（button の既定は上下中央） */
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 44px;
+  padding: 2px 2px 8px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.hp-goal small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--mut);
+}
+/* タイルの内訳「ノート N ・ メッセージ M」は狭いタイル（スマホは 2 列）で折り返せるようにする */
+.hp-scopes .mdb-kpidelta,
+.hp-scopes .kpitile.on .mdb-kpidelta {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.3;
+  white-space: normal;
 }
 
 /* =========================================================
@@ -23087,14 +23221,28 @@ body:has(.mhead) .grouppick-item {
     row-gap: 0;
     column-gap: 6px;
   }
-  /* p17 §1: PCの一覧の列では「これからの予定」の行も他の予定の行と同じ密度・「ほか N 件」は 32px */
-  .coachapp:has(.nbmain) .scroll .evgrow.soon:hover {
-    background: none;
+  /* p18 §3-4: ホームの共通の部品。行は 40px（タッチでは下の (pointer: coarse) で 44px）、タイムラインは高さ 360px で中スクロール、
+     タイルは scope が増えても崩れないよう auto-fit（.mdb-pulse .kpiband の flex を上書き） */
+  .hp-row {
+    min-height: 40px;
   }
-  /* レビュー F1: 「これから」は短いので 1 行目の右に置いたままにする（2 行目へ回すルールは、行が折り返さず
-     予定名が幅 0 に潰れていたので外した）。「ほか N 件」は選手側の PC も同じ 32px */
-  .noteapp .evgmore {
-    min-height: 32px;
+  .hp-link {
+    min-height: 28px;
+  }
+  .hp-tllist {
+    max-height: 360px;
+    overflow-y: auto;
+  }
+  .mdb-pulse .kpiband.hp-scopes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  .mdb-panel.hp-ann {
+    margin-bottom: 16px;
+  }
+  /* p18 §5: 選手の PC ホームは .mdb-cols（2 列）に並べるので、下の余白は付けない */
+  .mdb-cols .mdb-panel.hp-ann {
+    margin-bottom: 0;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -23207,6 +23355,11 @@ body:has(.mhead) .grouppick-item {
       ここでその並びを増やさないため)。
    ========================================================= */
 @media (pointer: coarse) and (min-width: 1024px) {
+  /* p18 §3-4: ホームの共通の部品の行・リンクも指サイズ 44px へ戻す */
+  .hp-row,
+  .hp-link {
+    min-height: 44px;
+  }
   /* chat-plan-a §3-6: チャットの操作部品（PC で 32〜36px に詰めた分）を指サイズ 44px へ戻す */
   .chatsegwrap .mseg-item,
   .annbtn,
@@ -23260,7 +23413,6 @@ body:has(.mhead) .grouppick-item {
   .noteapp .nbtop .nbfilterbtn,
   .noteapp .nbtop .nbunread,
   .noteapp .nbtop .ngchip,
-  .noteapp .evgmore,
   .noteapp .drawclose,
   .nbside-hide,
   .rosside-hide,

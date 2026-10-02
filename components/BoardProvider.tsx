@@ -1164,6 +1164,9 @@ interface BoardContextValue {
   setTeamIntent: (
     v: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openGroups?: boolean } | null
   ) => void;
+  /** p18 §3-1: ホームのタイムラインからサッカーノート（スタッフの提出の一覧）でそのノートの詳細を開く意図（消費後はnullに戻す） */
+  noteIntent: { noteId: string } | null;
+  setNoteIntent: (v: { noteId: string } | null) => void;
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
   /**
@@ -2046,6 +2049,8 @@ export function BoardProvider({
   const [teamIntent, setTeamIntent] = useState<
     { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openGroups?: boolean } | null
   >(null);
+  // p18 §3-1: ホームのタイムライン → サッカーノートの詳細（teamIntent と同じ作法。NotebookScreen が消費して null に戻す）
+  const [noteIntent, setNoteIntent] = useState<{ noteId: string } | null>(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
   // lazy初期化で保存データを直接読む（mount後のload→saveの競合・上書きを防ぐ。TeamProviderと同方針）
   // chat-plan-a §2-3・§6: メッセージと既読時刻は同じ時刻基準のシードから作る（保存済みならそれを優先）
@@ -3793,6 +3798,8 @@ export function BoardProvider({
       setDrillIntent,
       teamIntent,
       setTeamIntent,
+      noteIntent,
+      setNoteIntent,
       messages,
       sendMessage,
       removeMessage,
@@ -3930,6 +3937,8 @@ export function BoardProvider({
       setDrillIntent,
       teamIntent,
       setTeamIntent,
+      noteIntent,
+      setNoteIntent,
       messages,
       sendMessage,
       removeMessage,

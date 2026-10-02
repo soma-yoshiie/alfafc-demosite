@@ -12,24 +12,16 @@
 import { useState } from "react";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
-import { addDaysStr, localDateStr, weekStart, weeklyStreak } from "@/lib/dates";
-import { matchSummary } from "@/lib/teamStatsAgg";
 import { PLAN_INFO } from "@/lib/types";
-import type { PracticeNote } from "@/lib/types";
 import {
   useMatchdayData,
-  MdbChart,
-  MdbRing,
-  fmtDelta,
+  useHomeTimeline,
   fmtEventDate,
   categoryLabel,
-  relTime,
-  PULSE_METRICS,
-  TOPIC_LABELS,
   type BoardCtx,
   type TeamCtx,
-  type PulseMetric,
 } from "./homeData";
+import { HomeAnnouncements, HomeGoals, HomeTimeline } from "./HomePanels";
 import { IconBell, IconCog } from "./icons";
 
 export default function MobileHome() {
@@ -233,19 +225,8 @@ function MobileStaffHome({
 }) {
   const d = useMatchdayData(board, team);
   const [bellOpen, setBellOpen] = useState(false);
-  const [metricIdx, setMetricIdx] = useState(0);
-  const metric: PulseMetric = PULSE_METRICS[metricIdx];
-
-  const chartData = metric === "notes" ? d.notesSeries : metric === "att" ? d.attSeries : d.winSeries;
-  const chartMax = metric === "notes" ? undefined : 100;
-  const chartTitle =
-    metric === "notes"
-      ? "週別ノート提出数の推移（直近7週）"
-      : metric === "att"
-      ? "週別出席率の推移（直近7週・%）"
-      : metric === "win"
-      ? "月別勝率の推移（直近7ヶ月・%）"
-      : "リーグ順位表（上位5チーム）";
+  // p18 §4: スタッフのホームのタイムライン（ノートの提出・届いたメッセージ。すべて＋学年）
+  const timeline = useHomeTimeline(board, team);
 
   return (
     <div className="app homeapp mhome-root">
@@ -321,147 +302,10 @@ function MobileStaffHome({
           />
         </div>
 
-        <div className="mh-section mh-kpis">
-          <button
-            type="button"
-            className={`kpitile mdb-tile-notes${metric === "notes" ? " on" : ""}`}
-            aria-pressed={metric === "notes"}
-            onClick={() => setMetricIdx(0)}
-          >
-            <span className="kv">{d.notesThisWeek}</span>
-            <span className="kl">今週の提出</span>
-            {d.notesDelta != null && (
-              <span className={`mdb-kpidelta${d.notesDelta >= 0 ? " up" : " down"}`}>
-                {fmtDelta("先週比", d.notesDelta, "件")}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            className={`kpitile mdb-tile-att${metric === "att" ? " on" : ""}`}
-            aria-pressed={metric === "att"}
-            onClick={() => setMetricIdx(1)}
-          >
-            <span className="mh-ringrow">
-              <MdbRing pct={d.attPctAvg} />
-              <span>
-                <span className="kv">{d.attPctAvg != null ? `${d.attPctAvg}%` : "—"}</span>
-                <span className="kl">出席率</span>
-              </span>
-            </span>
-            {d.attDelta != null && (
-              <span className={`mdb-kpidelta${d.attDelta >= 0 ? " up" : " down"}`}>
-                {fmtDelta("先週比", d.attDelta, "pt")}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            className={`kpitile mdb-tile-win${metric === "win" ? " on" : ""}`}
-            aria-pressed={metric === "win"}
-            onClick={() => setMetricIdx(2)}
-          >
-            <span className="kv">{d.winPct != null ? `${d.winPct}%` : "—"}</span>
-            <span className="kl">勝率</span>
-            {d.winDelta != null && (
-              <span className={`mdb-kpidelta${d.winDelta >= 0 ? " up" : " down"}`}>
-                {fmtDelta("前月比", d.winDelta, "pt")}
-              </span>
-            )}
-          </button>
-          <button
-            type="button"
-            className={`kpitile mdb-tile-rank${metric === "rank" ? " on" : ""}`}
-            aria-pressed={metric === "rank"}
-            onClick={() => setMetricIdx(3)}
-          >
-            <span className="kv">{d.leagueRank.rank != null ? `${d.leagueRank.rank}位` : "—"}</span>
-            <span className="kl">リーグ順位</span>
-            <span className="mdb-kpidelta">{d.leagueRank.rank != null ? `${d.leagueRank.size}チーム中` : "未登録"}</span>
-          </button>
-        </div>
+        {/* p18 §4: 指標 2×2・グラフ・今月のトピック・最新の動きをやめ、ノートとチャットのタイムライン＋最新のお知らせにした */}
+        <HomeTimeline scopes={timeline} variant="mobile" />
 
-        <div className={`mh-section mh-chart mh-metric-${metric}`}>
-          <div className="mh-charttitle">{chartTitle}</div>
-          {metric === "rank" ? (
-            <table className="ptable">
-              <tbody>
-                {/* p14 §3: 自チームの行が無い・0 チームのときは 1 行だけ */}
-                {d.leagueRank.rank == null && (
-                  <tr className="mdb-rankgap" key="none">
-                    <td colSpan={3}>順位表が未登録です</td>
-                  </tr>
-                )}
-                {(d.leagueRank.rank == null ? [] : d.leagueMini).map((r) =>
-                  "gap" in r ? (
-                    <tr className="mdb-rankgap" key="gap">
-                      <td colSpan={3}>…</td>
-                    </tr>
-                  ) : (
-                    <tr key={r.id} className={r.own ? "own" : undefined}>
-                      <td className="num">{r.rank}</td>
-                      <td className="col-name">{r.name}</td>
-                      <td className="num leaguepts">{r.pts}</td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
-          ) : (
-            <MdbChart data={chartData} max={chartMax} metricKey={metric} />
-          )}
-        </div>
-
-        <div className="mh-section mh-panel mh-topic">
-          <div className="mdb-panel-head">
-            <span className="mdb-panel-h">今月のトピック</span>
-            <span className="mdb-panel-sub">{TOPIC_LABELS[d.topicMetricIdx]}ランキング</span>
-          </div>
-          {d.topic.rows.length === 0 ? (
-            <div className="mdb-topicempty">まだデータがありません</div>
-          ) : (
-            <div className="mdb-topicrows">
-              {d.topic.rows.map((r, i) => (
-                <div className="mdb-topicrow" key={r.playerId}>
-                  <span className="mdb-topicrank">{i + 1}</span>
-                  <span className="mdb-topicname">{r.name}</span>
-                  <span className="mdb-topicbartrack">
-                    <span
-                      className="mdb-topicbar"
-                      style={{ width: d.topicMax > 0 ? `${Math.round((r.value / d.topicMax) * 100)}%` : "0%" }}
-                    />
-                  </span>
-                  <span className="mdb-topicval">
-                    {r.value}
-                    {d.topicUnit}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          {d.topic.fallback && <div className="mdb-topicfallback">全期間</div>}
-        </div>
-
-        <div className="mh-section mh-panel mh-feed">
-          <div className="mdb-panel-head">
-            <span className="mdb-panel-h">最新の動き</span>
-          </div>
-          {d.feedItems.length === 0 ? (
-            <div className="mdb-feedempty">まだ動きがありません</div>
-          ) : (
-            <div className="mh-feedlist">
-              {d.feedItems.slice(0, 4).map((it) => (
-                <div className="mdb-feeditem" key={it.id}>
-                  <span className={`mdb-feedicon mdb-avatar-${it.colorIdx}`} aria-hidden="true">
-                    {it.initial}
-                  </span>
-                  <span className="mdb-feedtext">{it.text}</span>
-                  <span className="mdb-feedtime">{relTime(it.ts)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <HomeAnnouncements viewer="staff" variant="mobile" />
 
         {d.highlightChips.length > 0 && (
           <div className="mh-section mdb-highlights">
@@ -495,42 +339,8 @@ function MobilePlayerHome({
   logout: () => void;
 }) {
   const me = board.auth.playerId ?? "";
-  const myNotes = board.notebook.filter((n) => n.playerId === me);
-  const todayISO = localDateStr();
 
-  // 今週のノート（自分。月曜始まり。サッカーノートのホームと同じ週の定義＝lib/dates.weekStart）
-  const monday = weekStart(todayISO);
-  const thisWeekCount = myNotes.filter((n) => n.date >= monday).length;
-
-  // 連続記録（サッカーノートの「n週連続で記録中」と同じ算出。無ければ「これまでの合計」にフォールバック）
-  const streak = weeklyStreak(myNotes.map((n) => n.date));
-
-  // 達成度（週平均。サッカーノートのホーム(NotebookScreen.tsx PlayerHome)と同じ算出：
-  // 直近8週・記録がある週だけの週平均を平均。既存関数として切り出されていないため同じ式をここに書く）
-  const practiceAchievements = myNotes.filter(
-    (n): n is PracticeNote => n.kind === "practice" && typeof n.achievement === "number"
-  );
-  const achieveAvg8 = (() => {
-    const thisMonday = monday;
-    const weeklyAvgs: number[] = [];
-    for (let k = 0; k < 8; k++) {
-      const wkMonday = addDaysStr(thisMonday, -7 * (7 - k));
-      const vals = practiceAchievements
-        .filter((n) => weekStart(n.date) === wkMonday)
-        .map((n) => n.achievement as number);
-      if (vals.length) weeklyAvgs.push(vals.reduce((a, b) => a + b, 0) / vals.length);
-    }
-    return weeklyAvgs.length ? Math.round(weeklyAvgs.reduce((a, b) => a + b, 0) / weeklyAvgs.length) : null;
-  })();
-
-  // チーム勝率（既存 matchSummary を再利用。PCホーム/チーム運営と同じ算出）
-  const recordSummary = matchSummary(team.team.matches);
-
-  // 直近の試合（matchcard相当）。試合記録が非公開なら出さない
-  const lastMatch = [...team.team.matches].sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null;
-  const showLastMatch = lastMatch != null && board.matchesPublic;
-
-  // ヒーロー（次の予定）・最新の動き: スタッフと同じ useMatchdayData を使う(Phase D-1 C1-major/
+  // ヒーロー（次の予定）: スタッフと同じ useMatchdayData を使う(Phase D-1 C1-major/
   // C3-major修正。以前は選手ホーム独自にnextEventを取り直していたため、次の予定が試合でも
   // VSカード・カウントダウンが出ない不整合があった)。
   // groups-everywhere §3: forPlayerId(=me)を渡し、「次の予定」を自分の予定だけから選ぶ
@@ -538,11 +348,6 @@ function MobilePlayerHome({
   const myAttendance = d.nextEvent ? team.team.attendance[d.nextEvent.id]?.[me]?.status : undefined;
   const attLabel =
     myAttendance === "yes" ? "出席" : myAttendance === "no" ? "欠席" : myAttendance === "maybe" ? "未定" : "未回答";
-
-  const goToRecord = () => {
-    board.setTeamIntent({ tab: "rec" });
-    board.setScreen("team");
-  };
 
   return (
     <div className="app homeapp mhome-root">
@@ -579,82 +384,10 @@ function MobilePlayerHome({
           />
         </div>
 
-        <div className="mh-section mh-kpis">
-          <button type="button" className="kpitile mdb-tile-notes" onClick={() => board.setScreen("notebook")}>
-            <span className="kv">{thisWeekCount}</span>
-            <span className="kl">今週のノート</span>
-          </button>
-          <button type="button" className="kpitile mdb-tile-att" onClick={() => board.setScreen("notebook")}>
-            <span className="kv">{streak > 0 ? streak : myNotes.length}</span>
-            <span className="kl">{streak > 0 ? "週連続で記録中" : "これまでの合計"}</span>
-          </button>
-          <button type="button" className="kpitile mdb-tile-win" onClick={() => board.setScreen("notebook")}>
-            <span className="kv">{achieveAvg8 != null ? `${achieveAvg8}%` : "—"}</span>
-            <span className="kl">達成度（週平均）</span>
-          </button>
-          <button type="button" className="kpitile mdb-tile-rank" onClick={() => board.setScreen("team")}>
-            <span className="kv">{recordSummary.winPct != null ? `${recordSummary.winPct}%` : "—"}</span>
-            <span className="kl">チーム勝率</span>
-          </button>
-        </div>
+        {/* p18 §5: 4 つの数値の枠・直近の試合・最新の動きをやめ、目標と最新のお知らせにした */}
+        <HomeGoals playerId={me} variant="mobile" />
 
-        {showLastMatch && lastMatch && (
-          <div className="mh-section mh-panel">
-            <div className="mdb-panel-head">
-              <span className="mdb-panel-h">直近の試合</span>
-            </div>
-            <div
-              className="matchcard"
-              role="button"
-              tabIndex={0}
-              onClick={goToRecord}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  goToRecord();
-                }
-              }}
-            >
-              <div
-                className={`mres ${
-                  lastMatch.ourScore > lastMatch.theirScore ? "w" : lastMatch.ourScore === lastMatch.theirScore ? "d" : "l"
-                }`}
-              >
-                {lastMatch.ourScore > lastMatch.theirScore ? "勝" : lastMatch.ourScore === lastMatch.theirScore ? "分" : "敗"}
-              </div>
-              <div className="mmid">
-                <div className="mopp">vs {lastMatch.opponent}</div>
-                <div className="msub">{fmtEventDate(lastMatch.date)}</div>
-              </div>
-              <div className="mscore">
-                {lastMatch.ourScore}
-                <span>-</span>
-                {lastMatch.theirScore}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mh-section mh-panel mh-feed">
-          <div className="mdb-panel-head">
-            <span className="mdb-panel-h">最新の動き</span>
-          </div>
-          {d.feedItems.length === 0 ? (
-            <div className="mdb-feedempty">まだ動きがありません</div>
-          ) : (
-            <div className="mh-feedlist">
-              {d.feedItems.slice(0, 4).map((it) => (
-                <div className="mdb-feeditem" key={it.id}>
-                  <span className={`mdb-feedicon mdb-avatar-${it.colorIdx}`} aria-hidden="true">
-                    {it.initial}
-                  </span>
-                  <span className="mdb-feedtext">{it.text}</span>
-                  <span className="mdb-feedtime">{relTime(it.ts)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <HomeAnnouncements viewer="player" variant="mobile" />
 
         <div className="mh-section">
           <MhomeFoot logout={logout} />
