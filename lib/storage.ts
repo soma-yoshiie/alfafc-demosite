@@ -1260,6 +1260,40 @@ export function saveNotifSeen(map: Record<string, number>): void {
   }
 }
 
+/* ---- 通知の設定（設定 §3-6。アプリ内の印＝レール・下部タブの数字、ホームのベルに効く） ---- */
+export type NotifPrefs = { notebook: boolean; messages: boolean; attendance: boolean };
+export const NOTIFPREFS_KEY = "soccer_tactics_notifprefs_v1";
+
+/** 保存が無ければ全部オン */
+export function loadNotifPrefs(): NotifPrefs {
+  const all: NotifPrefs = { notebook: true, messages: true, attendance: true };
+  if (typeof window === "undefined") return all;
+  try {
+    const raw = window.localStorage.getItem(NOTIFPREFS_KEY);
+    if (!raw) return all;
+    const d = JSON.parse(raw);
+    if (!d || typeof d !== "object") return all;
+    return {
+      notebook: d.notebook !== false,
+      messages: d.messages !== false,
+      attendance: d.attendance !== false,
+    };
+  } catch {
+    return all;
+  }
+}
+
+export function saveNotifPrefs(p: NotifPrefs): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(NOTIFPREFS_KEY, JSON.stringify(p));
+    // 既読と同じく localStorage 直書きなので、バッジ側が購読できるようイベントを発火する
+    window.dispatchEvent(new Event("alfa-notifprefs"));
+  } catch {
+    /* 無視 */
+  }
+}
+
 /* ---- サッカーノート（選手の振り返り提出） ---- */
 export function loadNotebook(): NotebookEntry[] | null {
   if (typeof window === "undefined") return null;

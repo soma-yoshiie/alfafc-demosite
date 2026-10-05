@@ -378,45 +378,42 @@ export interface Library {
 }
 
 /**
- * 料金プラン（クラブ単位の有料サブスク・無料プランなし）。
- * 安全設計・コア機能・差別化機能（出席率/ノート/戦術配信）は全プラン共通。
- * プラン差は「規模」（チーム数・選手数・コーチ席数）のみ。データは全プラン永続保存。
+ * 料金プラン（選手 1 人あたりの月額で決まる 2 つ。specs/settings-plan-a.md §1）。
+ * 機能はどちらも同じ。違いは動画の保存だけ（通常＝上限あり／動画保存無制限）。
+ * 月額は「名簿の選手数 × perPlayer」。
  */
-export type PlanTier = "starter" | "standard" | "pro";
+export type PlanTier = "standard" | "video";
 
 export interface PlanInfo {
+  /** 「通常」「動画保存無制限」（表示は name + "プラン"） */
   name: string;
-  /** 月額（円） */
-  monthly: number;
-  /** 年額（円・2ヶ月分お得＝月額×10相当） */
-  annual: number;
-  /** 規模上限（表示用） */
-  teams: string;
-  players: string;
-  seats: string;
-  /** 想定クラブ */
-  target: string;
+  /** 選手 1 人あたりの月額（円・税別） */
+  perPlayer: number;
+  /** 動画の保存の説明（通常の本数・期間の上限は未定なので数字は書かない） */
+  video: string;
+  /** 1 行の説明 */
+  lead: string;
 }
 
-export const PLAN_ORDER: PlanTier[] = ["starter", "standard", "pro"];
+export const PLAN_ORDER: PlanTier[] = ["standard", "video"];
 
 export const PLAN_INFO: Record<PlanTier, PlanInfo> = {
-  starter: { name: "スターター", monthly: 1980, annual: 19800, teams: "1", players: "〜30", seats: "2", target: "少年団・単独チーム" },
-  standard: { name: "スタンダード", monthly: 4980, annual: 49800, teams: "〜3", players: "〜100", seats: "8", target: "中規模クラブ・複数学年" },
-  pro: { name: "プロ", monthly: 9800, annual: 98000, teams: "無制限", players: "無制限", seats: "無制限", target: "大規模クラブ" },
+  standard: { name: "通常", perPlayer: 500, video: "動画の保存：上限あり", lead: "出欠・サッカーノート・チャット・戦術配信など、すべての機能が使えます。" },
+  video: { name: "動画保存無制限", perPlayer: 700, video: "動画の保存：無制限", lead: "通常プランの全機能に加えて、動画を本数・期間の上限なく保存できます。" },
 };
 
-/** 旧プラン値（free/coach/team）→新プランへの移行マップ */
+/** 旧プラン値（free/coach/team／starter/pro）→現行プランへの移行マップ。不明は standard */
 export function migratePlan(v: string): PlanTier {
   const map: Record<string, PlanTier> = {
-    free: "starter",
+    free: "standard",
     coach: "standard",
-    team: "pro",
-    starter: "starter",
+    starter: "standard",
     standard: "standard",
-    pro: "pro",
+    team: "video",
+    pro: "video",
+    video: "video",
   };
-  return map[v] ?? "starter";
+  return Object.prototype.hasOwnProperty.call(map, v) ? map[v] : "standard";
 }
 
 export interface Settings {

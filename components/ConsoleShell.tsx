@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { loadNotifSeen } from "@/lib/storage";
+import { loadNotifPrefs, loadNotifSeen } from "@/lib/storage";
 import { buildEventNotifications } from "@/lib/notifications";
 import { PLAN_INFO } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
@@ -186,14 +186,20 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
 
   // 通知の既読はlocalStorage書き込みのみで状態が変わらないため、
   // saveNotifSeen が発火するイベントを購読してバッジを再計算する
+  // 通知の設定（設定 §3-6）も同じ作法で購読する。ノートの通知を切ると数字は 0
   const [seenVer, setSeenVer] = useState(0);
   useEffect(() => {
     const bump = () => setSeenVer((v) => v + 1);
     window.addEventListener("alfa-notifseen", bump);
-    return () => window.removeEventListener("alfa-notifseen", bump);
+    window.addEventListener("alfa-notifprefs", bump);
+    return () => {
+      window.removeEventListener("alfa-notifseen", bump);
+      window.removeEventListener("alfa-notifprefs", bump);
+    };
   }, []);
 
   const noteUnread = useMemo(() => {
+    if (!loadNotifPrefs().notebook) return 0;
     const identity = coach ? "coach" : "p:" + (board.auth.playerId ?? "");
     const seen = loadNotifSeen()[identity] ?? 0;
     return buildEventNotifications({
@@ -256,6 +262,8 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         // player-hub §2-2: チームの後・チャットの前
         { item: { key: "profile", label: "プロフィール", icon: <IconUser />, onSelect: () => board.setScreen("profile") } },
         { item: { key: "chat", label: "チャット", icon: <IconChat />, onSelect: () => board.setScreen("chat") } },
+        // settings-plan-a §5: 選手・保護者にも設定（アカウント・通知）。末尾
+        { item: { key: "settings", label: "設定", icon: <IconCog />, onSelect: () => board.setScreen("settings") } },
       ];
 
   return (

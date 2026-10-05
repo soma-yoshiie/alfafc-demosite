@@ -19,6 +19,7 @@ import type { EventCategory, NoteKind, TeamEvent } from "@/lib/types";
 import { eventTargetsPlayer, playerInGroup } from "@/lib/groups";
 import { attachmentLabel, isMemberFrom } from "@/lib/chat";
 import { linkedEventIds } from "@/lib/matchEvents";
+import { loadNotifPrefs } from "@/lib/storage";
 import type { useBoard } from "./BoardProvider";
 import type { useTeam } from "./TeamProvider";
 
@@ -133,13 +134,30 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
 
   /* ---------------- 区画2: 右上ベル(対応が必要なこと) ---------------- */
   const uncommented = board.notebook.filter((n) => !n.staffComment).length;
-  const bellBadge = unansweredNext + uncommented;
+
+  // 通知の設定（設定 §3-6）。localStorage 直書きなので alfa-notifprefs を購読して再計算する
+  const [prefsVer, setPrefsVer] = useState(0);
+  useEffect(() => {
+    const bump = () => setPrefsVer((v) => v + 1);
+    window.addEventListener("alfa-notifprefs", bump);
+    return () => window.removeEventListener("alfa-notifprefs", bump);
+  }, []);
 
   const bellRows = useMemo(() => {
-    const rows: { id: string; badge: number; title: string; reason: string; onClick: () => void }[] = [];
+    const prefs = loadNotifPrefs();
+    const rows: {
+      id: string;
+      /** 通知の設定で絞る種類。other は常に出す */
+      kind: "attendance" | "notebook" | "other";
+      badge: number;
+      title: string;
+      reason: string;
+      onClick: () => void;
+    }[] = [];
     if (nextEvent && unansweredNext > 0) {
       rows.push({
         id: "att",
+        kind: "attendance",
         badge: unansweredNext,
         title: "出欠が未回答",
         reason: `${nextEvent.kind === "match" ? "試合" : "練習"}「${nextEvent.title}」、出欠が未回答 ・ ${unansweredNext}名`,
@@ -152,14 +170,16 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
     if (uncommented > 0) {
       rows.push({
         id: "note",
+        kind: "notebook",
         badge: uncommented,
         title: "未コメントのノート",
         reason: `未コメントのノートが${uncommented}件あります`,
         onClick: () => board.setScreen("notebook"),
       });
     }
-    return rows;
-  }, [nextEvent, unansweredNext, uncommented, board]);
+    return rows.filter((r) => r.kind === "other" || prefs[r.kind]);
+  }, [nextEvent, unansweredNext, uncommented, board, prefsVer]);
+  const bellBadge = bellRows.reduce((sum, r) => sum + r.badge, 0);
 
   /* ---------------- 区画3: ハイライト用の週のノート数・今月の集計 ----------------
      p18 §4・§5: 指標タイル・グラフ・今月のトピック・最新の動きをホームから外したので、

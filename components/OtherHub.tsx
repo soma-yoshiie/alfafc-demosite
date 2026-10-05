@@ -38,12 +38,21 @@ export default function OtherHub() {
               onClick={() => board.setScreen("settings")}
             />
           ) : (
-            <MenuRow
-              icon={<IconSetPiece />}
-              label="セットプレーデザイン"
-              desc="CK・FK・スローインの動きを設計して共有する"
-              onClick={() => board.setScreen("setpiece")}
-            />
+            <>
+              {/* settings-plan-a §5: 選手・保護者にも設定（アカウント・通知）。コーチラボの次 */}
+              <MenuRow
+                icon={<IconCog />}
+                label="設定"
+                desc="アカウント・通知"
+                onClick={() => board.setScreen("settings")}
+              />
+              <MenuRow
+                icon={<IconSetPiece />}
+                label="セットプレーデザイン"
+                desc="CK・FK・スローインの動きを設計して共有する"
+                onClick={() => board.setScreen("setpiece")}
+              />
+            </>
           )}
         </MenuGroup>
 

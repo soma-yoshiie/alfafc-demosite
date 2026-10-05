@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ALL_POSITIONS, FORMATION_KEYS, groupOf } from "@/lib/formations";
 import type {
   BoardState,
@@ -17,21 +17,19 @@ import type {
   SavedDrill,
   SavedPlay,
   SavedSetPiece,
-  SchoolStage,
   SetPieceKind,
   TeamEvent,
 } from "@/lib/types";
-import { dmThreadKey, INJURY_STATUS_LABEL, PLAN_INFO, PLAN_ORDER, threadGroupId } from "@/lib/types";
+import { dmThreadKey, INJURY_STATUS_LABEL, threadGroupId } from "@/lib/types";
 import { byStartAsc, isUpcomingOrOngoing, targetLabel } from "@/lib/calendarUtils";
 import { sendAttachmentToTarget, sendTargetError } from "@/lib/chat";
 import { buildEventSquad } from "@/lib/squad";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
 import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
-import { fileToEmblemDataUrl } from "@/lib/imageResize";
 import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
-import { loadDrills, loadTeam, resetAppData, saveChatSeg } from "@/lib/storage";
+import { loadDrills, loadTeam, saveChatSeg } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
 import {
   aggregateTech,
@@ -59,18 +57,9 @@ import { GroupChips, useGroupFilter } from "./GroupChips";
 import ChatThread from "./ChatThread";
 import { AnnouncementCompose, AnnouncementDetail, NewMessagePicker } from "./ChatHome";
 import { E } from "./Emoji";
-import LogoMark from "./Logo";
 import { MobileHeader } from "./MobileHeader";
 import { SendTargetField, type SendTarget } from "./SendTarget";
 import { fmtFitnessValue } from "@/lib/fitness";
-import {
-  IconCalendarCheck,
-  IconCog,
-  IconCone,
-  IconLab,
-  IconLogout,
-  IconUsers,
-} from "./icons";
 
 const FOOT_LABEL: Record<DominantFoot, string> = {
   right: "右足",
@@ -1385,69 +1374,6 @@ function FormationSheet() {
   return <FormationBody />;
 }
 
-/* ---------------- More menu ---------------- */
-// mobile-redesign Phase D-1(C2-minor 観点3/観点7): §1-4/§1-5でライブラリ・設定の到達経路を
-// setScreenへ移したため、MoreSheet/LibrarySheet/SettingsSheetの呼び出し元は現在0件（未使用）。
-// 復活させる場合は色を--lime→--accentへ直すこと（下のMoreSheetは既に修正済み）
-function MoreSheet() {
-  const board = useBoard();
-  return (
-    <>
-      <h2>メニュー</h2>
-      <div className="menu">
-        <div className="mitem" onClick={() => board.openSheet({ type: "roster" })}>
-          <div className="mi"><IconUsers /></div> 名簿（選手プロフィール）
-        </div>
-        <div
-          className="mitem"
-          onClick={() => {
-            // setScreenが内部でsetSheet({type:null})を行うためcloseSheet()は不要（冗長だった呼び出しを削除）
-            board.setScreen("drill");
-          }}
-        >
-          <div className="mi"><IconCone /></div> 練習メニュー（ドリル図）
-        </div>
-        <div
-          className="mitem"
-          onClick={() => {
-            board.setScreen("team");
-          }}
-        >
-          <div className="mi"><IconCalendarCheck /></div> チーム（出欠・連絡）
-        </div>
-        <div
-          className="mitem"
-          onClick={() => {
-            board.setScreen("articles");
-          }}
-        >
-          <div className="mi"><IconLab /></div> コーチラボ
-        </div>
-        <div
-          className="mitem"
-          onClick={() => {
-            board.setScreen("settings");
-          }}
-        >
-          <div className="mi"><IconCog /></div> 設定（チーム・プラン）
-          <span style={{ marginLeft: "auto", color: "var(--accent)", fontWeight: 700, fontSize: 13 }}>
-            {PLAN_INFO[board.plan].name}
-          </span>
-        </div>
-        <div
-          className="mitem danger"
-          onClick={() => {
-            board.closeSheet();
-            window.dispatchEvent(new Event("alfa-logout"));
-          }}
-        >
-          <div className="mi"><IconLogout /></div> ログアウト
-        </div>
-      </div>
-    </>
-  );
-}
-
 /* ---------------- Save as ---------------- */
 /* ---------------- Chat（スタッフと選手・保護者の 1 対 1。chat-plan-a §3-5） ---------------- */
 function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
@@ -2068,238 +1994,6 @@ function ShareSheet() {
   return <ShareBody />;
 }
 
-/* ---------------- Settings（チーム設定＋プラン） ---------------- */
-export function SettingsBody({
-  hideTitle,
-  pc,
-}: {
-  hideTitle?: boolean;
-  /** mobile-redesign Phase D-2(major §8-3-17): 「人気」ピルはPCの既存見た目のため残し、
-      スマホだけ装飾ピルを出さない（呼び出し元のSettingsScreenからpcを渡す） */
-  pc?: boolean;
-} = {}) {
-  const board = useBoard();
-  const team = useTeam();
-  const cur = board.plan;
-  const [annual, setAnnual] = useState(false);
-  const [name, setName] = useState(board.state.teamName ?? "");
-  const unit = annual ? "/年" : "/月";
-  // 画面版は長時間表示されるため、外部でチーム名が変わったら入力欄も追随させる
-  // （追随しないと onBlur で古い値に巻き戻してしまう）
-  useEffect(() => {
-    setName(board.state.teamName ?? "");
-  }, [board.state.teamName]);
-
-  const emblemInput = useRef<HTMLInputElement | null>(null);
-  async function onEmblemFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    try {
-      const dataUrl = await fileToEmblemDataUrl(file);
-      // 保存に失敗しても表示だけ変わる（リロードで消える）ので、成否で文言を変える
-      const saved = board.setTeamLogo(dataUrl);
-      board.toast(
-        saved
-          ? "エンブレムを更新しました"
-          : "保存容量が足りません。小さい画像をお試しください"
-      );
-    } catch (err) {
-      board.toast(err instanceof Error ? err.message : "画像の読み込みに失敗しました");
-    }
-  }
-
-  return (
-    <>
-      {!hideTitle && <h2>設定</h2>}
-      <div className="formfield">
-        <label>チーム名</label>
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onBlur={() => board.setTeamName(name.trim())}
-          placeholder="例）アルファラスFC U-12"
-        />
-      </div>
-      <div className="formfield">
-        <label id="emblem-label">クラブエンブレム</label>
-        <div className="emblemrow" role="group" aria-labelledby="emblem-label">
-          {board.teamLogo ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img className="emblemprev" src={board.teamLogo} alt="" />
-          ) : (
-            <div className="emblemprev empty" aria-hidden="true">
-              {(board.state.teamName ?? "マイチーム").trim().charAt(0)}
-            </div>
-          )}
-          <button
-            type="button"
-            className="formbtn"
-            onClick={() => emblemInput.current?.click()}
-          >
-            <span className="fb-label">画像を選ぶ</span>
-          </button>
-          {board.teamLogo && (
-            <button
-              type="button"
-              className="formbtn danger"
-              onClick={() => {
-                // 元に戻すには再アップロードが必要なため確認する（このアプリの破壊的操作の作法）
-                if (!window.confirm("エンブレムを削除しますか？")) return;
-                board.setTeamLogo(null);
-                board.toast("エンブレムを削除しました");
-              }}
-            >
-              <span className="fb-label">削除</span>
-            </button>
-          )}
-        </div>
-        <div className="fieldhint">
-          レール上部と設定に表示されます。正方形の画像（PNG/JPG）を推奨します。
-        </div>
-        <input
-          ref={emblemInput}
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          hidden
-          onChange={onEmblemFile}
-        />
-      </div>
-      <div className="formfield">
-        <label>選手ログイン用の共通パスワード</label>
-        <input
-          value={board.playerPassword}
-          onChange={(e) => board.setPlayerPassword(e.target.value)}
-          placeholder="選手に共有するパスワード"
-        />
-        <div className="fieldhint">
-          選手は「自分のメールアドレス＋この共通パスワード」でログインします。
-        </div>
-      </div>
-      {/* groups-everywhere §5: 学校区分（学年グループの範囲・ラベルを決める）。
-          変更時はensureGradeGroups(TeamProvider.setSchoolStage内)で学年グループを整え直す。
-          Phase 2: 範囲外の学年の選手がいるときはsetSchoolStage側がwindow.confirmで確認し、
-          キャンセル時は状態を変えないので、この制御されたselectは元の値に戻る */}
-      <div className="formfield">
-        <label>学校区分</label>
-        <select
-          value={team.schoolStage}
-          onChange={(e) => team.setSchoolStage(e.target.value as SchoolStage)}
-        >
-          <option value="elementary">小学生（小1〜小6）</option>
-          <option value="junior">中学生（中1〜中3）</option>
-          <option value="high">高校生（高1〜高3）</option>
-        </select>
-        <div className="fieldhint">
-          {/* JSXの改行は半角スペースになり和文に隙間が出るため1行で書く */}
-          学年グループ（名簿・出欠・配信などの学年区分）の範囲とラベルを決めます。変更すると、新しい区分の範囲外になる学年（例：中学生に変えたときの小4〜小6）は未設定に戻ります（変更前に対象人数を確認します）。
-        </div>
-      </div>
-      <div className="setsec-h">公開設定</div>
-      <label className="pubtoggle" style={{ margin: "0 16px 12px" }}>
-        <span>試合記録を選手・保護者に公開</span>
-        <input
-          type="checkbox"
-          checked={board.matchesPublic}
-          onChange={(e) => board.setMatchesPublic(e.target.checked)}
-        />
-        <i className="switch" />
-      </label>
-      {/* デモデータの入れ直し。旧デモが残るブラウザは起動時に自動で中学年代の名簿へ移行するが
-          （lib/storage.ts の migrateOldDemo）、手で作ったデータが混ざって判定に掛からない場合の
-          逃げ道として、保存データを全部消して初回起動と同じ新しいデモに戻す入口を置く。
-          ログイン情報は残す。元に戻せないので window.confirm で確認する（このアプリの破壊的操作の作法） */}
-      <div className="setsec-h">デモデータ</div>
-      <div className="formfield">
-        <button
-          type="button"
-          className="bigbtn ghost"
-          // 設定シートの .bigbtn はプラン切替の大きな CTA 向けに文字が大きいので、補助操作のこのボタンは
-          // グループ管理シートの行内ボタンと同じ 14px に揃える
-          style={{ margin: 0, fontSize: 14, padding: 12 }}
-          onClick={() => {
-            const ok = window.confirm(
-              "保存されているチーム・名簿・予定・ノート・記録をすべて消して、最新のデモデータ（中学1〜3年・70人）に入れ直します。この操作は元に戻せません。\n実行しますか？"
-            );
-            if (!ok) return;
-            resetAppData();
-            window.location.reload();
-          }}
-        >
-          デモデータを入れ直す
-        </button>
-        <div className="fieldhint">
-          このブラウザに保存されたデータを消して、最新のデモ（中学1〜3年・70人）を入れ直します。ログイン情報は残ります。
-        </div>
-      </div>
-      <div className="setsec-h">プラン</div>
-      <div className="trialbanner"><E n="gift" /> 30日間の無料トライアル中（全機能をお試しいただけます）</div>
-      <div className="planlede">
-        安全設計・出席率の可視化・サッカーノート・戦術配信は<b>全プラン共通</b>。
-        プランの違いは「規模」（チーム数・選手数・コーチ席数）だけです。
-      </div>
-      <div className="billtoggle">
-        <button className={annual ? "" : "on"} onClick={() => setAnnual(false)}>
-          月払い
-        </button>
-        <button className={annual ? "on" : ""} onClick={() => setAnnual(true)}>
-          年払い（2ヶ月お得）
-        </button>
-      </div>
-      <div className="plans col">
-        {PLAN_ORDER.map((tier) => {
-          const p = PLAN_INFO[tier];
-          const yen = annual ? p.annual : p.monthly;
-          return (
-            <div key={tier} className={`plancard${cur === tier ? " on" : ""}`}>
-              <div className="pcname">
-                {p.name}
-                {tier === "standard" && pc && <span className="pcbadge">人気</span>}
-              </div>
-              <div className="pchint">{p.target}</div>
-              <div className="pcprice">
-                ¥{yen.toLocaleString()}
-                <small>{unit}</small>
-              </div>
-              <ul className="pcscale">
-                <li>チーム数：{p.teams}</li>
-                <li>選手数：{p.players}</li>
-                <li>コーチ席：{p.seats}</li>
-              </ul>
-              {cur === tier ? (
-                <div className="pcnow">利用中</div>
-              ) : (
-                <button
-                  className="bigbtn"
-                  onClick={() => {
-                    board.setPlan(tier);
-                    board.toast(`${p.name}プランに切り替えました（デモ）`);
-                  }}
-                >
-                  {p.name}にする
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <p className="planseote">
-        ※ 全機能・データ保存は全プラン共通。違いは規模（上限超過時は上位プランへ）。
-        <br />
-        ※ 年払いは月額の10ヶ月分（2ヶ月分お得）。
-        <br />
-        ※ 月額＝カード決済。年額＝カード／請求書払い・銀行振込に対応（学校・部活の校費に対応）。
-        <br />
-        ※ これはデモ用のプラン切替です。実際の課金は行われません。
-      </p>
-    </>
-  );
-}
-
-function SettingsSheet() {
-  return <SettingsBody />;
-}
-
 /* ---------------- Articles ---------------- */
 /** ユーザー投稿記事かどうか（"author"の有無で判定。seed記事(Article)には無い） */
 function isUserArticle(a: Article): a is UserArticle {
@@ -2648,9 +2342,6 @@ export default function SheetManager() {
     case "injuryEdit":
       content = <InjuryForm playerId={sheet.playerId!} injuryId={sheet.injuryId} />;
       break;
-    case "settings":
-      content = <SettingsSheet />;
-      break;
     case "articles":
       content = <ArticlesSheet />;
       break;
@@ -2659,9 +2350,6 @@ export default function SheetManager() {
       break;
     case "formation":
       content = <FormationSheet />;
-      break;
-    case "more":
-      content = <MoreSheet />;
       break;
     case "save":
       content = <SaveSheet />;
@@ -2705,7 +2393,6 @@ export default function SheetManager() {
     "playerForm",
     "fitness",
     "injuryEdit",
-    "settings",
     "articles",
     "article",
     "chat",

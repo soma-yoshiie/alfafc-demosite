@@ -668,7 +668,8 @@ function Inner() {
     const intent = board.teamIntent;
     if (!intent) return;
     // viewer復帰ロジックはros(名簿)のみ残す。att(出欠)はPCでタブの入口が無くなったため対象から外す
-    if (board.auth.role === "coach" && team.viewer.role !== "coach" && intent.tab === "ros") {
+    // settings-plan-a §6: 設定の行から管理シートを開くときも同じ（プレビューのまま管理シートを開かない）
+    if (board.auth.role === "coach" && team.viewer.role !== "coach" && (intent.tab === "ros" || intent.openSheet)) {
       team.setViewer("coach", null);
     }
     // home/attのintentはPC・モバイルどちらでもカレンダーへ丸める（mobile-redesign-v2 §3-1）
@@ -683,8 +684,9 @@ function Inner() {
       setRosSection("overview");
     }
     if (intent.eventId) setSheet({ type: "eventView", id: intent.eventId });
-    // p14 §1-1: サッカーノートの「絞り込みを編集…」からグループ管理を開く
-    if (intent.openGroups) setSheet({ type: "groups" });
+    // p14 §1-1: サッカーノートの「絞り込みを編集…」からグループ管理を開く。
+    // settings-plan-a §6: 設定の行からも同じ経路で管理シートを開く
+    if (intent.openSheet) setSheet({ type: intent.openSheet });
     board.setTeamIntent(null);
   }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer]);
 

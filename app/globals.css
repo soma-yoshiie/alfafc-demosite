@@ -12631,6 +12631,417 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 }
 
 /* =========================================================
+   設定画面（specs/settings-plan-a.md §2・§7。components/SettingsScreen.tsx・settings/）
+   行の左にアイコンは置かない。基底はスマホ（タップ 44px）。PC の左カテゴリ列・密度（40px/32px・四角）は
+   PCブロック末尾「mobile-redesign PC reset」、指サイズへの復元は (pointer: coarse) に置く。色はトークンのみ。
+   ========================================================= */
+.st-top,
+.st-form {
+  padding: 16px 16px calc(env(safe-area-inset-bottom) + 40px);
+}
+.st-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.st-group {
+  margin: 0 0 24px;
+}
+.st-form .st-group {
+  margin: 0;
+}
+.st-group-h {
+  margin: 0;
+  padding: 0 4px 8px;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--mut);
+}
+.st-card {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+.st-hint {
+  margin: 8px 4px 0;
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+  color: var(--mut);
+}
+.st-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  background: none;
+  box-sizing: border-box;
+  text-align: left;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  color: var(--ink);
+  cursor: pointer;
+}
+.st-card > :last-child {
+  border-bottom: 0;
+}
+button.st-row:active {
+  background: var(--surface-low);
+}
+.st-row.static {
+  cursor: default;
+}
+.st-row-tx {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.st-row-label {
+  font-size: var(--fs-body);
+  line-height: 1.4;
+  color: var(--ink);
+}
+.st-row-desc {
+  font-size: var(--fs-body-s);
+  line-height: 1.4;
+  color: var(--mut);
+}
+.st-row-val {
+  flex: 0 1 auto;
+  max-width: 45%;
+  font-size: 13px;
+  color: var(--mut);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.st-row-chev {
+  flex: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--mut);
+}
+.st-row-check {
+  flex: none;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.st-row.danger {
+  justify-content: center;
+}
+.st-row.danger .st-row-tx {
+  flex: none;
+}
+.st-row.danger .st-row-label {
+  font-weight: 700;
+  color: var(--danger);
+}
+/* アカウントのカード（丸い頭文字＋名前・役割・メール） */
+.st-acct {
+  min-height: 72px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.st-acct-av {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+.st-acct-name {
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.st-acct .st-row-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* スイッチ（ON は青。.pubtoggle と同じ作りで色だけ --accent） */
+.st-toggle {
+  cursor: pointer;
+}
+.st-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.st-switch {
+  flex: none;
+  position: relative;
+  width: 44px;
+  height: 26px;
+  border-radius: var(--r-full);
+  background: var(--outline-strong);
+  transition: background 0.18s;
+}
+.st-switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--mut);
+  transition: transform 0.18s, background 0.18s;
+}
+.st-toggle input:checked ~ .st-switch {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.st-toggle input:checked ~ .st-switch::after {
+  transform: translateX(18px);
+  background: var(--accent);
+}
+.st-toggle input:focus-visible ~ .st-switch {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* フォーム部品 */
+.st-field label {
+  display: block;
+  margin: 0 4px 6px;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--mut);
+}
+.st-field .st-hint {
+  margin-top: 6px;
+}
+.st-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  outline: none;
+}
+.st-input:focus {
+  border-color: var(--accent);
+}
+.st-input::placeholder {
+  color: var(--mut);
+}
+.st-pwwrap {
+  position: relative;
+}
+.st-pwwrap .st-input {
+  padding-right: 64px;
+}
+.st-pwtoggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  min-width: 56px;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.st-lead {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink);
+}
+.st-note {
+  margin: 0;
+  font-size: var(--fs-body-s);
+  line-height: 1.6;
+  color: var(--mut);
+}
+.st-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--surface-lowest);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.st-btn:active {
+  opacity: 0.85;
+}
+.st-btn.ghost {
+  background: var(--surface-lowest);
+  border-color: var(--outline-strong);
+  color: var(--accent);
+}
+.st-btn.danger {
+  background: var(--surface-lowest);
+  border-color: var(--outline-strong);
+  color: var(--danger);
+}
+/* プラン */
+.st-plannow {
+  padding: 16px;
+  border: 1px solid var(--accent-tint-strong);
+  border-radius: var(--r-lg);
+  background: var(--accent-tint);
+}
+.st-plannow-k {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.st-plannow-name {
+  margin-top: 2px;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--ink);
+}
+.st-plannow-sum {
+  margin-top: 4px;
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+.st-plans {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.st-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.st-plan.on {
+  border-color: var(--accent);
+}
+.st-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.st-plan-name {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  color: var(--ink);
+}
+.st-plan-now {
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.st-plan-price {
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  color: var(--ink);
+}
+.st-plan-price small {
+  margin-left: 2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--mut);
+}
+.st-plan-lead {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink);
+}
+.st-plan-video {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mut);
+}
+/* アカウント・スタッフ */
+.st-err {
+  margin: 0 4px;
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+  font-weight: 700;
+  color: var(--danger);
+}
+.st-del {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -12px -8px 0;
+  padding: 0 12px;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.st-addrow {
+  display: flex;
+  gap: 8px;
+}
+.st-addrow .st-input {
+  flex: 1;
+  min-width: 0;
+}
+.st-addrow .st-select {
+  flex: none;
+  width: 104px;
+}
+.st-addrow .st-addbtn {
+  flex: none;
+  width: auto;
+}
+.st-addbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* ヘッダー右の文字の「保存」（アイコンの代わり。幅は文字に合わせる） */
+.mhead-action:has(.st-headsave) {
+  width: auto;
+  min-width: 44px;
+  padding: 0 12px;
+}
+.st-headsave {
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+
+/* =========================================================
    mobile-redesign Phase A-2（構造の後半）
    共通ヘッダー(.mhead。MobileHeader.tsx)・画面内セグメント(.mseg。
    MobileSegments.tsx)。新規 @media は作らない（基底に置く）。
@@ -23244,6 +23655,122 @@ body:has(.mhead) .grouppick-item {
   .mdb-cols .mdb-panel.hp-ann {
     margin-bottom: 0;
   }
+  /* === 設定画面（specs/settings-plan-a.md §4・§7）===
+     .setapp .setwrap（旧：860px の 1 枚のカード）は 1 本目のPCブロックにあるので、ここで打ち消す。
+     左に 184px のカテゴリ列（絞り込み列と同じ幅）、右に最大 760px（左寄せ）。PC の操作は四角・40px/32px */
+  .setapp .setwrap {
+    max-width: none;
+    margin: 0;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+  .st-pc {
+    display: grid;
+    grid-template-columns: 184px minmax(0, 760px);
+    gap: 24px;
+    align-items: start;
+    padding: 8px 24px 0;
+  }
+  .st-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .st-navgroup {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .st-navh {
+    padding: 0 8px 4px;
+    font-size: var(--fs-body-s);
+    font-weight: 700;
+    color: var(--mut);
+  }
+  .st-navitem {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: var(--fs-body);
+    text-align: left;
+    cursor: pointer;
+  }
+  .st-navitem:hover {
+    background: var(--surface-low);
+  }
+  .st-navitem.on {
+    background: var(--accent-tint);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .st-navitem.danger {
+    color: var(--danger);
+  }
+  .st-main {
+    min-width: 0;
+  }
+  .st-back {
+    height: 32px;
+    margin: 0 0 12px -8px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .st-back:hover {
+    background: var(--accent-tint);
+  }
+  .st-top,
+  .st-form {
+    padding: 0;
+  }
+  .st-row {
+    min-height: 40px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  button.st-row:hover {
+    background: var(--surface-low);
+  }
+  .st-acct {
+    min-height: 64px;
+  }
+  .st-input {
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: var(--fs-body);
+  }
+  .st-btn {
+    width: auto;
+    min-height: 32px;
+    align-self: flex-start;
+  }
+  .st-plans {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .st-del {
+    min-height: 32px;
+    margin-top: -4px;
+    margin-bottom: -4px;
+    border-radius: var(--r-md);
+  }
+  .st-del:hover {
+    background: var(--surface-low);
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -23359,6 +23886,19 @@ body:has(.mhead) .grouppick-item {
   .hp-row,
   .hp-link {
     min-height: 44px;
+  }
+  /* 設定画面（specs/settings-plan-a.md §7）: PC で 40px/32px に詰めた操作を指サイズ 44px へ戻す */
+  .st-row,
+  .st-btn,
+  .st-input,
+  .st-del {
+    min-height: 44px;
+  }
+  .st-navitem {
+    height: 44px;
+  }
+  .st-back {
+    height: 44px;
   }
   /* chat-plan-a §3-6: チャットの操作部品（PC で 32〜36px に詰めた分）を指サイズ 44px へ戻す */
   .chatsegwrap .mseg-item,

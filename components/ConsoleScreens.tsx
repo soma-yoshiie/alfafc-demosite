@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { E } from "./Emoji";
-import { SettingsBody } from "./SheetManager";
 import type {
   BoardState,
   PitchType,
@@ -36,14 +35,12 @@ function usePc(): boolean {
 }
 
 /**
- * PCレール直結の2画面（ライブラリ／設定）。
- * 従来はモーダル(シート)で開いていたが、レールの他項目と同様に
- * 画面切り替えで表示する。設定は SheetManager 側の SettingsBody を
- * そのまま再利用し、モバイルのシート表示（DOM・見た目）は一切変えない。
- * ライブラリのみPC専用のマスター・ディテール（左:一覧／右:プレビュー）を持つため
+ * PCレール直結のライブラリ画面。
+ * 従来はモーダル(シート)で開いていたが、レールの他項目と同様に画面切り替えで表示する。
+ * PC専用のマスター・ディテール（左:一覧／右:プレビュー）を持つため
  * シート版(LibraryBody/SheetManager)とは別に画面専用実装を持つ。
- * コーチラボは components/CoachLab/ 配下の専用画面（CoachLabScreen）であり、
- * このファイルには含まれない。
+ * 設定は components/SettingsScreen.tsx、コーチラボは components/CoachLab/ 配下の専用画面
+ * （CoachLabScreen）であり、このファイルには含まれない。
  */
 
 const PITCH_LABEL: Record<PitchType, string> = {
@@ -663,40 +660,6 @@ function DrillPreview({ drill }: { drill: SavedDrill }) {
         </button>
       </div>
       <div className="libhint">名前の変更・削除は「練習メニュー」画面のライブラリで行えます。</div>
-    </div>
-  );
-}
-
-export function SettingsScreen() {
-  const board = useBoard();
-  // board-squad-and-pc-polish §1: PCは左レールで戻れるため「‹ ホーム」は出さない。
-  // モバイルはnavFromに従いhome/otherへ（ホームの行/その他ハブの行のどちらから開いたかで戻り先が変わる。mobile-redesign-v2 §2）
-  const pc = usePc();
-
-  return (
-    <div className="app setapp">
-      {pc ? (
-        // board-squad-and-pc-polish §1: 左にレール(.conrail)があるため「‹ ホーム」は不要
-        <header>
-          <div className="brand">
-            <div className="logo">設定</div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {board.state.teamName ?? "マイチーム"}
-            </div>
-          </div>
-        </header>
-      ) : (
-        // mobile-redesign §1-6: 戻るは出す（ホームの行／その他ハブの行のどちらからも遷移する）
-        <MobileHeader
-          title="設定"
-          onBack={() => board.setScreen(board.navFrom === "home" ? "home" : "other")}
-        />
-      )}
-      <div className="scroll screenbody">
-        <div className="setwrap">
-          <SettingsBody hideTitle pc={pc} />
-        </div>
-      </div>
     </div>
   );
 }

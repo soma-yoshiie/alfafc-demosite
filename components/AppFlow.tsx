@@ -31,6 +31,18 @@ export default function AppFlow() {
     return () => window.removeEventListener("alfa-logout", onLogout);
   }, []);
 
+  // settings-plan-a §3-1: 設定のアカウント更新で名前・メールが変わったら、セッションを保存して差し替える
+  useEffect(() => {
+    const onSession = (e: Event) => {
+      const next = (e as CustomEvent<Session>).detail;
+      if (!next || !next.role) return;
+      saveSession(next);
+      setSession(next);
+    };
+    window.addEventListener("alfa-session", onSession);
+    return () => window.removeEventListener("alfa-session", onSession);
+  }, []);
+
   if (phase === "splash") {
     return <SplashScreen onDone={() => setPhase(session ? "app" : "login")} />;
   }

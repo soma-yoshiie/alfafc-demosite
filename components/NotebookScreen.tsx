@@ -333,7 +333,7 @@ export default function NotebookScreen() {
         isCoach
           ? () => {
               setFilterSheet(false);
-              board.setTeamIntent({ tab: "ros", openGroups: true });
+              board.setTeamIntent({ tab: "ros", openSheet: "groups" });
               board.setScreen("team");
             }
           : undefined

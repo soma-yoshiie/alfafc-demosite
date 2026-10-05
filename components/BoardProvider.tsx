@@ -895,12 +895,10 @@ export type SheetType =
   | "playerDetail"
   | "fitness"
   | "injuryEdit"
-  | "settings"
   | "formation"
   | "library"
   | "save"
   | "share"
-  | "more"
   | "articles"
   | "article"
   | "importShared"
@@ -1160,9 +1158,9 @@ interface BoardContextValue {
   drillIntent: "library" | { open: string } | null;
   setDrillIntent: (v: "library" | { open: string } | null) => void;
   /** チームHub: 他画面からタブ・選手・予定を指定して遷移させる意図（消費後はnullに戻す） */
-  teamIntent: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openGroups?: boolean } | null;
+  teamIntent: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openSheet?: "groups" | "categories" | "competitions" | "league" | "fitnessTests" } | null;
   setTeamIntent: (
-    v: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openGroups?: boolean } | null
+    v: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openSheet?: "groups" | "categories" | "competitions" | "league" | "fitnessTests" } | null
   ) => void;
   /** p18 §3-1: ホームのタイムラインからサッカーノート（スタッフの提出の一覧）でそのノートの詳細を開く意図（消費後はnullに戻す） */
   noteIntent: { noteId: string } | null;
@@ -2033,11 +2031,11 @@ export function BoardProvider({
   const [library, setLibrary] = useState<Library>(
     () => loadLibrary() ?? { plays: [], folders: [], setPieces: [] }
   );
-  // lazy初期化。effectでのhydrateだと初回ペイントが常に"starter"になり
+  // lazy初期化。effectでのhydrateだと初回ペイントが常に"standard"になり
   // レールのプラン表示がちらつくため、保存済み設定を直接読む
   const [plan, setPlanState] = useState<PlanTier>(() => {
     const st = loadSettings();
-    return st ? migratePlan(st.plan as string) : "starter";
+    return st ? migratePlan(st.plan as string) : "standard";
   });
   // lazy初期化で保存データを直接読む（mount後のload→save競合を防ぐ。messages/notebook等と同方針。
   // effectでhydrateすると保存済みデータを空(null)で上書きしてしまう事故になる）
@@ -2047,7 +2045,7 @@ export function BoardProvider({
   const [matchesPublic, setMatchesPublicState] = useState(true);
   const [drillIntent, setDrillIntent] = useState<"library" | { open: string } | null>(null);
   const [teamIntent, setTeamIntent] = useState<
-    { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openGroups?: boolean } | null
+    { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openSheet?: "groups" | "categories" | "competitions" | "league" | "fitnessTests" } | null
   >(null);
   // p18 §3-1: ホームのタイムライン → サッカーノートの詳細（teamIntent と同じ作法。NotebookScreen が消費して null に戻す）
   const [noteIntent, setNoteIntent] = useState<{ noteId: string } | null>(null);
