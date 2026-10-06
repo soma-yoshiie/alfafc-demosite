@@ -108,6 +108,7 @@ import { CategoriesManage } from "./team/manage/CategoriesManage";
 import { CompetitionsManage } from "./team/manage/CompetitionsManage";
 import { LeagueEdit } from "./team/manage/LeagueEdit";
 import { FitnessTestsManage } from "./team/manage/FitnessTestsManage";
+import { Sheet } from "./team/Sheet";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -260,46 +261,6 @@ function matchMonthlyTrend(
     });
   }
   return rows;
-}
-
-function Sheet({
-  open,
-  onClose,
-  children,
-  pane,
-}: {
-  open: boolean;
-  onClose: () => void;
-  children: React.ReactNode;
-  /** PC専用: モーダル(scrim/sheet)の代わりに.teammain内の1ペインとして描画する */
-  pane?: boolean;
-}) {
-  if (pane) {
-    if (!open) return null;
-    return (
-      <div className="tmdetail tm-sheetpane">
-        <div className="tmback" onClick={onClose}>
-          ‹ 戻る
-        </div>
-        {children}
-      </div>
-    );
-  }
-  return (
-    <>
-      <div className={`scrim${open ? " on" : ""}`} onClick={onClose} />
-      <div className={`sheet${open ? " on" : ""}`}>
-        <div className="grabzone" onClick={onClose}>
-          <div className="grab" />
-        </div>
-        {/* PCダイアログ用の閉じるボタン（モバイルでは基底CSSで非表示） */}
-        <button className="sheetx" type="button" aria-label="閉じる" onClick={onClose}>
-          ×
-        </button>
-        <div className="sheetBody">{open ? children : null}</div>
-      </div>
-    </>
-  );
 }
 
 // mobile-redesign-v2 §3-1: 「ホーム」タブは廃止（チームを開いたら常にカレンダー）。

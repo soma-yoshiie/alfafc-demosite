@@ -22,7 +22,7 @@ import type {
 } from "@/lib/types";
 import { dmThreadKey, INJURY_STATUS_LABEL, threadGroupId } from "@/lib/types";
 import { byStartAsc, isUpcomingOrOngoing, targetLabel } from "@/lib/calendarUtils";
-import { sendAttachmentToTarget, sendTargetError } from "@/lib/chat";
+import { isOppKey, sendAttachmentToTarget, sendTargetError } from "@/lib/chat";
 import { buildEventSquad } from "@/lib/squad";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
@@ -53,6 +53,7 @@ import { groupsOfPlayer, playerInGroup, resolveFilterGroup } from "@/lib/groups"
 import { linkedEventIds } from "@/lib/matchEvents";
 import { useBoard, type KpiMetric, type StatMetric } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
+import { useMatchups } from "./matchup/MatchupProvider";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import ChatThread from "./ChatThread";
 import { AnnouncementCompose, AnnouncementDetail, NewMessagePicker } from "./ChatHome";
@@ -1379,6 +1380,7 @@ function FormationSheet() {
 function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
   const board = useBoard();
   const team = useTeam();
+  const { teams: oppTeams } = useMatchups();
   const pc = usePc();
   const isStaff = team.viewer.role === "coach";
   // team／grp:* の会話は廃止（お知らせへ移した）。旧いリンクで来たらお知らせを開き直す（chat-plan-a §3-5）
@@ -1399,9 +1401,12 @@ function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
   const memberId = isStaff ? null : team.viewer.memberPlayerId ?? board.auth.playerId ?? null;
   const player = board.state.players.find((p) => dmThreadKey(p.id) === to) ?? null;
   // 見出しは選手名・副題に「中2・Aチーム」。選手側は相手＝「スタッフ」
-  const title = isStaff ? player?.name ?? "メッセージ" : "スタッフ";
-  const subtitle =
-    isStaff && player
+  // 相手チームとの会話（"opp:<teamId>"。練習試合）は見出しがチーム名、副題が「対戦相手・所属リーグ」
+  const oppTeam = isStaff && isOppKey(to) ? oppTeams.find((t) => `opp:${t.id}` === to) ?? null : null;
+  const title = oppTeam ? oppTeam.name : isStaff ? player?.name ?? "メッセージ" : "スタッフ";
+  const subtitle = oppTeam
+    ? `対戦相手・${oppTeam.league}`
+    : isStaff && player
       ? groupsOfPlayer(player, team.groups)
           .map((g) => g.label)
           .join("・") || undefined

@@ -18,6 +18,7 @@ import OtherHub from "./OtherHub";
 import { CoachLabProvider } from "./CoachLab/CoachLabProvider";
 import CoachLabScreen from "./CoachLab/CoachLabScreen";
 import ProfileScreen from "./ProfileScreen";
+import MatchupScreen from "./matchup/MatchupScreen";
 
 /**
  * 画面名 → 画面。switch にして末尾で never チェックする（player-hub §2-2）：ScreenName に画面を足して
@@ -51,6 +52,8 @@ function renderScreen(screen: ScreenName): React.ReactNode {
       return <SettingsScreen />;
     case "profile":
       return <ProfileScreen />;
+    case "matchup":
+      return <MatchupScreen />;
     default: {
       const unreachable: never = screen;
       void unreachable;

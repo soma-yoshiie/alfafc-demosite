@@ -9,6 +9,7 @@ import {
   fmtClock,
   fmtDayDivider,
   isSameDay,
+  isOppKey,
   isSeenByOther,
   latestCounterpartTs,
   makeReplyTo,
@@ -19,6 +20,7 @@ import {
 import { fileToAttachment } from "@/lib/media";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
+import { useMatchups } from "./matchup/MatchupProvider";
 import { E } from "./Emoji";
 import { IconSend } from "./icons";
 
@@ -65,7 +67,8 @@ function quoteTextOf(m: ChatMessage): string {
  * - 開いた時点の未読の手前に「ここから未読」、表示中は markChatRead を呼び続ける、自分の最後の発言に「既読」
  * - 引用返信（押すと元の発言へ。お知らせの引用なら詳細を開く）
  * - 長押し（PC は右クリック／ホバーの「…」）で 返信・コピー・削除
- * team／grp:* の会話は廃止したので、お知らせは ChatHome 側（ここでは扱わない）
+ * team／grp:* の会話は廃止したので、お知らせは ChatHome 側（ここでは扱わない）。
+ * 会話キーが "opp:<teamId>" のときは練習試合の相手チームのスタッフとのやり取り（スタッフだけ。matchup-demo §5）
  */
 export default function ChatThread({
   to,
@@ -97,6 +100,10 @@ export default function ChatThread({
   const key = isCoach ? to : myDm ?? to;
   const counterpartId = key.startsWith("p:") ? key.slice(2) : null;
   const counterpart = counterpartId ? board.state.players.find((p) => p.id === counterpartId) ?? null : null;
+  // 相手チームとの会話（スタッフだけ）。相手は OpponentTeam.staff（名前・役割）
+  const { teams: oppTeams } = useMatchups();
+  const isOpp = isCoach && isOppKey(key);
+  const oppStaff = isOpp ? oppTeams.find((t) => `opp:${t.id}` === key)?.staff ?? null : null;
   const players = board.state.players;
 
   // 書きかけの文の保存先（視点＋会話。別のログイン・別の選手の視点に混ざらないよう視点を含める）
@@ -152,6 +159,7 @@ export default function ChatThread({
   /** 相手の発言の名前・役割（スタッフ視点＝選手名、選手視点＝スタッフの名前＋役割バッジ） */
   const senderOf = (m: ChatMessage): Sender => {
     if (m.from === "coach") return { name: m.fromName ?? STAFF_FALLBACK, role: m.fromRole };
+    if (isOpp) return { name: m.fromName ?? oppStaff?.name ?? "相手チーム", role: m.fromRole ?? oppStaff?.role };
     return { name: m.fromName ?? counterpart?.name ?? "選手" };
   };
 
@@ -277,7 +285,8 @@ export default function ChatThread({
     if (!text.trim() && pending.length === 0) return;
     const from = isCoach ? "coach" : myDm ?? "";
     const sendTo = isCoach ? to : myDm ?? "";
-    if (!sendTo || !sendTo.startsWith("p:")) return; // chat-plan-a §1: 1 対 1 以外へは送らない
+    // chat-plan-a §1: 1 対 1（選手・保護者、スタッフには相手チームも）以外へは送らない
+    if (!sendTo || !(sendTo.startsWith("p:") || (isCoach && isOppKey(sendTo)))) return;
     const memberName = players.find((p) => p.id === myPlayerId)?.name ?? board.auth.name;
     // §2-4: スタッフの発言は fromName／fromRole を staffIdentity で埋める（選手は役割なし）
     const who = isCoach ? staffIdentity(board.auth.name, team.team.coaches) : null;
@@ -428,7 +437,9 @@ export default function ChatThread({
   return (
     <div className="chatwrap" ref={wrapRef}>
       {/* 保護者も見られることを常に明示する（スタッフ側・選手側の両方。chat-plan-a §3-4） */}
-      <div className="chatguard">このやりとりは保護者も見られます</div>
+      <div className="chatguard">
+        {isOpp ? "相手チームのスタッフとのやり取りです。選手・保護者には見えません" : "このやりとりは保護者も見られます"}
+      </div>
       <div className="chatscroll" ref={scrollRef}>
         {msgs.length === 0 ? (
           <div className="empty-msg">メッセージはまだありません。</div>

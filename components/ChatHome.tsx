@@ -17,6 +17,7 @@ import {
   fmtListDate,
   makeReplyTo,
   memberUnreadTotal,
+  oppSummaries,
   sortAnnouncements,
   staffUnreadTotal,
   visibleAnnouncements,
@@ -28,6 +29,7 @@ import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import { MobileSegments } from "./MobileSegments";
+import { useMatchups } from "./matchup/MatchupProvider";
 import ChatThread, { AttachmentView } from "./ChatThread";
 
 /*
@@ -116,20 +118,22 @@ export interface ChatHomeProps {
   lockSegment?: ChatSeg;
   /** 詳細・スレッドの開き方。省略時は board シート（PC の 2 ペインだけ右のペインへ出す） */
   onOpenAnn?: (annId: string) => void;
-  onOpenDm?: (playerId: string) => void;
+  /** 引数は選手の id か、相手チームとの会話キー（"opp:<teamId>"） */
+  onOpenDm?: (playerOrKey: string) => void;
   selectedAnnId?: string | null;
   selectedDm?: string | null;
 }
 
 export default function ChatHome({ pc, lockSegment, onOpenAnn, onOpenDm, selectedAnnId, selectedDm }: ChatHomeProps) {
   const { board, team, isStaff, memberId, me } = useChatViewer();
+  const { teams: oppTeams } = useMatchups();
   const [savedSeg, setSeg] = useChatSeg();
   const seg = lockSegment ?? savedSeg;
 
   // 未読の赤丸（chat-plan-a §3-1）。スタッフ：メッセージの未読の合計。選手：自分宛ての未読お知らせ／スタッフからの未読
   const annBadge = !isStaff && me ? announcementUnreadCount(team.team.announcements, me, team.groups) : 0;
   const msgBadge = isStaff
-    ? staffUnreadTotal(board.messages, board.chatReads, board.state.players)
+    ? staffUnreadTotal(board.messages, board.chatReads, board.state.players, oppTeams.map((t) => t.id))
     : memberId
       ? memberUnreadTotal(board.messages, board.chatReads, memberId)
       : 0;
@@ -619,31 +623,41 @@ function MessagesView({
 }: {
   pc?: boolean;
   selectedDm?: string | null;
-  onOpenDm?: (playerId: string) => void;
+  onOpenDm?: (playerOrKey: string) => void;
 }) {
   const { board, team, isStaff, memberId } = useChatViewer();
+  const { teams: oppTeams } = useMatchups();
   const [q, setQ] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const players = board.state.players;
 
   const openDm = (pid: string) =>
     onOpenDm ? onOpenDm(pid) : board.openSheet({ type: "chat", chatTo: dmThreadKey(pid) });
+  // 相手チームの会話は会話キー（"opp:<teamId>"）をそのまま渡す（PC は左の一覧の選択に、スマホはシートに）
+  const openOpp = (key: string) => (onOpenDm ? onOpenDm(key) : board.openSheet({ type: "chat", chatTo: key }));
 
-  // 名簿から消した選手の会話は行にしない（赤丸 staffUnreadTotal も同じ条件で数える）
+  // 選手との会話と相手チームとの会話を、最新の発言の新しい順に混ぜる。
+  // 名簿から消した選手・一覧に無い相手チームの会話は行にしない（赤丸 staffUnreadTotal も同じ条件で数える）
   const allRows = useMemo(() => {
     if (!isStaff) return [];
-    return dmSummaries(board.messages, board.chatReads)
+    const dm = dmSummaries(board.messages, board.chatReads)
       .map((s) => ({ s, p: players.find((x) => x.id === s.playerId) ?? null }))
-      .filter((r): r is { s: (typeof r)["s"]; p: Player } => !!r.p);
-  }, [isStaff, board.messages, board.chatReads, players]);
+      .filter((r): r is { s: (typeof r)["s"]; p: Player } => !!r.p)
+      .map((r) => ({ kind: "dm" as const, key: r.s.key, name: r.p.name, last: r.s.last, unread: r.s.unread, p: r.p }));
+    const opp = oppSummaries(board.messages, board.chatReads)
+      .map((s) => ({ s, t: oppTeams.find((x) => x.id === s.teamId) ?? null }))
+      .filter((r): r is { s: (typeof r)["s"]; t: (typeof oppTeams)[number] } => !!r.t)
+      .map((r) => ({ kind: "opp" as const, key: r.s.key, name: r.t.name, last: r.s.last, unread: r.s.unread, t: r.t }));
+    return [...dm, ...opp].sort((a, b) => b.last.ts - a.last.ts);
+  }, [isStaff, board.messages, board.chatReads, players, oppTeams]);
   const rows = useMemo(() => {
     const kw = q.trim().toLowerCase();
     return allRows
-      .filter((r) => !unreadOnly || r.s.unread > 0)
+      .filter((r) => !unreadOnly || r.unread > 0)
       .filter((r) => {
         if (!kw) return true;
-        if (r.p.name.toLowerCase().includes(kw)) return true;
-        return board.messages.some((m) => m.to === r.s.key && (m.text ?? "").toLowerCase().includes(kw));
+        if (r.name.toLowerCase().includes(kw)) return true;
+        return board.messages.some((m) => m.to === r.key && (m.text ?? "").toLowerCase().includes(kw));
       });
   }, [allRows, board.messages, q, unreadOnly]);
 
@@ -729,32 +743,36 @@ function MessagesView({
             <div className="empty-msg">{unreadOnly && !q.trim() ? "未読のメッセージはありません。" : "該当する会話がありません。"}</div>
           ) : (
             <div className="convlist">
-              {rows.map(({ s, p }) => {
-                const sel = selectedDm === p.id;
-                const gl = groupsOfPlayer(p, team.groups)
-                  .map((g) => g.label)
-                  .join("・");
+              {rows.map((r) => {
+                const opp = r.kind === "opp";
+                const sel = selectedDm === (opp ? r.key : r.p.id);
+                const gl = opp
+                  ? ""
+                  : groupsOfPlayer(r.p, team.groups)
+                      .map((g) => g.label)
+                      .join("・");
                 return (
                   <button
-                    key={s.key}
+                    key={r.key}
                     type="button"
                     className={`convrow${sel ? " sel" : ""}`}
                     aria-current={sel ? "true" : undefined}
-                    onClick={() => openDm(p.id)}
+                    onClick={() => (opp ? openOpp(r.key) : openDm(r.p.id))}
                   >
-                    <div className="convavatar">{firstChar(p.name)}</div>
+                    <div className="convavatar">{opp ? "対" : firstChar(r.name)}</div>
                     <div className="convmain">
                       <div className="convtop">
-                        <span className="convname">{p.name}</span>
+                        <span className="convname">{r.name}</span>
+                        {opp && <span className="convtag">対戦相手</span>}
                         {gl && <span className="convcount">{gl}</span>}
                       </div>
-                      <div className={`convprev${s.unread > 0 ? " unread" : ""}`}>{previewOf(s.last)}</div>
+                      <div className={`convprev${r.unread > 0 ? " unread" : ""}`}>{previewOf(r.last)}</div>
                     </div>
                     <div className="convaside">
-                      <span className="convdate">{fmtListDate(s.last.ts)}</span>
-                      {s.unread > 0 && (
-                        <span className="chatunreadbadge" aria-label={`未読 ${s.unread}件`}>
-                          {s.unread}
+                      <span className="convdate">{fmtListDate(r.last.ts)}</span>
+                      {r.unread > 0 && (
+                        <span className="chatunreadbadge" aria-label={`未読 ${r.unread}件`}>
+                          {r.unread}
                         </span>
                       )}
                     </div>

@@ -6,6 +6,7 @@ import { clearSession, loadSession, saveSession } from "@/lib/auth";
 import { BoardProvider } from "./BoardProvider";
 import { TeamProvider } from "./TeamProvider";
 import { ProfileProvider } from "./ProfileProvider";
+import { MatchupProvider } from "./matchup/MatchupProvider";
 import AppRoot from "./AppRoot";
 import SplashScreen from "./SplashScreen";
 import LoginScreen from "./LoginScreen";
@@ -64,7 +65,10 @@ export default function AppFlow() {
       <TeamProvider>
         {/* player-hub §1-1: 選手のプロフィール（記録）。BoardProvider の内側（board.auth・toast を使う）・TeamProvider の内側 */}
         <ProfileProvider>
-          <AppRoot />
+          {/* matchup-demo §3: 練習試合（相手探し・申し込み）。useBoard／useTeam を使うので ProfileProvider と同じ階層 */}
+          <MatchupProvider>
+            <AppRoot />
+          </MatchupProvider>
         </ProfileProvider>
       </TeamProvider>
     </BoardProvider>

@@ -6860,6 +6860,17 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--mut);
   white-space: nowrap;
 }
+/* 練習試合の相手チームの会話の行につくタグ「対戦相手」(matchup-demo §5)。.convcountと同じ並び(convtop内) */
+.convtag {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-sm);
+  color: var(--mut);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+}
 /* review #1回目: 長い名前で.convtopが折り返すと.convcount/.convdateの位置も崩れるため、
    会話名は1行に収めて省略する（.convmainは既にmin-width:0） */
 .convname {
@@ -17029,6 +17040,544 @@ body:has(.mhead) .grouppick-item {
 }
 
 /* ============================================================
+   練習試合（specs/matchup-demo.md §4。.mt-*。MatchupScreen／PostList／FindPanel）。
+   基底はスマホ（タップ 44px）。PC の 3 列・密度（32px・四角）は PCブロック末尾「mobile-redesign PC reset」、
+   指サイズへの復元は (pointer: coarse) に置く。色はトークンのみ・文字は 12px 以上。
+   ============================================================ */
+.mt-segwrap .mseg-item {
+  height: 44px;
+}
+.mt-scroll {
+  padding-top: 2px;
+  padding-left: 16px;
+  padding-right: 16px;
+}
+/* 今の条件の 1 行（押すと絞り込みのシート） */
+.mt-filterline {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  margin: 6px 0 2px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+.mt-filterline:active {
+  background: var(--surface-low);
+}
+.mt-filterline-tx {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mt-filterline-act {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+/* 件数の行（左に PC の「絞り込み」ボタンが入ることがある） */
+.mt-listbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 2px 6px;
+}
+.mt-count {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+/* 相手の募集のカード（.evcard と同じ白・1px・--r-lg）。全体が 1 つのボタン */
+.mt-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+.mt-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  padding: 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background-color: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.mt-card:active {
+  background-color: var(--surface-low);
+}
+.mt-card.sel {
+  border-color: var(--accent-tint-strong);
+  background-color: var(--accent-tint);
+}
+.mt-card-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mt-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  line-height: 1.35;
+}
+/* 右端の「申し込む ›」。独立したボタンにはしない（カードと同じ onClick） */
+.mt-apply {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+/* 申し込み済みの印（点つき） */
+.mt-state {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.mt-state::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.mt-meta {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  line-height: 1.4;
+}
+.mt-date {
+  flex: none;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* 日付と場所の区切り（日付が 2 つのとき「・」が続いて読み違えないよう、細い縦線にする） */
+.mt-sep {
+  flex: none;
+  align-self: center;
+  width: 1px;
+  height: 10px;
+  margin: 0 8px;
+  background: var(--outline-strong);
+}
+.mt-place {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mt-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.mt-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-sm);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: var(--fs-body-s);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+/* 絞り込みの丸（距離・人数制・日程）と四角（年代）。未選択は灰の枠、選択は青 */
+.calchk.mtc {
+  border-color: var(--mut);
+}
+.calchk.mtc.sq {
+  border-radius: var(--r-xs);
+}
+.calchk.mtc.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.calchk.mtc.rd.on {
+  background: var(--surface-lowest);
+}
+.calchk.mtc.rd.on::after {
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: none;
+}
+
+/* ---- 練習試合：詳細・自分の募集・募集フォーム（PostDetail／MyPosts／PostForm） ----
+   スマホは本文だけがスクロールし、下の申し込みの欄（.mt-detail-foot）は下部タブの上に固定する。 */
+.mt-tag.hot {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.mt-state.off {
+  color: var(--mut);
+}
+.mt-state.off::before {
+  background: var(--outline-strong);
+}
+.mt-none {
+  margin: 0;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+}
+.mt-dv {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scroll.mt-dv-body {
+  padding: 4px 16px 24px;
+}
+/* 下の欄を持たない詳細（自分の募集）は、本文の末尾が下部タブに隠れないよう余白を足す */
+.scroll.mt-dv-body.nofoot {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom) + 24px);
+}
+.mt-dhead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 0 0;
+}
+.mt-dhead-tx {
+  flex: 1;
+  min-width: 0;
+}
+.mt-dname {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.mt-dsub {
+  margin-top: 2px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+}
+.mt-dtags {
+  padding-top: 10px;
+}
+.mt-sec {
+  margin-top: 20px;
+}
+.mt-sech {
+  margin: 0 0 8px 2px;
+  color: var(--mut);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  line-height: 1.4;
+}
+/* 表（ラベル｜値）。.phubkv と同じ白いカードと 1px の罫 */
+.mt-kv {
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.mt-kv-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 14px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--outline);
+}
+.mt-kv-row:first-child {
+  border-top: 0;
+}
+.mt-kv dt {
+  flex: 0 0 104px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+.mt-kv dd {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.mt-line {
+  display: block;
+}
+.mt-sub {
+  display: block;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+/* 申し込みの欄 */
+.mt-detail-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px calc(56px + env(safe-area-inset-bottom) + 12px);
+  border-top: 1px solid var(--outline);
+  background: var(--surface-lowest);
+}
+.mt-foot-label {
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+textarea.st-input.mt-msg {
+  min-height: 64px;
+  line-height: 1.5;
+  resize: none;
+}
+.mt-pending {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--accent-tint-strong);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  font-size: var(--fs-body);
+  line-height: 1.5;
+}
+.mt-pending::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.mt-accepted {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+.mt-accepted svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.mt-foot-note {
+  margin: 0;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+/* 届いた申し込み */
+.mt-reqs {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: hidden;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.mt-req {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--outline);
+}
+.mt-req:first-child {
+  border-top: 0;
+}
+.mt-req-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.mt-req-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.mt-req-name {
+  min-width: 0;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.mt-req-ts {
+  flex: none;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-variant-numeric: tabular-nums;
+}
+.mt-req-msg {
+  margin: 0;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.mt-req-acts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mt-req-acts .st-btn {
+  width: auto;
+  flex: 1 1 0;
+}
+.mt-req-done {
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+.mt-close {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 16px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+/* 募集フォーム */
+.mt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 16px calc(env(safe-area-inset-bottom) + 24px);
+}
+.mt-form-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.mt-form-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+}
+.mt-form-x {
+  display: none;
+}
+.mt-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.mt-field > label,
+.mt-label {
+  margin-left: 2px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.mt-field.err .st-input {
+  border-color: var(--danger);
+}
+.mt-err {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-body-s);
+  line-height: 1.5;
+}
+.mt-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+.mt-daterow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mt-daterow .st-input {
+  flex: 1;
+  min-width: 0;
+}
+.mt-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--fs-body);
+}
+.mt-unit .st-input {
+  flex: 1;
+  min-width: 0;
+}
+.mt-link {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.mt-link.danger {
+  color: var(--danger);
+}
+.mt-form .phubseg button {
+  min-width: 0;
+  padding: 0 6px;
+}
+
+/* ============================================================
    PC (min-width: 1024px) レイアウト群
    ※ 同一詳細度の基底ルールに勝つため、ファイル末尾にまとめて配置
    ============================================================ */
@@ -23849,6 +24398,286 @@ body:has(.mhead) .grouppick-item {
   .st-manage .bigbtn {
     min-height: 32px;
   }
+  /* === matchup-demo §1・§4（練習試合 PC だけの調整） ===
+     ヘッダーは .setapp／.profapp と同じ様式（白い帯・下に 1px の罫・ロゴ 18px／青いチーム名のピル）。
+     本文 .mt-pc は 3 列（絞り込み 184px｜一覧 360px｜詳細 1fr。サッカーノートのスタッフの提出と同じ寸法）。
+     絞り込み列を隠す（または「自分の募集」）と .noside で 2 列。操作は 32px・四角（--r-md）、指サイズへの復元は (pointer: coarse) */
+  .app.mtapp {
+    max-width: none;
+    font-feature-settings: "palt" 1, "tnum" 1;
+  }
+  .mtapp header {
+    background: var(--surface-lowest);
+    border-bottom: 0;
+    box-shadow: 0 1px 0 var(--outline);
+    padding: 10px 18px;
+  }
+  .mtapp .logo {
+    font-family: var(--font-ui);
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: 0.3px;
+    line-height: 1.05;
+  }
+  .mtapp .tag.team {
+    color: var(--accent);
+    background: var(--accent-tint);
+  }
+  .mt-pc {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 184px 360px minmax(0, 1fr);
+  }
+  .mt-pc.noside {
+    grid-template-columns: 360px minmax(0, 1fr);
+  }
+  /* 絞り込み列（.calside と同じ：白地・右に 1px の罫・上に「‹ 絞り込みを隠す」） */
+  .mtside {
+    min-height: 0;
+    overflow-y: auto;
+    padding: 8px 8px 16px 10px;
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+    scrollbar-width: thin;
+  }
+  .mtside-hide {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    min-height: 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 700;
+    text-align: right;
+    cursor: pointer;
+  }
+  /* 列の中の密度（.calside と同じ：行 24px・見出し 8px 2px 2px・行間なし） */
+  .mtside .calfilterpanel-sec {
+    margin-bottom: 0;
+  }
+  .mtside .calfilterpanel-sech {
+    padding: 8px 2px 2px;
+  }
+  .mtside .calfilterpanel-sec:first-of-type .calfilterpanel-sech {
+    padding-top: 2px;
+  }
+  .mtside .calfilterpanel-all {
+    min-height: 20px;
+    padding: 0 2px;
+  }
+  .mtside .calfilterpanel-row {
+    min-height: 24px;
+    gap: 6px;
+    padding: 0 4px;
+    font-size: 14px;
+    border-radius: var(--r-xs);
+  }
+  .mtside .calfilterpanel-row:hover {
+    background: var(--surface-low);
+  }
+  .mtside .calfilterpanel-manage {
+    min-height: 24px;
+    margin-top: 6px;
+    padding: 0 4px;
+    font-size: 12px;
+  }
+  /* 会場のトグル：184px の列では「相手の会場で開ける募集だけ」が 1 行に入らないので、2 行に折り返してよい */
+  .mtside .calfilter-toggle.mtvenue {
+    align-items: flex-start;
+    min-height: 28px;
+    padding: 4px 0 2px 4px;
+    gap: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .mtside .calfilter-toggle.mtvenue > span {
+    width: 26px;
+    height: 16px;
+    margin-top: 1px;
+  }
+  .mtside .calfilter-toggle.mtvenue > span::after {
+    width: 12px;
+    height: 12px;
+    top: 1px;
+    left: 1px;
+  }
+  .mtside .calfilter-toggle.mtvenue input:checked + span::after {
+    transform: translateX(10px);
+  }
+  /* 一覧の列：地は画面の灰色のまま、白いカードを縦に並べる。右に 1px の罫 */
+  .mt-list {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 12px calc(env(safe-area-inset-bottom) + 24px);
+    border-right: 1px solid var(--outline);
+    scrollbar-width: thin;
+  }
+  .mt-segrow {
+    padding-bottom: 4px;
+  }
+  .mt-segrow .mseg-item {
+    height: 36px;
+  }
+  .mt-listbar {
+    min-height: 32px;
+    padding: 6px 2px 4px;
+  }
+  .mt-card {
+    padding: 10px;
+  }
+  .mt-card:hover:not(.sel) {
+    border-color: var(--outline-strong);
+  }
+  /* 絞り込み列を隠しているときの「絞り込み」（.calshow と同じ見た目。何か絞っていれば右上に点） */
+  .mt-showfilter {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--panel);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .mt-showfilter svg {
+    width: 16px;
+    height: 16px;
+  }
+  .mt-showfilter .dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  /* 「自分の募集」の一覧の上の「＋ 募集する」（テキストボタン） */
+  .mt-newbtn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .mt-newbtn:hover {
+    background: var(--accent-tint);
+  }
+  /* 詳細の列 */
+  .mt-detail {
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 16px 24px calc(env(safe-area-inset-bottom) + 24px);
+  }
+  /* 詳細・自分の募集・フォームの中（本文は列がスクロールするので .scroll は解く。申し込みの欄は内容の末尾に続ける） */
+  .mt-dv {
+    display: block;
+    max-width: 640px;
+  }
+  .scroll.mt-dv-body,
+  .scroll.mt-dv-body.nofoot {
+    overflow: visible;
+    padding: 0;
+  }
+  .mt-dhead {
+    padding-top: 0;
+  }
+  .mt-kv-row {
+    min-height: 36px;
+    gap: 8px;
+    padding: 8px 14px;
+  }
+  /* 1024px 幅では詳細の列が 270px ほどになる。ラベルを少し詰め、足りないときだけ値が下の行に回る（dd は flex-wrap で折り返す） */
+  .mt-kv dt {
+    flex: 0 0 100px; /* 「相手に伝えること」が 1 行に収まる幅 */
+  }
+  .mt-detail-foot {
+    padding: 20px 0 0;
+    border-top: 0;
+    background: none;
+  }
+  .mt-detail-foot .st-btn {
+    width: auto;
+    min-width: 128px;
+    min-height: 32px;
+    align-self: flex-start;
+  }
+  textarea.st-input.mt-msg,
+  .mt-detail-foot textarea.st-input.mt-msg {
+    min-height: 72px;
+    padding: 6px 10px;
+    font-size: 14px;
+  }
+  .mt-req {
+    flex-direction: row;
+    align-items: center;
+    gap: 16px;
+    padding: 10px 14px;
+  }
+  .mt-req-acts .st-btn {
+    flex: none;
+    min-width: 64px;
+    min-height: 32px;
+  }
+  .mt-close,
+  .mt-link {
+    min-height: 32px;
+  }
+  .mt-form {
+    max-width: 560px;
+    padding: 0 0 8px;
+  }
+  .mt-form-x {
+    display: inline-flex;
+    align-items: center;
+    min-height: 32px;
+    padding: 0 8px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    color: var(--accent);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .mt-form-x:hover {
+    background: var(--accent-tint);
+  }
+  .mt-form .st-input {
+    min-height: 32px;
+    padding: 4px 10px;
+    font-size: 14px;
+  }
+  .mt-form .mt-form-submit {
+    width: auto;
+    min-width: 128px;
+    min-height: 32px;
+    align-self: flex-start;
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -24048,8 +24877,27 @@ body:has(.mhead) .grouppick-item {
   .calside .calfilterpanel-row,
   .calside .calfilterpanel-all,
   .calside .calfilter-toggle,
-  .calside .calfilterpanel-manage {
+  .calside .calfilterpanel-manage,
+  /* matchup-demo: 練習試合の絞り込み列・件数の行・セグメントも 44px へ戻す */
+  .mtside-hide,
+  .mtside .calfilterpanel-row,
+  .mtside .calfilterpanel-all,
+  .mtside .calfilter-toggle.mtvenue,
+  .mtside .calfilterpanel-manage,
+  .mt-showfilter,
+  .mt-newbtn,
+  .mt-segrow .mseg-item,
+  .mt-detail-foot .st-btn,
+  .mt-req-acts .st-btn,
+  .mt-close,
+  .mt-link,
+  .mt-form-x,
+  .mt-form .st-input,
+  .mt-form .mt-form-submit {
     min-height: 44px;
+  }
+  .mt-segrow .mseg-item {
+    height: 44px;
   }
   .cmpselect {
     height: auto;

@@ -511,6 +511,15 @@ export function IconLab(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** 練習試合（交差する 2 本の旗。IconNoteMatch の形を 24×24・線幅 2 に直したもの。レール・「その他」の行で使用） */
+export function IconMatchup(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="M4.5 20.3L15.8 3L21 6.8L17.3 11.3L12.8 8.3M19.5 20.3L8.3 3L3 6.8L6.8 11.3L11.3 8.3" />
+    </Svg>
+  );
+}
+
 /** コーチング（ホイッスル。下部タブ「コーチング」・コーチングハブで使用） */
 export function IconWhistle(p: SVGProps<SVGSVGElement>) {
   return (

@@ -94,7 +94,7 @@ import {
   snapshotToBoard,
 } from "@/lib/share";
 import { SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
-import { latestCounterpartTs } from "@/lib/chat";
+import { isOppKey, latestCounterpartTs } from "@/lib/chat";
 import { buildSetPieceState, getSetPiecePreset } from "@/lib/setPiecePresets";
 import {
   buildSetPieceLayout,
@@ -965,7 +965,9 @@ export type ScreenName =
   /** 「その他」ハブ（新設・スマホ専用。mobile-redesign-v2 §2）。PCレールには出さない */
   | "other"
   /** 選手の「プロフィール」（個人ページ。player-hub §2-2）。選手だけの画面：下部タブ右から2番目・PCレール */
-  | "profile";
+  | "profile"
+  /** 練習試合（相手探し・申し込み・チャットでの調整。スタッフだけ。matchup-demo §1）。「その他」の中の画面 */
+  | "matchup";
 
 interface BoardContextValue {
   state: BoardState;
@@ -2815,7 +2817,7 @@ export function BoardProvider({
 
   // chat-plan-a §2-3: 表示中は新着のたびに呼ばれる。相手の新しい発言が無ければ state を変えない
   const markChatRead = useCallback((key: string, side: "staff" | "member") => {
-    if (!key.startsWith("p:")) return;
+    if (!key.startsWith("p:") && !isOppKey(key)) return;
     setChatReads((prev) => {
       const cur = prev[key]?.[side];
       if (cur !== undefined && latestCounterpartTs(messagesRef.current, key, side) <= cur) return prev;

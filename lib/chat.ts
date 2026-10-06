@@ -101,9 +101,19 @@ export function isMemberFrom(from: string): boolean {
   return from.startsWith("p:");
 }
 
-/** side から見て「相手の発言」か（スタッフ側＝選手の発言、選手側＝スタッフの発言） */
+/** メッセージの送信者が練習試合の相手チームのスタッフか（"opp:<teamId>"。matchup-demo §5） */
+export function isOppFrom(from: string): boolean {
+  return from.startsWith("opp:");
+}
+
+/** 会話キーが相手チームとの会話か（"opp:<teamId>"。スタッフだけが見る） */
+export function isOppKey(key: string): boolean {
+  return key.startsWith("opp:");
+}
+
+/** side から見て「相手の発言」か（スタッフ側＝選手・相手チームの発言、選手側＝スタッフの発言） */
 function isCounterpart(m: ChatMessage, side: ChatSide): boolean {
-  return side === "staff" ? isMemberFrom(m.from) : m.from === "coach";
+  return side === "staff" ? isMemberFrom(m.from) || isOppFrom(m.from) : m.from === "coach";
 }
 
 /**
@@ -129,15 +139,23 @@ export function latestCounterpartTs(messages: ChatMessage[], key: string, side: 
 }
 
 /**
- * スタッフ側の未読の合計（全 1 対 1）。セグメント「メッセージ」の赤丸に使う。
+ * スタッフ側の未読の合計（全 1 対 1＋相手チームとの会話）。セグメント「メッセージ」の赤丸に使う。
  * 名簿にいない選手（名簿から消した選手）の会話は数えない。一覧（MessagesView）はその会話の行を出さないため、
- * 数えると赤丸と一覧の未読がずれ、開けない会話なので既読にもできない（chat-plan-a §3-1・§3-3）
+ * 数えると赤丸と一覧の未読がずれ、開けない会話なので既読にもできない（chat-plan-a §3-1・§3-3）。
+ * 相手チームの会話（opp:）も同じ理由で、oppTeamIds を渡したときはそこにあるチームだけ数える（省略時は全部）
  */
-export function staffUnreadTotal(messages: ChatMessage[], reads: ChatReads, players: Player[]): number {
+export function staffUnreadTotal(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  players: Player[],
+  oppTeamIds?: string[]
+): number {
   const alive = new Set(players.map((p) => dmThreadKey(p.id)));
+  const oppAlive = oppTeamIds ? new Set(oppTeamIds.map((id) => `opp:${id}`)) : null;
   let n = 0;
   for (const m of messages) {
-    if (!alive.has(m.to) || !isMemberFrom(m.from)) continue;
+    const opp = isOppKey(m.to) && isOppFrom(m.from) && (!oppAlive || oppAlive.has(m.to));
+    if (!opp && (!alive.has(m.to) || !isMemberFrom(m.from))) continue;
     if (m.ts > (reads[m.to]?.staff ?? 0)) n++;
   }
   return n;
@@ -181,6 +199,33 @@ export function dmSummaries(messages: ChatMessage[], reads: ChatReads): DmSummar
     }
     if (m.ts >= s.last.ts) s.last = m;
     if (isMemberFrom(m.from) && m.ts > (reads[m.to]?.staff ?? 0)) s.unread++;
+  }
+  return [...map.values()].sort((a, b) => b.last.ts - a.last.ts);
+}
+
+/** 相手チームとの会話の 1 行分（matchup-demo §5。DmSummary と同じ形で、選手の代わりにチームの id を持つ） */
+export interface OppSummary {
+  key: string;
+  teamId: string;
+  last: ChatMessage;
+  unread: number;
+}
+
+/**
+ * 相手チームとの会話（"opp:<teamId>"）を、dmSummaries と同じ形で最新の発言の新しい順に返す。
+ * 未読は相手チームの発言のうち、スタッフの既読時刻より新しいもの
+ */
+export function oppSummaries(messages: ChatMessage[], reads: ChatReads): OppSummary[] {
+  const map = new Map<string, OppSummary>();
+  for (const m of messages) {
+    if (!isOppKey(m.to)) continue;
+    let s = map.get(m.to);
+    if (!s) {
+      s = { key: m.to, teamId: m.to.slice(4), last: m, unread: 0 };
+      map.set(m.to, s);
+    }
+    if (m.ts >= s.last.ts) s.last = m;
+    if (isOppFrom(m.from) && m.ts > (reads[m.to]?.staff ?? 0)) s.unread++;
   }
   return [...map.values()].sort((a, b) => b.last.ts - a.last.ts);
 }

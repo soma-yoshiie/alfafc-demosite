@@ -15,6 +15,7 @@ import {
   IconCone,
   IconFolder,
   IconLab,
+  IconMatchup,
   IconMore,
   IconNote,
   IconSetPiece,
@@ -106,7 +107,7 @@ const STAFF_MTAB: readonly MtabDef[] = [
     label: "その他",
     icon: <IconMore />,
     target: "other",
-    screens: new Set(["other", "articles", "settings"]),
+    screens: new Set(["other", "articles", "settings", "matchup"]),
   },
 ];
 
@@ -251,7 +252,9 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         { sec: "チーム", item: { key: "notebook", label: "サッカーノート", icon: <IconNote />, badge: noteUnread, onSelect: () => board.setScreen("notebook") } },
         { item: { key: "team", label: "チーム運営", icon: <IconCalendarCheck />, onSelect: () => board.setScreen("team") } },
         { item: { key: "chat", label: "チャット", icon: <IconChat />, onSelect: () => board.setScreen("chat") } },
-        { sec: "その他", item: { key: "articles", label: "コーチラボ", icon: <IconLab />, onSelect: () => board.setScreen("articles") } },
+        // matchup-demo §1: 「その他」の先頭（スタッフだけ）
+        { sec: "その他", item: { key: "matchup", label: "練習試合", icon: <IconMatchup />, onSelect: () => board.setScreen("matchup") } },
+        { item: { key: "articles", label: "コーチラボ", icon: <IconLab />, onSelect: () => board.setScreen("articles") } },
         { item: { key: "settings", label: "設定", icon: <IconCog />, onSelect: () => board.setScreen("settings") } },
       ]
     : [

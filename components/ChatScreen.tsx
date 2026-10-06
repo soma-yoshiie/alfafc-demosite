@@ -3,12 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChatReplyTo } from "@/lib/types";
 import { dmThreadKey } from "@/lib/types";
-import { visibleAnnouncements } from "@/lib/chat";
+import { isOppKey, visibleAnnouncements } from "@/lib/chat";
 import { groupsOfPlayer } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import ChatHome, { AnnReadPanel, AnnouncementDetail, useChatHeaderAction, useChatSeg } from "./ChatHome";
 import ChatThread from "./ChatThread";
+import { useMatchups } from "./matchup/MatchupProvider";
 import { IconPlus } from "./icons";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 
@@ -39,7 +40,8 @@ function useMedia(query: string): boolean {
  * PC の中のペインの選択。お知らせ用（annId）と 1 対 1 用（dmPid）を別々に持ち、どちらを出すかは
  * 左のセグメントで決める。1 つの選択にすると、お知らせを開いたときに開いていた 1 対 1 が上書きされて
  * 「メッセージ」へ戻っても消えている（chat-plan-a §3-6）。
- * viewer は選択した視点。視点（スタッフ／選手・保護者）が変わったら別の視点の選択は使わない
+ * viewer は選択した視点。視点（スタッフ／選手・保護者）が変わったら別の視点の選択は使わない。
+ * dmPid は選手の id か、相手チームとの会話キー（"opp:<teamId>"。matchup-demo §5。スタッフだけ）
  */
 interface PaneMemory {
   viewer: string;
@@ -67,6 +69,7 @@ let lastPane: PaneMemory | null = null;
 export default function ChatScreen() {
   const board = useBoard();
   const team = useTeam();
+  const { teams: oppTeams } = useMatchups();
   const isStaff = team.viewer.role === "coach";
   const memberId = isStaff ? null : team.viewer.memberPlayerId ?? board.auth.playerId ?? null;
   const me = memberId ? board.state.players.find((p) => p.id === memberId) ?? null : null;
@@ -121,6 +124,10 @@ export default function ChatScreen() {
     if (sh.type === "chat" && sh.chatTo?.startsWith("p:")) {
       openDm(sh.chatTo.slice(2), sh.replyTo);
       board.closeSheet();
+    } else if (sh.type === "chat" && sh.chatTo && isOppKey(sh.chatTo) && isStaff) {
+      // 相手チームとの会話（練習試合の承諾後など）。選手・保護者には開かない
+      openDm(sh.chatTo);
+      board.closeSheet();
     } else if (sh.type === "annDetail" && sh.annId) {
       openAnn(sh.annId);
       board.closeSheet();
@@ -136,10 +143,14 @@ export default function ChatScreen() {
     [team.team.announcements, isStaff, me, team.groups]
   );
   const annId = seg === "ann" && pane.annId && visibleAnns.some((a) => a.id === pane.annId) ? pane.annId : null;
-  const dmPid = seg === "msg" ? memberId ?? pane.dmPid : null;
+  // 相手チームとの会話キーはスタッフだけ（選手・保護者の視点では使わない）
+  const paneDm = pane.dmPid && isOppKey(pane.dmPid) && !isStaff ? null : pane.dmPid;
+  const dmPid = seg === "msg" ? memberId ?? paneDm : null;
+  const oppDm = dmPid && isStaff && isOppKey(dmPid) ? dmPid : null;
+  const oppTeam = oppDm ? oppTeams.find((t) => `opp:${t.id}` === oppDm) ?? null : null;
 
   const players = board.state.players;
-  const selPlayer = dmPid ? players.find((p) => p.id === dmPid) ?? null : null;
+  const selPlayer = dmPid && !oppDm ? players.find((p) => p.id === dmPid) ?? null : null;
   const selAnn = annId ? team.team.announcements.find((a) => a.id === annId) ?? null : null;
   // 既読パネルはスタッフがお知らせを開いたときだけ、右の第 3 列に出す（狭い PC 幅では詳細の下に続ける）
   const readCol = pc && wide && isStaff && !!selAnn;
@@ -198,8 +209,13 @@ export default function ChatScreen() {
             <div className="chattab" style={{ flex: 1 }}>
               {/* どの会話を開いているかを常に明示する(個人への取り違え送信を防ぐ) */}
               <div className="chatpanehead">
-                <div className="convavatar">{isStaff ? Array.from(selPlayer?.name ?? "?")[0] : "ス"}</div>
-                <span className="chatpanename">{isStaff ? selPlayer?.name ?? "メッセージ" : "スタッフ"}</span>
+                <div className="convavatar">
+                  {oppDm ? "対" : isStaff ? Array.from(selPlayer?.name ?? "?")[0] : "ス"}
+                </div>
+                <span className="chatpanename">
+                  {oppDm ? oppTeam?.name ?? "相手チーム" : isStaff ? selPlayer?.name ?? "メッセージ" : "スタッフ"}
+                </span>
+                {oppDm && <span className="chatpaneall">対戦相手</span>}
                 {isStaff && selPlayer && groupsOfPlayer(selPlayer, team.groups).length > 0 && (
                   <span className="chatpaneall">
                     {groupsOfPlayer(selPlayer, team.groups)
@@ -212,7 +228,7 @@ export default function ChatScreen() {
                   開いたままのスレッドへ新しい引用が来たときは ChatThread が prop の変化で取り込む */}
               <ChatThread
                 key={dmPid}
-                to={isStaff ? dmThreadKey(dmPid) : memberId ? dmThreadKey(memberId) : dmThreadKey(dmPid)}
+                to={oppDm ? oppDm : isStaff ? dmThreadKey(dmPid) : memberId ? dmThreadKey(memberId) : dmThreadKey(dmPid)}
                 as={isStaff ? undefined : { role: "member", playerId: memberId }}
                 replyTo={pendingReply && pendingReply.pid === dmPid ? pendingReply.replyTo : undefined}
                 onReplyConsumed={() => setPendingReply(null)}

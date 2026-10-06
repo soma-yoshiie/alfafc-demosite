@@ -10,7 +10,7 @@
 import { useBoard } from "./BoardProvider";
 import { MobileHeader } from "./MobileHeader";
 import { MenuGroup, MenuRow } from "./MobileRows";
-import { IconCog, IconLab, IconSetPiece } from "./icons";
+import { IconCog, IconLab, IconMatchup, IconSetPiece } from "./icons";
 
 export default function OtherHub() {
   const board = useBoard();
@@ -24,6 +24,15 @@ export default function OtherHub() {
       <MobileHeader title="その他" />
       <div className="scroll">
         <MenuGroup>
+          {/* matchup-demo §1: スタッフだけ。コーチラボの上 */}
+          {coach && (
+            <MenuRow
+              icon={<IconMatchup />}
+              label="練習試合"
+              desc="相手チームを探して申し込む"
+              onClick={() => board.setScreen("matchup")}
+            />
+          )}
           <MenuRow
             icon={<IconLab />}
             label="コーチラボ"
