@@ -12650,6 +12650,63 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .st-form .st-group {
   margin: 0;
 }
+/* 管理画面（学年・グループ／予定の種類／大会／順位表／体力テストの種目。specs/settings-inline-manage.md §4）。
+   チーム運営の管理シートと同じ部品を設定の下層として出す。シートの中身は上下に伸びる前提（.list が flex:1・
+   overflow）なので、ここでは高さを持たせず白いカード 1 枚に収める。主ボタンは設定の .st-btn と同じ見た目 */
+.st-manage {
+  margin: 16px 16px calc(env(safe-area-inset-bottom) + 40px);
+  padding: 12px 0 4px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.st-manage .list {
+  flex: none;
+  overflow: visible;
+  padding-bottom: 8px;
+}
+.st-manage .bigbtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--accent);
+  color: var(--surface-lowest);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.st-manage .bigbtn:active {
+  transform: none;
+  opacity: 0.85;
+}
+.st-manage .bigbtn.ghost {
+  background: var(--surface-lowest);
+  border-color: var(--outline-strong);
+  color: var(--accent);
+}
+/* 設定の中の管理シート（スマホ）：`.teamapp:has(.mhead)` にだけ効いていたチーム運営の調整を .setapp にも効かせる
+   （レビュー css-1／css-2／css-3：44px の確保と見た目の一致） */
+.setapp:has(.mhead) .st-manage .dynadd {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  color: var(--ink);
+  border-radius: var(--r-md);
+  min-height: 44px;
+  font-size: var(--fs-body);
+}
+.setapp:has(.mhead) .st-manage .sech {
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.setapp:has(.mhead) .st-manage .formfield label.daytoggle.notetoggle {
+  min-height: 44px;
+}
 .st-group-h {
   margin: 0;
   padding: 0 4px 8px;
@@ -23675,25 +23732,38 @@ body:has(.mhead) .grouppick-item {
   .st-nav {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 4px;
   }
   .st-navgroup {
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
+  /* 区画の見出し（チーム／メンバー／その他）。押せる項目と見分けがつくよう、小さい灰色・上の線・項目より左に置く。
+     最初の見出し（.first）だけ線なし。押せないので cursor は通常。文字は 12px 以上（契約）にそろえる */
   .st-navh {
-    padding: 0 8px 4px;
+    margin-top: 10px;
+    padding: 14px 10px 4px;
+    border-top: 1px solid var(--outline);
     font-size: var(--fs-body-s);
     font-weight: 700;
+    letter-spacing: 0.08em;
     color: var(--mut);
+    cursor: default;
+  }
+  .st-navh.first {
+    margin-top: 0;
+    border-top: 0;
+  }
+  .st-navgroup:last-child {
+    margin-top: 12px;
   }
   .st-navitem {
     display: flex;
     align-items: center;
     width: 100%;
     height: 32px;
-    padding: 0 8px;
+    padding: 0 8px 0 14px;
     border: 0;
     border-radius: var(--r-md);
     background: none;
@@ -23770,6 +23840,14 @@ body:has(.mhead) .grouppick-item {
   }
   .st-del:hover {
     background: var(--surface-low);
+  }
+  /* 管理画面（specs/settings-inline-manage.md §4）: 右の列（760px）いっぱいのカード。主ボタンは四角・32px */
+  .st-manage {
+    margin: 0 0 40px;
+    padding: 16px 0 8px;
+  }
+  .st-manage .bigbtn {
+    min-height: 32px;
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -23899,6 +23977,9 @@ body:has(.mhead) .grouppick-item {
   }
   .st-back {
     height: 44px;
+  }
+  .st-manage .bigbtn {
+    min-height: 44px;
   }
   /* chat-plan-a §3-6: チャットの操作部品（PC で 32〜36px に詰めた分）を指サイズ 44px へ戻す */
   .chatsegwrap .mseg-item,

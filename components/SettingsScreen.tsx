@@ -14,7 +14,12 @@ import InviteForm from "./settings/InviteForm";
 import NotifPrefsForm from "./settings/NotifPrefsForm";
 import PlanScreen from "./settings/PlanScreen";
 import DataSection from "./settings/DataSection";
-import type { SettingsCat, SettingsFormProps, SettingsView, TeamSheetKey } from "./settings/settingsTypes";
+import { GroupsManage } from "./team/manage/GroupsManage";
+import { CategoriesManage } from "./team/manage/CategoriesManage";
+import { CompetitionsManage } from "./team/manage/CompetitionsManage";
+import { LeagueEdit } from "./team/manage/LeagueEdit";
+import { FitnessTestsManage } from "./team/manage/FitnessTestsManage";
+import type { SettingsCat, SettingsFormProps, SettingsView } from "./settings/settingsTypes";
 
 /**
  * 設定画面（specs/settings-plan-a.md §2〜§4）。旧 ConsoleScreens の SettingsScreen と SheetManager の
@@ -50,6 +55,11 @@ const VIEW_TITLE: Record<SettingsView["mode"], string> = {
   notif: "通知",
   plan: "プラン",
   data: "データ",
+  groups: "学年・グループ",
+  categories: "予定の種類",
+  competitions: "大会",
+  league: "順位表",
+  fitnessTests: "体力テストの種目",
 };
 
 /** 右上に「保存」を出す下層 */
@@ -98,17 +108,6 @@ const PLAYER_NAV: typeof NAV = [
   },
 ];
 
-/** シートを開く行ごとの、チーム運営で先に開くタブ（§6） */
-const SHEET_TAB: Record<TeamSheetKey, "ros" | "cal" | "rec"> = {
-  groups: "ros",
-  categories: "cal",
-  competitions: "rec",
-  league: "rec",
-  fitnessTests: "ros",
-};
-
-const SHEET_CATS: ReadonlySet<SettingsCat> = new Set(["groups", "categories", "competitions", "league", "fitnessTests"]);
-
 /** PC で、行が 1 つしか無いカテゴリは左の列を押した時点で下層を出す（行を 1 回余計に押させない。戻りも出さない） */
 const DIRECT_VIEW: Partial<Record<SettingsCat, SettingsView["mode"]>> = {
   staff: "staff",
@@ -116,6 +115,12 @@ const DIRECT_VIEW: Partial<Record<SettingsCat, SettingsView["mode"]>> = {
   notif: "notif",
   plan: "plan",
   data: "data",
+  // チーム運営の管理シートと同じ編集画面（設定の中で編集する。specs/settings-inline-manage.md §2）
+  groups: "groups",
+  categories: "categories",
+  competitions: "competitions",
+  league: "league",
+  fitnessTests: "fitnessTests",
 };
 
 /** 下層が属するカテゴリ（スマホで開いたまま PC 幅になっても、左の列と戻りが食い違わないようにする） */
@@ -128,6 +133,11 @@ const VIEW_CAT: Partial<Record<SettingsView["mode"], SettingsCat>> = {
   notif: "notif",
   plan: "plan",
   data: "data",
+  groups: "groups",
+  categories: "categories",
+  competitions: "competitions",
+  league: "league",
+  fitnessTests: "fitnessTests",
 };
 
 export default function SettingsScreen() {
@@ -140,6 +150,8 @@ export default function SettingsScreen() {
   const [cat, setCat] = useState<SettingsCat>("account");
   const dirtyRef = useRef(false);
   const saveRef = useRef<(() => void) | null>(null);
+  /** 管理画面（グループのメンバー編集など）が「戻る」を先に処理するための口。true を返したら画面を変えない */
+  const backRef = useRef<(() => boolean) | null>(null);
   const onDirty = useCallback((d: boolean) => {
     dirtyRef.current = d;
   }, []);
@@ -163,21 +175,22 @@ export default function SettingsScreen() {
     setView(direct ? { mode: direct } : { mode: "top" });
   }, [pc, cat]);
 
-  /** チーム運営のシートを開く行（グループ・種類・大会・順位表・体力テストの種目）。閉じたあとはチーム運営に留まる（§6） */
-  function openTeamSheet(key: TeamSheetKey) {
-    if (!confirmLeave()) return;
-    board.setTeamIntent({ tab: SHEET_TAB[key], openSheet: key });
-    board.setScreen("team");
+  /** 一覧へ戻る。管理画面の中の戻り（グループのメンバー編集 → 一覧）を先に処理する */
+  function goTop() {
+    if (backRef.current?.()) return;
+    go({ mode: "top" });
   }
 
   function selectCat(c: SettingsCat) {
-    if (SHEET_CATS.has(c)) {
-      openTeamSheet(c as TeamSheetKey);
+    const direct = DIRECT_VIEW[c];
+    // 今開いている管理画面の項目をもう一度押したとき：部品は作り直されないので、未保存の確認もしない
+    // （確認に OK しても下書きが残ったまま dirtyRef だけ false になる）。メンバー編集中なら一覧へ戻すだけ
+    if (c === cat && direct && view.mode === direct) {
+      backRef.current?.();
       return;
     }
     if (!confirmLeave()) return;
     setCat(c);
-    const direct = DIRECT_VIEW[c];
     setView(direct ? { mode: direct } : { mode: "top" });
   }
 
@@ -200,6 +213,37 @@ export default function SettingsScreen() {
         return <PlanScreen key="plan" />;
       case "data":
         return <DataSection key="data" />;
+      case "groups":
+        return (
+          <div key="groups" className="st-manage">
+            <GroupsManage players={board.state.players} hideTitle backRef={backRef} />
+          </div>
+        );
+      case "categories":
+        return (
+          <div key="categories" className="st-manage">
+            <CategoriesManage hideTitle />
+          </div>
+        );
+      case "competitions":
+        return (
+          <div key="competitions" className="st-manage">
+            <CompetitionsManage hideTitle />
+          </div>
+        );
+      case "league":
+        // 順位表は部品の中の「保存する」を使う（ヘッダーの「保存」は出さない）。保存後、スマホ＝一覧へ／PC＝そのまま
+        return (
+          <div key="league" className="st-manage">
+            <LeagueEdit hideTitle onSaved={done} onDirty={onDirty} />
+          </div>
+        );
+      case "fitnessTests":
+        return (
+          <div key="fitnessTests" className="st-manage">
+            <FitnessTestsManage hideTitle />
+          </div>
+        );
       default:
         return null;
     }
@@ -229,7 +273,7 @@ export default function SettingsScreen() {
           onBack={
             view.mode === "top"
               ? () => board.setScreen(board.navFrom === "home" ? "home" : "other")
-              : () => go({ mode: "top" })
+              : goTop
           }
           actions={
             HAS_SAVE.has(view.mode) && !(view.mode === "account" && !coach) && (
@@ -247,13 +291,15 @@ export default function SettingsScreen() {
               <nav className="st-nav" aria-label="設定の項目">
                 {nav.map((g, gi) => (
                   <div key={gi} className="st-navgroup">
-                    {g.title && <div className="st-navh">{g.title}</div>}
+                    {g.title && (
+                      <div className={`st-navh${nav.findIndex((x) => x.title) === gi ? " first" : ""}`}>{g.title}</div>
+                    )}
                     {g.items.map((it) => (
                       <button
                         key={it.cat}
                         type="button"
-                        className={`st-navitem${!SHEET_CATS.has(it.cat) && cat === it.cat ? " on" : ""}`}
-                        aria-current={!SHEET_CATS.has(it.cat) && cat === it.cat ? "page" : undefined}
+                        className={`st-navitem${cat === it.cat ? " on" : ""}`}
+                        aria-current={cat === it.cat ? "page" : undefined}
                         onClick={() => selectCat(it.cat)}
                       >
                         {it.label}
@@ -270,14 +316,14 @@ export default function SettingsScreen() {
               <div className="st-main">
                 {view.mode === "top" ? (
                   coach ? (
-                    <SettingsTop cat={cat} go={go} openTeamSheet={openTeamSheet} />
+                    <SettingsTop cat={cat} go={go} />
                   ) : (
                     <PlayerSettingsTop cat={cat} go={go} />
                   )
                 ) : (
                   <>
                     {!DIRECT_VIEW[cat] && (
-                      <button type="button" className="st-back" onClick={() => go({ mode: "top" })}>
+                      <button type="button" className="st-back" onClick={goTop}>
                         ‹ {catLabel}
                       </button>
                     )}
@@ -287,7 +333,7 @@ export default function SettingsScreen() {
               </div>
             </div>
           ) : view.mode === "top" ? (
-            coach ? <SettingsTop go={go} openTeamSheet={openTeamSheet} /> : <PlayerSettingsTop go={go} />
+            coach ? <SettingsTop go={go} /> : <PlayerSettingsTop go={go} />
           ) : (
             renderSub()
           )}

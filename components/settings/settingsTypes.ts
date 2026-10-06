@@ -10,9 +10,15 @@ export type SettingsView =
   | { mode: "staff" }
   | { mode: "notif" }
   | { mode: "plan" }
-  | { mode: "data" };
+  | { mode: "data" }
+  // チーム運営の管理シートと同じ編集画面を設定の下層として出す（specs/settings-inline-manage.md §2）
+  | { mode: "groups" }
+  | { mode: "categories" }
+  | { mode: "competitions" }
+  | { mode: "league" }
+  | { mode: "fitnessTests" };
 
-/** PC の左のカテゴリ（§4）。about は選手の「バージョン」。シートを開く項目（groups〜fitnessTests）は押すとすぐチーム運営のシートへ移る */
+/** PC の左のカテゴリ（§4）。about は選手の「バージョン」。groups〜fitnessTests は押すとすぐ右に編集画面（管理シートと同じ中身）を出す */
 export type SettingsCat =
   | "account"
   | "basics"
@@ -28,9 +34,6 @@ export type SettingsCat =
   | "plan"
   | "data"
   | "about";
-
-/** チーム運営のシートを開く行（§6）。teamIntent の openSheet へつなぐ */
-export type TeamSheetKey = "groups" | "categories" | "competitions" | "league" | "fitnessTests";
 
 /** 保存のある下層フォームへ渡す共通の props */
 export interface SettingsFormProps {

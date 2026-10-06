@@ -9,7 +9,7 @@ import { loadNotifPrefs } from "@/lib/storage";
 import { APP_VERSION } from "@/lib/version";
 import { SettingsAccountCard, SettingsGroup, SettingsRow, SettingsToggleRow } from "./SettingsRows";
 import { notifValue } from "./NotifPrefsForm";
-import type { SettingsCat, SettingsView, TeamSheetKey } from "./settingsTypes";
+import type { SettingsCat, SettingsView } from "./settingsTypes";
 
 const STAGE_LABEL: Record<SchoolStage, string> = {
   elementary: "小学生",
@@ -26,12 +26,10 @@ const DATA_HINT = "このブラウザのデータを、バックアップとし�
 export default function SettingsTop({
   cat,
   go,
-  openTeamSheet,
 }: {
   /** PC：選んだカテゴリ。省略（スマホ）は全区画 */
   cat?: SettingsCat;
   go: (v: SettingsView) => void;
-  openTeamSheet: (key: TeamSheetKey) => void;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -70,6 +68,35 @@ export default function SettingsTop({
   const stage = (
     <SettingsRow label="学校区分" value={STAGE_LABEL[team.schoolStage]} onClick={() => go({ mode: "stage" })} />
   );
+  const groups = <SettingsRow label="学年・グループ" value={groupNames} onClick={() => go({ mode: "groups" })} />;
+  const categories = (
+    <SettingsRow
+      label="予定の種類"
+      value={customCats > 0 ? `練習・試合 ほか ${customCats}` : "練習・試合"}
+      onClick={() => go({ mode: "categories" })}
+    />
+  );
+  const competitions = (
+    <SettingsRow
+      label="大会"
+      value={comps > 0 ? `${comps} 件` : "未登録"}
+      onClick={() => go({ mode: "competitions" })}
+    />
+  );
+  const league = (
+    <SettingsRow
+      label="順位表"
+      value={team.league.rows.length > 0 ? team.league.title?.trim() || "リーグ順位表" : "未登録"}
+      onClick={() => go({ mode: "league" })}
+    />
+  );
+  const fitnessTests = (
+    <SettingsRow
+      label="体力テストの種目"
+      value={tests > 0 ? `${tests} 種目` : "未登録"}
+      onClick={() => go({ mode: "fitnessTests" })}
+    />
+  );
   const staff = <SettingsRow label="スタッフ" value={`${t.coaches.length} 人`} onClick={() => go({ mode: "staff" })} />;
   const invite = (
     <SettingsRow
@@ -97,7 +124,8 @@ export default function SettingsTop({
   const version = <SettingsRow label="バージョン" value={APP_VERSION} />;
 
   if (!showAll) {
-    // PC：選んだカテゴリの行だけ。シートを開く項目は左の列を押した時点でチーム運営へ移るのでここには出ない
+    // PC：選んだカテゴリの行だけ。groups〜fitnessTests は左の列を押した時点で編集画面を出すので、ここに来るのは
+    // スマホの下層から PC 幅へ広げたときだけ
     return (
       <div className="st-top">
         {cat === "account" && <SettingsGroup>{account}</SettingsGroup>}
@@ -107,6 +135,11 @@ export default function SettingsTop({
             {stage}
           </SettingsGroup>
         )}
+        {cat === "groups" && <SettingsGroup>{groups}</SettingsGroup>}
+        {cat === "categories" && <SettingsGroup>{categories}</SettingsGroup>}
+        {cat === "competitions" && <SettingsGroup>{competitions}</SettingsGroup>}
+        {cat === "league" && <SettingsGroup>{league}</SettingsGroup>}
+        {cat === "fitnessTests" && <SettingsGroup>{fitnessTests}</SettingsGroup>}
         {cat === "staff" && <SettingsGroup>{staff}</SettingsGroup>}
         {cat === "invite" && <SettingsGroup>{invite}</SettingsGroup>}
         {cat === "public" && <SettingsGroup>{matchesPublic}</SettingsGroup>}
@@ -128,23 +161,11 @@ export default function SettingsTop({
       <SettingsGroup title="チーム">
         {teamBasics}
         {stage}
-        <SettingsRow label="学年・グループ" value={groupNames} onClick={() => openTeamSheet("groups")} />
-        <SettingsRow
-          label="予定の種類"
-          value={customCats > 0 ? `練習・試合 ほか ${customCats}` : "練習・試合"}
-          onClick={() => openTeamSheet("categories")}
-        />
-        <SettingsRow
-          label="大会"
-          value={comps > 0 ? `${comps} 件` : "未登録"}
-          onClick={() => openTeamSheet("competitions")}
-        />
-        <SettingsRow
-          label="順位表"
-          value={team.league.rows.length > 0 ? team.league.title?.trim() || "リーグ順位表" : "未登録"}
-          onClick={() => openTeamSheet("league")}
-        />
-        <SettingsRow label="体力テストの種目" value={tests > 0 ? `${tests} 種目` : "未登録"} onClick={() => openTeamSheet("fitnessTests")} />
+        {groups}
+        {categories}
+        {competitions}
+        {league}
+        {fitnessTests}
       </SettingsGroup>
       <SettingsGroup title="メンバー">
         {staff}

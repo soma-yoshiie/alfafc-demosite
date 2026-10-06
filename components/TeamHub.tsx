@@ -11,8 +11,6 @@ import type {
   FitnessTest,
   GoalOrigin,
   Group,
-  LeagueResult,
-  LeagueRow,
   LeagueTable,
   MatchConceded,
   MatchGoal,
@@ -25,10 +23,10 @@ import type {
   TeamEventKind,
   TeamGroup,
 } from "@/lib/types";
-import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL, STAGE_GRADES } from "@/lib/types";
+import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL } from "@/lib/types";
 import { groupOf } from "@/lib/formations";
 import { buildEventSquad } from "@/lib/squad";
-import { computeStandings, leaguePositionOf, rowsFromResults, type Standing } from "@/lib/sampleLeague";
+import { computeStandings, leaguePositionOf, type Standing } from "@/lib/sampleLeague";
 import {
   addDays,
   byStartAsc,
@@ -78,7 +76,6 @@ import type { AttPeriod } from "@/lib/attendanceStats";
 import { groupAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
 import {
   ALL_TARGETS_COLOR,
-  COLOR_CHOICES,
   eventTargetsPlayer,
   groupColorOf,
   matchTargetLabel,
@@ -94,7 +91,7 @@ import { useBoard } from "./BoardProvider";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { useTeam } from "./TeamProvider";
 import { E } from "./Emoji";
-import { IconDownload, IconEdit, IconFilter, IconPlus, IconTrash } from "./icons";
+import { IconDownload, IconEdit, IconFilter, IconPlus } from "./icons";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
@@ -106,12 +103,14 @@ import { PlayerBasicForm } from "./hub/PlayerBasicForm";
 import type { PlayerFormDraft } from "./hub/PlayerBasicForm";
 import type { HubSection } from "./hub/common";
 import { LastUpdated } from "./hub/common";
+import { GroupsManage } from "./team/manage/GroupsManage";
+import { CategoriesManage } from "./team/manage/CategoriesManage";
+import { CompetitionsManage } from "./team/manage/CompetitionsManage";
+import { LeagueEdit } from "./team/manage/LeagueEdit";
+import { FitnessTestsManage } from "./team/manage/FitnessTestsManage";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
-
-/** 新しいカテゴリの色の既定値（calendar-plan-a §11-3「新規の既定はブルー」） */
-const DEFAULT_CATEGORY_COLOR = COLOR_CHOICES.find((p) => p.name === "ブルー")!.color;
 
 /**
  * PC幅かどうかを追跡するフック（components/CoachLab/CoachLabParts.tsx useIsPc() と同じ手法）。
@@ -668,7 +667,7 @@ function Inner() {
     const intent = board.teamIntent;
     if (!intent) return;
     // viewer復帰ロジックはros(名簿)のみ残す。att(出欠)はPCでタブの入口が無くなったため対象から外す
-    // settings-plan-a §6: 設定の行から管理シートを開くときも同じ（プレビューのまま管理シートを開かない）
+    // openSheet（サッカーノートの「絞り込みを編集…」）で来たときも同じ（プレビューのまま管理シートを開かない）
     if (board.auth.role === "coach" && team.viewer.role !== "coach" && (intent.tab === "ros" || intent.openSheet)) {
       team.setViewer("coach", null);
     }
@@ -684,8 +683,8 @@ function Inner() {
       setRosSection("overview");
     }
     if (intent.eventId) setSheet({ type: "eventView", id: intent.eventId });
-    // p14 §1-1: サッカーノートの「絞り込みを編集…」からグループ管理を開く。
-    // settings-plan-a §6: 設定の行からも同じ経路で管理シートを開く
+    // p14 §1-1: サッカーノートの「絞り込みを編集…」からグループ管理を開く
+    // （設定の行は settings-inline-manage §2 で設定の中の下層になり、この経路は使わない）
     if (intent.openSheet) setSheet({ type: intent.openSheet });
     board.setTeamIntent(null);
   }, [board.teamIntent, board.setTeamIntent, board.auth.role, team.viewer.role, team.setViewer]);
@@ -2181,82 +2180,6 @@ function CalFilterPanel({
   );
 }
 
-/**
- * 色を選ぶ縦リスト（calendar-plan-a §11-3。iPhoneカレンダーの「カレンダーのカラー」と同じ形）。
- * グループ管理シート（色の丸の下）とカテゴリ管理シート（編集行・新規追加）の両方から使う。
- * 7色（COLOR_CHOICES）を並べ、最後に「カスタム…」＋隠した<input type="color">を置く。
- * ルート要素は"colorchoice"、各行は"colorchoice-row"固定（検証スクリプトがこの名前を見る）。
- */
-function ColorChoiceList({
-  value,
-  onChange,
-}: {
-  value: string;
-  /**
-   * レビュー指摘対応（calendar-plan-a §11-3）: プリセット行のタップとカスタムピッカーの
-   * 入力を呼び出し側が区別できるよう、第2引数で通知元を渡す。カスタムの<input type="color">は
-   * ドラッグ中も逐次onChangeが飛ぶため、呼び出し側はこれを見て「custom」のときだけ
-   * リストを開いたままにする（グループ管理シート参照。閉じるとinputがDOMから外れ、
-   * ブラウザ側の色ピッカーごと閉じてしまうため） */
-  onChange: (hex: string, source: "preset" | "custom") => void;
-}) {
-  const customInputRef = useRef<HTMLInputElement>(null);
-  const isPreset = COLOR_CHOICES.some((c) => c.color === value);
-  const openCustomPicker = () => customInputRef.current?.click();
-  const rowKeyDown = (e: React.KeyboardEvent, run: () => void) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      run();
-    }
-  };
-  return (
-    <div className="colorchoice">
-      {COLOR_CHOICES.map((c) => (
-        <div
-          key={c.color}
-          className="colorchoice-row"
-          role="button"
-          tabIndex={0}
-          onClick={() => onChange(c.color, "preset")}
-          onKeyDown={(e) => rowKeyDown(e, () => onChange(c.color, "preset"))}
-        >
-          <span className="colorchoice-dot" style={{ background: c.color }} />
-          <span className="colorchoice-name">{c.name}</span>
-          {value === c.color && <span className="colorchoice-check" />}
-        </div>
-      ))}
-      {/* 「カスタム…」：7色のどれとも一致しないvalueはカスタム色とみなし、その色でチェックを付ける。
-          タップで隠しfile input(type=color)をclick()し、OSの色ピッカーを開く */}
-      <div
-        className="colorchoice-row"
-        role="button"
-        tabIndex={0}
-        onClick={openCustomPicker}
-        onKeyDown={(e) => rowKeyDown(e, openCustomPicker)}
-      >
-        <span
-          className={`colorchoice-dot${isPreset ? " colorchoice-dot-empty" : ""}`}
-          style={isPreset ? undefined : { background: value }}
-        />
-        <span className="colorchoice-name">カスタム…</span>
-        {!isPreset && <span className="colorchoice-check" />}
-        <input
-          ref={customInputRef}
-          type="color"
-          className="colorchoice-input"
-          /* レビュー指摘対応（calendar-plan-a §11-3）: プリセット中も常に現在値を渡す。
-             以前は"#000000"固定にしていたため、プリセット選択中にカスタムを開くと
-             常に黒から始まり、黒そのものも選べなかった */
-          value={value}
-          onChange={(e) => onChange(e.target.value, "custom")}
-          aria-label="カスタムの色を選ぶ"
-          tabIndex={-1}
-        />
-      </div>
-    </div>
-  );
-}
-
 /* ---------------- 試合記録 ---------------- */
 function MatchesTab({
   isCoach,
@@ -3104,65 +3027,6 @@ function AttendanceRecordBody({ eventId, players }: { eventId: string; players: 
 /* ----------------------------------------------------------------
    試合記録タブ・PC右ペイン
    ---------------------------------------------------------------- */
-
-/** p14 §3-4: 編集シートの 1 行（数値は入力中の文字列） */
-type LeagueDraftRow = { id: string; name: string; own?: true; win: string; draw: string; loss: string; gf: string; ga: string };
-const LEAGUE_NUM_KEYS = ["win", "draw", "loss", "gf", "ga"] as const;
-const LEAGUE_NUM_LABEL: Record<(typeof LEAGUE_NUM_KEYS)[number], string> = {
-  win: "勝",
-  draw: "分",
-  loss: "敗",
-  gf: "得点",
-  ga: "失点",
-};
-/** 編集の初期行。並びは今の順位順。自チームの行が無いデータ（壊れた・全部消した）は先頭に補う */
-function leagueDraftRows(league: LeagueTable, ownName: string): LeagueDraftRow[] {
-  const rows: LeagueDraftRow[] = computeStandings(league, ownName).map((r) => ({
-    id: r.id,
-    name: r.name,
-    ...(r.own ? { own: true as const } : {}),
-    win: String(r.win),
-    draw: String(r.draw),
-    loss: String(r.loss),
-    gf: String(r.gf),
-    ga: String(r.ga),
-  }));
-  if (!rows.some((r) => r.own)) {
-    rows.unshift({
-      id: "lg_" + Date.now().toString(36) + "_own",
-      name: ownName,
-      own: true,
-      win: "0",
-      draw: "0",
-      loss: "0",
-      gf: "0",
-      ga: "0",
-    });
-  }
-  return rows;
-}
-/** p16 §6-2: 編集シートの試合結果 1 行（スコアは入力中の文字列。保存時に検証して数値にする） */
-type LeagueResultDraft = { id: string; aId: string; bId: string; aScore: string; bScore: string; date: string; matchId?: string };
-/** p16 §6-2: 結果の下書きを数え直し用の結果にする（チーム未選択・同じチームどうしは除く。スコアが不正なら 0 として数える） */
-function leagueDraftResultsLoose(results: LeagueResultDraft[]): LeagueResult[] {
-  return results
-    .filter((m) => m.aId && m.bId && m.aId !== m.bId)
-    .map((m) => ({
-      id: m.id,
-      aId: m.aId,
-      bId: m.bId,
-      aScore: parseLeagueInt(m.aScore) ?? 0,
-      bScore: parseLeagueInt(m.bScore) ?? 0,
-    }));
-}
-/** 空欄＝0、全角数字も受ける。0 以上の整数だけ（それ以外は null） */
-function parseLeagueInt(v: string): number | null {
-  const t = v.trim().replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
-  if (t === "") return 0;
-  if (!/^\d+$/.test(t)) return null;
-  const n = Number(t);
-  return Number.isSafeInteger(n) ? n : null;
-}
 
 /** p16 §6-3: 試合結果から作った順位表のとき「試合結果 N 件から作成」（.phubupd と同じ見た目。「最終更新」の下） */
 function LeagueSource({ league }: { league: LeagueTable }) {
@@ -4068,94 +3932,6 @@ function AttPlayerPane({
 }
 
 /**
- * グループのメンバー一覧（groups-everywhere §5 / groups-editing-and-place-history §4）。
- * カスタムグループ（kind:"custom"）は検索付きのチェックリストでPlayer.groupIdsを一括編集する。
- * 学年グループ（kind:"grade"）は閲覧のみ（所属はPlayer.gradeから自動決定のため編集不可。
- * チェックボックスは出さず、先頭に学年から自動である旨の説明を出す）。
- */
-function GroupMembersEditor({
-  group,
-  players,
-  onBack,
-}: {
-  group: TeamGroup;
-  players: Player[];
-  onBack: () => void;
-}) {
-  const board = useBoard();
-  const team = useTeam();
-  const schoolStage = team.team.schoolStage ?? "junior";
-  const isGrade = group.kind === "grade";
-  const [q, setQ] = useState("");
-  const kw = q.trim().toLowerCase();
-  // レビュー指摘(major): 学年グループは閲覧のみ（チェックが無い）なので、絞り込まずに全員を
-  // 出すと所属の手がかりが無くなる。カスタムグループは一括編集のため全員を出すのが正しいまま
-  const base = isGrade ? players.filter((p) => playerInGroup(p, group)) : players;
-  const list = base.filter((p) => !kw || p.name.toLowerCase().includes(kw));
-  // Phase D-1(C2-minor): 70人が学年区切りなし・学年表示なしの一列だと「中3の誰か」を
-  // 背番号だけで探すことになるため、行に学年ラベルを足す。選択中の人数も表示する
-  const selectedCount = players.filter((p) => playerInGroup(p, group)).length;
-  const toggle = (p: Player) => {
-    if (isGrade) return; // 閲覧のみ（所属はPlayer.gradeから自動）
-    const has = p.groupIds?.includes(group.id) ?? false;
-    const next = has
-      ? (p.groupIds ?? []).filter((x) => x !== group.id)
-      : [...(p.groupIds ?? []), group.id];
-    board.updatePlayer({ ...p, groupIds: next.length > 0 ? next : undefined });
-  };
-  return (
-    <>
-      <div className="tmback" onClick={onBack}>
-        ‹ グループ管理
-      </div>
-      <h2>{group.label}のメンバー</h2>
-      {isGrade && (
-        <div style={{ margin: "0 16px 8px", fontSize: "12px", color: "var(--mut)" }}>
-          学年グループのメンバーは選手の学年で自動的に決まります。学年は名簿の選手フォームで変更できます。
-        </div>
-      )}
-      <div className="controls">
-        <input
-          className="search"
-          placeholder="名前で検索"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </div>
-      {/* mobile-redesign v1 §8: 12px未満禁止のため.fieldhint(11px)は使わずvar(--fs-body-s)にする */}
-      <div style={{ margin: "0 16px 8px", fontSize: "var(--fs-body-s)", color: "var(--mut)" }}>
-        {isGrade ? `${selectedCount}人` : `${selectedCount}人を選択中`}
-      </div>
-      <div className="list">
-        {list.length === 0 ? (
-          <div className="empty-msg">該当する選手がいません。</div>
-        ) : (
-          list.map((p) => {
-            const checked = playerInGroup(p, group);
-            return (
-              <label
-                key={p.id}
-                className="attrow"
-                style={{ cursor: isGrade ? "default" : "pointer" }}
-              >
-                {!isGrade && <input type="checkbox" checked={checked} onChange={() => toggle(p)} />}
-                <div className="attname">
-                  {p.name}
-                  <small>
-                    背番号 {p.number ?? "—"}
-                    {p.grade != null ? ` ・ ${gradeLabel(schoolStage, p.grade)}` : ""}
-                  </small>
-                </div>
-              </label>
-            );
-          })
-        )}
-      </div>
-    </>
-  );
-}
-
-/**
  * 試合結果フォーム専用のスタメン枠定義（8人制・11人制）。pos文字列にGK/DF/MF/FWを明記し、
  * MatchRecord.lineupのposへそのまま保存する。lib/formations.tsのFORMATIONS
  * （ピッチ座標つき・戦術ボード用）とは別に、フォームの選手選択セレクト群だけに使う軽量定義。
@@ -4226,34 +4002,15 @@ function SheetHost({
   // （calendar-plan-a §11-2で月表示下の「今日からの予定」は撤去した）
   const dayPassesFilter = (e: TeamEvent) =>
     calEventVisible(e, calFilter, { isCoach, me, groups: team.groups, categories: team.categories, calMine });
-  // グループ管理シート内でメンバー一覧を開いているグループID（学年・カスタムどちらも可。
-  // groups-editing-and-place-history §4）。sheetがgroups以外に変わったらリセットする
-  const [groupMembersId, setGroupMembersId] = useState<string | null>(null);
-  // カレンダーの絞り込みと色の作り直し（案A §1）: 色の丸をタップした行の下にパレットを開く。
-  // groupMembersIdと同じくsheetがgroups以外に変わったらリセットする
-  const [groupColorPickId, setGroupColorPickId] = useState<string | null>(null);
-  // レビュー指摘対応（calendar-plan-a §11-3）: 色の選び方がスウォッチ1行(約54px)から
-  // 8行・約366pxの縦リスト(ColorChoiceList)に変わったため、下の方のグループで開くと
-  // .list(overflow-y:auto)のスクロール範囲外に出てしまう。開いたら見える位置までスクロールする
-  const groupSwatchesRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (groupColorPickId) groupSwatchesRef.current?.scrollIntoView({ block: "nearest" });
-  }, [groupColorPickId]);
-  useEffect(() => {
-    if (sheet?.type !== "groups") {
-      setGroupMembersId(null);
-      setGroupColorPickId(null);
-    }
-  }, [sheet]);
+  // GroupsManage が「戻る」を先に処理するための窓口（メンバー編集中 → 一覧へ）
+  const manageBackRef = useRef<(() => boolean) | null>(null);
   // tm-sheetpane(PCペイン)の「戻る」用: 最小限の親復帰マップ。
   // categories/groupsは呼び出し元のevent編集シートへ、prefill.eventId付きのmatchは
   // 呼び出し元のeventView(試合結果を記録)へ戻し、それ以外はモーダル同様に閉じる
   const paneBack = () => {
-    // groups-everywhere §5: メンバー編集中なら、まずグループ一覧へ戻すだけ（シートは閉じない）
-    if (sheet?.type === "groups" && groupMembersId) {
-      setGroupMembersId(null);
-      return;
-    }
+    // groups-everywhere §5: メンバー編集中なら、まずグループ一覧へ戻すだけ（シートは閉じない）。
+    // メンバー編集の状態は GroupsManage が持つので、backRef で委ねる（true＝部品が戻した）
+    if (sheet?.type === "groups" && manageBackRef.current?.()) return;
     // Phase D-1(C1-major): from/dateを引き継いで元の予定フォームへ戻す(編集中断ではなく復帰)。
     // groups-everywhere §5: 選手フォームの「グループ」欄から開いた場合は選手フォームへ戻す。
     // 名簿など他の入口はfrom/date/returnToPlayerFormのいずれも無いため、単に閉じる
@@ -4338,27 +4095,6 @@ function SheetHost({
     const nextEnd = addDays(v, span);
     setEndDate(nextEnd < v ? v : nextEnd);
   };
-
-  // カテゴリ管理
-  const [newCatLabel, setNewCatLabel] = useState("");
-  const [newCatColor, setNewCatColor] = useState(DEFAULT_CATEGORY_COLOR);
-  const [catEditId, setCatEditId] = useState<string | null>(null);
-  const [catEditLabel, setCatEditLabel] = useState("");
-  const [catEditColor, setCatEditColor] = useState("");
-  // p16 §5-2: 種類ごとの「サッカーノートに反映する」（編集行・新規追加）
-  const [catEditNote, setCatEditNote] = useState(false);
-  const [newCatNote, setNewCatNote] = useState(false);
-  // レビュー指摘対応（calendar-plan-a §11-3）: グループ管理と同じ作り（ColorChoiceListが
-  // 縦に長い）なので、編集行を開いたときに同じくスクロールして見える位置に寄せる
-  const catEditRowRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (catEditId) catEditRowRef.current?.scrollIntoView({ block: "nearest" });
-  }, [catEditId]);
-
-  // グループ管理（カテゴリ管理と同じ構造）
-  const [newGroupLabel, setNewGroupLabel] = useState("");
-  const [groupEditId, setGroupEditId] = useState<string | null>(null);
-  const [groupEditLabel, setGroupEditLabel] = useState("");
 
   // match form
   const mr = sheet?.type === "match" ? sheet.record : undefined;
@@ -4480,204 +4216,16 @@ function SheetHost({
     return extra ? [...mBase, extra] : mBase;
   };
 
-  // 大会管理
-  const [mgrComp, setMgrComp] = useState("");
-  // p15 §3: 大会の行のインライン編集（種目管理の testEdit* と同じ作り。同時に編集できるのは 1 行）
-  const [compEditId, setCompEditId] = useState<string | null>(null);
-  const [compEditName, setCompEditName] = useState("");
-  const [compEditNote, setCompEditNote] = useState("");
-
   // 選手フォーム（player-hub §2-1: 入力欄は個人ページと共有の PlayerBasicForm）。グループ欄の「＋ 管理」で
   // グループ管理シートへ行って戻ると（SheetHost は同じキーのまま）フォームが作り直されるため、入力中の値は
   // この ref に写して復元する。フォームを閉じると SheetHost ごと作り直されて空に戻る
   const pf = sheet?.type === "playerForm" ? sheet.player : undefined;
   const pfKeep = useRef<PlayerFormDraft | null>(null);
 
-  // p14 §3-4: 順位表の編集。数値は文字列で持ち、保存時に検証して数値にする。開くたびに SheetHost が
-  // 作り直される（key=league）ので、初期値は開いた時点の順位表（並びは今の順位順）
+  // 閲覧シート（leagueView）と順位表の編集で使うチーム名。順位表の編集の下書きは LeagueEdit が持つ
   const lgOwnName = board.state.teamName ?? "マイチーム";
   // 閲覧シート（leagueView）の表。計算済みの順位表（自チームの行はチーム名へ差し替え）
   const leagueViewRows = computeStandings(team.league, lgOwnName);
-  const [lgTitle, setLgTitle] = useState(() => (sheet?.type === "league" ? team.league.title ?? "" : ""));
-  const [lgRows, setLgRows] = useState<LeagueDraftRow[]>(() =>
-    sheet?.type === "league" ? leagueDraftRows(team.league, lgOwnName) : []
-  );
-  // p16 §6-2: 入力の方法（開いたときは保存済みの mode。未定義は数値）と試合結果の下書き。取り込む大会は既定「すべての大会」
-  const [lgMode, setLgMode] = useState<"manual" | "results">(() =>
-    sheet?.type === "league" && team.league.mode === "results" ? "results" : "manual"
-  );
-  const [lgResults, setLgResults] = useState<LeagueResultDraft[]>(() =>
-    sheet?.type === "league" && team.league.mode === "results"
-      ? (team.league.results ?? []).map((m) => ({
-          id: m.id,
-          aId: m.aId,
-          bId: m.bId,
-          aScore: String(m.aScore),
-          bScore: String(m.bScore),
-          date: m.date ?? "",
-          ...(m.matchId ? { matchId: m.matchId } : {}),
-        }))
-      : []
-  );
-  const [lgImportComp, setLgImportComp] = useState("all");
-  // 「数値 → 結果」へ切り替えた直後の注意を出す印
-  const [lgWarn, setLgWarn] = useState(false);
-  // 結果から数えた各チームの 勝-分-敗（結果の入力中に右へ出す。読み取り専用）
-  const lgCounted = rowsFromResults(
-    lgRows.map((r) => ({ id: r.id, name: r.name, win: 0, draw: 0, loss: 0, gf: 0, ga: 0 })),
-    leagueDraftResultsLoose(lgResults)
-  );
-  const lgChangeMode = (next: "manual" | "results") => {
-    if (next === lgMode) return;
-    // 結果 → 数値: 数値の欄へその時点の結果から数えた値を入れる（結果の下書きは残す）。
-    // 結果が 1 件も無いときは、手で入れた数値を 0 で潰さないよう触らない
-    if (next === "manual" && leagueDraftResultsLoose(lgResults).length > 0) {
-      const byId = new Map(lgCounted.map((r) => [r.id, r]));
-      setLgRows((rows) =>
-        rows.map((r) => {
-          const c = byId.get(r.id);
-          return c
-            ? { ...r, win: String(c.win), draw: String(c.draw), loss: String(c.loss), gf: String(c.gf), ga: String(c.ga) }
-            : r;
-        })
-      );
-    }
-    setLgWarn(next === "results");
-    setLgMode(next);
-  };
-  const lgResPatch = (id: string, patch: Partial<LeagueResultDraft>) =>
-    setLgResults((rs) => rs.map((m) => (m.id === id ? { ...m, ...patch } : m)));
-  const lgDeleteTeam = (id: string) => {
-    const n = lgResults.filter((m) => m.aId === id || m.bId === id).length;
-    if (n > 0 && !window.confirm(`このチームの試合結果（${n} 件）も削除されます。よろしいですか？`)) return;
-    setLgRows((rows) => rows.filter((x) => x.id !== id));
-    if (n > 0) setLgResults((rs) => rs.filter((m) => m.aId !== id && m.bId !== id));
-  };
-  // 試合記録から取り込む: 相手名がチーム一覧の名前と一致（trim 後の完全一致）し、まだ取り込んでいない記録だけ
-  const lgImportMatches = () => {
-    const own = lgRows.find((r) => r.own);
-    if (!own) return;
-    const taken = new Set(lgResults.map((m) => m.matchId).filter(Boolean));
-    const added: LeagueResultDraft[] = [];
-    let missed = 0;
-    for (const m of team.team.matches) {
-      if (lgImportComp !== "all" && m.competitionId !== lgImportComp) continue;
-      if (taken.has(m.id)) continue;
-      const opp = lgRows.find((r) => !r.own && r.name.trim() !== "" && r.name.trim() === m.opponent.trim());
-      if (!opp) {
-        missed += 1;
-        continue;
-      }
-      lgSeq.current += 1;
-      added.push({
-        id: "lgr_" + Date.now().toString(36) + "_" + lgSeq.current,
-        aId: own.id,
-        bId: opp.id,
-        aScore: String(m.ourScore),
-        bScore: String(m.theirScore),
-        date: m.date,
-        matchId: m.id,
-      });
-    }
-    if (added.length > 0) setLgResults((rs) => [...rs, ...added]);
-    // p16 レビュー: 0 件のときは「取り込める試合記録がありません」（取り込めない記録があればその件数を続ける）
-    const missedNote = missed > 0 ? `（相手がチーム一覧に無い ${missed} 件は取り込めません）` : "";
-    board.toast(
-      added.length === 0 ? `取り込める試合記録がありません${missedNote}` : `${added.length} 件を取り込みました${missedNote}`
-    );
-  };
-  // 「＋ チームを追加」直後の行（チーム名にフォーカスを移す）
-  const [lgFocusId, setLgFocusId] = useState<string | null>(null);
-  const lgNameRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const lgSeq = useRef(0);
-  useEffect(() => {
-    if (!lgFocusId) return;
-    lgNameRefs.current[lgFocusId]?.focus();
-    setLgFocusId(null);
-  }, [lgFocusId]);
-  const lgPatch = (id: string, patch: Partial<LeagueDraftRow>) =>
-    setLgRows((rows) => rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const saveLeague = () => {
-    // 検証: チーム名（自チームの行は対象外）→ 数値（空欄＝0。0 以上の整数だけ）
-    if (lgRows.some((r) => !r.own && !r.name.trim())) {
-      board.toast("チーム名を入力してください");
-      return;
-    }
-    if (lgMode === "results") {
-      // p16 レビュー: 結果が 0 件のまま保存すると全チームの数値が 0 に置き換わる（切り替えて見ただけで手入力が消える）ので止める
-      if (lgResults.length === 0) {
-        board.toast("試合結果を 1 件以上入れてください");
-        return;
-      }
-      // p16 §6-2: 試合結果から数え直した値を rows に入れ、results と mode も一緒に保存する
-      const results: LeagueResult[] = [];
-      for (const m of lgResults) {
-        if (!m.aId || !m.bId || m.aId === m.bId) {
-          board.toast("試合結果のチームを選んでください（同じチームどうしは入力できません）");
-          return;
-        }
-        const aScore = parseLeagueInt(m.aScore);
-        const bScore = parseLeagueInt(m.bScore);
-        if (aScore == null || bScore == null) {
-          board.toast("数値は 0 以上の整数で入力してください");
-          return;
-        }
-        results.push({
-          id: m.id,
-          aId: m.aId,
-          bId: m.bId,
-          aScore,
-          bScore,
-          ...(m.date ? { date: m.date } : {}),
-          ...(m.matchId ? { matchId: m.matchId } : {}),
-        });
-      }
-      const base: LeagueRow[] = lgRows.map((r) => ({
-        id: r.id,
-        name: r.own ? lgOwnName : r.name.trim(),
-        win: 0,
-        draw: 0,
-        loss: 0,
-        gf: 0,
-        ga: 0,
-        ...(r.own ? { own: true as const } : {}),
-      }));
-      team.setLeague({ title: lgTitle.trim() || undefined, rows: rowsFromResults(base, results), mode: "results", results });
-      paneBack();
-      return;
-    }
-    const rows: LeagueRow[] = [];
-    for (const r of lgRows) {
-      const nums = LEAGUE_NUM_KEYS.map((k) => parseLeagueInt(r[k]));
-      if (nums.some((n) => n == null)) {
-        board.toast("数値は 0 以上の整数で入力してください");
-        return;
-      }
-      const [win, draw, loss, gf, ga] = nums as number[];
-      rows.push({
-        id: r.id,
-        name: r.own ? lgOwnName : r.name.trim(),
-        win,
-        draw,
-        loss,
-        gf,
-        ga,
-        ...(r.own ? { own: true as const } : {}),
-      });
-    }
-    team.setLeague({ title: lgTitle.trim() || undefined, rows, mode: "manual" });
-    paneBack();
-  };
-
-  // 体力測定：種目管理（カテゴリ管理[2938行目付近]と同じ構造で編集/削除/追加）
-  const [newTestName, setNewTestName] = useState("");
-  const [newTestUnit, setNewTestUnit] = useState("");
-  const [newTestLower, setNewTestLower] = useState(false);
-  const [testEditId, setTestEditId] = useState<string | null>(null);
-  const [testEditName, setTestEditName] = useState("");
-  const [testEditUnit, setTestEditUnit] = useState("");
-  const [testEditLower, setTestEditLower] = useState(false);
-
   // groups-phase2 §3-2: 「＋ 得点者を追加」「＋ 交代を追加」の既定選手はbaseの先頭
   const firstPid = mBase[0]?.id ?? "";
 
@@ -5010,144 +4558,7 @@ function SheetHost({
       {/* Phase D-1(C1-major): 予定フォームから開いた場合はPC/モバイル共通でpaneBackへ戻す
           (=編集中の予定フォームへ復帰。paneBackはfrom/dateが無いとき安全にnullへ落ちる) */}
       <Sheet open={sheet?.type === "categories"} onClose={paneBack} pane={pane}>
-        <h2>種類の管理</h2>
-        <div className="list">
-          {team.categories.map((c) => (
-            <div key={c.id} className="catrow">
-              {catEditId === c.id ? (
-                <div style={{ flex: 1 }} ref={catEditRowRef}>
-                  {c.builtin ? (
-                    <div className="cmpnm" style={{ marginBottom: 8 }}>
-                      {c.label}
-                    </div>
-                  ) : (
-                    // 統括調整: 名前の入力欄は .formfield に入れてフォームと同じ見た目にする（素の input のままだった）
-                    <div className="formfield" style={{ margin: "0 0 8px" }}>
-                      <label>名前</label>
-                      <input value={catEditLabel} onChange={(e) => setCatEditLabel(e.target.value)} autoFocus />
-                    </div>
-                  )}
-                  {/* calendar-plan-a §11-3: 色の選択肢をiPhoneカレンダー式の縦リストにする */}
-                  <ColorChoiceList value={catEditColor} onChange={setCatEditColor} />
-                  {/* p16 §5-2: 組込み（練習・試合）も色とこのトグルは変えられる */}
-                  <div className="formfield" style={{ margin: "10px 0 0" }}>
-                    <label className="daytoggle notetoggle">
-                      <input type="checkbox" checked={catEditNote} onChange={(e) => setCatEditNote(e.target.checked)} />
-                      <span />
-                      サッカーノートに反映する
-                    </label>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button
-                      className="bigbtn"
-                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                      onClick={() => {
-                        if (!c.builtin && !catEditLabel.trim()) {
-                          board.toast("名前を入力してください");
-                          return;
-                        }
-                        team.updateCategory({
-                          id: c.id,
-                          label: c.builtin ? c.label : catEditLabel.trim(),
-                          color: catEditColor,
-                          noteTarget: catEditNote,
-                        });
-                        setCatEditId(null);
-                      }}
-                    >
-                      保存する
-                    </button>
-                    <button
-                      className="bigbtn ghost"
-                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                      onClick={() => setCatEditId(null)}
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <span
-                    style={{
-                      width: 14,
-                      height: 14,
-                      borderRadius: "50%",
-                      background: c.color,
-                      flex: "0 0 auto",
-                      display: "inline-block",
-                    }}
-                  />
-                  <div className="cmpinfo">
-                    <div className="cmpnm">{c.label}</div>
-                    {/* p16 §5-2: サッカーノートへの反映（実効値）を名前の下に出す */}
-                    <div className="cmpsub">
-                      {c.builtin ? "名前固定・" : ""}サッカーノート：{categoryNoteTarget(c) ? "反映する" : "反映しない"}
-                    </div>
-                  </div>
-                  <button
-                    className="msgdel"
-                    aria-label="編集"
-                    onClick={() => {
-                      setCatEditId(c.id);
-                      setCatEditLabel(c.label);
-                      setCatEditColor(c.color);
-                      setCatEditNote(categoryNoteTarget(c));
-                    }}
-                  >
-                    <IconEdit />
-                  </button>
-                  {!c.builtin && (
-                    <button
-                      className="msgdel"
-                      aria-label="削除"
-                      onClick={() => {
-                        if (
-                          window.confirm(
-                            `「${c.label}」を削除しますか？（予定は残ります。種類なしになります）`
-                          )
-                        )
-                          team.removeCategory(c.id);
-                      }}
-                    >
-                      <E n="trash" />
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="formfield">
-          <label>新しい種類を追加</label>
-          <input
-            value={newCatLabel}
-            onChange={(e) => setNewCatLabel(e.target.value)}
-            placeholder="例）遠征・合宿 / 保護者会"
-          />
-          {/* calendar-plan-a §11-3: 色の選択肢をiPhoneカレンダー式の縦リストにする */}
-          <ColorChoiceList value={newCatColor} onChange={setNewCatColor} />
-          <label className="daytoggle notetoggle">
-            <input type="checkbox" checked={newCatNote} onChange={(e) => setNewCatNote(e.target.checked)} />
-            <span />
-            サッカーノートに反映する
-          </label>
-        </div>
-        <button
-          className="bigbtn"
-          onClick={() => {
-            if (!newCatLabel.trim()) {
-              board.toast("名前を入力してください");
-              return;
-            }
-            team.addCategory(newCatLabel, newCatColor, newCatNote);
-            setNewCatLabel("");
-            setNewCatColor(DEFAULT_CATEGORY_COLOR);
-            setNewCatNote(false);
-          }}
-        >
-          追加する
-        </button>
+        <CategoriesManage />
       </Sheet>
 
       {/* グループ管理（カレンダーの対象§2 / groups-everywhere §5 / groups-editing-and-place-history §4）。
@@ -5156,342 +4567,13 @@ function SheetHost({
           メンバー一覧はどちらのkindでも開ける。学年グループは閲覧のみ（所属はgradeから自動）、
           カスタムグループは「メンバー（n人）」から所属選手を一括編集できる */}
       <Sheet open={sheet?.type === "groups"} onClose={paneBack} pane={pane}>
-        {groupMembersId ? (
-          (() => {
-            const g = team.groups.find((x) => x.id === groupMembersId);
-            if (!g) return null;
-            return (
-              <GroupMembersEditor group={g} players={players} onBack={() => setGroupMembersId(null)} />
-            );
-          })()
-        ) : (
-          <>
-            <h2>グループ管理</h2>
-            <div className="list">
-              {team.groups.length === 0 && (
-                <div className="empty-msg">登録されたグループはありません。</div>
-              )}
-              {team.groups.map((g) => {
-                const isGrade = g.kind === "grade";
-                const memberCount = players.filter((p) => playerInGroup(p, g)).length;
-                return (
-                  <Fragment key={g.id}>
-                  <div className="catrow">
-                    {groupEditId === g.id ? (
-                      <div style={{ flex: 1 }}>
-                        <input
-                          value={groupEditLabel}
-                          onChange={(e) => setGroupEditLabel(e.target.value)}
-                          style={{ marginBottom: 8 }}
-                          autoFocus
-                        />
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button
-                            className="bigbtn"
-                            style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                            onClick={() => {
-                              if (!groupEditLabel.trim()) {
-                                board.toast("名前を入力してください");
-                                return;
-                              }
-                              team.updateGroup({ ...g, label: groupEditLabel.trim() });
-                              setGroupEditId(null);
-                            }}
-                          >
-                            保存する
-                          </button>
-                          <button
-                            className="bigbtn ghost"
-                            style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                            onClick={() => setGroupEditId(null)}
-                          >
-                            キャンセル
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        {/* カレンダーの絞り込みと色の作り直し（案A §1・calendar-plan-a §11-3）:
-                            色の丸をタップすると行の下にColorChoiceList(7色＋カスタム)が開く。
-                            選ぶとteam.updateGroupで即反映（月の点・リストの線に使われる色。
-                            groupColorOf参照） */}
-                        <button
-                          type="button"
-                          className="calgroupdot"
-                          aria-label={`「${g.label}」の色を変更`}
-                          onClick={() => setGroupColorPickId(groupColorPickId === g.id ? null : g.id)}
-                        >
-                          <span style={{ background: g.color }} />
-                        </button>
-                        {/* Phase D-1(C2-minor): サブテキストが非タップで、メンバー編集の入口が
-                            右側の人型アイコン(次のbutton)だけだと初見で気づきにくい。
-                            仕様§5「『メンバー（n人）』→ 選手のチェックリスト」どおり、
-                            サブテキスト自体もタップ可能にする（既存アイコンは残す）。
-                            groups-editing-and-place-history §4: 学年グループも同じ入口から
-                            メンバー一覧（閲覧のみ）を開けるようにする */}
-                        <div
-                          className="cmpinfo"
-                          style={{ cursor: "pointer" }}
-                          onClick={() => setGroupMembersId(g.id)}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" || e.key === " ") {
-                              e.preventDefault();
-                              setGroupMembersId(g.id);
-                            }
-                          }}
-                        >
-                          <div className="cmpnm">{g.label}</div>
-                          <div className="cmpsub">
-                            {isGrade ? `学年で自動 ・ メンバー ${memberCount}人 ›` : `メンバー ${memberCount}人 ›`}
-                          </div>
-                        </div>
-                        <button
-                          className="msgdel"
-                          aria-label={isGrade ? "メンバーを表示" : "メンバーを編集"}
-                          onClick={() => setGroupMembersId(g.id)}
-                        >
-                          <E n="users" />
-                        </button>
-                        <button
-                          className="msgdel"
-                          aria-label="編集"
-                          onClick={() => {
-                            setGroupEditId(g.id);
-                            setGroupEditLabel(g.label);
-                          }}
-                        >
-                          <IconEdit />
-                        </button>
-                        <button
-                          className="msgdel"
-                          aria-label="削除"
-                          onClick={() => {
-                            const msg = isGrade
-                              ? `「${g.label}」を削除しますか？（予定・連絡・試合記録からもこのグループが外れます。選手の学年は変わりません）`
-                              : `「${g.label}」を削除しますか？（予定からもこのグループが外れます）`;
-                            if (window.confirm(msg)) team.removeGroup(g.id);
-                          }}
-                        >
-                          <E n="trash" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {groupColorPickId === g.id && (
-                    <div className="grpswatches" ref={groupSwatchesRef}>
-                      <ColorChoiceList
-                        value={g.color ?? ALL_TARGETS_COLOR}
-                        onChange={(hex, source) => {
-                          team.updateGroup({ ...g, color: hex });
-                          // レビュー指摘対応（calendar-plan-a §11-3）: カスタムの色ピッカーは
-                          // 入力のたびonChangeが飛ぶため、ここで閉じるとinputがDOMから外れ、
-                          // ブラウザの色ピッカーごと閉じて最初の1色しか反映できなかった。
-                          // プリセット行を選んだときだけ閉じる
-                          if (source === "preset") setGroupColorPickId(null);
-                        }}
-                      />
-                    </div>
-                  )}
-                  </Fragment>
-                );
-              })}
-            </div>
-            {/* groups-editing-and-place-history §4: 学年グループを削除した後に戻すための入口。
-                現在の学校区分の学年のうち、学年グループが無いものだけをチップで並べる
-                （全部そろっていれば行ごと出さない）。チップは対象欄の「＋管理」と同じ
-                .grouppick-item.manageを流用（新規CSSなし） */}
-            {(() => {
-              const stage = team.schoolStage ?? "junior";
-              const missingGrades = STAGE_GRADES[stage].filter(
-                (n) => !team.groups.some((x) => x.kind === "grade" && x.grade === n)
-              );
-              if (missingGrades.length === 0) return null;
-              return (
-                <div className="formfield">
-                  <label>学年グループを追加</label>
-                  <div className="grouppick">
-                    {missingGrades.map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        className="grouppick-item manage"
-                        onClick={() => team.addGradeGroup(n)}
-                      >
-                        {gradeLabel(stage, n)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
-            <div className="formfield">
-              <label>新しいグループを追加</label>
-              <input
-                value={newGroupLabel}
-                onChange={(e) => setNewGroupLabel(e.target.value)}
-                placeholder="例）Aチーム / Bチーム"
-              />
-            </div>
-            <button
-              // Phase D-1(C2-minor): 新設シートがスマホの緑bigbtnを増やさないよう、他の主要CTA
-              // (§3-4対応済み箇所)と同じ流儀でモバイルはaccent(青)にする。PC(pane)は不変
-              className={`bigbtn${pane ? "" : " accent"}`}
-              onClick={() => {
-                if (!newGroupLabel.trim()) {
-                  board.toast("名前を入力してください");
-                  return;
-                }
-                team.addGroup(newGroupLabel);
-                setNewGroupLabel("");
-              }}
-            >
-              追加する
-            </button>
-          </>
-        )}
+        <GroupsManage players={players} pane={pane} backRef={manageBackRef} />
       </Sheet>
 
       {/* 体力測定：種目管理（R4b）。カテゴリ管理と同じ構造(一覧+インライン編集+追加フォーム)。
           記録が残っている種目の削除はteam.removeFitnessTest内でガードし、失敗時はboard.toastで案内する */}
       <Sheet open={sheet?.type === "fitnessTests"} onClose={pane ? paneBack : close} pane={pane}>
-        <h2>種目を管理</h2>
-        <div className="list">
-          {(team.team.fitnessTests ?? []).length === 0 && (
-            <div className="empty-msg">登録された種目はありません。</div>
-          )}
-          {(team.team.fitnessTests ?? []).map((t) => (
-            <div key={t.id} className="catrow">
-              {testEditId === t.id ? (
-                <div style={{ flex: 1 }}>
-                  <input
-                    value={testEditName}
-                    onChange={(e) => setTestEditName(e.target.value)}
-                    style={{ marginBottom: 8 }}
-                    autoFocus
-                  />
-                  <div className="formgrid">
-                    <div className="formfield" style={{ flex: 1, margin: 0 }}>
-                      <label>単位</label>
-                      <input value={testEditUnit} onChange={(e) => setTestEditUnit(e.target.value)} />
-                    </div>
-                    <div className="formfield" style={{ flex: 1, margin: 0 }}>
-                      <label className="daytoggle">
-                        <input
-                          type="checkbox"
-                          checked={testEditLower}
-                          onChange={(e) => setTestEditLower(e.target.checked)}
-                        />
-                        <span />
-                        小さい方が良い
-                      </label>
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                    <button
-                      className="bigbtn"
-                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                      onClick={() => {
-                        if (!testEditName.trim() || !testEditUnit.trim()) {
-                          board.toast("種目名と単位を入力してください");
-                          return;
-                        }
-                        team.updateFitnessTest({
-                          id: t.id,
-                          name: testEditName.trim(),
-                          unit: testEditUnit.trim(),
-                          lowerIsBetter: testEditLower || undefined,
-                        });
-                        setTestEditId(null);
-                      }}
-                    >
-                      保存する
-                    </button>
-                    <button
-                      className="bigbtn ghost"
-                      style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                      onClick={() => setTestEditId(null)}
-                    >
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="cmpinfo">
-                    <div className="cmpnm">
-                      {t.name}
-                      {/* player-hub §1-4: 新体力テストの種目の印（小さなタグ。個人ページの「体力」の種目カードと同じ見た目） */}
-                      {t.standardKey && <span className="phubtag">新体力テスト</span>}
-                    </div>
-                    <div className="cmpsub">
-                      単位: {t.unit}
-                      {t.lowerIsBetter ? " ・ 小さい方が良い" : ""}
-                    </div>
-                  </div>
-                  <button
-                    className="msgdel"
-                    aria-label="編集"
-                    onClick={() => {
-                      setTestEditId(t.id);
-                      setTestEditName(t.name);
-                      setTestEditUnit(t.unit);
-                      setTestEditLower(!!t.lowerIsBetter);
-                    }}
-                  >
-                    <IconEdit />
-                  </button>
-                  <button
-                    className="msgdel"
-                    aria-label="削除"
-                    onClick={() => {
-                      if (window.confirm(`「${t.name}」を削除しますか？`)) team.removeFitnessTest(t.id);
-                    }}
-                  >
-                    <E n="trash" />
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="formfield">
-          <label>新しい種目を追加</label>
-          <input
-            value={newTestName}
-            onChange={(e) => setNewTestName(e.target.value)}
-            placeholder="例）50m走 / 立ち幅跳び"
-          />
-        </div>
-        <div className="formgrid">
-          <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>単位</label>
-            <input value={newTestUnit} onChange={(e) => setNewTestUnit(e.target.value)} placeholder="例）秒 / cm / 回" />
-          </div>
-          <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label className="daytoggle">
-              <input type="checkbox" checked={newTestLower} onChange={(e) => setNewTestLower(e.target.checked)} />
-              <span />
-              小さい方が良い
-            </label>
-          </div>
-        </div>
-        <button
-          className="bigbtn"
-          onClick={() => {
-            if (!newTestName.trim() || !newTestUnit.trim()) {
-              board.toast("種目名と単位を入力してください");
-              return;
-            }
-            team.addFitnessTest(newTestName, newTestUnit, newTestLower || undefined);
-            setNewTestName("");
-            setNewTestUnit("");
-            setNewTestLower(false);
-          }}
-        >
-          追加する
-        </button>
+        <FitnessTestsManage />
       </Sheet>
 
       {/* 出欠一覧（スタッフが記録）: 未記録→欠席→未定→出席の順にグルーピング。
@@ -6378,359 +5460,12 @@ function SheetHost({
 
       {/* p14 §3-4: 順位表の編集（名称・チームごとの勝/分/敗/得点/失点）。順位・試合数・勝点は自動計算 */}
       <Sheet open={sheet?.type === "league"} onClose={paneBack} pane={pane}>
-        <h2>順位表を編集</h2>
-        <div className="formfield">
-          <label>名称</label>
-          <input
-            value={lgTitle}
-            onChange={(e) => setLgTitle(e.target.value)}
-            placeholder="リーグ順位表（例：春季リーグ U-12）"
-          />
-        </div>
-        {/* p16 §6-2: 入力の方法（RecSummaryPane の「チーム成績｜個人成績」と同じ .toolseg/.tseg） */}
-        <div className="formfield">
-          <label>入力の方法</label>
-          <div className="toolseg lgedit-modeseg" role="tablist" aria-label="入力の方法">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={lgMode === "manual"}
-              className={`tseg${lgMode === "manual" ? " on" : ""}`}
-              onClick={() => lgChangeMode("manual")}
-            >
-              数値を入力
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={lgMode === "results"}
-              className={`tseg${lgMode === "results" ? " on" : ""}`}
-              onClick={() => lgChangeMode("results")}
-            >
-              試合結果を入力
-            </button>
-          </div>
-        </div>
-        {lgMode === "results" && <div className="sech lgedit-sech">チーム</div>}
-        <div className="lgedit">
-          {lgRows.map((r) => (
-            <div key={r.id} className="lgedit-row">
-              <div className="lgedit-top">
-                {r.own ? (
-                  <div className="lgedit-name lgedit-ownname">
-                    <b>{lgOwnName}</b>
-                    <span className="phubtag lgedit-own">自チーム</span>
-                  </div>
-                ) : (
-                  <div className="formfield lgedit-name">
-                    <input
-                      ref={(el) => {
-                        lgNameRefs.current[r.id] = el;
-                      }}
-                      value={r.name}
-                      onChange={(e) => lgPatch(r.id, { name: e.target.value })}
-                      placeholder="チーム名"
-                      aria-label="チーム名"
-                    />
-                  </div>
-                )}
-                {lgMode === "results" &&
-                  (() => {
-                    const c = lgCounted.find((x) => x.id === r.id);
-                    return c ? <span className="lgedit-sum" title="結果から数えた 勝-分-敗">{`${c.win}-${c.draw}-${c.loss}`}</span> : null;
-                  })()}
-                {!r.own && (
-                  <button
-                    type="button"
-                    className="lgedit-del"
-                    aria-label="このチームを削除"
-                    title="このチームを削除"
-                    onClick={() => lgDeleteTeam(r.id)}
-                  >
-                    <IconTrash />
-                  </button>
-                )}
-              </div>
-              {lgMode === "manual" && (
-                <div className="lgedit-nums">
-                  {LEAGUE_NUM_KEYS.map((k) => (
-                    <label key={k}>
-                      <span>{LEAGUE_NUM_LABEL[k]}</span>
-                      <input
-                        inputMode="numeric"
-                        placeholder="0"
-                        value={r[k]}
-                        onChange={(e) => lgPatch(r.id, { [k]: e.target.value })}
-                        aria-label={`${r.own ? lgOwnName : r.name || "チーム"} ${LEAGUE_NUM_LABEL[k]}`}
-                      />
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="formfield">
-          <button
-            type="button"
-            className="dynadd"
-            onClick={() => {
-              lgSeq.current += 1;
-              const id = "lg_" + Date.now().toString(36) + "_" + lgSeq.current;
-              setLgRows((rows) => [...rows, { id, name: "", win: "", draw: "", loss: "", gf: "", ga: "" }]);
-              setLgFocusId(id);
-            }}
-          >
-            ＋ チームを追加
-          </button>
-        </div>
-        {lgMode === "results" && (
-          <>
-            <div className="sech lgedit-sech">試合結果（{lgResults.length} 件）</div>
-            <div className="lgedit">
-              {lgResults.map((m) => {
-                const nameOf = (r: LeagueDraftRow) => (r.own ? lgOwnName : r.name.trim() || "（名前未入力）");
-                return (
-                  <div key={m.id} className="lgres-row">
-                    <div className="lgres-teams">
-                      <div className="formfield">
-                        <select
-                          value={m.aId}
-                          onChange={(e) => lgResPatch(m.id, { aId: e.target.value })}
-                          aria-label="チーム A"
-                        >
-                          <option value="">チームを選ぶ</option>
-                          {lgRows.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {nameOf(r)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="formfield">
-                        <select
-                          value={m.bId}
-                          onChange={(e) => lgResPatch(m.id, { bId: e.target.value })}
-                          aria-label="チーム B"
-                        >
-                          <option value="">チームを選ぶ</option>
-                          {lgRows.map((r) => (
-                            <option key={r.id} value={r.id}>
-                              {nameOf(r)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="lgres-score">
-                      <input
-                        inputMode="numeric"
-                        placeholder="0"
-                        value={m.aScore}
-                        onChange={(e) => lgResPatch(m.id, { aScore: e.target.value })}
-                        aria-label="チーム A の得点"
-                      />
-                      <span aria-hidden>-</span>
-                      <input
-                        inputMode="numeric"
-                        placeholder="0"
-                        value={m.bScore}
-                        onChange={(e) => lgResPatch(m.id, { bScore: e.target.value })}
-                        aria-label="チーム B の得点"
-                      />
-                      <div className="formfield lgres-date">
-                        <input
-                          type="date"
-                          value={m.date}
-                          onChange={(e) => lgResPatch(m.id, { date: e.target.value })}
-                          aria-label="日付（任意）"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        className="lgedit-del"
-                        aria-label="この試合結果を削除"
-                        title="この試合結果を削除"
-                        onClick={() => setLgResults((rs) => rs.filter((x) => x.id !== m.id))}
-                      >
-                        <IconTrash />
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="formfield">
-              <button
-                type="button"
-                className="dynadd"
-                onClick={() => {
-                  lgSeq.current += 1;
-                  const own = lgRows.find((r) => r.own);
-                  setLgResults((rs) => [
-                    ...rs,
-                    {
-                      id: "lgr_" + Date.now().toString(36) + "_" + lgSeq.current,
-                      aId: own?.id ?? "",
-                      bId: "",
-                      aScore: "",
-                      bScore: "",
-                      date: "",
-                    },
-                  ]);
-                }}
-              >
-                ＋ 試合結果を追加
-              </button>
-            </div>
-            {/* 試合記録から取り込む（相手名がチーム一覧と一致し、まだ取り込んでいない自チームの記録だけ） */}
-            <div className="formfield">
-              <label>取り込む大会</label>
-              <select value={lgImportComp} onChange={(e) => setLgImportComp(e.target.value)} aria-label="取り込む大会">
-                <option value="all">すべての大会</option>
-                {team.team.competitions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="formfield">
-              <button type="button" className="dynadd" onClick={lgImportMatches}>
-                試合記録から取り込む
-              </button>
-            </div>
-          </>
-        )}
-        {/* 数値 → 結果へ切り替えたときの注意（結果が 0 件のうちは別の文言） */}
-        {lgMode === "results" && lgResults.length === 0 ? (
-          <div className="lgedit-warn">試合結果を 1 件以上入れると順位表が作られます。</div>
-        ) : (
-          lgMode === "results" &&
-          lgWarn && <div className="lgedit-warn">保存すると、順位表の数値は試合結果から数え直した値に置き換わります。</div>
-        )}
-        <div className="evnote" style={{ margin: "0 16px 12px" }}>
-          {lgMode === "results"
-            ? "入力した試合結果から、勝・分・敗・得点・失点を数えて順位表を作ります。順位は 勝点（勝 3・分 1）→ 得失点差 → 得点 の順です。"
-            : "順位は 勝点（勝 3・分 1）→ 得失点差 → 得点 の順に自動で並びます。試合数は 勝＋分＋敗 です。"}
-        </div>
-        <button className="bigbtn" onClick={saveLeague}>
-          保存する
-        </button>
+        <LeagueEdit onSaved={paneBack} />
       </Sheet>
 
       {/* 大会の登録・管理 */}
       <Sheet open={sheet?.type === "competitions"} onClose={pane ? paneBack : close} pane={pane}>
-        <h2>大会の登録・管理</h2>
-        <div className="formfield">
-          <label>新しい大会を登録</label>
-          <div className="dynrow">
-            <input
-              value={mgrComp}
-              onChange={(e) => setMgrComp(e.target.value)}
-              placeholder="例）秋季リーグ U-12 / 〇〇カップ"
-            />
-            <button
-              className="dynadd"
-              style={{ width: "auto", flex: "0 0 auto", padding: "0 14px" }}
-              onClick={() => {
-                if (!mgrComp.trim()) return;
-                team.addCompetition(mgrComp);
-                setMgrComp("");
-              }}
-            >
-              登録
-            </button>
-          </div>
-        </div>
-        <div className="list">
-          {team.team.competitions.length === 0 ? (
-            <div className="empty-msg">登録された大会はありません。</div>
-          ) : (
-            team.team.competitions.map((c) => {
-              const n = team.team.matches.filter((m) => m.competitionId === c.id).length;
-              return (
-                <div key={c.id} className="cmprow">
-                  {/* p15 §3: 編集中の行は入力欄 2 つ＋保存／キャンセル（体力測定の種目管理と同じクラス） */}
-                  {compEditId === c.id ? (
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      {/* 統括調整: 入力欄は .formfield に入れてフォームと同じ見た目にする（素の input のままだった） */}
-                      <div className="formfield" style={{ margin: "0 0 8px" }}>
-                        <label>大会名</label>
-                        <input
-                          value={compEditName}
-                          onChange={(e) => setCompEditName(e.target.value)}
-                          placeholder="大会名"
-                          autoFocus
-                        />
-                      </div>
-                      <div className="formfield" style={{ margin: 0 }}>
-                        <label>メモ（期間・会場など）</label>
-                        <input
-                          value={compEditNote}
-                          onChange={(e) => setCompEditNote(e.target.value)}
-                          placeholder="例）4〜6月・市内リーグ"
-                        />
-                      </div>
-                      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                        <button
-                          className="bigbtn"
-                          style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                          onClick={() => {
-                            if (!compEditName.trim()) {
-                              board.toast("大会名を入力してください");
-                              return;
-                            }
-                            team.updateCompetition({ id: c.id, name: compEditName, note: compEditNote });
-                            setCompEditId(null);
-                          }}
-                        >
-                          保存する
-                        </button>
-                        <button
-                          className="bigbtn ghost"
-                          style={{ flex: 1, margin: 0, padding: 10, fontSize: 14 }}
-                          onClick={() => setCompEditId(null)}
-                        >
-                          キャンセル
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="cmpinfo">
-                        <div className="cmpnm">{c.name}</div>
-                        <div className="cmpsub">
-                          {n}試合{c.note ? ` ・ ${c.note}` : ""}
-                        </div>
-                      </div>
-                      <button
-                        className="msgdel"
-                        aria-label="大会を編集"
-                        onClick={() => {
-                          setCompEditId(c.id);
-                          setCompEditName(c.name);
-                          setCompEditNote(c.note ?? "");
-                        }}
-                      >
-                        <IconEdit />
-                      </button>
-                      <button
-                        className="msgdel"
-                        onClick={() => {
-                          if (window.confirm(`「${c.name}」を削除しますか？（試合記録は残ります）`))
-                            team.removeCompetition(c.id);
-                        }}
-                      >
-                        <E n="trash" />
-                      </button>
-                    </>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+        <CompetitionsManage />
       </Sheet>
 
       {/* 選手フォーム（新規追加・編集）。入力欄は個人ページと共有の PlayerBasicForm（player-hub §2-1）。
