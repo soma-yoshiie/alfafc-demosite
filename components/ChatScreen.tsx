@@ -7,7 +7,7 @@ import { isOppKey, visibleAnnouncements } from "@/lib/chat";
 import { groupsOfPlayer } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
-import ChatHome, { AnnReadPanel, AnnouncementDetail, useChatHeaderAction, useChatSeg } from "./ChatHome";
+import ChatHome, { AnnReadPanel, AnnouncementDetail, useChatHeaderAction, useChatSeg, type AnnReadTab } from "./ChatHome";
 import ChatThread from "./ChatThread";
 import { useMatchups } from "./matchup/MatchupProvider";
 import { IconPlus } from "./icons";
@@ -47,6 +47,9 @@ interface PaneMemory {
   viewer: string;
   annId: string | null;
   dmPid: string | null;
+  /** 既読パネルの最初のタブと、その指示の回数（一覧の「了解 N/M ›」から開いたとき。同じお知らせでも作り直して効かせる）。ux-fix R2-7 */
+  annTab?: AnnReadTab;
+  annTabN?: number;
 }
 
 /**
@@ -105,8 +108,14 @@ export default function ChatScreen() {
 
   // 開いたものに合わせて左のセグメントも切り替える（お知らせの「スタッフに返信」で 1 対 1 が開くとき、
   // 他画面から 1 対 1 が引き継がれるとき、左の一覧と中のペインが食い違わないように）
-  const openAnn = (id: string) => {
-    setPane({ annId: id });
+  const openAnn = (id: string, tab?: AnnReadTab) => {
+    // レビュー: タブ指定なし（カード本体）で開いたら、前に「了解 N/M ›」で付けた annTab は消す（既定の未読に戻す）
+    // 同じお知らせを開き直したときも効くよう、annTab が付いていたときは annTabN を進めてパネルを作り直す
+    setPane(
+      tab
+        ? { annId: id, annTab: tab, annTabN: (pane.annTabN ?? 0) + 1 }
+        : { annId: id, annTab: undefined, annTabN: pane.annTab ? (pane.annTabN ?? 0) + 1 : pane.annTabN }
+    );
     setSeg("ann");
   };
   const openDm = (pid: string, replyTo?: ChatReplyTo) => {
@@ -129,7 +138,7 @@ export default function ChatScreen() {
       openDm(sh.chatTo);
       board.closeSheet();
     } else if (sh.type === "annDetail" && sh.annId) {
-      openAnn(sh.annId);
+      openAnn(sh.annId, sh.annTab);
       board.closeSheet();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,9 +204,10 @@ export default function ChatScreen() {
           {annId ? (
             <div className="chatpanescroll">
               <AnnouncementDetail
-                key={annId}
+                key={`${annId}:${pane.annTabN ?? 0}`}
                 annId={annId}
                 readPanel={!readCol}
+                readTab={pane.annTab}
                 onClose={() => setPane({ annId: null })}
                 onReply={memberId ? (q) => openDm(memberId, q) : undefined}
               />
@@ -209,9 +219,24 @@ export default function ChatScreen() {
                 <div className="convavatar">
                   {oppDm ? "対" : isStaff ? Array.from(selPlayer?.name ?? "?")[0] : "ス"}
                 </div>
-                <span className="chatpanename">
-                  {oppDm ? oppTeam?.name ?? "相手チーム" : isStaff ? selPlayer?.name ?? "メッセージ" : "スタッフ"}
-                </span>
+                {/* ux-fix R2-7: スタッフは選手名を押すと個人ページへ（右の「ノート」はその選手の提出一覧へ） */}
+                {isStaff && selPlayer ? (
+                  <button
+                    type="button"
+                    className="chatpanename chatpanelink"
+                    aria-label={`${selPlayer.name}の個人ページを開く`}
+                    onClick={() => {
+                      board.setTeamIntent({ tab: "ros", playerId: selPlayer.id });
+                      board.setScreen("team");
+                    }}
+                  >
+                    {selPlayer.name} <span aria-hidden="true">›</span>
+                  </button>
+                ) : (
+                  <span className="chatpanename">
+                    {oppDm ? oppTeam?.name ?? "相手チーム" : isStaff ? selPlayer?.name ?? "メッセージ" : "スタッフ"}
+                  </span>
+                )}
                 {oppDm && <span className="chatpaneall">対戦相手</span>}
                 {isStaff && selPlayer && groupsOfPlayer(selPlayer, team.groups).length > 0 && (
                   <span className="chatpaneall">
@@ -219,6 +244,18 @@ export default function ChatScreen() {
                       .map((g) => g.label)
                       .join("・")}
                   </span>
+                )}
+                {isStaff && selPlayer && (
+                  <button
+                    type="button"
+                    className="st-btn ghost chatpanenote"
+                    onClick={() => {
+                      board.setNoteIntent({ playerId: selPlayer.id });
+                      board.setScreen("notebook");
+                    }}
+                  >
+                    ノート
+                  </button>
                 )}
               </div>
               {/* key は会話（pid）だけ。引用を外したこと（onReplyConsumed）で作り直しが起きないようにする。
@@ -246,7 +283,7 @@ export default function ChatScreen() {
         <aside className="chatreadcol" aria-label="既読の状況">
           <div className="chatreadhead">既読の状況</div>
           <div className="chatreadscroll">
-            <AnnReadPanel key={selAnn.id} a={selAnn} />
+            <AnnReadPanel key={`${selAnn.id}:${pane.annTabN ?? 0}`} a={selAnn} initialTab={pane.annTab} />
           </div>
         </aside>
       )}

@@ -925,6 +925,8 @@ interface NoteBase {
   staffCommentTs?: number;
   /** コーチが開いた既読時刻 */
   staffSeenAt?: number;
+  /** 選手・保護者が自分のノートの詳細でコメントを見た時刻（ux-fix R2-1。これより後に付いたコメントだけ未読） */
+  playerCommentSeenTs?: number;
   /** コーチのワンタップリアクション */
   staffReaction?: StaffReaction;
   /** コーチがコメントに添えてピッチに描いた図 */

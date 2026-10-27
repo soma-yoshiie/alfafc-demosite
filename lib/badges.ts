@@ -24,6 +24,28 @@ export interface NoteBadgeInput {
 }
 
 /**
+ * 選手・保護者の「未読のコーチのコメント」（本人のノートで、コメントがあり、見た時刻より後のもの）。
+ * noteBadge の数え方と、ホームの「コーチからコメント N 件」が同じになるよう 1 か所に置く。
+ * 新しい順。
+ */
+export function unreadStaffComments(notebook: NotebookEntry[], playerId: string | null, seen: number): NotebookEntry[] {
+  if (!playerId) return [];
+  return notebook
+    .filter((n) => n.playerId === playerId && isUnreadStaffComment(n, seen))
+    .sort((a, b) => (b.staffCommentTs ?? b.ts) - (a.staffCommentTs ?? a.ts));
+}
+
+/**
+ * そのノートのコーチのコメントが未読か。コメントがあり、通知の既読時刻（seen）より後で、
+ * かつ本人が詳細で見た時刻（playerCommentSeenTs）より後のもの。
+ */
+export function isUnreadStaffComment(n: NotebookEntry, seen: number): boolean {
+  if (!n.staffComment || !n.staffCommentTs) return false;
+  if (n.staffCommentTs <= seen) return false;
+  return !(n.playerCommentSeenTs && n.playerCommentSeenTs >= n.staffCommentTs);
+}
+
+/**
  * ノートの入口の数字。
  * スタッフ＝staffSeenAt の無い提出。選手・保護者＝未読のコーチのコメント＋未回答の配信（お知らせ・回答済みの配信は数えない）。
  * 通知の設定でノートを切っていれば 0。
@@ -33,9 +55,7 @@ export function noteBadge(input: NoteBadgeInput): number {
   if (input.role === "coach") return staffUnreadNotes(input.notebook);
   const pid = input.playerId;
   if (!pid) return 0;
-  const comments = input.notebook.filter(
-    (n) => n.playerId === pid && !!n.staffComment && !!n.staffCommentTs && n.staffCommentTs > input.seen
-  ).length;
+  const comments = unreadStaffComments(input.notebook, pid, input.seen).length;
   const me = input.players.find((p) => p.id === pid) ?? null;
   const unanswered = (input.deliverables ?? []).filter(
     (d) => deliverableVisibleToPlayer(d, me ?? undefined, input.groups ?? []) && d.kind in DELIVER_KIND_LABEL && !d.responses[pid]

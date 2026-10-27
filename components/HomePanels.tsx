@@ -10,7 +10,8 @@
 
 import { useMemo, useState, type CSSProperties } from "react";
 import { announcementParts, announcementStats, announcementTarget, fmtListDate, sortAnnouncements, visibleAnnouncements } from "@/lib/chat";
-import { saveChatSeg } from "@/lib/storage";
+import { loadNotifSeen, saveChatSeg } from "@/lib/storage";
+import { unreadStaffComments } from "@/lib/badges";
 import { dmThreadKey, gradeLabel } from "@/lib/types";
 import type { PracticeNote } from "@/lib/types";
 import { termLabel } from "@/lib/profile";
@@ -19,6 +20,7 @@ import { useTeam } from "./TeamProvider";
 import { useProfiles } from "./ProfileProvider";
 import { IconChat, NoteKindIcon } from "./icons";
 import { fmtEventDate, type HomeTimelineScope } from "./homeData";
+import { notifIdentity } from "./NotebookTools";
 
 export type HomeVariant = "pc" | "mobile";
 
@@ -297,4 +299,32 @@ export function HomeGoals({ playerId, variant }: { playerId: string; variant: Ho
   ) : (
     <div className="mh-section mh-panel hp-goals">{body}</div>
   );
+}
+
+/* ===================== 3-4 コーチからのコメント（選手） ===================== */
+
+/**
+ * ux-fix R2-1: 目標の上に出す 1 行。未読のコーチのコメントがあるときだけ。
+ * 未読の判定は lib/badges.ts の isUnreadStaffComment（通知の既読時刻より後で、かつ本人が詳細で見ていない）。noteBadge と同じ。
+ * 押すと、いちばん新しい未読のノートの詳細（noteIntent → サッカーノート）。
+ */
+export function HomeCoachComment({ variant }: { variant: HomeVariant }) {
+  const board = useBoard();
+  const playerId = board.auth.playerId ?? null;
+  const unread = unreadStaffComments(board.notebook, playerId, loadNotifSeen()[notifIdentity(board.auth.role, board.auth.playerId)] ?? 0);
+  if (unread.length === 0) return null;
+  const card = (
+    <button
+      type="button"
+      className="hp-cmt"
+      onClick={() => {
+        board.setNoteIntent({ noteId: unread[0].id });
+        board.setScreen("notebook");
+      }}
+    >
+      <span className="hp-cmt-t">コーチからコメント {unread.length} 件</span>
+      <span className="hp-cmt-chev" aria-hidden="true">›</span>
+    </button>
+  );
+  return variant === "pc" ? <div className="hp-cmtwrap">{card}</div> : <div className="mh-section hp-cmtwrap">{card}</div>;
 }

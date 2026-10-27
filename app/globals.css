@@ -1815,6 +1815,19 @@ header {
   font-size: 12px;
   color: var(--mut);
 }
+/* ux-fix R2-4：スマホの名簿の行は高さ 1 種類（56px）。補足の無い行も同じ高さ */
+.teamapp:has(.mhead) .prow.rosmrow {
+  box-sizing: border-box;
+  height: 56px;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+.teamapp:has(.mhead) .prow.rosmrow .sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* mobile-redesign B-2: 数値の強調はink(PC既存の.prow .numと同じ値) */
 .prow .num {
   font-family: var(--font-display);
@@ -3660,7 +3673,7 @@ body:has(.mhead) .billtoggle button.on {
   padding: 4px 1px;
 }
 .teamapp:has(.mhead) .calev {
-  padding: 0 2px;
+  padding: 1px 2px;
 }
 /* レビュー指摘対応（既存不具合。今回の差分ではないが同じ画面のため一緒に直す）:
    .callegendがdisplay:flexで折り返しを許可しておらず、スマホ幅で子要素（グループ名）が
@@ -5451,6 +5464,37 @@ body:has(.mhead) .teamapp .dynrow select {
   margin-left: auto;
   font-weight: 700;
   color: var(--ink);
+}
+
+/* ux-fix R2-5：絞り込みの置き場が変わった。一覧の上の「選んだ条件」1 行（練習試合の .mt-filterline と同じ）、
+   絞り込みパネルの中のセレクト、「自分」の下段のセグメント、青の「新しい記事を書く」 */
+.cl-filterline-wrap {
+  padding: 0 16px;
+}
+.cl-filterline-pc button.mt-filterline-act {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+.clpanel-select {
+  margin: 2px 0 8px;
+}
+/* シートの中身が長い（ハッシュタグ 14 個）ので、見出しの「完了」はスクロールしても上に残す */
+.sheetBody > .clpanel .calfilterpanel-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin-bottom: 0;
+  background: var(--panel);
+}
+.cl-mesegwrap {
+  padding-top: 0;
+}
+.cl-newbtn {
+  background: var(--accent);
+  color: var(--surface-lowest);
 }
 
 .cl-filterrow {
@@ -7505,6 +7549,7 @@ body:has(.mhead) .teamapp .dynrow select {
   padding: 8px 0;
 }
 .annlist > .annbtn,
+.annlist > .annlistend,
 .msglist > .chatnewbtn {
   width: 100%;
 }
@@ -7696,15 +7741,41 @@ body:has(.mhead) .teamapp .dynrow select {
   font-size: var(--fs-body);
   font-variant-numeric: tabular-nums;
 }
-/* スタッフだけの「既読 52/70 ›」 */
+/* スタッフだけの「了解 41/70 ›」「既読 52/70 ›」（button。押すと既読パネル＝了解／未読のタブ。ux-fix R2-7） */
 .annseen {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
   color: var(--accent);
+  font-family: var(--font-ui);
   font-size: var(--fs-body);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.annseen:active {
+  background: var(--surface-low);
+}
+/* 既読パネル「了解」のタブ：未了解／了解の 2 区画（ux-fix R2-7） */
+.annreadsec {
+  display: flex;
+  flex-direction: column;
+}
+.annreadsech {
+  padding: 6px 2px 2px;
+  color: var(--ink);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+}
+.annreadsec + .annreadsec {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--outline);
 }
 /* PC の左ペイン用の小さい版：本文・添付を省き、選択行はティント（PC の 3 列の定義は末尾の chat-plan-a §3-6 の区画） */
 .anncard.mini .anncardmain {
@@ -9088,10 +9159,13 @@ body:has(.mhead) .teamapp .dynrow select {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 9px 4px;
-  border-radius: var(--r-sm);
-  border: 1px solid transparent;
-  background: var(--surface-low);
+  min-height: 44px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: var(--r-md);
+  /* ux-fix R2-7: 未選択でも押せる部品と分かる 1px の枠。押した時点で送信する */
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-lowest);
   color: var(--mut);
   font-size: var(--fs-body-s);
   font-weight: 700;
@@ -9101,6 +9175,50 @@ body:has(.mhead) .teamapp .dynrow select {
   border-color: var(--accent);
   color: var(--accent);
   background: var(--accent-tint);
+}
+/* ux-fix R2-7: 送信済みの日時・次の未読へ・PC の空のペインの「未読 N 件を開く」・予定別の行から予定の詳細へ */
+.noteapp .cmtsent {
+  margin: 6px 2px 0;
+  font-size: var(--fs-label);
+  color: var(--mut);
+}
+.noteapp .cmtnext {
+  margin-top: 8px;
+}
+.noteapp .nbopenunread {
+  width: auto;
+  margin: 12px auto 0;
+}
+.noteapp .evgopen {
+  margin: 4px 0 8px;
+}
+/* ux-fix R2-7: 予定の詳細の未回答の名前・メッセージ・ノート N／M 提出の行 */
+.teamapp .evunans {
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+.teamapp .evunans-btn {
+  /* 隣の「記録を見る・編集」（.bigbtn）と左右の端をそろえる */
+  width: calc(100% - 32px);
+  margin: 8px 16px;
+}
+.teamapp .evunans-form {
+  padding: 0 4px 12px;
+}
+.teamapp .evunans-who {
+  margin: 0 0 8px;
+  color: var(--mut);
+  font-size: var(--fs-label);
+}
+.teamapp .evunans-text {
+  display: block;
+  margin: 0 0 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+/* ux-fix R2-7: スマホの詳細は下のタブの高さ分あける（送るボタンがタブに隠れない） */
+.noteapp:has(.mhead) .notedetail {
+  padding-bottom: calc(56px + env(safe-area-inset-bottom));
 }
 /* 選手側：コーチのリアクション表示 */
 .noteapp .reactpill {
@@ -9285,6 +9403,30 @@ body:has(.mhead) .noteapp .nbtop .ngchip {
   height: 8px;
   margin-right: 3px;
   border-radius: 50%;
+}
+/* ux-fix R2-7: チャットのスレッドの「ノート」から来たとき、提出一覧をその選手だけに絞っている行 */
+.noteapp .nbplayerrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+.noteapp .nbplayername {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.noteapp .nbplayerclear {
+  flex: none;
+  align-self: center;
+  width: auto;
+  padding: 0 14px;
 }
 .noteapp .nbcount {
   padding: 0 2px 8px;
@@ -10828,6 +10970,25 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   font-size: 20px;
   flex: none;
 }
+/* ux-fix R2-2: 作成シートの種類のアイコン（NoteKindIcon）。色は種類ごと、地は中立 */
+.noteapp .wsheetic.k-match,
+.noteapp .wsheetic.k-practice,
+.noteapp .wsheetic.k-solo {
+  background: var(--surface-low);
+}
+.noteapp .wsheetic svg {
+  width: 26px;
+  height: 26px;
+}
+.noteapp .wsheetic.k-match {
+  color: var(--note-match);
+}
+.noteapp .wsheetic.k-practice {
+  color: var(--note-practice);
+}
+.noteapp .wsheetic.k-solo {
+  color: var(--note-solo);
+}
 .noteapp .wsheetopt b {
   display: block;
   font-size: var(--fs-title-s);
@@ -10977,6 +11138,125 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   display: flex;
   align-items: center;
   gap: 5px;
+}
+/* ux-fix R2-1: 選手のノートのホーム。今日の状況 → スタッフからのコメント → コーチから → 今週の数字（1 行） */
+.noteapp .homecta-write {
+  margin-top: 10px;
+}
+.noteapp .homesec-n {
+  margin-left: auto;
+  color: var(--accent);
+  font-weight: 700;
+}
+.noteapp .pcmts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.noteapp .pcmt {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.noteapp .pcmt.unread {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+}
+.noteapp .pcmt-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.noteapp .pcmt-who {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--mut);
+}
+.noteapp .pcmt-body {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.noteapp .pnum {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  margin: 16px 0 12px;
+  padding: 6px 14px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 700;
+}
+/* ux-fix R2-1: 作成シートの見出し「どのノートを書く？」（16px・本文の色） */
+.noteapp .wsheet-h.kindsheet-h {
+  font-size: 16px;
+  color: var(--ink);
+}
+/* ux-fix R2-2: 選手のノート一覧の上。1 段目＝自分のノート｜チームの共有(.mseg)、2 段目＝検索＋種類チップの 1 行 */
+.noteapp .nbplbar {
+  flex-shrink: 0;
+}
+.noteapp .nbplscope .mseg {
+  /* 2 項目で横にあふれないので、右端のフェードは掛けない */
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.noteapp .nbplscope .mseg-item {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 44px;
+  justify-content: center;
+}
+.noteapp .nbplrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 10px;
+}
+.noteapp .nbplsearch {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  cursor: pointer;
+}
+.noteapp .nbplchips.fbar {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+}
+.noteapp .nbplchips .chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 13px;
 }
 
 /* 検索バー風ボタン（一覧の上） */
@@ -12763,6 +13043,35 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   margin-left: 8px;
 }
 
+/* ux-fix R2-1: 選手のホーム・目標の上の「コーチからコメント N 件 ›」（未読があるときだけ）。青い左線＝操作の入口 */
+.hp-cmt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--outline);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.hp-cmt-t {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.hp-cmt-chev {
+  flex: 0 0 auto;
+  color: var(--mut);
+  font-size: var(--fs-title);
+}
+
 /* =========================================================
    設定画面（specs/settings-plan-a.md §2・§7。components/SettingsScreen.tsx・settings/）
    行の左にアイコンは置かない。基底はスマホ（タップ 44px）。PC の左カテゴリ列・密度（40px/32px・四角）は
@@ -13288,6 +13597,37 @@ button.st-row:active {
   padding-left: 16px;
   padding-right: 16px;
 }
+/* ux-fix R2-7: 見出し全体を押せるとき（チャットのスレッドで選手名から個人ページへ）。高さは 52px いっぱい */
+.mhead-tx:has(> .mhead-tx-btn) {
+  align-self: stretch;
+  padding: 0;
+}
+.mhead-tx-btn {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mhead-tx-btn:active {
+  background: var(--surface-low);
+}
+.mhead-tx-btn .mhead-title,
+.mhead-tx-btn .mhead-sub {
+  display: block;
+}
 .mhead-title {
   font-size: var(--fs-title);
   font-weight: 700;
@@ -13309,7 +13649,16 @@ button.st-row:active {
 .mhead-actions {
   flex: none;
   display: flex;
+  align-items: center;
   gap: 2px;
+}
+/* チャットのスレッドの見出し右の「ノート」（.st-btn.ghost の小さい四角。ux-fix R2-7） */
+.mhead-notebtn {
+  width: auto;
+  flex: none;
+  min-height: 44px;
+  margin-right: 4px;
+  padding: 0 14px;
 }
 .mhead-action {
   flex: none;
@@ -13904,16 +14253,19 @@ button.st-row:active {
    インラインstyleで渡す）をcolor-mixで薄い地色＋濃い同系色の文字にする（白文字の帯は
    やめた。§11-3で明るい色（イエロー等）も選べるようになるため、白文字だと読めなくなる） */
 .calev {
-  display: block;
+  /* ux-fix R2-6: 略号（試・保・遠）をやめ、予定名を 2 行まで折り返す（3 行目以降は切る） */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: 12px;
   font-weight: 700;
-  line-height: 18px;
-  height: 18px;
+  line-height: 16px;
+  min-height: 18px;
   border-radius: 4px;
-  padding: 0 6px;
-  white-space: nowrap;
+  padding: 1px 6px;
+  white-space: normal;
   overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
   background: color-mix(in srgb, var(--gc) 18%, transparent);
   color: color-mix(in srgb, var(--gc) 65%, var(--ink));
 }
@@ -14026,11 +14378,6 @@ button.st-row:active {
   color: var(--mut);
   padding: 0 6px;
 }
-/* ちょうど3件のときだけPC/タブレットは2件+「+1」に見せる（スマホは3件とも見せてよいので
-   「+1」は出さない。4件以上は.calmoreの方で両方とも同じ数字を出す） */
-.calmore-pconly {
-  display: none;
-}
 @media (min-width: 700px) {
   .teamapp .calcell {
     aspect-ratio: auto;
@@ -14043,15 +14390,6 @@ button.st-row:active {
   }
   .calev-time {
     display: inline;
-  }
-  .calmore-pconly {
-    display: inline;
-  }
-  /* calendar-plan-a §11-2: ちょうど3件のときだけ、PC/タブレットは3件目のピルを隠して
-     2件+「+1」(.calmore-pconly)にする（4件以上はJS側のslice自体が2件までしか
-     レンダーしないため、このルールは3件ちょうどのときにしか一致しない） */
-  .calev:nth-child(3) {
-    display: none;
   }
   /* レビュー指摘対応(§4-2): usePc(1024px以上)より.mheadの出る幅が広いため、700〜1023px
      （タブレット）では上の§4-1(.teamapp:has(.mhead) .calcell等、詳細度0,3,0・メディア
@@ -15601,6 +15939,45 @@ body:has(.mhead) .grouppick-item {
   color: var(--mut);
 }
 
+/* ux-fix R2-4：要約（4 マス）は「基本」だけ。ほかのセクションは名前・背番号・ポジションの 1 行（56px） */
+.phubhead.compact {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 14px;
+}
+.phubhead.compact .phubhead-top {
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+}
+.phubhead.compact .phubid {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.phubhead.compact .phubpos {
+  min-width: 0;
+  padding: 2px 8px;
+  font-size: var(--fs-body);
+}
+.phubhead.compact .phubno {
+  font-size: var(--fs-title-s);
+}
+.phubhead.compact .phubname {
+  font-size: var(--fs-title);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.phubhead.compact .phubsub {
+  display: none;
+}
+.phubhead.compact .phubedit {
+  margin: 0;
+}
+
 /* メニュー：スマホ＝ヘッダーカードの下の横スクロールのチップ列（44px。スクロールしても上に貼り付く） */
 .phubtabs {
   position: sticky;
@@ -15635,6 +16012,24 @@ body:has(.mhead) .grouppick-item {
   color: var(--on-primary);
   background: var(--accent);
   border-color: var(--accent);
+}
+/* 右端のフェード：まだ右に続くことを示す（スクロールしても右端に貼り付く） */
+/* ux-fix R2-4: 右に続きがあるとき（.more。hub/common の useTabRowMore）だけフェードを出す */
+.phubtabs.more::after {
+  content: "";
+  position: sticky;
+  right: 0;
+  flex: none;
+  align-self: stretch;
+  width: 28px;
+  margin-left: -28px;
+  pointer-events: none;
+  background: linear-gradient(to right, transparent, var(--surface));
+}
+/* ux-fix R2-4 レビュー: 終わりの余白は最後のチップに持たせる（容器の padding にすると sticky の ::after が
+   右端から 28px 内側に貼り付く）。スクロールし切ると ::after は最後のチップの後ろの空きに乗り、チップに掛からない */
+.phubtabs.more button:last-of-type {
+  margin-right: 28px;
 }
 /* PC の縦メニューはスマホでは出さない（PlayerHub が pc のときだけ描く。念のため） */
 .phubnav {
@@ -15758,6 +16153,21 @@ body:has(.mhead) .grouppick-item {
 .phubkv-sub {
   font-size: var(--fs-body-s);
   font-weight: 400;
+  color: var(--mut);
+}
+/* ux-fix R2-7: スタッフのメモをその場で書く欄（.st-input の見た目。離れたとき保存） */
+.phubmemo-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.phubmemo-input {
+  display: block;
+  line-height: 1.6;
+  resize: vertical;
+}
+.phubmemo-saved {
+  font-size: var(--fs-label);
   color: var(--mut);
 }
 .phubmemo {
@@ -17777,6 +18187,147 @@ textarea.st-input.mt-msg {
 .mt-form .phubseg button {
   min-width: 0;
   padding: 0 6px;
+}
+
+/* ux-fix R2-3: 試合記録。スマホは「試合｜成績」のセグメント（.mseg-item の見た目・44px）、
+   成績のランキングは 3 位までで「すべて見る」。PC の「選手・保護者の見え方を確認」ボタンと
+   チーム成績の 1 行（.recsumrow）、順位表の見出しの横の入力方法も同じ節 */
+.recseg {
+  padding: 8px 0 8px;
+}
+.recseg .mseg {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+.recseg .mseg-item {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 44px;
+  justify-content: center;
+}
+.rankmore {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.leaguehead-l {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+.leaguemode {
+  flex: none;
+  font-size: 12px;
+  color: var(--mut);
+}
+.recsumrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 0;
+  margin: 0 0 14px;
+  padding: 10px 2px;
+  border-top: 1px solid var(--outline);
+  border-bottom: 1px solid var(--outline);
+  color: var(--mut);
+  font-size: var(--fs-body);
+}
+.recsumrow > span + span::before {
+  content: "・";
+  margin: 0 8px;
+  color: var(--mut);
+}
+.recsumrow b {
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.recteamtiles {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.recteamtiles .hstat {
+  cursor: default;
+}
+.teamapp .rolecheck {
+  flex: none;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.teamapp .rolecheck.on {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
+}
+.teamapp .rolecheck:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ux-fix R2-6: カレンダーの月表示｜リスト表示は月送りの行（.calnav）の右端の小さなセグメント（約 160px）。
+   .calnav button（‹ ›）の詳細度に負けないよう .teamapp .calnav まで付ける */
+.calviewseg {
+  display: flex;
+  gap: 4px;
+  flex: 0 0 160px;
+  width: 160px;
+  margin-left: auto;
+}
+.teamapp .calnav .calviewseg .mseg-item {
+  position: relative;
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 4px;
+  justify-content: center;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 400;
+}
+.teamapp .calnav .calviewseg .mseg-item.on {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
+}
+/* 見た目は 36px のまま、指で押せる範囲を上下に 4px ずつ広げて 44px にする */
+.teamapp .calnav .calviewseg .mseg-item::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.teamapp:has(.mhead) .calnav {
+  justify-content: flex-start;
+  gap: 2px;
+}
+.teamapp:has(.mhead) .calnav b {
+  font-size: 18px;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
 /* ============================================================
@@ -23109,20 +23660,21 @@ textarea.st-input.mt-msg {
   /* Phase D-1(C1-major): コーチラボの緑クローム(トグル選択・カードカテゴリピル・
      フォローするボタン・有料枠線)はspecs/coachlab.md由来のPC既存デザインのため、
      基底を青へ変更した分をPCでは元のライム値に戻す（15725行付近のコメント参照） */
+  /* ux-fix R2-5：コーチラボの切替・カテゴリ・フォローは青（緑は状態だけ）。PC も基底の青のまま */
   .cl-toggle button.on {
-    background: var(--lime);
-    color: #ffffff;
+    background: var(--accent-tint);
+    color: var(--accent);
   }
   .cl-cardcat {
-    color: #ffffff;
-    background: var(--lime);
+    color: var(--accent);
+    background: var(--accent-tint);
   }
   .cl-followbtn {
-    border-color: var(--lime);
-    background: var(--lime);
+    border-color: var(--accent);
+    background: var(--accent);
   }
   .cl-card.paid {
-    border-color: rgba(21, 128, 61, 0.35);
+    border-color: var(--outline);
   }
   /* Phase D-1(C2-major): セットプレー3Dビュー(PCでも使用)の選択色・主要ボタン・
      ヘルプ見出しは基底が青(--accent)へ変更されたためPC既存のライム値へ戻す
@@ -24967,6 +25519,165 @@ textarea.st-input.mt-msg {
   .hp-scopes .kpitile.hp-tile:hover:not(.on) {
     background: var(--surface-low);
   }
+  /* ux-fix R2-1: 選手のノートのホーム（PC）。左の列（280px）はなくなったので 1 本の読みやすい幅に。
+     1 本目の PC ブロックの 2 列グリッドをここで打ち消す */
+  .noteapp .notehome {
+    display: block;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  .noteapp .homecta-write {
+    width: auto;
+    min-width: 200px;
+  }
+  .noteapp .pcmt {
+    border-radius: var(--r-md);
+  }
+  .noteapp .pnum {
+    min-height: 40px;
+    border-radius: var(--r-md);
+  }
+  /* ux-fix R2-1: 選手の PC ホームの「コーチからコメント N 件 ›」。ヒーローと目標の間 */
+  .hp-cmtwrap {
+    margin-bottom: 16px;
+  }
+  .hp-cmt {
+    min-height: 40px;
+    border-radius: var(--r-md);
+  }
+  /* ux-fix R2-2: 選手のノート一覧の上（PC）。セグメントは 360px まで、検索・チップは 32px */
+  .noteapp .nbplscope .mseg {
+    max-width: 360px;
+  }
+  .noteapp .nbplscope .mseg-item {
+    height: 36px;
+  }
+  .noteapp .nbplsearch {
+    height: 32px;
+    border-radius: var(--r-md);
+  }
+  .noteapp .nbplchips .chip {
+    min-height: 32px;
+  }
+  /* ux-fix R2-6: カレンダーの月表示｜リスト表示（PC）。月送りの行の右端に絶対配置、高さ 32px */
+  .calnav .calviewseg {
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0;
+  }
+  .teamapp .calnav .calviewseg .mseg-item {
+    height: 32px;
+  }
+  .teamapp .calnav .calviewseg .mseg-item::after {
+    inset: 0;
+  }
+  /* ux-fix R2-5：コーチラボ「探す」の左の絞り込み列（184px。練習試合の .mtside／カレンダーの .calside と同じ作り） */
+  .clapp .scroll:has(> .cl-explorepc) {
+    max-width: none;
+    padding: 0 0 calc(env(safe-area-inset-bottom) + 40px);
+  }
+  .cl-explorepc {
+    display: grid;
+    grid-template-columns: 184px minmax(0, 1fr);
+    min-height: 100%;
+  }
+  .cl-explorepc .cl-explorebody {
+    padding-top: 16px;
+  }
+  .clside {
+    min-height: 0;
+    padding: 8px 8px 16px 10px;
+    border-right: 1px solid var(--outline);
+    background: var(--surface-lowest);
+  }
+  .clside .calfilterpanel-sec {
+    margin-bottom: 0;
+  }
+  .clside .calfilterpanel-sech {
+    padding: 8px 2px 2px;
+  }
+  .clside .calfilterpanel-sec:first-of-type .calfilterpanel-sech {
+    padding-top: 2px;
+  }
+  .clside .calfilterpanel-row {
+    min-height: 24px;
+    gap: 6px;
+    padding: 0 4px;
+    font-size: 14px;
+    border-radius: var(--r-xs);
+  }
+  .clside .calfilterpanel-row:hover {
+    background: var(--surface-low);
+  }
+  .clside .calfilterpanel-manage {
+    min-height: 24px;
+    margin-top: 6px;
+    padding: 0 4px;
+    font-size: 12px;
+  }
+  .clside .clpanel-select {
+    min-height: 32px;
+    margin: 0 0 4px;
+    padding: 4px 8px;
+    font-size: 14px;
+  }
+  .cl-explorepc .cl-filterline-wrap {
+    padding: 0 24px;
+  }
+  .cl-filterline-pc {
+    min-height: 32px;
+    margin: 0 0 8px;
+  }
+  /* ux-fix R2-7: PC のスタンプは 36px、「未読 N 件を開く」・次の未読へ・予定の詳細へは 32px（四角） */
+  .noteapp .reactbtn {
+    min-height: 36px;
+  }
+  .noteapp .cmtnext,
+  .noteapp .evgopen,
+  .noteapp .nbopenunread {
+    min-height: 32px;
+    padding: 0 14px;
+    font-size: 14px;
+  }
+  .noteapp .nbopenunread,
+  .noteapp .evgopen {
+    width: auto;
+  }
+  /* ux-fix R2-7: チャットのスレッドの見出し。選手名＝個人ページへ（文字ボタン）、右の「ノート」＝その選手の提出一覧へ（32px・四角） */
+  .chatapp .chatpanehead .chatpanelink {
+    min-height: 32px;
+    margin: 0 0 0 -6px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    font-family: var(--font-ui);
+    text-align: left;
+    cursor: pointer;
+  }
+  .chatapp .chatpanehead .chatpanelink:hover {
+    background: var(--surface-low);
+  }
+  .chatapp .chatpanehead .chatpanelink span {
+    color: var(--mut);
+  }
+  .chatapp .chatpanehead .chatpanenote {
+    flex: none;
+    align-self: center;
+    width: auto;
+    min-height: 32px;
+    margin-left: auto;
+    padding: 0 14px;
+  }
+  /* 一覧の「了解 N/M ›」「既読 N/M ›」は 32px（タッチ端末は下の coarse で 44px）。文字は 12px 以上のまま */
+  .anncard .annseen {
+    min-height: 32px;
+  }
+  .noteapp .nbplayerclear {
+    min-height: 32px;
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -25078,9 +25789,28 @@ textarea.st-input.mt-msg {
       ここでその並びを増やさないため)。
    ========================================================= */
 @media (pointer: coarse) and (min-width: 1024px) {
+  /* ux-fix R2-7: ノートの詳細のスタンプ・次の未読へ・未読 N 件を開く・予定の詳細へも指サイズ 44px */
+  .noteapp .reactbtn,
+  .noteapp .cmtnext,
+  .noteapp .evgopen,
+  .noteapp .nbopenunread,
+  .noteapp .nbplayerclear,
+  .anncard .annseen,
+  .chatapp .chatpanehead .chatpanelink,
+  .chatapp .chatpanehead .chatpanenote {
+    min-height: 44px;
+  }
   /* p18 §3-4: ホームの共通の部品の行・リンクも指サイズ 44px へ戻す */
   .hp-row,
-  .hp-link {
+  .hp-link,
+  .hp-cmt {
+    min-height: 44px;
+  }
+  /* ux-fix R2-2: 選手のノート一覧の上の操作も指サイズ 44px へ戻す */
+  .noteapp .nbplscope .mseg-item,
+  .noteapp .nbplsearch,
+  .noteapp .nbplchips .chip {
+    height: 44px;
     min-height: 44px;
   }
   /* 設定画面（specs/settings-plan-a.md §7）: PC で 40px/32px に詰めた操作を指サイズ 44px へ戻す */
@@ -25113,6 +25843,13 @@ textarea.st-input.mt-msg {
     min-height: 44px;
   }
   .chatsegwrap .mseg-item {
+    height: 44px;
+  }
+  /* ux-fix R2-3/R2-6: 見え方の確認ボタン・カレンダーの月/リスト切替も指サイズ 44px へ戻す */
+  .teamapp .rolecheck {
+    height: 44px;
+  }
+  .teamapp .calnav .calviewseg .mseg-item {
     height: 44px;
   }
   /* ux-fix R1-1: 自分の出欠の操作も指サイズ 44px へ戻す */
@@ -25188,7 +25925,12 @@ textarea.st-input.mt-msg {
   .mt-link,
   .mt-form-x,
   .mt-form .st-input,
-  .mt-form .mt-form-submit {
+  .mt-form .mt-form-submit,
+  /* ux-fix R2-5: コーチラボの絞り込み列・条件の行も 44px へ戻す */
+  .clside .calfilterpanel-row,
+  .clside .calfilterpanel-manage,
+  .clside .clpanel-select,
+  .cl-filterline-pc {
     min-height: 44px;
   }
   .mt-segrow .mseg-item {

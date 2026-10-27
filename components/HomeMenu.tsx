@@ -14,7 +14,7 @@ import {
   type BoardCtx,
   type TeamCtx,
 } from "./homeData";
-import { HomeAnnouncements, HomeGoals, HomeTimeline } from "./HomePanels";
+import { HomeAnnouncements, HomeCoachComment, HomeGoals, HomeTimeline } from "./HomePanels";
 
 /* ===================== PC判定（ConsoleScreens.tsx の PC_MQ 前例をそのままコピー） ===================== */
 const PC_MQ = "(min-width: 1024px)";
@@ -394,6 +394,9 @@ function PlayerPcHome({
           emptyCtaLabel="チームのカレンダーを見る ›"
           onEmptyCta={() => board.setScreen("team")}
         />
+
+        {/* ux-fix R2-1: 未読のコーチのコメントがあるときだけ、目標の上に 1 行 */}
+        <HomeCoachComment variant="pc" />
 
         <div className="mdb-cols">
           <HomeGoals playerId={me} variant="pc" />

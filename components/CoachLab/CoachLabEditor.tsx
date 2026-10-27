@@ -877,7 +877,7 @@ export default function CoachLabEditor({
     return (
       <>
         <div className="cl-writepane screenbody">
-          <button type="button" className="bigbtn" onClick={() => setEditId("new")}>
+          <button type="button" className="bigbtn cl-newbtn" onClick={() => setEditId("new")}>
             ＋ 新しい記事を書く
           </button>
           <OwnArticleList articles={board.userArticles} editId={editId} onSelect={setEditId} />
@@ -895,7 +895,7 @@ export default function CoachLabEditor({
     <div className="scroll screenbody">
       {editId === null ? (
         <>
-          <button type="button" className="bigbtn" onClick={() => setEditId("new")}>
+          <button type="button" className="bigbtn cl-newbtn" onClick={() => setEditId("new")}>
             ＋ 新しい記事を書く
           </button>
           <OwnArticleList articles={board.userArticles} editId={editId} onSelect={setEditId} />

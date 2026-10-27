@@ -23,10 +23,12 @@ import type {
   TeamEventKind,
   TeamGroup,
 } from "@/lib/types";
-import { gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL } from "@/lib/types";
+import { dmThreadKey, gradeLabel, GOAL_ORIGIN_LABELS, INJURY_STATUS_LABEL } from "@/lib/types";
+import { staffIdentity } from "@/lib/chat";
+import { eventSubmitStats, noteBelongsToEvent } from "@/lib/eventNotes";
 import { groupOf } from "@/lib/formations";
 import { buildEventSquad } from "@/lib/squad";
-import { computeStandings, leaguePositionOf, type Standing } from "@/lib/sampleLeague";
+import { computeStandings, type Standing } from "@/lib/sampleLeague";
 import {
   addDays,
   byStartAsc,
@@ -76,6 +78,7 @@ import type { AttPeriod } from "@/lib/attendanceStats";
 import { groupAttendance, monthlyAttendance, perPlayerAttendance, periodStartDate } from "@/lib/attendanceStats";
 import {
   ALL_TARGETS_COLOR,
+  eventTargetPlayers,
   eventTargetsPlayer,
   groupColorOf,
   matchTargetLabel,
@@ -114,6 +117,8 @@ import { Sheet } from "./team/Sheet";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
+/** ux-fix R2-3: PCの「選手・保護者の見え方を確認」で最初に切り替える選手（デモの p08。いなければ先頭の選手） */
+const PREVIEW_PLAYER_ID = "p08";
 
 /**
  * PC幅かどうかを追跡するフック（components/CoachLab/CoachLabParts.tsx useIsPc() と同じ手法）。
@@ -853,24 +858,24 @@ function Inner() {
         // PCのrolebar（スタッフの表示切替）は変更しない。選手ログイン時は帯を出さない
         board.auth.role === "coach" ? (
           <div className="rolebar">
-            <span>表示</span>
-            <select
-              value={isCoach ? "coach" : team.viewer.memberPlayerId ?? ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v === "coach") team.setViewer("coach", null);
-                else team.setViewer("member", v);
+            {/* ux-fix R2-3: 「表示 スタッフ（管理）」の select を、選手・保護者の見え方を確認するボタン 1 つに。
+                押すと選手の表示（既定は p08＝デモの選手。いなければ先頭の選手）へ、もう一度押すとスタッフに戻る */}
+            <button
+              type="button"
+              className={`rolecheck${isCoach ? "" : " on"}`}
+              aria-pressed={!isCoach}
+              disabled={isCoach && players.length === 0}
+              onClick={() => {
+                if (!isCoach) {
+                  team.setViewer("coach", null);
+                  return;
+                }
+                const pid = players.find((p) => p.id === PREVIEW_PLAYER_ID)?.id ?? players[0]?.id;
+                if (pid) team.setViewer("member", pid);
               }}
             >
-              <option value="coach">スタッフ（管理）</option>
-              <optgroup label="選手・保護者として">
-                {players.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-            </select>
+              選手・保護者の見え方を確認
+            </button>
             <span className="rolehint">
               {isCoach ? "全員を管理" : `${me?.name ?? "選手"} として閲覧`}
             </span>
@@ -1586,20 +1591,20 @@ function CalendarTab({
   // 案A §1 レビュー指摘対応: 凡例はカテゴリ色ではなく、マスの点・帯と同じグループ色
   // (groupColorOf)に揃える。その月に登場する対象グループ／全員向けを重複なく列挙し
   // （最大5個＋「他◯」）、試合が1件でもあれば輪の見本を1つ添える
-  const monthGroupLegendMap = new Map<string, { label: string; color: string }>();
-  let monthHasMatch = false;
+  // ux-fix R2-6: 凡例の順は「全員・学年（中1・中2・中3）・グループ」
+  const monthGroupLegendMap = new Map<string, { label: string; color: string; order: number }>();
   monthDays.forEach(({ evs }) =>
     evs.forEach((e) => {
-      if (e.kind === "match") monthHasMatch = true;
       const resolvedId = isAllTargets(e) ? null : e.groupIds!.find((id) => team.groups.some((g) => g.id === id)) ?? null;
       const g = resolvedId ? team.groups.find((x) => x.id === resolvedId) : undefined;
       const key = g ? g.id : "__all__";
       if (!monthGroupLegendMap.has(key)) {
-        monthGroupLegendMap.set(key, { label: g ? g.label : "全員向け", color: g?.color ?? ALL_TARGETS_COLOR });
+        const order = !g ? 0 : g.kind === "grade" ? 1000 + (g.grade ?? 0) : 2000 + team.groups.indexOf(g);
+        monthGroupLegendMap.set(key, { label: g ? g.label : "全員向け", color: g?.color ?? ALL_TARGETS_COLOR, order });
       }
     })
   );
-  const monthGroupLegend = Array.from(monthGroupLegendMap.values());
+  const monthGroupLegend = Array.from(monthGroupLegendMap.values()).sort((a, b) => a.order - b.order);
 
   // 日付ごとの予定行（リスト表示だけで使う。calendar-plan-a §11-2で撤去した
   // 「今日からの予定」（月表示下）とも以前は共用していたが、今はここだけ）。
@@ -1679,28 +1684,41 @@ function CalendarTab({
       })()
     : null;
 
+  // ux-fix R2-6: 絞り込みが掛かっているときだけ「中1・Aチームで絞り込み中」と出す（掛かっていなければ行ごと出さない）
   const calSel: React.ReactNode = isCoach
     ? coachSel!.allDefault
-      ? "すべての予定"
+      ? null
       : coachSel!.nothingShown
         ? "表示する予定なし"
         : (() => {
             const nodes: React.ReactNode[] = coachSel!.shownGroups.map((g) => (
-              <span key={g.id} style={{ marginRight: 8 }}>
+              <span key={g.id}>
                 <i className="calseldot" style={{ background: g.color }} />
                 {g.label}
               </span>
             ));
-            if (coachSel!.showAllTargets) nodes.push(<span key="all">＋ 全員向け</span>);
-            if (coachSel!.catsHiddenLabel) nodes.push(`・${coachSel!.catsHiddenLabel}`);
-            return nodes;
+            if (coachSel!.showAllTargets) nodes.push("全員向け");
+            if (coachSel!.catsHiddenLabel) nodes.push(coachSel!.catsHiddenLabel);
+            return (
+              <>
+                {nodes.map((n, i) => (
+                  <Fragment key={i}>
+                    {i > 0 && "・"}
+                    {n}
+                  </Fragment>
+                ))}
+                で絞り込み中
+              </>
+            );
           })()
     : (() => {
         const shownCats = team.categories.filter((c) => !calFilter.hiddenCategoryIds.includes(c.id));
-        const base = calMine ? "自分の予定" : "すべての予定";
-        if (calFilter.hiddenCategoryIds.length === 0) return base;
-        const catsLabel = shownCats.length > 0 ? `${shownCats.map((c) => c.label).join("・")}のみ` : "表示する種類なし";
-        return `${base}・${catsLabel}`;
+        const parts: string[] = [];
+        if (calMine) parts.push("自分の予定");
+        if (calFilter.hiddenCategoryIds.length > 0) {
+          parts.push(shownCats.length > 0 ? `${shownCats.map((c) => c.label).join("・")}のみ` : "表示する種類なし");
+        }
+        return parts.length > 0 ? `${parts.join("・")}で絞り込み中` : null;
       })();
 
   // 案A §6: 画像保存(PNG)のヘッダーに使うプレーンテキスト版。coachSelを共用するため、
@@ -1804,18 +1822,18 @@ function CalendarTab({
           {ym.y}年 {ym.m + 1}月
         </b>
         <button onClick={() => shift(1)}>›</button>
+        {/* ux-fix R2-6: 月表示｜リスト表示の切替は月送りの行の右端に小さなセグメント（約 160px。.mseg-item の見た目） */}
+        <MobileSegments
+          wrapClassName="calviewseg"
+          ariaLabel="カレンダーの表示切替"
+          items={[
+            { key: "month", label: "月表示", on: view === "month", onSelect: () => setView("month") },
+            { key: "list", label: "リスト表示", on: view === "list", onSelect: () => setView("list") },
+          ]}
+        />
       </div>
 
-      <div className="calsel">{calSel}</div>
-
-      <div className="calviewtoggle">
-        <button className={view === "month" ? "on" : ""} onClick={() => setView("month")}>
-          月表示
-        </button>
-        <button className={view === "list" ? "on" : ""} onClick={() => setView("list")}>
-          リスト表示
-        </button>
-      </div>
+      {calSel && <div className="calsel">{calSel}</div>}
 
       {view === "month" ? (
         <>
@@ -1841,20 +1859,16 @@ function CalendarTab({
                   <span className={`caldate${i % 7 === 0 ? " sun" : i % 7 === 6 ? " sat" : ""}`}>{d}</span>
                   {/* calendar-plan-a §11-2: スマホも点(.caldots)ではなくピル(.calevs/.calev)を出す。
                       色は--gc(インラインstyle)で渡し、CSS側がcolor-mixで薄地+濃い文字にする。
-                      件数(§11-2「1マス3件まで、4件目からは2件＋『+N』」)は旧.caldotsと同じ
-                      slice式（4件以上だけ2件に減らす）。ちょうど3件のときだけスマホ(3件とも表示・
-                      「+N」なし)とPC/タブレット(2件＋「+1」＝§4-2の従来どおり)で見え方が割れるため、
-                      その1パターンだけ.calmore-pconlyでPCだけに出す（4件以上は両方とも同じ「+N」） */}
+                      ux-fix R2-6: 予定名を 2 行まで折り返すので、1マスに出すのは 2件まで。3件以上の日は
+                      2件＋「+N」（スマホ・PC共通。以前はちょうど3件のスマホだけ3件とも出していた） */}
                   <div className="calevs">
-                    {evs.slice(0, evs.length > 3 ? 2 : 3).map((e) => {
-                      const cat = categoryOf(e, team.categories);
+                    {evs.slice(0, 2).map((e) => {
                       const isStart = e.date === ds;
                       const isEnd = eventEndDate(e) === ds;
                       const corner = isStart && isEnd ? "single" : isStart ? "start" : isEnd ? "end" : "mid";
                       const showTime = (corner === "start" || corner === "single") && !e.allDay && e.time;
-                      // 案A §4-2: 種類は文字の先頭1文字で示す（試合は「試 」固定・練習は付けない・
-                      // その他カテゴリは先頭1文字）。時刻はPC/タブレットだけ.calev-time(CSS)で出す
-                      const prefix = cat.id === "match" ? "試 " : cat.id === "practice" ? "" : `${cat.label.slice(0, 1)} `;
+                      // ux-fix R2-6: 1 文字の略号（試・保・遠）はやめ、予定名を 2 行まで折り返す。
+                      // 時刻はPC/タブレットだけ.calev-time(CSS)で出す
                       // p15 §6-5: 紐づく試合記録があれば、時刻の代わりにスコア（公開の条件は eventResultOf）
                       const rec = eventResultOf(e, team.team.matches, isCoach, board.matchesPublic);
                       return (
@@ -1864,7 +1878,6 @@ function CalendarTab({
                           style={{ "--gc": groupColorOf(e, team.groups) } as React.CSSProperties}
                         >
                           {isUnanswered(e) && <i className="calev-dot" aria-label="未回答" />}
-                          {prefix}
                           {rec ? (
                             <span className="calev-score">{matchResultOf(rec).score} </span>
                           ) : (
@@ -1874,8 +1887,7 @@ function CalendarTab({
                         </span>
                       );
                     })}
-                    {evs.length > 3 && <span className="calmore">+{evs.length - 2}</span>}
-                    {evs.length === 3 && <span className="calmore calmore-pconly">+1</span>}
+                    {evs.length > 2 && <span className="calmore">+{evs.length - 2}</span>}
                   </div>
                 </div>
               );
@@ -1889,10 +1901,6 @@ function CalendarTab({
                 </span>
               ))}
               {monthGroupLegend.length > 5 && <span>他{monthGroupLegend.length - 5}</span>}
-              {/* レビュー指摘対応（calendar-plan-a §11-2）: マスの点(輪=試合)は撤去し、
-                  試合はピル先頭の「試 」で示す方式に変えたため、輪の見本は撤去し
-                  文字だけの凡例に置き換える */}
-              {monthHasMatch && <span>試＝試合</span>}
               {isCoach && <span className="calhint">日付を{pc ? "クリック" : "タップ"}で予定を追加</span>}
             </div>
           )}
@@ -2209,9 +2217,15 @@ function MatchesTab({
   const team = useTeam();
   const pc = usePc();
   const comps = team.team.competitions;
-  // p14 §3-3: 順位表の入口行の見出しと順位（順位は表と同じ computeStandings から）
+  // ux-fix R2-3: スマホは「試合｜成績」の 2 面。試合＝順位表の 1 行＋試合の一覧、成績＝数字 3 枚＋ランキング
+  const [seg, setSeg] = useState<"matches" | "stats">("matches");
+  const [allRanks, setAllRanks] = useState(false);
+  const segOn = !pc;
+  const showMatchesPart = !segOn || seg === "matches";
+  const showStatsPart = !segOn || seg === "stats";
+  // p14 §3-3: 順位表の入口行の見出しと順位・勝点（順位は表と同じ computeStandings から）
   const leagueTitle = team.league.title || "リーグ順位表";
-  const leaguePos = leaguePositionOf(computeStandings(team.league, board.state.teamName ?? "マイチーム"));
+  const leagueOwn = computeStandings(team.league, board.state.teamName ?? "マイチーム").find((r) => r.own) ?? null;
   const cmpName = (m: MatchRecord): string | null =>
     m.competitionId
       ? comps.find((c) => c.id === m.competitionId)?.name ?? "（削除された大会）"
@@ -2258,8 +2272,11 @@ function MatchesTab({
     else l++;
   });
   const ranks = scorerAssisterRanks(matches);
-  const scorers = ranks.scorers.slice(0, 5);
-  const assisters = ranks.assisters.slice(0, 5);
+  // ux-fix R2-3: 3 位まで（同順位は含める）。「すべて見る」で全員
+  const topOnly = <T extends { rank: number }>(list: T[]) => (allRanks ? list : list.filter((x) => x.rank <= 3));
+  const scorers = topOnly(ranks.scorers);
+  const assisters = topOnly(ranks.assisters);
+  const rankHasMore = [...ranks.scorers, ...ranks.assisters].some((x) => x.rank > 3);
 
   // 選手ビューで非公開なら閲覧不可
   if (!isCoach && !board.matchesPublic) {
@@ -2282,13 +2299,16 @@ function MatchesTab({
           チーム全体のサマリー
         </button>
       )}
-      {isCoach && (
-        // mobile-redesign-v2 §3-4: この注記だけ--mut化するため専用クラスpubnoteを追加
-        // （.evnoteは予定のメモ等でも使われる共有クラスのため、そちらは変更しない）
-        <div className="evnote pubnote" style={{ margin: "12px 2px 4px" }}>
-          {board.matchesPublic
-            ? "選手・保護者に公開中（設定で変更できます）"
-            : "選手・保護者に非公開（設定で変更できます）"}
+      {/* ux-fix R2-3: スマホは「試合｜成績」のセグメント。公開中の注記は外した（公開状態は設定にある） */}
+      {segOn && (
+        <div className="recseg">
+          <MobileSegments
+            ariaLabel="試合記録の表示切替"
+            items={[
+              { key: "matches", label: "試合", on: seg === "matches", onSelect: () => setSeg("matches") },
+              { key: "stats", label: "成績", on: seg === "stats", onSelect: () => setSeg("stats") },
+            ]}
+          />
         </div>
       )}
 
@@ -2305,28 +2325,28 @@ function MatchesTab({
         </div>
       )}
       {/* 選択中の 1 行（名簿の .rossel と同じ文法。グループ→大会の順。未選択は「すべて」） */}
-      <div className="rossel">
-        {selParts.length === 0
-          ? "すべて"
-          : selParts.map((part, i) => (
-              <Fragment key={i}>
-                {i > 0 && " ・ "}
-                {part}
-              </Fragment>
-            ))}
-      </div>
+      {selParts.length > 0 && (
+        <div className="rossel">
+          {selParts.map((part, i) => (
+            <Fragment key={i}>
+              {i > 0 && " ・ "}
+              {part}
+            </Fragment>
+          ))}
+        </div>
+      )}
 
       {/* p14 §3-3: 順位表の入口（PCのスタッフは右ペインに表があるので出さない）。押すと leagueView シート */}
-      {!(pc && isCoach) && (
+      {!(pc && isCoach) && showMatchesPart && (
         <button type="button" className="phublink lglink" onClick={onOpenLeague}>
           <span>{leagueTitle}</span>
           <span className="lglink-v">
-            {leaguePos.rank != null ? `${leaguePos.rank}位 / ${leaguePos.size}チーム` : "未登録"} ›
+            {leagueOwn ? `${leagueOwn.rank}位 ・ 勝点 ${leagueOwn.pts}` : "未登録"} ›
           </span>
         </button>
       )}
 
-      {matches.length > 0 && (
+      {showStatsPart && matches.length > 0 && (
         <div className="statcard">
           {filterLabel && <div className="stattitle"><E n="trophy" /> {filterLabel}</div>}
           <div className="statrow">
@@ -2371,6 +2391,11 @@ function MatchesTab({
               ))}
             </div>
           )}
+          {rankHasMore && (
+            <button type="button" className="rankmore" onClick={() => setAllRanks((v) => !v)}>
+              {allRanks ? "3 位までに戻す" : "すべて見る"}
+            </button>
+          )}
         </div>
       )}
 
@@ -2389,7 +2414,7 @@ function MatchesTab({
               ? "このグループの試合記録はありません。"
               : "まだ試合記録がありません。"}
         </div>
-      ) : (
+      ) : showMatchesPart ? (
         <div className="reclist">
           {matches.map((m) => {
             const win = m.ourScore > m.theirScore;
@@ -2434,7 +2459,7 @@ function MatchesTab({
             );
           })}
         </div>
-      )}
+      ) : null}
     </>
   );
 }
@@ -2838,10 +2863,14 @@ function RosterTab({
             </div>
             {b.players.map((p) => {
               const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
+              const extraGroups = team.groups.filter(
+                // ux-fix R2-4: ポジションと違うグループだけ（左の札と同じ「GK」などは重ねない）。絞り込み中のグループも出さない
+                (g) => g.kind === "custom" && playerInGroup(p, g) && g.id !== group?.id && g.label !== p.position
+              );
               return (
                 <div
                   key={p.id}
-                  className={`prow${rosSel === p.id ? " sel" : ""}`}
+                  className={`prow rosmrow${rosSel === p.id ? " sel" : ""}`}
                   onClick={() => onPick(p.id)}
                 >
                   <div className={`pos ${groupOf(p.position)}`}>{p.position}</div>
@@ -2850,12 +2879,8 @@ function RosterTab({
                       {p.name}
                       {captainId === p.id ? " (C)" : ""}
                     </div>
-                    <div className="sub">
-                      背番号 {p.number ?? "—"}
-                      {p.grade ? ` ・ ${gradeLabel(schoolStage, p.grade)}` : ""}
-                      {inj ? ` ・ ${INJURY_STATUS_LABEL[inj.status]}` : ""}
-                    </div>
-                    <PlayerGroupBadges p={p} groups={team.groups} />
+                    {/* ux-fix R2-4：補足は「絞り込みと違うグループ」だけ 1 行（背番号は右、学年は見出し、位置は左の札） */}
+                    {extraGroups.length > 0 && <div className="sub">{extraGroups.map((g) => g.label).join(" ・ ")}</div>}
                   </div>
                   {inj && <span className={`injbadge ${inj.status}`}>{INJURY_STATUS_LABEL[inj.status]}</span>}
                   <div className="num">{p.number ?? "–"}</div>
@@ -3061,8 +3086,6 @@ function LeagueTableView({ rows }: { rows: Standing[] }) {
   );
 }
 
-/** RecSummaryPaneのkpicard2で切り替える月別推移の指標。既定は勝率 */
-type RecKpiMetric = "played" | "winPct" | "goals" | "conceded";
 /** RecSummaryPane先頭のセグメント。既定=チーム成績 */
 type RecSummaryMode = "team" | "player";
 
@@ -3091,7 +3114,6 @@ function RecSummaryPane({
   // p14 §3: 順位表（計算済み。自チームの行はチーム名へ差し替え）
   const standings = computeStandings(team.league, board.state.teamName ?? "マイチーム");
   const [mode, setMode] = useState<RecSummaryMode>("team");
-  const [recMetric, setRecMetric] = useState<RecKpiMetric>("winPct");
   const comps = team.team.competitions;
   // groups-phase2 §3-3: グループ絞り込みを先に適用し、大会別成績(byComp)もこの母集合から計算する
   // p15 §2: 期間もここで掛ける（大会別成績 byComp もこの母集合）
@@ -3142,148 +3164,138 @@ function RecSummaryPane({
       </div>
 
       {mode === "player" ? (
-        <RecPlayerRankingsBody players={players} matches={matches} />
+        <RecPlayerRankingsBody
+          players={players}
+          matches={matches}
+          teamTiles={
+            matches.length > 0
+              ? [
+                  { n: `${sum.winPct ?? 0}%`, l: "勝率" },
+                  { n: String(sum.gf - sum.ga), l: "得失点差" },
+                  { n: String(cleanSheets), l: "クリーンシート" },
+                  { n: avgGf, l: "1試合平均得点" },
+                ]
+              : []
+          }
+        />
       ) : (
-        /* 2カラム化: 左(主役・広い)=リーグ順位表 / 右(サイド)=既存サマリーの縦積み。
-           リーグ順位表はチームの順位表(p14 §3。未保存は lib/sampleLeague.ts の既定値)。大会フィルタ(cmp)には連動せず常に全体を表示する */
-        <div className="recsplit">
-          <div className="recleague">
-            {/* p14 §3-2: 見出し行＋鉛筆（順位表の編集シートを開く）。0 チームなら表の代わりに案内 */}
-            <div className="leaguehead">
-              <div className="sech">{team.league.title || "リーグ順位表"}</div>
-              <button
-                type="button"
-                className="phubedit"
-                aria-label="順位表を編集"
-                title="順位表を編集"
-                onClick={() => setSheet({ type: "league" })}
-              >
-                <IconEdit />
-              </button>
+        <>
+          {/* ux-fix R2-3: 数字タイル 8 個をやめ、「試合 6・3 勝 1 分 2 敗・得点 12・失点 10」の 1 行に
+              （順位表とサイドの上に全幅で）。勝率・得失点差・クリーンシート・平均得点は「個人成績」側へ移した */}
+          {matches.length > 0 && (
+            <div className="recsumrow" aria-label="チーム成績の要約">
+              <span>
+                試合 <b>{sum.played}</b>
+              </span>
+              <span>
+                <b>{sum.wins}</b> 勝 <b>{sum.draws}</b> 分 <b>{sum.losses}</b> 敗
+              </span>
+              <span>
+                得点 <b>{sum.gf}</b>
+              </span>
+              <span>
+                失点 <b>{sum.ga}</b>
+              </span>
             </div>
-            <LastUpdated at={team.league.updatedAt} by={team.league.updatedBy} />
-            <LeagueSource league={team.league} />
-            {standings.length === 0 ? (
-              <div className="empty-msg">順位表が未登録です。右上の編集から登録できます。</div>
-            ) : (
-              <LeagueTableView rows={standings} />
-            )}
-          </div>
-
-          <div className="recside">
-            {matches.length === 0 ? (
-              <div className="empty-msg">
-                {/* p15 §2: 期間だけで 0 件（他の条件が無い）のときは専用の文言。条件が重なるときは今のまま */}
-                {period !== "all" && cmp === "all" && !matchGroup
-                  ? "この期間の試合記録はありません。"
-                  : matchGroup && cmp === "all"
-                    ? "このグループの試合記録はありません。"
-                    : "まだ試合記録がありません。"}
+          )}
+          {/* 2カラム化: 左(主役・広い)=リーグ順位表 / 右(サイド)=既存サマリーの縦積み。
+              リーグ順位表はチームの順位表(p14 §3。未保存は lib/sampleLeague.ts の既定値)。大会フィルタ(cmp)には連動せず常に全体を表示する */}
+          <div className="recsplit">
+            <div className="recleague">
+              {/* p14 §3-2: 見出し行＋鉛筆（順位表の編集シートを開く）。0 チームなら表の代わりに案内 */}
+              <div className="leaguehead">
+                <div className="leaguehead-l">
+                  <div className="sech">{team.league.title || "リーグ順位表"}</div>
+                  {/* ux-fix R2-3: 順位表の入力方法（数値を直接入力 / 試合結果から数える） */}
+                  <span className="leaguemode">{team.league.mode === "results" ? "試合結果から" : "手入力"}</span>
+                </div>
+                <button
+                  type="button"
+                  className="phubedit"
+                  aria-label="順位表を編集"
+                  title="順位表を編集"
+                  onClick={() => setSheet({ type: "league" })}
+                >
+                  <IconEdit />
+                </button>
               </div>
-            ) : (
-              <>
-                {/* KPIタイル×グラフ(GSC型)。タイル1枚が選択中の指標=グラフの系列を兼ねる(既定=勝率) */}
-                <div className="kpicard2">
-                  <div className="kpiband">
-                    <button
-                      type="button"
-                      className={`kpitile${recMetric === "played" ? " on" : ""}`}
-                      onClick={() => setRecMetric("played")}
-                    >
-                      <div className="kv">{sum.played}</div>
-                      <div className="kl">試合数</div>
-                    </button>
-                    <button
-                      type="button"
-                      className={`kpitile${recMetric === "winPct" ? " on" : ""}`}
-                      onClick={() => setRecMetric("winPct")}
-                    >
-                      <div className="kv">{sum.winPct ?? 0}%</div>
-                      <div className="kl">勝率</div>
-                    </button>
-                    <button
-                      type="button"
-                      className={`kpitile${recMetric === "goals" ? " on" : ""}`}
-                      onClick={() => setRecMetric("goals")}
-                    >
-                      <div className="kv">{sum.gf}</div>
-                      <div className="kl">得点</div>
-                    </button>
-                    <button
-                      type="button"
-                      className={`kpitile${recMetric === "conceded" ? " on" : ""}`}
-                      onClick={() => setRecMetric("conceded")}
-                    >
-                      <div className="kv">{sum.ga}</div>
-                      <div className="kl">失点</div>
-                    </button>
-                  </div>
-                  <div className="kpichart">
-                    <div className="sech">
-                      {recMetric === "played"
-                        ? "月別試合数の推移（直近6ヶ月）"
-                        : recMetric === "winPct"
-                        ? "月別勝率の推移（直近6ヶ月・%）"
-                        : recMetric === "goals"
-                        ? "月別得点の推移（直近6ヶ月）"
-                        : "月別失点の推移（直近6ヶ月）"}
+              <LastUpdated at={team.league.updatedAt} by={team.league.updatedBy} />
+              <LeagueSource league={team.league} />
+              {standings.length === 0 ? (
+                <div className="empty-msg">順位表が未登録です。右上の編集から登録できます。</div>
+              ) : (
+                <LeagueTableView rows={standings} />
+              )}
+            </div>
+
+            <div className="recside">
+              {matches.length === 0 ? (
+                <div className="empty-msg">
+                  {/* p15 §2: 期間だけで 0 件（他の条件が無い）のときは専用の文言。条件が重なるときは今のまま */}
+                  {period !== "all" && cmp === "all" && !matchGroup
+                    ? "この期間の試合記録はありません。"
+                    : matchGroup && cmp === "all"
+                      ? "このグループの試合記録はありません。"
+                      : "まだ試合記録がありません。"}
+                </div>
+              ) : (
+                <>
+                  {/* 月別勝率のグラフは試合数が 6 未満のときは出さない（点が少なく折れ線にならないため） */}
+                  {sum.played >= 6 && (
+                    <div className="kpicard2">
+                      <div className="kpichart">
+                        <div className="sech">月別勝率の推移（直近6ヶ月・%）</div>
+                        <LineChart
+                          data={trend.map((t) => ({ label: t.label, value: t.winPct }))}
+                          max={100}
+                          detailed
+                        />
+                      </div>
                     </div>
-                    <LineChart
-                      data={trend.map((t) => ({ label: t.label, value: t[recMetric] }))}
-                      max={recMetric === "winPct" ? 100 : undefined}
-                      detailed
-                    />
-                  </div>
-                </div>
+                  )}
 
-                <div className="hdash">
-                  <div className="hstat"><div className="hstat-n ev">{sum.wins}-{sum.draws}-{sum.losses}</div><div className="hstat-l">勝-分-敗</div></div>
-                  <div className="hstat"><div className="hstat-n">{sum.gf - sum.ga}</div><div className="hstat-l">得失点差</div></div>
-                  <div className="hstat"><div className="hstat-n">{cleanSheets}</div><div className="hstat-l">クリーンシート</div></div>
-                  <div className="hstat"><div className="hstat-n">{avgGf}</div><div className="hstat-l">1試合平均得点</div></div>
-                </div>
+                  <div className="sech">チーム技術</div>
+                  <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
+                  <div className="hdash">
+                    <div className="hstat">
+                      <div className="hstat-n">{tech.shotPct ?? "—"}{tech.shotPct != null ? "%" : ""}</div>
+                      <div className="hstat-l">シュート決定率（{tech.goals}/{tech.shots}）</div>
+                    </div>
+                    <div className="hstat">
+                      <div className="hstat-n">{tech.passPct ?? "—"}{tech.passPct != null ? "%" : ""}</div>
+                      <div className="hstat-l">パス成功率（{tech.passOk}/{tech.pass}）</div>
+                    </div>
+                    <div className="hstat">
+                      <div className="hstat-n">{tech.dribblePct ?? "—"}{tech.dribblePct != null ? "%" : ""}</div>
+                      <div className="hstat-l">ドリブル成功率（{tech.dribbleOk}/{tech.dribble}）</div>
+                    </div>
+                  </div>
 
-                <div className="sech">チーム技術</div>
-                <div className="evnote">選手が提出した試合ノートの記録から集計しています。</div>
-                <div className="hdash">
-                  <div className="hstat">
-                    <div className="hstat-n">{tech.shotPct ?? "—"}{tech.shotPct != null ? "%" : ""}</div>
-                    <div className="hstat-l">シュート決定率（{tech.goals}/{tech.shots}）</div>
-                  </div>
-                  <div className="hstat">
-                    <div className="hstat-n">{tech.passPct ?? "—"}{tech.passPct != null ? "%" : ""}</div>
-                    <div className="hstat-l">パス成功率（{tech.passOk}/{tech.pass}）</div>
-                  </div>
-                  <div className="hstat">
-                    <div className="hstat-n">{tech.dribblePct ?? "—"}{tech.dribblePct != null ? "%" : ""}</div>
-                    <div className="hstat-l">ドリブル成功率（{tech.dribbleOk}/{tech.dribble}）</div>
-                  </div>
-                </div>
-
-                {byComp.length > 0 && (
-                  <>
-                    <div className="sech">大会別成績</div>
-                    <div className="list">
-                      {byComp.map((g) => {
-                        const gs = matchSummary(g.ms);
-                        return (
-                          <div key={g.id} className="cmprow">
-                            <div className="cmpinfo">
-                              <div className="cmpnm">{g.name}</div>
-                              <div className="cmpsub">
-                                {gs.played}試合 ・ {gs.wins}-{gs.draws}-{gs.losses} ・ 得点{gs.gf}-失点{gs.ga}
+                  {byComp.length > 0 && (
+                    <>
+                      <div className="sech">大会別成績</div>
+                      <div className="list">
+                        {byComp.map((g) => {
+                          const gs = matchSummary(g.ms);
+                          return (
+                            <div key={g.id} className="cmprow">
+                              <div className="cmpinfo">
+                                <div className="cmpnm">{g.name}</div>
+                                <div className="cmpsub">
+                                  {gs.played}試合 ・ {gs.wins}-{gs.draws}-{gs.losses} ・ 得点{gs.gf}-失点{gs.ga}
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
+                          );
+                        })}
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -3298,9 +3310,12 @@ function RecSummaryPane({
 function RecPlayerRankingsBody({
   players,
   matches,
+  teamTiles = [],
 }: {
   players: Player[];
   matches: MatchRecord[];
+  /** ux-fix R2-3: チーム成績の要約から移した数字（勝率・得失点差・クリーンシート・平均得点）。空なら出さない */
+  teamTiles?: { n: string; l: string }[];
 }) {
   const board = useBoard();
   const ranks = rankings(players, matches, board.notebook);
@@ -3316,6 +3331,16 @@ function RecPlayerRankingsBody({
 
   return (
     <>
+      {teamTiles.length > 0 && (
+        <div className="hdash recteamtiles">
+          {teamTiles.map((t) => (
+            <div key={t.l} className="hstat">
+              <div className="hstat-n">{t.n}</div>
+              <div className="hstat-l">{t.l}</div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="sech">得点</div>
       {ranks.goals.length === 0 ? (
         <div className="empty-msg">記録がありません。</div>
@@ -4040,6 +4065,8 @@ function SheetHost({
   const board = useBoard();
   const team = useTeam();
   const close = () => setSheet(null);
+  // ux-fix R2-7: 予定の詳細の「未回答の N 人にメッセージ」。宛先は開いた時点の未回答の人（ids）
+  const [attMsg, setAttMsg] = useState<{ ids: string[]; text: string } | null>(null);
   // isCoach=falseのときの「自分」（選手・保護者、またはコーチの選手プレビュー）
   const me = !isCoach ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null : null;
   // 案A §2: CalendarTabと同じcalEventVisibleを日別シートでも共用する
@@ -4978,20 +5005,75 @@ function SheetHost({
                       })()}
                     </div>
                   )}
-                  {isCoach && (
-                    <div className="dsec">
-                      <div className="dsec-h">出欠状況</div>
-                      <div className="dline">
-                        出席 {s.yes} ・ 未定 {s.maybe} ・ 欠席 {s.no} ・ 未回答 {s.none}
-                      </div>
-                      <button
-                        className="bigbtn ghost"
-                        onClick={() => setSheet({ type: "attendance", eventId: e.id })}
-                      >
-                        記録を見る・編集
-                      </button>
-                    </div>
-                  )}
+                  {isCoach && (() => {
+                    // ux-fix R2-7: 未回答の人（対象のうち出欠が無い人。内訳の「未回答」と同じ数）
+                    const att = team.team.attendance[e.id] ?? {};
+                    const targets = eventTargetPlayers(e, players, team.groups);
+                    const unanswered = targets.filter((p) => !att[p.id]?.status);
+                    const shown = unanswered.slice(0, 3).map((p) => p.name).join("・");
+                    const rest = unanswered.length - 3;
+                    // 予定別のノート（今日までの予定で、ノートの対象のものだけ）
+                    const showNotes = e.date <= todayStr() && eventNoteTarget(e, team.categories);
+                    const subs = showNotes ? board.notebook.filter((n) => noteBelongsToEvent(n, e)) : [];
+                    const ns = eventSubmitStats(targets, subs);
+                    return (
+                      <>
+                        <div className="dsec">
+                          <div className="dsec-h">出欠状況</div>
+                          <div className="dline">
+                            出席 {s.yes} ・ 未定 {s.maybe} ・ 欠席 {s.no} ・ 未回答 {s.none}
+                          </div>
+                          {unanswered.length > 0 && (
+                            <>
+                              <div className="dline evunans">
+                                未回答：{shown}
+                                {rest > 0 && ` ほか ${rest} 人`}
+                              </div>
+                              <button
+                                type="button"
+                                className="st-btn ghost evunans-btn"
+                                onClick={() =>
+                                  setAttMsg({
+                                    ids: unanswered.map((p) => p.id),
+                                    text: `${fmtMD(e.date)} の ${e.title} の出欠をまだ答えていない方は、アプリから回答をお願いします。`,
+                                  })
+                                }
+                              >
+                                未回答の {unanswered.length} 人にメッセージ
+                              </button>
+                            </>
+                          )}
+                          <button
+                            className="bigbtn ghost"
+                            onClick={() => setSheet({ type: "attendance", eventId: e.id })}
+                          >
+                            記録を見る・編集
+                          </button>
+                        </div>
+                        {showNotes && (
+                          <div className="dsec">
+                            <button
+                              type="button"
+                              className="hp-row evnoterow"
+                              onClick={() => {
+                                board.setNoteIntent({ eventId: e.id });
+                                board.setScreen("notebook");
+                              }}
+                            >
+                              <span className="hp-row-main">
+                                <b>
+                                  {ns.targetCount > 0
+                                    ? `ノート ${ns.submitted}／${ns.targetCount} 提出`
+                                    : `ノート ${subs.length} 件`}
+                                </b>
+                              </span>
+                              <span className="hp-row-time" aria-hidden="true">›</span>
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                   {/* groups-everywhere §3: 選手・保護者が対象外の予定を開いたときの「参加する」/
                       「参加をやめる」。対象（全員 or 所属グループ）の予定には出さない */}
                   {!isCoach &&
@@ -5136,6 +5218,47 @@ function SheetHost({
               </>
             );
           })()}
+      </Sheet>
+
+      {/* ux-fix R2 レビュー: 未回答へのメッセージのシートは予定の詳細（eventView）のシートより後に置く（スマホは .sheet の
+          z-index が同じで DOM の順で重なるため。予定の詳細から開くので、その上に出る） */}
+      {/* ux-fix R2-7: 出欠が未回答の人へ、1 対 1 のスレッドに同じ本文を送る。予定の詳細（シート／PC のペイン）の上にダイアログで重ねる */}
+      <Sheet open={attMsg != null} onClose={() => setAttMsg(null)}>
+        {attMsg && (
+          <div className="evunans-form">
+            <h2>未回答の {attMsg.ids.length} 人にメッセージ</h2>
+            <div className="dline evunans-who">
+              {attMsg.ids.map((id) => players.find((p) => p.id === id)?.name ?? "選手").join("・")}
+            </div>
+            <textarea
+              className="st-input evunans-text"
+              rows={5}
+              value={attMsg.text}
+              onChange={(ev) => setAttMsg({ ...attMsg, text: ev.target.value })}
+              aria-label="メッセージの本文"
+            />
+            <button
+              type="button"
+              className="st-btn"
+              disabled={!attMsg.text.trim()}
+              onClick={() => {
+                const text = attMsg.text.trim();
+                if (!text) return;
+                const who = staffIdentity(board.auth.name, team.team.coaches);
+                attMsg.ids.forEach((pid) =>
+                  board.sendMessage(
+                    { to: dmThreadKey(pid), from: "coach", fromName: who.name, fromRole: who.role, text },
+                    { toast: false }
+                  )
+                );
+                board.toast(`${attMsg.ids.length} 人に送りました`);
+                setAttMsg(null);
+              }}
+            >
+              送る
+            </button>
+          </div>
+        )}
       </Sheet>
 
       {/* 試合記録フォーム */}

@@ -1415,7 +1415,37 @@ function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
     <div className="chatsheet">
       {/* mobile-redesign Phase D-2(major §1-6): 「‹ 戻る」バー＋大見出しの2段構成を、
           他画面と同じ52px単段のMobileHeaderへ統一する */}
-      <MobileHeader title={title} subtitle={subtitle} onBack={board.closeSheet} />
+      {/* ux-fix R2-7: スタッフは見出し（選手名）を押すと個人ページへ、右の「ノート」でその選手の提出一覧へ */}
+      <MobileHeader
+        title={title}
+        subtitle={subtitle}
+        onBack={board.closeSheet}
+        onTitleClick={
+          isStaff && player
+            ? () => {
+                board.closeSheet();
+                board.setTeamIntent({ tab: "ros", playerId: player.id });
+                board.setScreen("team");
+              }
+            : undefined
+        }
+        titleLabel={player ? `${player.name}の個人ページを開く` : undefined}
+        actions={
+          isStaff && player ? (
+            <button
+              type="button"
+              className="st-btn ghost mhead-notebtn"
+              onClick={() => {
+                board.closeSheet();
+                board.setNoteIntent({ playerId: player.id });
+                board.setScreen("notebook");
+              }}
+            >
+              ノート
+            </button>
+          ) : undefined
+        }
+      />
       <ChatThread
         key={to}
         to={isStaff ? to : memberId ? dmThreadKey(memberId) : to}
@@ -1427,13 +1457,13 @@ function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
 }
 
 /* ---------------- お知らせの詳細・作成／新しいメッセージ（chat-plan-a §3-2・§3-3） ---------------- */
-function AnnDetailSheet({ annId }: { annId: string }) {
+function AnnDetailSheet({ annId, tab }: { annId: string; tab?: "unseen" | "seen" | "acked" }) {
   const board = useBoard();
   return (
     <div className="annsheet">
       <MobileHeader title="お知らせ" onBack={board.closeSheet} />
       <div className="annsheetbody">
-        <AnnouncementDetail annId={annId} onClose={board.closeSheet} />
+        <AnnouncementDetail annId={annId} readTab={tab} onClose={board.closeSheet} />
       </div>
     </div>
   );
@@ -2372,7 +2402,7 @@ export default function SheetManager() {
       content = <ChatSheet to={sheet.chatTo ?? "team"} replyTo={sheet.replyTo} />;
       break;
     case "annDetail":
-      content = <AnnDetailSheet annId={sheet.annId ?? ""} />;
+      content = <AnnDetailSheet annId={sheet.annId ?? ""} tab={sheet.annTab} />;
       break;
     case "annCompose":
       content = <AnnComposeSheet />;

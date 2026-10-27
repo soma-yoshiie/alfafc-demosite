@@ -1,20 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useBoard } from "../BoardProvider";
 import { useCoachLab } from "./CoachLabProvider";
 import {
-  AUTHOR_ROLES,
-  ARTICLE_TAGS_SUGGEST,
-  LICENSES,
-  REGIONS,
   allArticles,
   readingMinutes,
   resolveAuthorId,
   searchArticles,
   searchAuthors,
 } from "@/lib/coachlab";
-import type { AuthorProfile, License } from "@/lib/coachlab";
+import type { AuthorProfile } from "@/lib/coachlab";
 import { ARTICLE_CATEGORIES } from "@/lib/articles";
 import type { UserArticle } from "@/lib/articles";
 import {
@@ -26,6 +22,8 @@ import {
   useMeId,
   Avatar,
 } from "./CoachLabParts";
+import { ClFilterPanel, clFilterLine } from "./CoachLabFilter";
+import type { ClExplore } from "./CoachLabFilter";
 
 /**
  * コーチラボ「探す」画面（記事｜指導者の2軸検索）と「フォロー中」画面。
@@ -33,23 +31,18 @@ import {
  * ここに2つのビューをまとめている（新規ファイルはコーチラボ実装計画の一覧どおり）。
  */
 
-type ArticleSort = "new" | "likes" | "purchases";
-type PriceFilter = "all" | "free" | "paid";
-
 interface OpenHandlers {
   onOpenAuthor: (authorId: string) => void;
   onOpenArticle: (articleId: string) => void;
 }
 
-/** カテゴリ・価格・読者絞り込みの汎用チップ行
- * wrapClassName: モバイルでの折り返し方。項目数が多いタグ・対象行は横スクロール
- * (cl-scrollchips)にしてファーストビューを埋めないようにし、カテゴリ・価格は
- * 従来どおり折り返し(cl-wrapchips)のままにする */
+/** 種類（カテゴリ）のチップ行。1 行に収め、はみ出したら横スクロール（cl-scrollchips）。
+ * 価格・対象・ハッシュタグ・並び替えは絞り込み（CoachLabFilter）へ移した（ux-fix R2-5） */
 function FilterChips<T extends string>({
   value,
   options,
   onChange,
-  wrapClassName = "cl-wrapchips",
+  wrapClassName = "cl-scrollchips",
 }: {
   value: T;
   options: { key: T; label: string }[];
@@ -66,23 +59,6 @@ function FilterChips<T extends string>({
           onClick={() => onChange(o.key)}
         >
           {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TagChips({ selected, onToggle }: { selected: string[]; onToggle: (t: string) => void }) {
-  return (
-    <div className="catbar cl-scrollchips">
-      {ARTICLE_TAGS_SUGGEST.map((t) => (
-        <button
-          key={t}
-          type="button"
-          className={`catchip${selected.includes(t) ? " on" : ""}`}
-          onClick={() => onToggle(t)}
-        >
-          #{t}
         </button>
       ))}
     </div>
@@ -166,20 +142,23 @@ function AuthorCard({
   );
 }
 
-export function CoachLabExplore({ onOpenAuthor, onOpenArticle }: OpenHandlers) {
+export function CoachLabExplore({
+  f,
+  pc,
+  onOpenFilter,
+  onOpenAuthor,
+  onOpenArticle,
+}: {
+  /** 検索・切替・絞り込みの状態（CoachLabScreen が持つ。ヘッダーのボタン・シートと共有） */
+  f: ClExplore;
+  pc: boolean;
+  /** スマホ：絞り込みのシートを開く */
+  onOpenFilter: () => void;
+} & OpenHandlers) {
   const board = useBoard();
   const cl = useCoachLab();
   const meId = useMeId();
-  const [mode, setMode] = useState<"articles" | "authors">("articles");
-  const [q, setQ] = useState("");
-  const [cat, setCat] = useState<string>("all");
-  const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
-  const [audience, setAudience] = useState<"all" | "coach" | "parent" | "player">("all");
-  const [tags, setTags] = useState<string[]>([]);
-  const [sort, setSort] = useState<ArticleSort>("new");
-  const [license, setLicense] = useState<License | "">("");
-  const [region, setRegion] = useState<string>("");
-  const [role, setRole] = useState<string>("");
+  const { mode, q, cat, price, audience, tags, sort, license, region, role } = f;
 
   const merged = useMemo(() => allArticles(board.userArticles), [board.userArticles]);
 
@@ -188,7 +167,7 @@ export function CoachLabExplore({ onOpenAuthor, onOpenArticle }: OpenHandlers) {
       q,
       category: cat,
       tag: tags,
-      priceFilter,
+      priceFilter: price,
     });
     if (audience !== "all") list = list.filter((a) => a.audience === audience);
     const sorted = [...list];
@@ -196,7 +175,7 @@ export function CoachLabExplore({ onOpenAuthor, onOpenArticle }: OpenHandlers) {
     else if (sort === "purchases") sorted.sort((a, b) => cl.purchaseCount(b.id) - cl.purchaseCount(a.id));
     return sorted;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [merged, q, cat, tags, priceFilter, audience, sort, cl.likes, cl.purchases]);
+  }, [merged, q, cat, tags, price, audience, sort, cl.likes, cl.purchases]);
 
   const articleCountByAuthor = useMemo(() => {
     const map: Record<string, number> = {};
@@ -218,123 +197,101 @@ export function CoachLabExplore({ onOpenAuthor, onOpenArticle }: OpenHandlers) {
     [cl.profiles, q, license, region, role]
   );
 
-  const toggleTag = (t: string) =>
-    setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t]));
+  // 一覧の上の 1 行：選んだ条件だけ（何も選んでいなければ出さない。練習試合の .mt-filterline と同じ）
+  const lineText = clFilterLine(f);
+  const count = mode === "articles" ? articleResults.length : authorResults.length;
+  const filterLine =
+    lineText === "" ? null : pc ? (
+      <div className="cl-filterline-wrap">
+        <div className="mt-filterline cl-filterline-pc">
+          <span className="mt-filterline-tx">
+            {lineText}（{count} 件）
+          </span>
+          <button type="button" className="mt-filterline-act" onClick={f.reset}>
+            条件をもどす
+          </button>
+        </div>
+      </div>
+    ) : (
+      <div className="cl-filterline-wrap">
+        <button type="button" className="mt-filterline" onClick={onOpenFilter}>
+          <span className="mt-filterline-tx">
+            {lineText}（{count} 件）
+          </span>
+          <span className="mt-filterline-act">変更</span>
+        </button>
+      </div>
+    );
 
   return (
-    <>
-      <div className="controls">
-        <input
-          className="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="記事・指導者を検索（例：ビルドアップ、S級、〇〇FC）"
-        />
-      </div>
-      <div className="cl-toggle">
-        <button type="button" className={mode === "articles" ? "on" : ""} onClick={() => setMode("articles")}>
-          記事
-        </button>
-        <button type="button" className={mode === "authors" ? "on" : ""} onClick={() => setMode("authors")}>
-          指導者
-        </button>
-      </div>
-
-      {mode === "articles" ? (
-        <>
-          <FilterChips
-            value={cat}
-            onChange={setCat}
-            options={[
-              { key: "all", label: "すべて" },
-              ...ARTICLE_CATEGORIES.map((c) => ({ key: c as string, label: c })),
-            ]}
-          />
-          <FilterChips
-            value={priceFilter}
-            onChange={setPriceFilter}
-            options={[
-              { key: "all", label: "価格：すべて" },
-              { key: "free", label: "無料" },
-              { key: "paid", label: "有料" },
-            ]}
-          />
-          <FilterChips
-            value={audience}
-            onChange={setAudience}
-            wrapClassName="cl-scrollchips"
-            options={[
-              { key: "all", label: "対象：すべて" },
-              { key: "coach", label: "指導者向け" },
-              { key: "parent", label: "保護者向け" },
-              { key: "player", label: "選手向け" },
-            ]}
-          />
-          <TagChips selected={tags} onToggle={toggleTag} />
-          <div className="cl-sortrow">
-            <span>並び替え</span>
-            <select value={sort} onChange={(e) => setSort(e.target.value as ArticleSort)}>
-              <option value="new">新着</option>
-              <option value="likes">参考になった数</option>
-              <option value="purchases">購入数</option>
-            </select>
-            <span className="cl-count">{articleResults.length} 件</span>
+    <div className={`cl-explore${pc ? " cl-explorepc" : ""}`}>
+      {pc && (
+        <aside className="clside" aria-label="絞り込み">
+          <div className="clside-in">
+            <ClFilterPanel f={f} compact />
           </div>
-          {articleResults.length === 0 ? (
-            <div className="empty-msg">該当する記事がありません。条件を減らすか、指導者で探してみてください。</div>
-          ) : (
-            <div className="cl-grid">
-              {articleResults.map((a) => (
-                <ArticleCard key={a.id} a={a} onOpenAuthor={onOpenAuthor} onOpenArticle={onOpenArticle} />
-              ))}
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="cl-filterrow">
-            <select value={license} onChange={(e) => setLicense(e.target.value as License | "")}>
-              <option value="">資格：すべて</option>
-              {LICENSES.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
-            <select value={region} onChange={(e) => setRegion(e.target.value)}>
-              <option value="">地域：すべて</option>
-              {REGIONS.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-            <select value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="">役割：すべて</option>
-              {AUTHOR_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r}
-                </option>
-              ))}
-            </select>
-          </div>
-          {authorResults.length === 0 ? (
-            <div className="empty-msg">該当する指導者がいません。条件を減らしてみてください。</div>
-          ) : (
-            <div className="cl-authorlist">
-              {authorResults.map((p) => (
-                <AuthorCard
-                  key={p.id}
-                  profile={p}
-                  articleCount={articleCountByAuthor[p.id] ?? 0}
-                  onOpenAuthor={onOpenAuthor}
-                />
-              ))}
-            </div>
-          )}
-        </>
+        </aside>
       )}
-    </>
+      <div className="cl-explorebody">
+        <div className="controls">
+          <input
+            className="search"
+            value={q}
+            onChange={(e) => f.setQ(e.target.value)}
+            placeholder="記事・指導者を検索（例：ビルドアップ、S級、〇〇FC）"
+          />
+        </div>
+        <div className="cl-toggle">
+          <button type="button" className={mode === "articles" ? "on" : ""} onClick={() => f.setMode("articles")}>
+            記事
+          </button>
+          <button type="button" className={mode === "authors" ? "on" : ""} onClick={() => f.setMode("authors")}>
+            指導者
+          </button>
+        </div>
+
+        {mode === "articles" ? (
+          <>
+            <FilterChips
+              value={cat}
+              onChange={f.setCat}
+              options={[
+                { key: "all", label: "すべて" },
+                ...ARTICLE_CATEGORIES.map((c) => ({ key: c as string, label: c })),
+              ]}
+            />
+            {filterLine}
+            {articleResults.length === 0 ? (
+              <div className="empty-msg">該当する記事がありません。条件を減らすか、指導者で探してみてください。</div>
+            ) : (
+              <div className="cl-grid">
+                {articleResults.map((a) => (
+                  <ArticleCard key={a.id} a={a} onOpenAuthor={onOpenAuthor} onOpenArticle={onOpenArticle} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {filterLine}
+            {authorResults.length === 0 ? (
+              <div className="empty-msg">該当する指導者がいません。条件を減らしてみてください。</div>
+            ) : (
+              <div className="cl-authorlist">
+                {authorResults.map((p) => (
+                  <AuthorCard
+                    key={p.id}
+                    profile={p}
+                    articleCount={articleCountByAuthor[p.id] ?? 0}
+                    onOpenAuthor={onOpenAuthor}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

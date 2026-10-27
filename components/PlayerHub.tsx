@@ -12,7 +12,7 @@ import { useTeam } from "./TeamProvider";
 import { useProfiles } from "./ProfileProvider";
 import { IconEdit } from "./icons";
 import { useWidth } from "./ProfileCharts";
-import { HUB_SECTIONS, HubEmpty, customGroupsOf, usePc } from "./hub/common";
+import { HUB_SECTIONS, HubEmpty, customGroupsOf, usePc, useTabRowMore } from "./hub/common";
 import type { HubSection, HubSectionProps, HubViewer } from "./hub/common";
 import { HubSheet } from "./hub/common";
 import { PlayerBasicForm } from "./hub/PlayerBasicForm";
@@ -150,8 +150,10 @@ export default function PlayerHub({
     const r = row.getBoundingClientRect();
     const b = on.getBoundingClientRect();
     if (b.left < r.left) row.scrollLeft -= r.left - b.left + 16;
-    else if (b.right > r.right) row.scrollLeft += b.right - r.right + 16;
+    // 右は 28px のフェード＋8px の間（.phubtabs.more）のぶんまで寄せる（最後のチップがフェードに掛からない）
+    else if (b.right > r.right) row.scrollLeft += b.right - r.right + 36;
   }, [sec, chips, rootRef]);
+  const tabsMore = useTabRowMore(rootRef, [sec, chips, narrow]);
 
   const p = board.state.players.find((x) => x.id === playerId);
   if (!p) {
@@ -197,7 +199,8 @@ export default function PlayerHub({
     <div className={`phub${narrow ? " narrow" : ""}`} ref={rootRef}>
       {/* §3-1 ヘッダーカード */}
       {/* <header> 要素は画面全体のヘッダー用の指定（header{display:flex…}）が掛かるので div にする */}
-      <div className="phubhead" ref={headRef}>
+      {/* 4 マスの要約は「基本」だけ。ほかのセクションでは名前・背番号・ポジションの 1 行（56px。ux-fix R2-4） */}
+      <div className={`phubhead${sec !== "overview" ? " compact" : ""}`} ref={headRef}>
         <div className="phubhead-top">
           <div className="phubid">
             <span className={`phubpos ${groupOf(p.position)}`}>{p.position}</span>
@@ -233,6 +236,7 @@ export default function PlayerHub({
             <IconEdit />
           </button>
         </div>
+        {sec === "overview" && (
         <div className="phubkpi">
           <button type="button" className="phubkpi-item" onClick={() => go("growth")}>
             <span className="v">
@@ -262,11 +266,12 @@ export default function PlayerHub({
             <span className="l">ノート提出</span>
           </button>
         </div>
+        )}
       </div>
 
       {/* スマホ・狭い PC：ヘッダーカードの下の横スクロールのチップ列（44px） */}
       {chips && (
-        <div className="phubtabs" role="tablist" aria-label="セクション">
+        <div className={`phubtabs${tabsMore ? " more" : ""}`} role="tablist" aria-label="セクション">
           {HUB_SECTIONS.map(tabBtn)}
         </div>
       )}

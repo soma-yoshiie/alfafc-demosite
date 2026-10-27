@@ -152,8 +152,8 @@ export default function FitnessSection({ p, profile, viewer, age, onManageFitnes
     ) : null;
 
   return (
-    <section className="phubsec" aria-label="体力">
-      <HubHead title="体力" sub="新体力テストと体力測定" action={manage} />
+    <section className="phubsec" aria-label="体力測定">
+      <HubHead title="体力測定" sub="新体力テストの得点と測定の記録" action={manage} />
 
       {hasStd && latest.n > 0 && (
         <div className="phubcard">

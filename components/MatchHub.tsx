@@ -9,7 +9,7 @@ import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { IconEdit } from "./icons";
 import { useWidth } from "./ProfileCharts";
-import { HubEmpty, HubHead, fmtYMD, usePc } from "./hub/common";
+import { HubEmpty, HubHead, fmtYMD, usePc, useTabRowMore } from "./hub/common";
 
 /**
  * 試合の詳細（p14 §5。specs/filter-compact-and-match-hub.md）。名簿の個人ページ（PlayerHub）と同じ骨格・同じ
@@ -131,8 +131,10 @@ export function MatchHub({
     const r = row.getBoundingClientRect();
     const b = on.getBoundingClientRect();
     if (b.left < r.left) row.scrollLeft -= r.left - b.left + 16;
-    else if (b.right > r.right) row.scrollLeft += b.right - r.right + 16;
+    // 右は 28px のフェード＋8px の間（.phubtabs.more）のぶんまで寄せる（最後のチップがフェードに掛からない）
+    else if (b.right > r.right) row.scrollLeft += b.right - r.right + 36;
   }, [sec, chips, rootRef]);
+  const tabsMore = useTabRowMore(rootRef, [sec, chips, narrow]);
 
   const m: MatchRecord | undefined = team.team.matches.find((x) => x.id === matchId);
   if (!m) {
@@ -364,7 +366,7 @@ export function MatchHub({
       </div>
 
       {chips && (
-        <div className="phubtabs" role="tablist" aria-label="セクション">
+        <div className={`phubtabs${tabsMore ? " more" : ""}`} role="tablist" aria-label="セクション">
           {MATCH_SECTIONS.map(tabBtn)}
         </div>
       )}

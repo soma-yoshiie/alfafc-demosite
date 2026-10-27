@@ -22,7 +22,7 @@ import {
   type BoardCtx,
   type TeamCtx,
 } from "./homeData";
-import { HomeAnnouncements, HomeGoals, HomeTimeline } from "./HomePanels";
+import { HomeAnnouncements, HomeCoachComment, HomeGoals, HomeTimeline } from "./HomePanels";
 import { IconBell, IconCog } from "./icons";
 
 export default function MobileHome() {
@@ -367,6 +367,9 @@ function MobilePlayerHome({
         </div>
 
         {/* p18 §5: 4 つの数値の枠・直近の試合・最新の動きをやめ、目標と最新のお知らせにした */}
+        {/* ux-fix R2-1: 未読のコーチのコメントがあるときだけ、目標の上に 1 行 */}
+        <HomeCoachComment variant="mobile" />
+
         <HomeGoals playerId={me} variant="mobile" />
 
         <HomeAnnouncements viewer="player" variant="mobile" />

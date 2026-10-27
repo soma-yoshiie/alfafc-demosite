@@ -76,8 +76,8 @@ export default function ExamsSection({ p, profile, stage }: HubSectionProps) {
   };
 
   return (
-    <section className="phubsec" aria-label="テスト">
-      <HubHead title="テスト" sub="定期テスト・模試" />
+    <section className="phubsec" aria-label="定期テスト">
+      <HubHead title="定期テスト" sub="模試も含む" />
 
       {/* 上：5 教科合計の推移（点は 2 つ以上で描く。1 つなら下のカードだけ） */}
       {full.length >= 2 && (

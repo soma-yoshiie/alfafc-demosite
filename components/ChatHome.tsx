@@ -117,7 +117,7 @@ export interface ChatHomeProps {
   /** セグメントを固定して見出しを出さない（チーム運営 PC の「お知らせ」） */
   lockSegment?: ChatSeg;
   /** 詳細・スレッドの開き方。省略時は board シート（PC の 2 ペインだけ右のペインへ出す） */
-  onOpenAnn?: (annId: string) => void;
+  onOpenAnn?: (annId: string, tab?: AnnReadTab) => void;
   /** 引数は選手の id か、相手チームとの会話キー（"opp:<teamId>"） */
   onOpenDm?: (playerOrKey: string) => void;
   selectedAnnId?: string | null;
@@ -167,7 +167,7 @@ function AnnouncementsView({
   pc?: boolean;
   showCompose?: boolean;
   selectedId?: string | null;
-  onOpen?: (annId: string) => void;
+  onOpen?: (annId: string, tab?: AnnReadTab) => void;
 }) {
   const { board, team, isStaff, memberId, me, real } = useChatViewer();
   const list = useMemo(
@@ -191,7 +191,8 @@ function AnnouncementsView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [real, memberId, idsKey]);
 
-  const open = (id: string) => (onOpen ? onOpen(id) : board.openSheet({ type: "annDetail", annId: id }));
+  const open = (id: string, tab?: AnnReadTab) =>
+    onOpen ? onOpen(id, tab) : board.openSheet({ type: "annDetail", annId: id, annTab: tab });
   const compose = () => board.openSheet({ type: "annCompose" });
 
   return (
@@ -220,9 +221,15 @@ function AnnouncementsView({
             mini={pc && !!onOpen}
             selected={selectedId === a.id}
             fresh={freshRef.current!.has(a.id)}
-            onOpen={() => open(a.id)}
+            onOpen={(tab) => open(a.id, tab)}
           />
         ))
+      )}
+      {/* ux-fix R2-7: 一覧の末尾からも書ける（スタッフだけ。上の作成ボタン・スマホのヘッダーと同じ入口） */}
+      {isStaff && list.length > 0 && (
+        <button type="button" className="st-btn ghost annlistend" onClick={compose}>
+          ＋ お知らせを書く
+        </button>
       )}
     </div>
   );
@@ -251,7 +258,8 @@ function AnnCard({
   mini?: boolean;
   selected?: boolean;
   fresh?: boolean;
-  onOpen: () => void;
+  /** tab＝スタッフが「了解 N/M」「既読 N/M」から開いたときの既読パネルのタブ。カード本体は無指定 */
+  onOpen: (tab?: AnnReadTab) => void;
 }) {
   const { board, team, isStaff, memberId } = useChatViewer();
   const { subject, body } = announcementParts(a);
@@ -262,11 +270,31 @@ function AnnCard({
   );
   const acked = !!memberId && !!a.acks?.includes(memberId);
 
-  // 一覧の「既読の数」「了解 N」の行。スタッフには数だけ（押せない）なので、カードを開く button の中に含める
+  // 一覧の「了解 41/70 ›」「既読 52/70 ›」の行（スタッフだけ。ux-fix R2-7）。母数は宛先の人数。
+  // どちらも押すと詳細の既読パネルが開く（了解は「了解」のタブ＝未了解の人が上）。選手の「了解」と同じく
+  // カードを開く button の外に置く（入れ子の操作部品にしない）
   const staffFoot = (
     <div className="annfoot">
-      <span className="annacklabel">了解 {stats.acked.length}</span>
-      <span className="annseen">{`既読 ${stats.seen.length}/${stats.recipients.length}`} ›</span>
+      <button
+        type="button"
+        className="annseen"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen("acked");
+        }}
+      >
+        {`了解 ${stats.acked.length}/${stats.recipients.length}`} ›
+      </button>
+      <button
+        type="button"
+        className="annseen"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen("unseen");
+        }}
+      >
+        {`既読 ${stats.seen.length}/${stats.recipients.length}`} ›
+      </button>
     </div>
   );
 
@@ -278,7 +306,7 @@ function AnnCard({
   return (
     <div
       className={`anncard${a.pinned ? " pinned" : ""}${mini ? " mini" : ""}${selected ? " sel" : ""}`}
-      onClick={onOpen}
+      onClick={() => onOpen()}
     >
       <button type="button" className="anncardmain" aria-current={selected ? "true" : undefined}>
         <div className="annrow1">
@@ -295,9 +323,9 @@ function AnnCard({
             <E n="clipboard" /> <span>{labels.join("・")}</span>
           </div>
         )}
-        {/* 既読の数はスタッフだけ。選手・保護者には出さない */}
-        {isStaff && staffFoot}
       </button>
+      {/* 既読・了解の数はスタッフだけ。選手・保護者には出さない */}
+      {isStaff && staffFoot}
       {!isStaff && (
         <div className="annfoot">
           <button
@@ -328,6 +356,7 @@ function AnnCard({
 export function AnnouncementDetail({
   annId,
   readPanel = true,
+  readTab,
   onClose,
   onReply,
 }: {
@@ -337,6 +366,8 @@ export function AnnouncementDetail({
    * （chat-plan-a §3-6。スマホのシート・チーム運営の PC ダイアログは既定の true で下に続ける）
    */
   readPanel?: boolean;
+  /** 既読パネルの最初のタブ（一覧の「了解 N/M ›」から開いたときは acked）。省略時は未読 */
+  readTab?: AnnReadTab;
   /** 削除したあとに閉じる */
   onClose?: () => void;
   /** 「スタッフに返信」の開き方。省略時は board シート chat（引用付き） */
@@ -420,7 +451,7 @@ export function AnnouncementDetail({
 
       {isStaff && (
         <>
-          {readPanel && <AnnReadPanel a={a} />}
+          {readPanel && <AnnReadPanel a={a} initialTab={readTab} />}
           <div className="anndactions row">
             <button
               type="button"
@@ -452,24 +483,47 @@ export function AnnouncementDetail({
  * スタッフ用の既読パネル（chat-plan-a §3-2）。「未読 18｜既読 52｜了解 41」のタブ（未読が既定）で
  * 学年ごとの小見出し付きの名前一覧、「未読の N 人に再通知」と最後の再通知の時刻。PC の右の既読パネルでも使う
  */
-export function AnnReadPanel({ a }: { a: Announcement }) {
+export type AnnReadTab = "unseen" | "seen" | "acked";
+
+export function AnnReadPanel({ a, initialTab = "unseen" }: { a: Announcement; initialTab?: AnnReadTab }) {
   const { board, team } = useChatViewer();
-  const [tab, setTab] = useState<"unseen" | "seen" | "acked">("unseen");
+  const [tab, setTab] = useState<AnnReadTab>(initialTab);
   const stats = announcementStats(a, board.state.players, team.groups);
   const stage = team.team.schoolStage ?? "junior";
   const shown = tab === "unseen" ? stats.unseen : tab === "seen" ? stats.seen : stats.acked;
 
+  // ux-fix R2-7: 「了解」のタブは 未了解（宛先のうち了解していない人）を上、了解した人を下に 2 つの区画で出す
+  const notAcked = useMemo(() => {
+    const ackSet = new Set(stats.acked.map((p) => p.id));
+    return stats.recipients.filter((p) => !ackSet.has(p.id));
+  }, [stats]);
+
   // 学年ごとに束ねる（学年の小さい順。学年が無い選手は末尾）
-  const byGrade = useMemo(() => {
+  const groupByGrade = (list: Player[]) => {
     const map = new Map<number | null, Player[]>();
-    shown.forEach((p) => {
+    list.forEach((p) => {
       const g = p.grade ?? null;
       map.set(g, [...(map.get(g) ?? []), p]);
     });
     return [...map.entries()].sort((x, y) => (x[0] ?? 99) - (y[0] ?? 99));
-  }, [shown]);
+  };
+  const renderGrades = (list: Player[]) =>
+    groupByGrade(list).map(([g, ps]) => (
+      <div key={String(g)} className="annreadgroup">
+        <div className="annreadhead">{g == null ? "学年未設定" : gradeLabel(stage, g)}</div>
+        {ps.map((p) => (
+          <div key={p.id} className="annreadrow">
+            <span className="chatavatar sm" aria-hidden="true">
+              {firstChar(p.name)}
+            </span>
+            <span className="annreadname">{p.name}</span>
+            {p.number != null && <span className="annreadno">#{p.number}</span>}
+          </div>
+        ))}
+      </div>
+    ));
 
-  const tabs: { key: "unseen" | "seen" | "acked"; label: string; n: number }[] = [
+  const tabs: { key: AnnReadTab; label: string; n: number }[] = [
     { key: "unseen", label: "未読", n: stats.unseen.length },
     { key: "seen", label: "既読", n: stats.seen.length },
     { key: "acked", label: "了解", n: stats.acked.length },
@@ -498,25 +552,31 @@ export function AnnReadPanel({ a }: { a: Announcement }) {
         </button>
       )}
       {a.remindedAt && <div className="annremind">最後の再通知 {fmtDateTime(a.remindedAt)}</div>}
-      {shown.length === 0 ? (
-        <div className="annreadempty">
-          {tab === "unseen" ? "未読の人はいません" : tab === "seen" ? "まだ読んだ人はいません" : "まだ了解した人はいません"}
-        </div>
+      {tab === "acked" ? (
+        stats.recipients.length === 0 ? (
+          <div className="annreadempty">宛先の人がいません</div>
+        ) : (
+          <>
+            {notAcked.length > 0 && (
+              <section className="annreadsec" aria-label="未了解">
+                <div className="annreadsech">未了解 {notAcked.length} 人</div>
+                {renderGrades(notAcked)}
+              </section>
+            )}
+            {stats.acked.length > 0 ? (
+              <section className="annreadsec" aria-label="了解">
+                <div className="annreadsech">了解 {stats.acked.length} 人</div>
+                {renderGrades(stats.acked)}
+              </section>
+            ) : (
+              <div className="annreadempty">まだ了解した人はいません</div>
+            )}
+          </>
+        )
+      ) : shown.length === 0 ? (
+        <div className="annreadempty">{tab === "unseen" ? "未読の人はいません" : "まだ読んだ人はいません"}</div>
       ) : (
-        byGrade.map(([g, ps]) => (
-          <div key={String(g)} className="annreadgroup">
-            <div className="annreadhead">{g == null ? "学年未設定" : gradeLabel(stage, g)}</div>
-            {ps.map((p) => (
-              <div key={p.id} className="annreadrow">
-                <span className="chatavatar sm" aria-hidden="true">
-                  {firstChar(p.name)}
-                </span>
-                <span className="annreadname">{p.name}</span>
-                {p.number != null && <span className="annreadno">#{p.number}</span>}
-              </div>
-            ))}
-          </div>
-        ))
+        renderGrades(shown)
       )}
     </div>
   );

@@ -9,6 +9,35 @@ import { localDateStr } from "@/lib/dates";
 import { playerInGroup } from "@/lib/groups";
 
 /**
+ * ux-fix R2-4: チップ列（.phubtabs）の右にまだ続きがあるか。続くときだけ .more を付け、右端のフェードと
+ * 最後のチップの終わりの余白（28px）を出す（チップが収まる幅では、余白のぶんだけ空のスクロールが起きないように）。
+ * 端まで送るとフェードも消える。
+ */
+export function useTabRowMore(rootRef: React.RefObject<HTMLElement | null>, deps: unknown[]): boolean {
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const row = rootRef.current?.querySelector<HTMLElement>(".phubtabs");
+    if (!row) {
+      setMore(false);
+      return;
+    }
+    const calc = () => setMore(row.scrollWidth - row.clientWidth - row.scrollLeft > 1);
+    calc();
+    row.addEventListener("scroll", calc, { passive: true });
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(calc) : null;
+    ro?.observe(row);
+    window.addEventListener("resize", calc);
+    return () => {
+      row.removeEventListener("scroll", calc);
+      ro?.disconnect();
+      window.removeEventListener("resize", calc);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+  return more;
+}
+
+/**
  * 個人ページ（PlayerHub。player-hub §3）の共通部品。セクション（components/hub/*Section.tsx）と
  * PlayerHub 本体、フォームが共有する。第 3 段（テスト・成績表・進路）も同じ部品で書く：
  *   HubSheet（下からのシート／PC は中央のダイアログ）・SheetSave（末尾の保存ボタン）・Field／NumField／Seg／MultiSeg／
@@ -51,12 +80,12 @@ export type HubSection =
 /** メニューの並び（PC の縦メニュー・スマホのチップ列・選手 PC のレールのサブナビで共通） */
 export const HUB_SECTIONS: { key: HubSection; label: string }[] = [
   { key: "overview", label: "基本" },
-  { key: "growth", label: "成長" },
-  { key: "fitness", label: "体力" },
-  { key: "exams", label: "テスト" },
-  { key: "grades", label: "成績表" },
-  { key: "career", label: "進路" },
   { key: "injuries", label: "怪我" },
+  { key: "growth", label: "成長" },
+  { key: "grades", label: "成績表" },
+  { key: "fitness", label: "体力測定" },
+  { key: "exams", label: "定期テスト" },
+  { key: "career", label: "進路" },
   { key: "activity", label: "活動" },
   { key: "report", label: "レポート" },
 ];

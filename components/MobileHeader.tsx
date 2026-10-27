@@ -16,6 +16,8 @@ export function MobileHeader({
   onBack,
   backLabel = "戻る",
   actions,
+  onTitleClick,
+  titleLabel,
 }: {
   title: React.ReactNode;
   /** 画面名の下に小さく出す補足（§1-6: 廃止した.tag.teamの緑ピルの代わり。省略可） */
@@ -25,7 +27,22 @@ export function MobileHeader({
   backLabel?: string;
   /** 右側のアイコンアクション（MobileHeaderAction を並べる。最大3つ推奨） */
   actions?: React.ReactNode;
+  /** 指定時は見出し（題名＋補足）の全体を押せる 1 つのボタンにする（チャットのスレッドで選手名から個人ページへ。ux-fix R2-7） */
+  onTitleClick?: () => void;
+  /** onTitleClick のボタンの読み上げ名（省略時は見出しの文字） */
+  titleLabel?: string;
 }) {
+  const titleBody = onTitleClick ? (
+    <button type="button" className="mhead-tx-btn" aria-label={titleLabel} onClick={onTitleClick}>
+      <span className="mhead-title">{title}</span>
+      {subtitle && <span className="mhead-sub">{subtitle}</span>}
+    </button>
+  ) : (
+    <>
+      <div className="mhead-title">{title}</div>
+      {subtitle && <div className="mhead-sub">{subtitle}</div>}
+    </>
+  );
   return (
     <header className="mhead">
       {onBack ? (
@@ -35,10 +52,7 @@ export function MobileHeader({
       ) : (
         <span className="mhead-back mhead-spacer" aria-hidden="true" />
       )}
-      <div className="mhead-tx">
-        <div className="mhead-title">{title}</div>
-        {subtitle && <div className="mhead-sub">{subtitle}</div>}
-      </div>
+      <div className="mhead-tx">{titleBody}</div>
       {actions && <div className="mhead-actions">{actions}</div>}
     </header>
   );

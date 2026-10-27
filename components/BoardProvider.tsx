@@ -943,6 +943,8 @@ export interface SheetState {
   replyTo?: ChatReplyTo;
   /** annDetail: 開くお知らせの id */
   annId?: string;
+  /** annDetail: スタッフの既読パネルの最初のタブ（一覧の「了解 N/M ›」から開くときは "acked"。省略時は未読） */
+  annTab?: "unseen" | "seen" | "acked";
   /** kpi: 表示対象の指標 */
   kpiMetric?: KpiMetric;
   /** stat: 表示対象の指標 */
@@ -968,6 +970,14 @@ export type ScreenName =
   | "profile"
   /** 練習試合（相手探し・申し込み・チャットでの調整。スタッフだけ。matchup-demo §1）。「その他」の中の画面 */
   | "matchup";
+
+/** サッカーノートへの遷移指示（NotebookScreen が消費して null に戻す）。noteId＝その提出の詳細、
+ *  eventId＝予定別でその予定を開く、playerId＝提出一覧をその選手で絞る（ux-fix R2-7） */
+export interface NoteIntent {
+  noteId?: string;
+  eventId?: string;
+  playerId?: string;
+}
 
 interface BoardContextValue {
   state: BoardState;
@@ -1165,8 +1175,8 @@ interface BoardContextValue {
     v: { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openSheet?: "groups" | "categories" | "competitions" | "league" | "fitnessTests" } | null
   ) => void;
   /** p18 §3-1: ホームのタイムラインからサッカーノート（スタッフの提出の一覧）でそのノートの詳細を開く意図（消費後はnullに戻す） */
-  noteIntent: { noteId: string } | null;
-  setNoteIntent: (v: { noteId: string } | null) => void;
+  noteIntent: NoteIntent | null;
+  setNoteIntent: (v: NoteIntent | null) => void;
   /** ux-fix R1-7: 「その他」のアカウントのカードから設定のアカウントを開く意図（SettingsScreen が消費して null に戻す） */
   settingsIntent: { mode: "account" } | null;
   setSettingsIntent: (v: { mode: "account" } | null) => void;
@@ -1205,7 +1215,13 @@ interface BoardContextValue {
   /** トーストを出さない部分更新（既読・リアクション等の暗黙更新用） */
   patchNote: (id: string, patch: Partial<NotebookEntry>) => void;
   deleteNote: (id: string) => void;
-  setNoteComment: (id: string, comment: string, drawing?: { plays: PlayPoint[]; playLines: PlayLine[] }) => void;
+  /** opts.toast は完了の toast の文言（既定「コメントを送りました」。false で出さない） */
+  setNoteComment: (
+    id: string,
+    comment: string,
+    drawing?: { plays: PlayPoint[]; playLines: PlayLine[] },
+    opts?: { toast?: string | false }
+  ) => void;
   // コーチからの配信物
   deliverables: CoachDeliverable[];
   addDeliverable: (data: Omit<CoachDeliverable, "id" | "ts">) => void;
@@ -2053,7 +2069,7 @@ export function BoardProvider({
     { tab: "home" | "att" | "cal" | "rec" | "ros" | "chat"; playerId?: string; eventId?: string; openSheet?: "groups" | "categories" | "competitions" | "league" | "fitnessTests" } | null
   >(null);
   // p18 §3-1: ホームのタイムライン → サッカーノートの詳細（teamIntent と同じ作法。NotebookScreen が消費して null に戻す）
-  const [noteIntent, setNoteIntent] = useState<{ noteId: string } | null>(null);
+  const [noteIntent, setNoteIntent] = useState<NoteIntent | null>(null);
   // ux-fix R1-7: 「その他」のアカウントのカード → 設定のアカウント（noteIntent と同じ作法。SettingsScreen が消費する）
   const [settingsIntent, setSettingsIntent] = useState<{ mode: "account" } | null>(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
@@ -2945,7 +2961,12 @@ export function BoardProvider({
     setNotebook((list) => list.filter((n) => n.id !== id));
   }, []);
   const setNoteComment = useCallback(
-    (id: string, comment: string, drawing?: { plays: PlayPoint[]; playLines: PlayLine[] }) => {
+    (
+      id: string,
+      comment: string,
+      drawing?: { plays: PlayPoint[]; playLines: PlayLine[] },
+      opts?: { toast?: string | false }
+    ) => {
       setNotebook((list) =>
         list.map((n) =>
           n.id === id
@@ -2953,13 +2974,15 @@ export function BoardProvider({
                 ...n,
                 staffComment: comment.trim() || undefined,
                 staffCommentTs: Date.now(),
-                // drawing省略時は既存の図を保持（黙って消さない）
-                ...(drawing !== undefined ? { staffDrawing: drawing } : {}),
+                // drawing省略時は既存の図を保持（黙って消さない）。空の図を渡したときは消す（レビュー: 消し切って送った場合）
+                ...(drawing !== undefined
+                  ? { staffDrawing: drawing.plays.length > 0 || drawing.playLines.length > 0 ? drawing : undefined }
+                  : {}),
               }
             : n
         )
       );
-      showToast("コメントを送りました");
+      if (opts?.toast !== false) showToast(opts?.toast ?? "コメントを送りました");
     },
     [showToast]
   );

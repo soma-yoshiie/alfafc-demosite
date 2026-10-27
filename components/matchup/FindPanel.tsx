@@ -29,7 +29,7 @@ const WHENS: { v: MatchupFilter["when"]; label: string }[] = [
 ];
 
 /** 1 行（丸＝1 つだけ選ぶ／四角＝いくつでも選ぶ）。calfilterpanel-row と同じくキーボード（Enter／Space）でも操作できる */
-function Row({
+export function Row({
   on,
   kind,
   label,

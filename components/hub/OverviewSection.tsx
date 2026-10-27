@@ -1,62 +1,86 @@
 "use client";
 
-import React from "react";
-import type { DominantFoot } from "@/lib/types";
-import { gradeLabel } from "@/lib/types";
-import { SEX_LABEL, TERM_SYSTEM_LABEL } from "@/lib/profile";
+import React, { useEffect, useRef, useState } from "react";
 import { useBoard } from "../BoardProvider";
-import { useTeam } from "../TeamProvider";
-import { HubHead, LastUpdated, customGroupsOf, fmtYMD } from "./common";
+import { SEX_LABEL, TERM_SYSTEM_LABEL, ageOn } from "@/lib/profile";
+import { HubHead, LastUpdated, fmtYMD } from "./common";
 import type { HubSectionProps } from "./common";
 
 /**
- * セクション「基本」（player-hub §3-2）：基本情報の表（背番号・ポジション・利き足・学年・グループ・
- * メール（スタッフだけ）・生年月日・性別・在籍校・学期制）、スタッフのメモ（Player.roleNote。スタッフだけ）、
+ * スタッフのメモ（Player.roleNote）をその場で書く欄（ux-fix R2-7）。入力中は手元の文字を持ち、
+ * 欄を離れたとき（onBlur）に board.updatePlayer で保存する。別の画面で書き換わったら手元も追従する
+ */
+function RoleNoteEditor({ p }: { p: HubSectionProps["p"] }) {
+  const board = useBoard();
+  const [text, setText] = useState(p.roleNote ?? "");
+  const [saved, setSaved] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    setText(p.roleNote ?? "");
+  }, [p.id, p.roleNote]);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    []
+  );
+  const save = () => {
+    const next = text.trim();
+    if (next === (p.roleNote ?? "")) {
+      setText(next);
+      return;
+    }
+    board.updatePlayer({ ...p, roleNote: next || undefined });
+    setText(next);
+    setSaved(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setSaved(false), 2000);
+  };
+  return (
+    <div className="phubmemo-edit">
+      <textarea
+        className="st-input phubmemo-input"
+        rows={3}
+        aria-label="スタッフのメモ"
+        placeholder="メモを書く（スタッフだけに見えます）"
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          setSaved(false);
+        }}
+        onBlur={save}
+      />
+      {saved && (
+        <div className="phubmemo-saved" role="status">
+          保存しました
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * セクション「基本」（player-hub §3-2）：基本情報の表（メール（スタッフだけ）・生年月日・性別・在籍校・学期制。
+ * 背番号・ポジション・利き足・学年・グループ・役割は名前のカード（要約）にあるので表に置かない。ux-fix R2-4）、スタッフのメモ（Player.roleNote。スタッフだけ）、
  * 「シーズンレポートを見る ›」の行。生年月日〜学期制は PlayerProfile 側で、ヘッダー右上の編集ボタン
  * （PlayerBasicForm）から編集する。
  */
 
-function footLabel(f?: DominantFoot): string {
-  if (f === "right") return "右足";
-  if (f === "left") return "左足";
-  if (f === "both") return "両足";
-  return "";
-}
-
-export default function OverviewSection({ p, profile, viewer, stage, age, go }: HubSectionProps) {
-  const board = useBoard();
-  const team = useTeam();
+export default function OverviewSection({ p, profile, viewer, stage, go }: HubSectionProps) {
   const staff = viewer === "staff";
-  const groups = customGroupsOf(p, team.groups);
-  const isCaptain = board.state.captain === p.id;
+  // ux-fix R2-4 レビュー: 生年月日の横は今日時点の満年齢（props の age は 4/1 時点で、体力テスト・成長の比較用）
+  const ageToday = ageOn(profile.birthDate);
   const missing = !profile.birthDate || !profile.sex;
 
+  // 背番号・ポジション・利き足・学年・グループ・役割は名前のカード（要約）に出ているので表には置かない
   const rows: { k: string; v: React.ReactNode }[] = [
-    { k: "背番号", v: p.number != null ? p.number : "" },
-    { k: "ポジション", v: p.position },
-    { k: "利き足", v: footLabel(p.dominantFoot) },
-    { k: "学年", v: p.grade != null ? gradeLabel(stage, p.grade) : "" },
-    {
-      k: "グループ",
-      v: groups.length > 0 ? (
-        <span className="phubgroups">
-          {groups.map((g) => (
-            <span key={g.id} className="phubgroup">
-              {g.label}
-            </span>
-          ))}
-        </span>
-      ) : (
-        ""
-      ),
-    },
     ...(staff ? [{ k: "メール", v: p.email ?? "" }] : []),
     {
       k: "生年月日",
       v: profile.birthDate ? (
         <>
           {fmtYMD(profile.birthDate)}
-          {age != null && <span className="phubkv-sub"> ・ 4/1 時点 {age} 歳</span>}
+          {ageToday != null && `（${ageToday} 歳）`}
         </>
       ) : (
         ""
@@ -77,12 +101,6 @@ export default function OverviewSection({ p, profile, viewer, stage, age, go }: 
             <dd>{r.v === "" ? <span className="phubkv-empty">—</span> : r.v}</dd>
           </div>
         ))}
-        {isCaptain && (
-          <div className="phubkv-row">
-            <dt>役割</dt>
-            <dd>キャプテン (C)</dd>
-          </div>
-        )}
       </dl>
       {missing && (
         <div className="phubnote">
@@ -93,13 +111,7 @@ export default function OverviewSection({ p, profile, viewer, stage, age, go }: 
       {staff && (
         <>
           <HubHead title="スタッフのメモ" />
-          <div className="phubcard">
-            {p.roleNote ? (
-              <div className="phubmemo">{p.roleNote}</div>
-            ) : (
-              <div className="phubkv-empty">未入力です。戦術ボードのスロットメニューで入力できます。</div>
-            )}
-          </div>
+          <RoleNoteEditor p={p} />
         </>
       )}
 

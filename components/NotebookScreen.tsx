@@ -37,7 +37,7 @@ import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E, ConditionIcon, type EmojiName } from "./Emoji";
 import { FormationPitch, GoalCourseView, isInGoalFrame, PlayAreaPitch, type PlayTool } from "./MiniPitch";
-import { LineChart, Sparkline } from "./Charts";
+import { LineChart } from "./Charts";
 import { addDaysStr, countByDay, daysAgoStr, localDateStr, longestWeeklyStreak, weekStart, weeklyCounts, weeklyStreak } from "@/lib/dates";
 import {
   clearNoteDraft,
@@ -54,6 +54,8 @@ import { deliverableTargetsPlayer, eventTargetPlayers, playerInGroup, resolveFil
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
 import { categoryOf, eventNoteTarget } from "@/lib/calendarUtils";
 import { staffUnreadNotes } from "@/lib/notebookStats";
+import { isUnreadStaffComment } from "@/lib/badges";
+import { eventSubmitStats, noteBelongsToEvent } from "@/lib/eventNotes";
 import { DeliverBlock, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
 import { useGroupFilter } from "./GroupChips";
@@ -178,8 +180,7 @@ type View =
   | { mode: "detail"; id: string }
   | { mode: "deliverDetail"; id: string }
   | { mode: "search"; playerId?: string }
-  | { mode: "report"; playerId: string }
-  | { mode: "stats"; focus: "week" | "streak" | "total" };
+  | { mode: "report"; playerId: string };
 
 export default function NotebookScreen() {
   const board = useBoard();
@@ -188,7 +189,11 @@ export default function NotebookScreen() {
   // notebook-staff-redesign §2: スタッフの初期タブは提出(notes)。ホーム/配信/レポートは選手だけのタブ
   const [tabState, setTab] = useState<Tab>(isCoach ? "notes" : "home");
   const tab: Tab = isCoach && (tabState === "home" || tabState === "deliver" || tabState === "report") ? "notes" : tabState;
-  const [noteKind, setNoteKind] = useState<NoteKind | "all">(isCoach ? "all" : "practice");
+  // ux-fix R2-2: 種類の既定は選手もスタッフも「すべて」
+  const [noteKind, setNoteKind] = useState<NoteKind | "all">("all");
+  // ux-fix R2-2: 選手の「自分のノート｜チームの共有」。共有を選んでいる間は種類を練習に固定する
+  const [noteScope, setNoteScope] = useState<"mine" | "team">("mine");
+  const listKind: NoteKind | "all" = !isCoach && noteScope === "team" ? "practice" : noteKind;
   // notebook-staff-redesign §3-2: スタッフの絞り込み。種類=noteKind、状態=noteStatus、学年/グループは
   // 下の filterIds。「未読 N」チップ(unreadOnly)は状態とは別の切替で、両方ONならAND
   const [noteStatus, setNoteStatus] = useState<NoteStatus>("all");
@@ -205,6 +210,10 @@ export default function NotebookScreen() {
   // タブごとに1つ。View(mode)は変えず「選んでいるだけ」にすることで、左の一覧(.scroll)は
   // 従来どおり isRoot 判定のまま表示され続ける（=同時にマスター一覧としても機能する）
   const [selNote, setSelNote] = useState<string | null>(null);
+  // ux-fix R2-7: 予定の詳細から「予定別でこの予定を開く」指示（NoteList が消費。n は同じ予定を続けて指されても効くよう増やす）
+  const [eventFocus, setEventFocus] = useState<{ id: string; n: number } | null>(null);
+  // ux-fix R2-7: チャットのスレッドの「ノート」から来たとき、提出一覧をその選手だけに絞る（スタッフ）。null＝絞らない
+  const [playerFilter, setPlayerFilter] = useState<string | null>(null);
   const [selNotif, setSelNotif] = useState<{ target: NotifTarget; notifId?: string } | null>(null);
   // groups-phase2 §4: サッカーノート（コーチ）のグループ絞り込み。提出一覧・検索は
   // 各自 useGroupFilter("notebook") で読み直す（notebook-staff-redesign §2: ホームの
@@ -232,20 +241,82 @@ export default function NotebookScreen() {
     const intent = board.noteIntent;
     if (!intent) return;
     board.setNoteIntent(null);
-    if (!isCoach || !board.notebook.some((n) => n.id === intent.noteId)) return;
+    // ux-fix R2-7: チャットのスレッドの「ノート」。提出タブの一覧をその選手だけに絞る（一覧にその選手が必ず出るよう、
+    // 種類・状態・未読だけ・学年/グループの絞り込みは外す）
+    if (intent.playerId && !intent.eventId && !intent.noteId) {
+      if (!isCoach) return;
+      setTab("notes");
+      setSheetOpen(false);
+      setFilterSheet(false);
+      setSelNotif(null);
+      setSelNote(null);
+      setView({ mode: "root" });
+      setNoteKind("all");
+      setNoteStatus("all");
+      setUnreadOnly(false);
+      setFilterIds([]);
+      setPlayerFilter(intent.playerId);
+      return;
+    }
+    // ux-fix R2-7: 予定の詳細の「ノート N／M 提出 ›」。スタッフの提出タブで予定別に切り替えて、その予定の行を開く
+    if (intent.eventId) {
+      if (!isCoach) return;
+      setTab("notes");
+      setSheetOpen(false);
+      setFilterSheet(false);
+      setSelNotif(null);
+      setSelNote(null);
+      setView({ mode: "root" });
+      // 予定は必ず見えるように、種類・状態・未読だけ・学年/グループの絞り込みを外す
+      setNoteKind("all");
+      setNoteStatus("all");
+      setUnreadOnly(false);
+      setFilterIds([]);
+      setPlayerFilter(null);
+      setEventFocus((f) => ({ id: intent.eventId!, n: (f?.n ?? 0) + 1 }));
+      return;
+    }
+    if (!intent.noteId) return;
+    const noteId = intent.noteId;
+    if (!board.notebook.some((n) => n.id === noteId)) return;
+    // ux-fix R2-1: 選手・保護者は自分のノートの詳細をそのまま開く（ホームの「コーチからコメント N 件」から）。
+    // 戻るはホーム（ここで開いたタブ）に戻る
+    if (!isCoach) {
+      if (board.notebook.find((n) => n.id === noteId)?.playerId !== board.auth.playerId) return;
+      setSheetOpen(false);
+      setView({ mode: "detail", id: noteId });
+      return;
+    }
     setTab("notes");
     setSheetOpen(false);
     setFilterSheet(false);
     setSelNotif(null);
     if (typeof window !== "undefined" && window.matchMedia(PC_MQ).matches) {
       setView({ mode: "root" });
-      setSelNote(intent.noteId);
+      setSelNote(noteId);
     } else {
       setSelNote(null);
-      setView({ mode: "detail", id: intent.noteId });
+      setView({ mode: "detail", id: noteId });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board.noteIntent]);
+
+  // ux-fix R2-7: 今の絞り込み（種類・学年/グループ・状態・未読だけ）の中の未読の提出（新しい順）。
+  // 詳細の「次の未読へ（残り N）」と、PC の空のペインの「未読 N 件を開く」が使う
+  const unreadQueue = useMemo(() => {
+    if (!isCoach) return [] as string[];
+    const sc = staffScopedNotes(board.notebook, board.state.players, noteKind, filterGroup).filter(
+      (n) => !playerFilter || n.playerId === playerFilter
+    );
+    const base = staffStatusNotes(sc, noteStatus, selNote);
+    return staffUnreadOnlyNotes(base, unreadOnly, selNote)
+      .filter((n) => !n.staffSeenAt)
+      .map((n) => n.id);
+  }, [isCoach, board.notebook, board.state.players, noteKind, filterGroup, noteStatus, unreadOnly, selNote, playerFilter]);
+  const nextUnreadFor = (id: string, open: (nid: string) => void) => {
+    const rest = unreadQueue.filter((x) => x !== id);
+    return { count: rest.length, onOpen: () => rest[0] && open(rest[0]) };
+  };
 
   const identity = notifIdentity(board.auth.role, board.auth.playerId);
   const [seenAt, setSeenAt] = useState<number>(() => loadNotifSeen()[identity] ?? 0);
@@ -353,6 +424,16 @@ export default function NotebookScreen() {
       .filter((e) => e.date === todayStr() && eventNoteTarget(e, team.categories))
       .map((e) => e.kind)
   );
+  // ux-fix R2-2: 自分の今日の練習ノート（新しいもの）。あれば作成シートの練習ノートは「今日は記入済み（開く）」
+  const todayPractice = isCoach
+    ? null
+    : board.notebook
+        .filter((n) => n.kind === "practice" && n.playerId === board.auth.playerId && n.date === todayStr())
+        .sort((a, b) => b.ts - a.ts)[0] ?? null;
+  const openToday = (id: string) => {
+    setSheetOpen(false);
+    setView({ mode: "detail", id });
+  };
   const noteKindOrder: NoteKind[] = todayEventKinds.has("match")
     ? ["match", "practice", "solo"]
     : todayEventKinds.has("practice")
@@ -480,22 +561,41 @@ export default function NotebookScreen() {
         </>
       )}
 
-      {/* 種類チップ(.fbar)は選手だけ。notebook-staff-redesign §3-1: スタッフの種類・学年/グループ・状態は
-          絞り込みパネル(スマホ=シート／PC=左の.nbside)へ集約し、一覧の上の2行のチップは出さない */}
+      {/* ux-fix R2-2: 選手のノート一覧の上。1 段目＝「自分のノート｜チームの共有」(.mseg)、
+          2 段目＝検索＋種類チップの 1 行（チームの共有は種類を練習に固定するのでチップを隠す）。
+          スタッフの種類・学年/グループ・状態は絞り込みパネル(スマホ=シート／PC=左の.nbside)へ集約 */}
       {isRoot && tab === "notes" && !isCoach && (
-        <div className="fbar">
-          {(["match", "practice", "solo"] as NoteKind[]).map((k) => (
-            <div
-              key={k}
-              className={`chip${noteKind === k ? " on" : ""}`}
-              onClick={() => {
-                setNoteKind(k);
-                setSelNote(null); // 絞り込みで一覧から消えたノートを右ペインに残さない
-              }}
-            >
-              {NOTE_KIND_LABEL[k]}
-            </div>
-          ))}
+        <div className="nbplbar">
+          <div className="mseg-wrap nbplscope">
+            <MobileSegments
+              ariaLabel="ノートの範囲"
+              items={[
+                { key: "mine", label: "自分のノート", on: noteScope === "mine", onSelect: () => setNoteScope("mine") },
+                { key: "team", label: "チームの共有", on: noteScope === "team", onSelect: () => setNoteScope("team") },
+              ]}
+            />
+          </div>
+          <div className="nbplrow">
+            <button type="button" className="nbplsearch" onClick={() => setView({ mode: "search" })}>
+              <E n="search" /> 検索
+            </button>
+            {noteScope === "mine" && (
+              <div className="fbar nbplchips">
+                {(["all", "match", "practice", "solo"] as (NoteKind | "all")[]).map((k) => (
+                  <div
+                    key={k}
+                    className={`chip${noteKind === k ? " on" : ""}`}
+                    onClick={() => {
+                      setNoteKind(k);
+                      setSelNote(null); // 絞り込みで一覧から消えたノートを右ペインに残さない
+                    }}
+                  >
+                    {k === "all" ? "すべて" : NOTE_KIND_LABEL[k]}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -514,14 +614,16 @@ export default function NotebookScreen() {
         {/* notebook-staff-redesign §2: ホームは選手だけ（スタッフのダッシュボード・KPI内訳は撤去） */}
         {isRoot && tab === "home" && !isCoach && (
           <PlayerHome
+            seenAt={seenAt}
             onOpenNote={(id) => setView({ mode: "detail", id })}
             onOpenDeliver={(id) => setView({ mode: "deliverDetail", id })}
-            onOpenStats={(focus) => setView({ mode: "stats", focus })}
+            onWrite={() => setSheetOpen(true)}
           />
         )}
         {isRoot && tab === "notes" && (
           <NoteList
-            kind={noteKind}
+            kind={listKind}
+            scope={noteScope}
             status={noteStatus}
             unreadOnly={unreadOnly}
             onToggleUnread={() => {
@@ -535,6 +637,17 @@ export default function NotebookScreen() {
             onOpen={(id) => (isPcCoach() ? setSelNote(id) : setView({ mode: "detail", id }))}
             onSearch={() => setView({ mode: "search" })}
             selectedId={selNote}
+            playerId={playerFilter}
+            onClearPlayer={() => {
+              setPlayerFilter(null);
+              setSelNote(null);
+            }}
+            eventFocus={eventFocus}
+            onEventFocusDone={() => setEventFocus(null)}
+            onOpenEvent={(eventId) => {
+              board.setTeamIntent({ tab: "cal", eventId });
+              board.setScreen("team");
+            }}
           />
         )}
         {isRoot && tab === "notifs" && (
@@ -545,7 +658,11 @@ export default function NotebookScreen() {
           />
         )}
         {isRoot && tab === "report" && !isCoach && board.auth.playerId && (
-          <SeasonReport playerId={board.auth.playerId} />
+          <>
+            <SeasonReport playerId={board.auth.playerId} />
+            {/* ux-fix R2-1: ホームから移したマイ分析・コンディション・記録の集計 */}
+            <PlayerAnalysis />
+          </>
         )}
 
         {view.mode === "form" && (
@@ -554,9 +671,11 @@ export default function NotebookScreen() {
         {view.mode === "detail" && (
           <NoteDetail
             id={view.id}
+            key={view.id}
             isCoach={isCoach}
             onEdit={(e) => setView({ mode: "form", kind: e.kind, edit: e })}
             onDeleted={() => setView({ mode: "root" })}
+            nextUnread={isCoach ? nextUnreadFor(view.id, (nid) => setView({ mode: "detail", id: nid })) : undefined}
           />
         )}
         {view.mode === "deliverDetail" && !isCoach && (
@@ -574,9 +693,6 @@ export default function NotebookScreen() {
           />
         )}
         {view.mode === "report" && <SeasonReport playerId={view.playerId} />}
-        {view.mode === "stats" && !isCoach && (
-          <PlayerStats focus={view.focus} onOpenNote={(id) => setView({ mode: "detail", id })} />
-        )}
       </div>
 
       {/* PC専用の第2ペイン(詳細)。コーチ×notes/notifsタブでのみマウントする
@@ -593,10 +709,16 @@ export default function NotebookScreen() {
                 isCoach={isCoach}
                 onEdit={(e) => setView({ mode: "form", kind: e.kind, edit: e })}
                 onDeleted={() => setSelNote(null)}
+                nextUnread={nextUnreadFor(selNote, (nid) => setSelNote(nid))}
               />
             ) : (
               <div className="nbempty">
                 提出を選ぶと、ここに内容が出ます
+                {unreadQueue.length > 0 && (
+                  <button type="button" className="st-btn nbopenunread" onClick={() => setSelNote(unreadQueue[0])}>
+                    未読 {unreadQueue.length} 件を開く
+                  </button>
+                )}
               </div>
             ))}
           {tab === "notifs" &&
@@ -653,11 +775,17 @@ export default function NotebookScreen() {
       {sheetOpen && (
         <div className="wsheetback" onClick={() => setSheetOpen(false)}>
           <div className="wsheet" onClick={(e) => e.stopPropagation()}>
-            <div className="wsheet-h">作成するノートを選択</div>
+            <div className="wsheet-h kindsheet-h">どのノートを書く？</div>
             {noteKindOrder.map((k) => (
-              <button key={k} className="wsheetopt" onClick={() => startWrite(k)}>
-                <span className="wsheetic">
-                  <E n={k === "match" ? "vs" : k === "practice" ? "ball" : "run"} />
+              <button
+                key={k}
+                className="wsheetopt"
+                // ux-fix R2-2: 今日の練習ノートを書いてあるときは、新しく作らず既存のノートを開く
+                onClick={() => (k === "practice" && todayPractice ? openToday(todayPractice.id) : startWrite(k))}
+              >
+                {/* ux-fix R2-2: 種類のアイコンは一覧・詳細と同じ NoteKindIcon（色は .k-種類） */}
+                <span className={`wsheetic k-${k}`} aria-hidden="true">
+                  <NoteKindIcon kind={k} />
                 </span>
                 <span>
                   <b>
@@ -673,7 +801,9 @@ export default function NotebookScreen() {
                     {k === "match"
                       ? "対戦相手・ベストプレーを記録"
                       : k === "practice"
-                        ? "目標の達成度と気づきを記録"
+                        ? todayPractice
+                          ? "今日は記入済み（開く）"
+                          : "目標の達成度と気づきを記録"
                         : "実施した種目と量を記録"}
                   </small>
                 </span>
@@ -689,14 +819,21 @@ export default function NotebookScreen() {
 }
 
 /* ===================== ホーム（選手） ===================== */
+/**
+ * ux-fix R2-1: 上から 今日の状況 → スタッフからのコメント → コーチから → 今週の数字（1 行）。
+ * マイ分析・コンディション・各種の集計はレポートタブ（PlayerAnalysis）へ移した。
+ */
 function PlayerHome({
+  seenAt,
   onOpenNote,
   onOpenDeliver,
-  onOpenStats,
+  onWrite,
 }: {
+  /** コメントの既読時刻（loadNotifSeen の自分の値。通知タブを開くと更新される） */
+  seenAt: number;
   onOpenNote: (id: string) => void;
   onOpenDeliver: (id: string) => void;
-  onOpenStats: (focus: "week" | "streak" | "total") => void;
+  onWrite: () => void;
 }) {
   const board = useBoard();
   const me = board.auth.playerId ?? "";
@@ -713,12 +850,6 @@ function PlayerHome({
     const monday = weekStart(today);
     return myNotes.filter((n) => n.date >= monday).length;
   }, [myNotes, today]);
-  // 前週比デルタ用：weekStart(today) の1週前の週に属するノート数
-  const lastWeekCount = useMemo(() => {
-    const lastMonday = addDaysStr(weekStart(today), -7);
-    return myNotes.filter((n) => weekStart(n.date) === lastMonday).length;
-  }, [myNotes, today]);
-  const weekNoteDiff = thisWeekCount - lastWeekCount;
   const weekDots = useMemo(() => {
     const monday = weekStart(today);
     return Array.from({ length: 7 }, (_, i) => {
@@ -726,92 +857,39 @@ function PlayerHome({
       return { date, count: myNotes.filter((n) => n.date === date).length };
     });
   }, [myNotes, today]);
-  const commented = useMemo(
-    () =>
-      myNotes
-        .filter((n) => n.staffComment)
-        .sort((a, b) => (b.staffCommentTs ?? b.ts) - (a.staffCommentTs ?? a.ts))
-        .slice(0, 2),
-    [myNotes]
-  );
-  const weeklyChart = useMemo(() => weeklyCounts(myNotes.map((n) => n.date)), [myNotes]);
-  const weekSparkline = useMemo(() => weeklyChart.map((w) => w.value), [weeklyChart]);
-  const totalSparkline = useMemo(() => {
-    let acc = 0;
-    return weeklyChart.map((w) => {
-      acc += w.value;
-      return acc;
-    });
-  }, [weeklyChart]);
 
-  // 直近8週の起点（月曜）。シュート決定率・達成度週平均・バイタルの集計に共通で使う
-  const windowStart8 = useMemo(() => addDaysStr(weekStart(today), -7 * 7), [today]);
-
-  // KPI: シュート決定率（直近8週の ゴール数/シュート数）
-  const myMatchNotes = useMemo(
-    () => myNotes.filter((n): n is MatchNote => n.kind === "match"),
-    [myNotes]
-  );
-  const shotRate8 = useMemo(() => {
-    let shots = 0;
-    let goals = 0;
-    myMatchNotes
-      .filter((n) => n.date >= windowStart8)
-      .forEach((n) =>
-        (n.plays ?? []).forEach((p) => {
-          if (p.kind !== "shot") return;
-          shots++;
-          if (p.scored === true) goals++;
-        })
-      );
-    return shots > 0 ? Math.round((goals / shots) * 100) : null;
-  }, [myMatchNotes, windowStart8]);
-
-  // KPI・バイタル: 達成度（直近8週。記録がある週だけの週平均を平均）
-  const practiceAchievements = useMemo(
-    () => myNotes.filter((n): n is PracticeNote => n.kind === "practice" && typeof n.achievement === "number"),
-    [myNotes]
-  );
+  // 達成度（直近8週。記録がある週だけの週平均を平均）。「今週の数字」の 1 行に使う
   const achieveAvg8 = useMemo(() => {
     const thisMonday = weekStart(today);
     const weeklyAvgs: number[] = [];
     for (let k = 0; k < 8; k++) {
       const monday = addDaysStr(thisMonday, -7 * (7 - k));
-      const vals = practiceAchievements
-        .filter((n) => weekStart(n.date) === monday)
+      const vals = myNotes
+        .filter((n): n is PracticeNote => n.kind === "practice" && typeof n.achievement === "number" && weekStart(n.date) === monday)
         .map((n) => n.achievement as number);
       if (vals.length) weeklyAvgs.push(vals.reduce((a, b) => a + b, 0) / vals.length);
     }
     return weeklyAvgs.length ? Math.round(weeklyAvgs.reduce((a, b) => a + b, 0) / weeklyAvgs.length) : null;
-  }, [practiceAchievements, today]);
+  }, [myNotes, today]);
 
-  // バイタル: 調子（直近10件の condition 分布）
-  const conditionMix = useMemo(() => {
-    const recent = myNotes
-      .filter((n) => n.condition)
-      .sort((a, b) => b.ts - a.ts)
-      .slice(0, 10)
-      .map((n) => n.condition as NoteCondition);
-    const total = recent.length;
-    if (total === 0) return { good: 0, normal: 0, bad: 0 };
-    const good = recent.filter((c) => c === "great" || c === "good").length;
-    const normal = recent.filter((c) => c === "normal").length;
-    const bad = recent.filter((c) => c === "tired" || c === "bad").length;
-    return {
-      good: Math.round((good / total) * 100),
-      normal: Math.round((normal / total) * 100),
-      bad: Math.round((bad / total) * 100),
-    };
-  }, [myNotes]);
-
-  // バイタル: 出席率（データが無ければ行を出さない）
-  const attendance = useMemo(
-    () => attendanceRate(loadTeam(), me, board.state.players),
-    [me, board.notebook, board.state.players]
-  );
+  // スタッフからのコメント：未読（lib/badges の isUnreadStaffComment。通知の既読時刻より後で、本人が詳細で見ていない。noteBadge と同じ判定）をすべて、
+  // 足りなければ既読の新しいものを足して 3 件に
+  const comments = useMemo(() => {
+    const all = myNotes
+      .filter((n) => !!n.staffComment)
+      .sort((a, b) => (b.staffCommentTs ?? b.ts) - (a.staffCommentTs ?? a.ts));
+    const isUnread = (n: NotebookEntry) => isUnreadStaffComment(n, seenAt);
+    const unread = all.filter(isUnread);
+    const read = all.filter((n) => !isUnread(n));
+    return { unreadCount: unread.length, rows: [...unread, ...read].slice(0, Math.max(3, unread.length)), isUnread };
+  }, [myNotes, seenAt]);
 
   // 曜日タップの展開状態（モーダルではなくインラインで開閉する）
   const [openDay, setOpenDay] = useState<string | null>(null);
+
+  const numbers = [`今週 ${thisWeekCount} 件`];
+  if (achieveAvg8 != null) numbers.push(`達成度 ${achieveAvg8}%`);
+  numbers.push(`連続 ${wStreak} 週`);
 
   return (
     <div className="notehome">
@@ -819,18 +897,13 @@ function PlayerHome({
 
       <div className="homecta">
         {wroteToday ? (
-          <>
-            <div className="homecta-done"><E n="check" /> 今日のノートは記入済み</div>
-            {wStreak > 0 && (
-              <div className="homecta-streak"><E n="fire" /> {wStreak}週連続で記録中</div>
-            )}
-          </>
+          <div className="homecta-done"><E n="check" /> 今日のノートは記入済み</div>
         ) : (
           <>
             <div className="homecta-msg">今日のノートはまだ未記入</div>
-            {wStreak > 0 && (
-              <div className="homecta-streak"><E n="fire" /> {wStreak}週連続 ・ 今週 {thisWeekCount}件</div>
-            )}
+            <button type="button" className="st-btn homecta-write" onClick={onWrite}>
+              今日のノートを書く
+            </button>
           </>
         )}
         <div className="weekdots">
@@ -881,98 +954,56 @@ function PlayerHome({
         )}
       </div>
 
-      <div className="homecol side">
-        <div className="dashsum">
-          <button type="button" className="dashbox" onClick={() => onOpenStats("week")}>
-            <div className="dbv">{thisWeekCount}</div>
-            <div className="dbl">今週のノート</div>
-            <div className={"dbd " + (weekNoteDiff > 0 ? "up" : weekNoteDiff < 0 ? "down" : "flat")}>
-              {/* mobile-redesign Phase D-1(minor §8-4 #22): EM DASHを使わない */}
-              {weekNoteDiff > 0 ? `↗ 先週 +${weekNoteDiff}` : weekNoteDiff < 0 ? `↘ 先週 ${weekNoteDiff}` : "先週と同じ"}
-            </div>
-            <Sparkline values={weekSparkline} />
-          </button>
-          {/* mobile-redesign Phase D-1(minor §8-3 #16/§8-4 #22): 値が無い(記録が無く「—」表示になる)
-              タイルは表示自体を落とす（ダッシュ文字を使わないため） */}
-          {shotRate8 != null && (
-            <div className="dashbox" style={{ cursor: "default" }}>
-              <div className="dbv">{shotRate8}%</div>
-              <div className="dbl">シュート決定率</div>
-            </div>
-          )}
-          {achieveAvg8 != null && (
-            <div className="dashbox" style={{ cursor: "default" }}>
-              <div className="dbv">{achieveAvg8}%</div>
-              <div className="dbl">達成度(週平均)</div>
-            </div>
-          )}
-          <button type="button" className="dashbox" onClick={() => onOpenStats("total")}>
-            <div className="dbv">{myNotes.length}</div>
-            <div className="dbl">これまでの合計</div>
-            <Sparkline values={totalSparkline} />
-          </button>
-        </div>
-
-        <div className="vitals">
-          <div className="notesec-h" style={{ margin: "0 0 8px" }}>コンディション（直近10回）</div>
-          <div className="vrow">
-            <span>調子</span>
-            <span className="vbar">
-              <i style={{ width: `${conditionMix.good}%`, background: "#10a15c" }} />
-              <i style={{ width: `${conditionMix.normal}%`, background: "#f59e0b" }} />
-              <i style={{ width: `${conditionMix.bad}%`, background: "#ef4444" }} />
-            </span>
+      {comments.rows.length > 0 && (
+        <>
+          <div className="homesec-h">
+            スタッフからのコメント
+            {comments.unreadCount > 0 && <span className="homesec-n">未読 {comments.unreadCount} 件</span>}
           </div>
-          <div className="vrow">
-            <span>達成度</span>
-            <span className="vbar">
-              <i style={{ width: `${achieveAvg8 ?? 0}%`, background: "#10a15c" }} />
-            </span>
+          <div className="pcmts">
+            {comments.rows.map((n) => {
+              const unread = comments.isUnread(n);
+              return (
+                <button
+                  key={n.id}
+                  type="button"
+                  className={`pcmt${unread ? " unread" : ""}`}
+                  onClick={() => onOpenNote(n.id)}
+                >
+                  <span className="pcmt-top">
+                    <span className="pcmt-who">
+                      {unread && <span className="hp-dot" aria-label="未読" />}
+                      {NOTE_KIND_LABEL[n.kind]}ノート ・ {fmt(n.date)}
+                    </span>
+                    <span className="convchev" aria-hidden="true">›</span>
+                  </span>
+                  <span className="pcmt-body">{n.staffComment}</span>
+                </button>
+              );
+            })}
           </div>
-          {attendance.total > 0 && (
-            <div className="vrow">
-              <span>出席</span>
-              <span className="vbar">
-                <i style={{ width: `${attendance.pct}%`, background: "#10a15c" }} />
-                <i style={{ width: `${100 - attendance.pct}%`, background: "#ef4444" }} />
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+        </>
+      )}
 
-      <div className="homecol main">
-        <AnalyticsPanel mode="player" />
+      <DeliverBlock
+        kinds={["menu", "assignment", "meeting", "setpiece"]}
+        onOpen={onOpenDeliver}
+        onCreate={() => {}}
+      />
 
-        {commented.length > 0 && (
-          <>
-            <div className="homesec-h"><E n="comment" /> スタッフからコメントが届いています</div>
-            <div className="notecards">
-              {commented.map((n) => (
-                <NoteCard key={n.id} entry={n} onClick={() => onOpenNote(n.id)} />
-              ))}
-            </div>
-          </>
-        )}
-
-        <DeliverBlock
-          kinds={["menu", "assignment", "meeting", "setpiece"]}
-          onOpen={onOpenDeliver}
-          onCreate={() => {}}
-        />
+      <div className="pnum" aria-label="今週の数字">
+        {numbers.join(" ・ ")}
       </div>
     </div>
   );
 }
 
-/* ===================== 記録の分析（選手） ===================== */
-function PlayerStats({
-  focus,
-  onOpenNote,
-}: {
-  focus: "week" | "streak" | "total";
-  onOpenNote: (id: string) => void;
-}) {
+/* ===================== 分析（選手のレポートタブの下） ===================== */
+/**
+ * ux-fix R2-1: ホームから移した「マイ分析」「コンディション（直近10回）」と、記録の集計
+ * （週別の記録数・種類別・連続記録・これまでの合計・達成度の推移）。印刷（PDF で保存）には含めない。
+ */
+function PlayerAnalysis() {
   const board = useBoard();
   const me = board.auth.playerId ?? "";
   const today = todayStr();
@@ -1011,6 +1042,60 @@ function PlayerStats({
     [myNotes]
   );
 
+  // 直近8週の起点（月曜）。シュート決定率・達成度週平均に共通
+  const windowStart8 = useMemo(() => addDaysStr(weekStart(today), -7 * 7), [today]);
+  const shotRate8 = useMemo(() => {
+    let shots = 0;
+    let goals = 0;
+    myNotes
+      .filter((n): n is MatchNote => n.kind === "match" && n.date >= windowStart8)
+      .forEach((n) =>
+        (n.plays ?? []).forEach((p) => {
+          if (p.kind !== "shot") return;
+          shots++;
+          if (p.scored === true) goals++;
+        })
+      );
+    return shots > 0 ? Math.round((goals / shots) * 100) : null;
+  }, [myNotes, windowStart8]);
+  const achieveAvg8 = useMemo(() => {
+    const thisMonday = weekStart(today);
+    const weeklyAvgs: number[] = [];
+    for (let k = 0; k < 8; k++) {
+      const monday = addDaysStr(thisMonday, -7 * (7 - k));
+      const vals = achievementTrendAll(myNotes)
+        .filter((n) => weekStart(n.date) === monday)
+        .map((n) => n.achievement as number);
+      if (vals.length) weeklyAvgs.push(vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+    return weeklyAvgs.length ? Math.round(weeklyAvgs.reduce((a, b) => a + b, 0) / weeklyAvgs.length) : null;
+  }, [myNotes, today]);
+
+  // コンディション（直近10件の condition 分布）
+  const conditionMix = useMemo(() => {
+    const recent = myNotes
+      .filter((n) => n.condition)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 10)
+      .map((n) => n.condition as NoteCondition);
+    const total = recent.length;
+    if (total === 0) return { good: 0, normal: 0, bad: 0 };
+    const good = recent.filter((c) => c === "great" || c === "good").length;
+    const normal = recent.filter((c) => c === "normal").length;
+    const bad = recent.filter((c) => c === "tired" || c === "bad").length;
+    return {
+      good: Math.round((good / total) * 100),
+      normal: Math.round((normal / total) * 100),
+      bad: Math.round((bad / total) * 100),
+    };
+  }, [myNotes]);
+
+  // 出席率（データが無ければ行を出さない）
+  const attendance = useMemo(
+    () => attendanceRate(loadTeam(), me, board.state.players),
+    [me, board.notebook, board.state.players]
+  );
+
   const kindBreakdown = (
     <>
       {(["match", "practice", "solo"] as NoteKind[]).map((k) => (
@@ -1025,67 +1110,83 @@ function PlayerStats({
     </>
   );
 
-  const sections: { key: "week" | "streak" | "total"; node: React.ReactNode }[] = [
-    {
-      key: "week",
-      node: (
-        <div className="notesec" key="week">
-          <div className="notesec-h">週別の記録数（8週）</div>
-          <LineChart data={weeklyChart} detailed />
-          <div className="notesec-h" style={{ marginTop: 14 }}>種類別の内訳</div>
-          {kindBreakdown}
-        </div>
-      ),
-    },
-    {
-      key: "streak",
-      node: (
-        <div className="notesec" key="streak">
-          <div className="notesec-h">連続記録</div>
-          <div style={{ display: "flex", gap: 28, margin: "2px 0 4px" }}>
-            <div className="statbig">
-              {wStreak}
-              <small>週連続（現在）</small>
-            </div>
-            <div className="statbig">
-              {longStreak}
-              <small>週連続（最長）</small>
-            </div>
-          </div>
-          <div className="statheat">
-            {heatWeeks.flatMap((wk) =>
-              Array.from({ length: 7 }, (_, day) => {
-                const date = addDaysStr(wk, day);
-                const count = date > today ? 0 : heatCounts.get(date) ?? 0;
-                const level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : 3;
-                return <div key={date} className={`shc l${level}`} />;
-              })
-            )}
-          </div>
-        </div>
-      ),
-    },
-    {
-      key: "total",
-      node: (
-        <div className="notesec" key="total">
-          <div className="notesec-h">これまでの合計</div>
-          <div className="statbig" style={{ marginBottom: 10 }}>
-            {myNotes.length}
-            <small>冊</small>
-          </div>
-          {kindBreakdown}
-          {oldestDate && <div className="evnote" style={{ marginTop: 6 }}>最初の記録：{fmt(oldestDate)}</div>}
-        </div>
-      ),
-    },
-  ];
-  const ordered = [sections.find((s) => s.key === focus)!, ...sections.filter((s) => s.key !== focus)];
-
   return (
-    <div className="notetools">
-      <h2>記録の分析</h2>
-      {ordered.map((s) => s.node)}
+    <div className="notetools noprint plan-analysis">
+      <h2>分析</h2>
+
+      <AnalyticsPanel mode="player" />
+
+      <div className="vitals">
+        <div className="notesec-h" style={{ margin: "0 0 8px" }}>コンディション（直近10回）</div>
+        <div className="vrow">
+          <span>調子</span>
+          <span className="vbar">
+            <i style={{ width: `${conditionMix.good}%`, background: "var(--cat2)" }} />
+            <i style={{ width: `${conditionMix.normal}%`, background: "var(--cat3)" }} />
+            <i style={{ width: `${conditionMix.bad}%`, background: "var(--danger)" }} />
+          </span>
+        </div>
+        <div className="vrow">
+          <span>達成度</span>
+          <span className="vbar">
+            <i style={{ width: `${achieveAvg8 ?? 0}%`, background: "var(--cat2)" }} />
+          </span>
+        </div>
+        {attendance.total > 0 && (
+          <div className="vrow">
+            <span>出席</span>
+            <span className="vbar">
+              <i style={{ width: `${attendance.pct}%`, background: "var(--cat2)" }} />
+              <i style={{ width: `${100 - attendance.pct}%`, background: "var(--danger)" }} />
+            </span>
+          </div>
+        )}
+        {shotRate8 != null && (
+          <div className="evnote" style={{ marginTop: 8 }}>シュート決定率（直近8週）：{shotRate8}%</div>
+        )}
+      </div>
+
+      <div className="notesec">
+        <div className="notesec-h">週別の記録数（8週）</div>
+        <LineChart data={weeklyChart} detailed />
+        <div className="notesec-h" style={{ marginTop: 14 }}>種類別の内訳</div>
+        {kindBreakdown}
+      </div>
+
+      <div className="notesec">
+        <div className="notesec-h">連続記録</div>
+        <div style={{ display: "flex", gap: 28, margin: "2px 0 4px" }}>
+          <div className="statbig">
+            {wStreak}
+            <small>週連続（現在）</small>
+          </div>
+          <div className="statbig">
+            {longStreak}
+            <small>週連続（最長）</small>
+          </div>
+        </div>
+        <div className="statheat">
+          {heatWeeks.flatMap((wk) =>
+            Array.from({ length: 7 }, (_, day) => {
+              const date = addDaysStr(wk, day);
+              const count = date > today ? 0 : heatCounts.get(date) ?? 0;
+              const level = count === 0 ? 0 : count === 1 ? 1 : count === 2 ? 2 : 3;
+              return <div key={date} className={`shc l${level}`} />;
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="notesec">
+        <div className="notesec-h">これまでの合計</div>
+        <div className="statbig" style={{ marginBottom: 10 }}>
+          {myNotes.length}
+          <small>冊</small>
+        </div>
+        {kindBreakdown}
+        {oldestDate && <div className="evnote" style={{ marginTop: 6 }}>最初の記録：{fmt(oldestDate)}</div>}
+      </div>
+
       <div className="notesec">
         <div className="notesec-h">達成度の推移</div>
         {achievementTrend.length >= 2 ? (
@@ -1098,26 +1199,52 @@ function PlayerStats({
   );
 }
 
+/** 達成度（0〜100）が入っている練習ノート */
+function achievementTrendAll(notes: NotebookEntry[]): PracticeNote[] {
+  return notes.filter((n): n is PracticeNote => n.kind === "practice" && typeof n.achievement === "number");
+}
+
 /* ===================== 一覧 ===================== */
 
 /** 予定別ビューの「予定に紐づかない提出」グループのキー。TeamEvent.id と衝突しない値にする */
 const UNLINKED_KEY = "@unlinked";
 
 /**
- * ノートがその予定に属するか。
- * (a) eventId を持つ練習ノートは明示紐づけのみで判定する（同日の別予定への二重掲載を防ぐ）
- * (b) それ以外は 日付範囲(date〜endDate) ＋ 種別対応(練習予定→練習ノート/試合予定→試合ノート)
- * 自主練ノートはどの予定にも入れない。
+ * スタッフの提出一覧の絞り込み（種類・グループ → 状態 → 未読だけ）。一覧（NoteList）と、詳細の
+ * 「次の未読へ（残り N）」「未読 N 件を開く」が同じ並びを見るよう、ここに1つだけ置く（ux-fix R2-7）。
+ * selectedId は PC で開いて既読になった選択中の提出を、未読の絞り込みの一覧に残すための例外
  */
-function noteBelongsToEvent(n: NotebookEntry, ev: TeamEvent): boolean {
-  if (n.kind === "practice" && (n as PracticeNote).eventId) return (n as PracticeNote).eventId === ev.id;
-  if (n.kind === "solo") return false;
-  if (n.kind !== (ev.kind === "match" ? "match" : "practice")) return false;
-  return n.date >= ev.date && n.date <= (ev.endDate ?? ev.date);
+function staffScopedNotes(
+  notebook: NotebookEntry[],
+  players: Player[],
+  kind: NoteKind | "all",
+  group: TeamGroup | null
+): NotebookEntry[] {
+  let list = kind === "all" ? notebook : notebook.filter((n) => n.kind === kind);
+  // 絞り込み中は対象グループ所属の選手のノートだけ（名簿外の選手のノートは「すべて」のときだけ出る）
+  if (group) {
+    list = list.filter((n) => {
+      const p = players.find((pl) => pl.id === n.playerId);
+      return !!p && playerInGroup(p, group);
+    });
+  }
+  return [...list].sort((a, b) => b.ts - a.ts);
+}
+
+function staffStatusNotes(scoped: NotebookEntry[], status: NoteStatus, selectedId?: string | null): NotebookEntry[] {
+  if (status === "all") return scoped;
+  if (status === "unread") return scoped.filter((n) => !n.staffSeenAt || n.id === selectedId);
+  if (status === "nocomment") return scoped.filter((n) => !!n.staffSeenAt && !n.staffComment);
+  return scoped.filter((n) => !!n.staffComment);
+}
+
+function staffUnreadOnlyNotes(base: NotebookEntry[], unreadOnly: boolean, selectedId?: string | null): NotebookEntry[] {
+  return unreadOnly ? base.filter((n) => !n.staffSeenAt || n.id === selectedId) : base;
 }
 
 function NoteList({
   kind,
+  scope = "mine",
   status = "all",
   unreadOnly = false,
   onToggleUnread,
@@ -1128,8 +1255,15 @@ function NoteList({
   onOpen,
   onSearch,
   selectedId,
+  playerId = null,
+  onClearPlayer,
+  eventFocus = null,
+  onEventFocusDone,
+  onOpenEvent,
 }: {
   kind: NoteKind | "all";
+  /** ux-fix R2-2: 選手の「自分のノート｜チームの共有」（切替は親の 1 段目のセグメント）。共有のときは kind が練習に固定されて渡る */
+  scope?: "mine" | "team";
   /** notebook-staff-redesign §3-2〜§3-3: スタッフの状態絞り込み・「未読 N」チップ・「絞り込み」ボタン。
    *  選手側の呼び出しは渡さない（従来の .ngbar のまま） */
   status?: NoteStatus;
@@ -1144,11 +1278,18 @@ function NoteList({
   onSearch: () => void;
   /** PCマスター・ディテールで選択中のノートID。未指定なら選択表示なし（選手側の呼び出しに影響しない） */
   selectedId?: string | null;
+  /** ux-fix R2-7: チャットのスレッドから来たとき、提出をこの選手だけに絞る（スタッフ。解除は onClearPlayer） */
+  playerId?: string | null;
+  onClearPlayer?: () => void;
+  /** ux-fix R2-7: 予定の詳細から来たとき、予定別に切り替えてその予定の行を開く（スタッフ） */
+  eventFocus?: { id: string; n: number } | null;
+  /** レビュー: 予定の指示を一度使ったら親に知らせて消す（スマホは詳細を開くたびに作り直されるので、残すと戻るたびに予定別へ戻る） */
+  onEventFocusDone?: () => void;
+  /** ux-fix R2-7: 予定別の行から予定の詳細へ（スタッフ） */
+  onOpenEvent?: (eventId: string) => void;
 }) {
   const board = useBoard();
   const me = board.auth.playerId;
-  // 練習ノートは「自分 / チーム共有」を切替（⑪）
-  const [scope, setScope] = useState<"mine" | "team">("mine");
   // groups-phase2 §4: コーチのグループ絞り込み（"notebook"キーを他部品と共有。selfで読み直す）
   const team = useTeam();
   const [filterIds] = useGroupFilter("notebook");
@@ -1156,16 +1297,9 @@ function NoteList({
 
   // 種類・グループ（スタッフ）／自分・チーム共有（選手）で絞った提出。予定別の「提出 N／M」の数え方の元
   const scoped = useMemo(() => {
+    if (isCoach) return staffScopedNotes(board.notebook, board.state.players, kind, filterGroup);
     let list = kind === "all" ? board.notebook : board.notebook.filter((n) => n.kind === kind);
-    if (isCoach) {
-      // 絞り込み中は対象グループ所属の選手のノートだけ（名簿外の選手のノートは「すべて」のときだけ出る）
-      if (filterGroup) {
-        list = list.filter((n) => {
-          const p = board.state.players.find((pl) => pl.id === n.playerId);
-          return !!p && playerInGroup(p, filterGroup);
-        });
-      }
-    } else if (kind === "practice" && scope === "team") {
+    if (kind === "practice" && scope === "team") {
       list = list.filter((n) => (n as PracticeNote).isPublic);
     } else {
       list = list.filter((n) => n.playerId === me);
@@ -1178,21 +1312,24 @@ function NoteList({
   // 未コメント＝既読でコメント無し（カードのタグ「未コメント」と同じ定義。未読はタグが「未読」なので含めない）。
   // 未読の絞り込みでは、PCで開いて既読になった選択中の提出を一覧に残す（押した瞬間にカードが消えて
   // 右の詳細だけ残るのを防ぐ。数える未読数は !staffSeenAt のまま）
-  const base = useMemo(() => {
-    if (!isCoach || status === "all") return scoped;
-    if (status === "unread") return scoped.filter((n) => !n.staffSeenAt || n.id === selectedId);
-    if (status === "nocomment") return scoped.filter((n) => !!n.staffSeenAt && !n.staffComment);
-    return scoped.filter((n) => !!n.staffComment);
-  }, [scoped, isCoach, status, selectedId]);
+  // ux-fix R2-7: チャットのスレッドから来たときの「この選手だけ」。予定別の「提出 N／M」は選手で絞らない（scoped のまま数える）
+  const playerScoped = useMemo(
+    () => (isCoach && playerId ? scoped.filter((n) => n.playerId === playerId) : scoped),
+    [scoped, isCoach, playerId]
+  );
+  const base = useMemo(
+    () => (isCoach ? staffStatusNotes(playerScoped, status, selectedId) : playerScoped),
+    [playerScoped, isCoach, status, selectedId]
+  );
   const unreadCount = useMemo(() => (isCoach ? staffUnreadNotes(base) : 0), [base, isCoach]);
   // 表示する提出。未読だけ(unreadOnly)は状態とANDで重ねる
   const entries = useMemo(
-    () => (isCoach && unreadOnly ? base.filter((n) => !n.staffSeenAt || n.id === selectedId) : base),
+    () => (isCoach ? staffUnreadOnlyNotes(base, unreadOnly, selectedId) : base),
     [base, isCoach, unreadOnly, selectedId]
   );
   const shownUnread = isCoach ? entries.filter((n) => !n.staffSeenAt).length : 0;
   // 絞り込み中か（「絞り込み」ボタンの点）。未読だけは専用チップが色で示すので含めない
-  const staffFilterOn = isCoach && (kind !== "all" || status !== "all" || !!filterGroup);
+  const staffFilterOn = isCoach && (kind !== "all" || status !== "all" || !!filterGroup || !!playerId);
 
   const nameOf = (pid: string) => board.state.players.find((p) => p.id === pid)?.name ?? "選手";
 
@@ -1225,6 +1362,24 @@ function NoteList({
   const [listView, setListView] = useState<"flat" | "byEvent">("flat");
   // 展開中のグループキー集合（複数同時に開ける）
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // ux-fix R2-7: 予定の詳細からの指示。予定別に切り替えて、その予定の行だけ開いて見える所へ
+  // レビュー: 直近 30 件の外の古い予定から来たときも行が出るよう、指示された予定は一覧に必ず含める（この一覧が生きている間）
+  const [pinnedEvent, setPinnedEvent] = useState<string | null>(null);
+  useEffect(() => {
+    if (!eventFocus || !isCoach) return;
+    setListView("byEvent");
+    setExpanded(new Set([eventFocus.id]));
+    setPinnedEvent(eventFocus.id);
+    const id = eventFocus.id;
+    const t = setTimeout(() => {
+      const el = document.querySelector<HTMLElement>(`[data-evid="${id}"]`);
+      el?.scrollIntoView({ block: "start" });
+      // 一度使ったら消す（スクロールの後。先に消すとこの effect の後始末で timeout が止まる）
+      onEventFocusDone?.();
+    }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventFocus, isCoach]);
   const toggleGroup = (key: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -1243,20 +1398,25 @@ function NoteList({
   const events = useMemo(() => {
     if (listView !== "byEvent") return [];
     const today = todayStr();
-    return (
-      (loadTeam()?.events ?? [])
-        .filter((e) => e.date <= today)
-        // p16 §5-4: サッカーノートの対象の予定だけ。30件に切る前に絞る（対象外の予定で30件が埋まらないように）
-        .filter((e) => eventNoteTarget(e, team.categories))
-        .sort((a, b) => b.date.localeCompare(a.date))
-        // notebook-staff-redesign §3-4: 対象は今日までの予定30件（今のまま）。種類で絞るのは30件を取った後
-        // （絞った後の30件にすると、より古い予定まで遡ってしまう）
-        .slice(0, 30)
-        // スタッフが種類で絞っているときは、その種類の予定だけ並べる（「試合」で絞って練習の予定に
-        // 「提出 0／M」を出さない。自主練は予定に紐づかないので予定行は0件）
-        .filter((e) => !isCoach || kind === "all" || (kind !== "solo" && (e.kind === "match") === (kind === "match")))
-    );
-  }, [listView, isCoach, kind, team.categories]);
+    const all = (loadTeam()?.events ?? [])
+      .filter((e) => e.date <= today)
+      // p16 §5-4: サッカーノートの対象の予定だけ。30件に切る前に絞る（対象外の予定で30件が埋まらないように）
+      .filter((e) => eventNoteTarget(e, team.categories))
+      .sort((a, b) => b.date.localeCompare(a.date));
+    const list = all
+      // notebook-staff-redesign §3-4: 対象は今日までの予定30件（今のまま）。種類で絞るのは30件を取った後
+      // （絞った後の30件にすると、より古い予定まで遡ってしまう）
+      .slice(0, 30)
+      // スタッフが種類で絞っているときは、その種類の予定だけ並べる（「試合」で絞って練習の予定に
+      // 「提出 0／M」を出さない。自主練は予定に紐づかないので予定行は0件）
+      .filter((e) => !isCoach || kind === "all" || (kind !== "solo" && (e.kind === "match") === (kind === "match")));
+    // レビュー: 予定の詳細から指示された予定が 30 件の外なら足す（その行が無いと何も開かない）
+    if (pinnedEvent && !list.some((e) => e.id === pinnedEvent)) {
+      const extra = all.find((e) => e.id === pinnedEvent);
+      if (extra) return [...list, extra].sort((a, b) => b.date.localeCompare(a.date));
+    }
+    return list;
+  }, [listView, isCoach, kind, team.categories, pinnedEvent]);
 
   // 未提出チップの並び：学年順（team.groups の学年グループの並び）→背番号順。学年が無い選手は末尾
   const rosterOrder = useMemo(() => {
@@ -1282,12 +1442,11 @@ function NoteList({
       notes.forEach((n) => used.add(n.id));
       if (!isCoach) return { ev, notes, targetCount: 0, submitted: 0, missing: [] as Player[], hasSub: false };
       const subs = scoped.filter((n) => noteBelongsToEvent(n, ev));
-      const done = new Set(subs.map((n) => n.playerId));
       const targets = eventTargetPlayers(ev, rosterOrder, team.groups).filter(
         (p) => !filterGroup || playerInGroup(p, filterGroup)
       );
-      const missing = targets.filter((p) => !done.has(p.id));
-      return { ev, notes, targetCount: targets.length, submitted: targets.length - missing.length, missing, hasSub: subs.length > 0 };
+      const { targetCount, submitted, missing } = eventSubmitStats(targets, subs);
+      return { ev, notes, targetCount, submitted, missing, hasSub: subs.length > 0 };
     });
     return { list, unlinked: entries.filter((n) => !used.has(n.id)) };
   }, [events, entries, scoped, isCoach, rosterOrder, team.groups, filterGroup]);
@@ -1312,6 +1471,7 @@ function NoteList({
         <button
           type="button"
           className={`evgrow${open ? " on" : ""}`}
+          data-evid={key}
           aria-expanded={open}
           onClick={() => toggleGroup(key)}
         >
@@ -1324,7 +1484,7 @@ function NoteList({
     );
   };
 
-  // 提出一覧｜予定別の切替（選手は一覧の上、スタッフは .nbtop の右端）
+  // 一覧｜予定別の切替（スタッフだけ。.nbtop の右端）
   const viewToggle = (
     <div className="ngbar">
       <button
@@ -1332,7 +1492,7 @@ function NoteList({
         className={`ngchip${listView === "flat" ? " on" : ""}`}
         onClick={() => setListView("flat")}
       >
-        提出一覧
+        一覧
       </button>
       <button
         type="button"
@@ -1356,6 +1516,7 @@ function NoteList({
         </span>
       );
     }
+    if (playerId) selParts.push(nameOf(playerId));
     if (kind !== "all") selParts.push(NOTE_KIND_LABEL[kind]);
     if (status !== "all") selParts.push(NOTE_STATUS_LABEL[status]);
     if (unreadOnly && status !== "unread") selParts.push(NOTE_STATUS_LABEL.unread);
@@ -1380,6 +1541,14 @@ function NoteList({
         </button>
         {viewToggle}
       </div>
+      {isCoach && playerId && (
+        <div className="nbplayerrow">
+          <span className="nbplayername">{nameOf(playerId)} の提出だけを表示中</span>
+          <button type="button" className="st-btn ghost nbplayerclear" onClick={onClearPlayer}>
+            解除
+          </button>
+        </div>
+      )}
       <div className="nbsel">
         {selParts.length === 0
           ? "すべて"
@@ -1398,23 +1567,15 @@ function NoteList({
 
   return (
     <>
-      <button className="searchbar" onClick={onSearch}>
-        <E n="search" /> 気づき・目標・相手名などで検索
-      </button>
-
-      {/* 提出一覧｜予定別。選手側は今のまま一覧の上に置く。スタッフは .nbtop の右端に入れる */}
-      {isCoach ? staffTop : viewToggle}
-
-      {!isCoach && kind === "practice" && (
-        <div className="scopebar">
-          <button className={`scopechip${scope === "mine" ? " on" : ""}`} onClick={() => setScope("mine")}>
-            自分のノート
-          </button>
-          <button className={`scopechip${scope === "team" ? " on" : ""}`} onClick={() => setScope("team")}>
-            チームの共有
-          </button>
-        </div>
+      {/* ux-fix R2-2: 選手の検索は親の 2 段目（検索＋種類チップ）に移した。スタッフはここ */}
+      {isCoach && (
+        <button className="searchbar" onClick={onSearch}>
+          <E n="search" /> 気づき・目標・相手名などで検索
+        </button>
       )}
+
+      {/* 一覧｜予定別はスタッフだけ（.nbtop の右端）。選手は一覧だけ */}
+      {isCoach && staffTop}
 
       {!isCoach && kind === "solo" && streak > 0 && (
         <div className="streakcard"><E n="fire" /> 自主練 {streak}週連続</div>
@@ -1503,6 +1664,12 @@ function NoteList({
                 <span className="evgrowcount">{notes.length}件</span>
               ),
               <>
+                {/* ux-fix R2-7: 予定の詳細へ（スタッフ）。予定の詳細の「ノート N／M 提出 ›」の逆向き */}
+                {isCoach && onOpenEvent && (
+                  <button type="button" className="st-btn ghost evgopen" onClick={() => onOpenEvent(ev.id)}>
+                    予定の詳細 ›
+                  </button>
+                )}
                 {notes.length === 0 ? (
                   <div className="evnote">
                     {isCoach && hasSub ? "条件に合う提出はありません。" : "この予定の提出はありません。"}
@@ -2770,21 +2937,32 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   );
 }
 
+/** 「送信済み 10/10 18:30」の日時（M/D H:mm 24 時間） */
+function fmtSentAt(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 /* ===================== 詳細 ===================== */
 function NoteDetail({
   id,
   isCoach,
   onEdit,
   onDeleted,
+  nextUnread,
 }: {
   id: string;
   isCoach: boolean;
   onEdit: (e: NotebookEntry) => void;
   onDeleted: () => void;
+  /** ux-fix R2-7: スタッフ。今の絞り込みの中の、この提出以外の未読の数と、いちばん新しい未読を開く関数 */
+  nextUnread?: { count: number; onOpen: () => void };
 }) {
   const board = useBoard();
   const entry = board.notebook.find((n) => n.id === id);
   const [comment, setComment] = useState(entry?.staffComment ?? "");
+  // ux-fix R2-7: この画面で送ったか（送ったら「次の未読へ」を出す）
+  const [sentHere, setSentHere] = useState(false);
   // 図付きコメント（コーチ）。折りたたみ・編集中の点/線はローカル state
   const [drawOpen, setDrawOpen] = useState(!!entry?.staffDrawing);
   const [drawTool, setDrawTool] = useState<PlayTool>({ mode: "line", kind: "pass" });
@@ -2796,6 +2974,11 @@ function NoteDetail({
     if (isCoach && entry && !entry.staffSeenAt) {
       board.patchNote(entry.id, { staffSeenAt: Date.now() });
     }
+    // ux-fix R2-1 レビュー: 選手・保護者が自分のノートの詳細でコメントを見たら、そのノートのコメントは既読
+    // （ホームの「コーチからコメント N 件」・ノートのホームの未読・ノートのバッジが、この先で片付く）
+    if (!isCoach && entry && entry.playerId === board.auth.playerId && isUnreadStaffComment(entry, 0)) {
+      board.patchNote(entry.id, { playerCommentSeenTs: Date.now() });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.id]);
 
@@ -2803,15 +2986,24 @@ function NoteDetail({
   const who = board.state.players.find((p) => p.id === entry.playerId)?.name ?? "選手";
   const mine = !isCoach && entry.playerId === board.auth.playerId;
 
+  // ux-fix R2-7: 送った内容から変わるまで「コメントを更新」は押せない（文字と図の両方を見る）
+  const savedDrawing = JSON.stringify({ plays: entry.staffDrawing?.plays ?? [], playLines: entry.staffDrawing?.playLines ?? [] });
+  const dirty =
+    comment.trim() !== (entry.staffComment ?? "") ||
+    JSON.stringify({ plays: drawPlays, playLines: drawLines }) !== savedDrawing;
   const sendComment = () => {
+    // レビュー: 保存済みの図を消し切って送ったときは空の図を渡して消す（undefined は「既存の図を保持」）
     board.setNoteComment(
       entry.id,
       comment,
-      drawPlays.length > 0 || drawLines.length > 0 ? { plays: drawPlays, playLines: drawLines } : undefined
+      drawPlays.length > 0 || drawLines.length > 0 || entry.staffDrawing ? { plays: drawPlays, playLines: drawLines } : undefined,
+      { toast: "送りました" }
     );
     // notebook-staff-redesign §5: 送信したら描画エリアを畳む（図は state に残り、保存もされたまま）
     setDrawOpen(false);
+    setSentHere(true);
   };
+  const sentAt = entry.staffComment && entry.staffCommentTs ? fmtSentAt(entry.staffCommentTs) : "";
 
   return (
     <div className="notedetail">
@@ -2858,13 +3050,23 @@ function NoteDetail({
                 key={r}
                 type="button"
                 className={`reactbtn${entry.staffReaction === r ? " on" : ""}`}
-                onClick={() => board.patchNote(entry.id, { staffReaction: entry.staffReaction === r ? undefined : r })}
+                aria-pressed={entry.staffReaction === r}
+                onClick={() => {
+                  // ux-fix R2-7: スタンプは押した時点で送信（もう一度押すと外す）
+                  const on = entry.staffReaction !== r;
+                  board.patchNote(entry.id, { staffReaction: on ? r : undefined });
+                  if (on) {
+                    board.toast("送りました");
+                    setSentHere(true);
+                  }
+                }}
               >
                 <E n={REACTION_ICON[r]} /> {STAFF_REACTION_LABEL[r]}
               </button>
             ))}
           </div>
           <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={3} placeholder="選手へフィードバックを送る" />
+          {sentAt && <div className="cmtsent">送信済み {sentAt}</div>}
 
           {/* notebook-staff-redesign §5: 畳んだボタンは、図があれば「図を編集（点 N ・ 線 M）」。
               開いたエリアの上に見出し行と「× 閉じる」を出し、押すと畳む（描いた点・線は state に残す） */}
@@ -2931,9 +3133,19 @@ function NoteDetail({
             </>
           )}
 
-          <button className="bigbtn" style={{ marginTop: 8 }} onClick={sendComment}>
-            コメントを送る
+          <button className="bigbtn" style={{ marginTop: 8 }} onClick={sendComment} disabled={!dirty}>
+            {entry.staffComment ? "コメントを更新" : "コメントを送る"}
           </button>
+          {/* ux-fix R2-7: 送ったら次の未読へ。N は今の絞り込みの中の未読（この提出は含まない） */}
+          {sentHere && nextUnread && (
+            nextUnread.count > 0 ? (
+              <button type="button" className="st-btn ghost cmtnext" onClick={nextUnread.onOpen}>
+                次の未読へ（残り {nextUnread.count}）
+              </button>
+            ) : (
+              <div className="cmtsent">未読の提出はありません</div>
+            )
+          )}
         </div>
       ) : entry.staffComment || entry.staffReaction || entry.staffDrawing ? (
         <div className="notesec staffcmt">

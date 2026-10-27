@@ -476,6 +476,16 @@ export function ageOnApril1(birthDate: string | undefined | null, today: string 
   return fiscalYear - b[0] - (hadBirthday ? 0 : 1);
 }
 
+/** 今日時点の満年齢（ux-fix R2-4：基本の表の「2012/11/3（13 歳）」用）。
+ *  体力テストの評価と成長の全国平均は学年の基準（4/1 時点）なので ageOnApril1 のまま */
+export function ageOn(birthDate: string | undefined | null, today: string = localDateStr()): number | null {
+  const b = parseYmd(birthDate);
+  const t = parseYmd(today);
+  if (!b || !t) return null;
+  const hadBirthday = t[1] > b[1] || (t[1] === b[1] && t[2] >= b[2]);
+  return t[0] - b[0] - (hadBirthday ? 0 : 1);
+}
+
 /** 学年から見た 4 月 1 日時点の年齢（小1=6 … 中1=12・中2=13・中3=14・高1=15…）。学年が無い・範囲外は null */
 export function ageFromGrade(schoolStage: SchoolStage, grade: number | null | undefined): number | null {
   if (grade == null || !STAGE_GRADES[schoolStage].includes(grade)) return null;

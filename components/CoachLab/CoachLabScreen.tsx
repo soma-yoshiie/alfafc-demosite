@@ -5,12 +5,15 @@ import { useBoard } from "../BoardProvider";
 import { useConsoleSubnav } from "../ConsoleShell";
 import type { ConsoleSubnavItem } from "../ConsoleShell";
 import { E } from "../Emoji";
-import { MobileHeader } from "../MobileHeader";
+import { MobileHeader, MobileHeaderAction } from "../MobileHeader";
 import { MobileSegments } from "../MobileSegments";
+import { IconFilter } from "../icons";
+import { Sheet } from "../team/Sheet";
 import { useCoachLab } from "./CoachLabProvider";
 import { allArticles } from "@/lib/coachlab";
 import { useIsPc } from "./CoachLabParts";
 import { CoachLabExplore, CoachLabFollowing } from "./CoachLabExplore";
+import { ClFilterPanel, useClExplore } from "./CoachLabFilter";
 import CoachLabAuthor from "./CoachLabAuthor";
 import CoachLabArticle from "./CoachLabArticle";
 import CoachLabEditor, { clearCoachLabDraft } from "./CoachLabEditor";
@@ -40,6 +43,11 @@ export default function CoachLabScreen() {
 
   const [stack, setStack] = useState<ClView[]>([{ kind: "explore" }]);
   const current = stack[stack.length - 1];
+  // 「探す」の検索・切替・絞り込み（ヘッダーのボタン・シート・PC の左の列・一覧が同じ状態を見る。ux-fix R2-5）
+  const flt = useClExplore();
+  const [filterSheet, setFilterSheet] = useState(false);
+  // スマホの「自分」で最後に開いていた項目（書く／収益／プロフィール）
+  const lastMe = useRef<"write" | "earnings" | "profile">("write");
 
   // 「書く」のエディタが未保存のとき、レール遷移・戻る操作の前に確認する
   // （旧ArticlesScreenのformDirtyRef/confirmDiscardと同じ方針）。
@@ -96,6 +104,26 @@ export default function CoachLabScreen() {
     return items;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current.kind, isCoach]);
+  // スマホの上段は「探す／フォロー中／自分」の 3 つ（指導者だけ「自分」）。「自分」の下段に 書く・収益・プロフィール
+  // （ux-fix R2-5。PC は navItems の 5 項目のまま）
+  const isMeKind = current.kind === "write" || current.kind === "earnings" || current.kind === "profile";
+  if (isMeKind) lastMe.current = current.kind as "write" | "earnings" | "profile";
+  const mobileItems: ConsoleSubnavItem[] = [
+    navItems[0],
+    navItems[1],
+    ...(isCoach
+      ? [
+          {
+            key: "me",
+            label: "自分",
+            icon: null,
+            on: isMeKind,
+            onSelect: () => goTop({ kind: lastMe.current }),
+          } as ConsoleSubnavItem,
+        ]
+      : []),
+  ];
+  const meItems = navItems.filter((it) => it.key === "write" || it.key === "earnings" || it.key === "profile");
   // PCレールのサブナビ（.conrail-sub）とモバイルのヘッダー直下セグメント(MobileSegments)で
   // 同じ項目を共有する。.conrailはモバイルでは display:none のため、レールのサブナビだけでは
   // モバイルから「フォロー中／書く／収益／プロフィール」に到達できない
@@ -127,7 +155,15 @@ export default function CoachLabScreen() {
   const renderBody = () => {
     switch (current.kind) {
       case "explore":
-        return <CoachLabExplore onOpenAuthor={openAuthor} onOpenArticle={openArticle} />;
+        return (
+          <CoachLabExplore
+            f={flt}
+            pc={pc}
+            onOpenFilter={() => setFilterSheet(true)}
+            onOpenAuthor={openAuthor}
+            onOpenArticle={openArticle}
+          />
+        );
       case "following":
         return <CoachLabFollowing onOpenAuthor={openAuthor} onOpenArticle={openArticle} />;
       case "author":
@@ -177,10 +213,26 @@ export default function CoachLabScreen() {
               .cl-mobilenav(下部ナビ)は廃止し、同じnavItemsをセグメントで表示する。
               ルート(探す/フォロー中)でも、ホームの行/その他ハブの行のどちらから開いても
               戻れるよう「‹戻る」を常に出す（mobile-redesign-v2 §2） */}
-          <MobileHeader title={isRoot ? "コーチラボ" : tag} onBack={handleBack} />
+          <MobileHeader
+            title={isRoot ? "コーチラボ" : tag}
+            onBack={handleBack}
+            actions={
+              isRoot && current.kind === "explore" ? (
+                <MobileHeaderAction label="絞り込み" onClick={() => setFilterSheet(true)}>
+                  <IconFilter />
+                  {flt.active && <span className="dot" />}
+                </MobileHeaderAction>
+              ) : undefined
+            }
+          />
           {isRoot && (
             <div className="mseg-wrap">
-              <MobileSegments ariaLabel="コーチラボの表示切替" items={navItems} />
+              <MobileSegments ariaLabel="コーチラボの表示切替" items={mobileItems} />
+            </div>
+          )}
+          {isRoot && isMeKind && (
+            <div className="mseg-wrap cl-mesegwrap">
+              <MobileSegments ariaLabel="自分の表示切替" items={meItems} />
             </div>
           )}
         </>
@@ -195,6 +247,11 @@ export default function CoachLabScreen() {
         />
       ) : (
         <div className="scroll screenbody">{renderBody()}</div>
+      )}
+      {!pc && (
+        <Sheet open={filterSheet} onClose={() => setFilterSheet(false)}>
+          <ClFilterPanel f={flt} onClose={() => setFilterSheet(false)} />
+        </Sheet>
       )}
     </div>
   );
