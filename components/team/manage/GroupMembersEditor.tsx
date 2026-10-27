@@ -46,7 +46,7 @@ export function GroupMembersEditor({
   return (
     <>
       <div className="tmback" onClick={onBack}>
-        ‹ グループ管理
+        ‹ 戻る
       </div>
       <h2>{group.label}のメンバー</h2>
       {isGrade && (

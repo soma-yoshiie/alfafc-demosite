@@ -7,6 +7,7 @@ import type { PlayerProfile, TermSystem } from "@/lib/profile";
 import { TERM_OPTIONS, termLabel, updatedByLabel } from "@/lib/profile";
 import { localDateStr } from "@/lib/dates";
 import { playerInGroup } from "@/lib/groups";
+import { IconEdit, IconMore } from "../icons";
 
 /**
  * ux-fix R2-4: チップ列（.phubtabs）の右にまだ続きがあるか。続くときだけ .more を付け、右端のフェードと
@@ -458,6 +459,87 @@ export function HubRowBtn({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * ux-fix R3-2: カード単位の編集の入口は右上の鉛筆の四角ボタン 1 種（.phubedit。「編集」「目標を編集」の文字リンクはこれに）。
+ * 見出し行・行・カードの右端に置く（張り出しの負マージンは持たない = .inline）
+ */
+export function HubEditBtn({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button type="button" className="phubedit inline" aria-label={label} title={label} onClick={onClick}>
+      <IconEdit />
+    </button>
+  );
+}
+
+/**
+ * ux-fix R3-2: 「…」メニュー（.hp-menu。志望校の「上へ・下へ・編集」）。ボタンは .phubedit と同じ四角、
+ * 開くと右寄せの小さなメニュー。外側を押す・Esc で閉じる。削除はここに置かず、編集フォームの一番下へ
+ */
+export function HubMenu({
+  label,
+  items,
+}: {
+  label: string;
+  items: { label: string; onClick: () => void; disabled?: boolean }[];
+}) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+  return (
+    <div className="hp-menuwrap">
+      <button
+        type="button"
+        className="phubedit inline"
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <IconMore />
+      </button>
+      {open && (
+        <>
+          <div className="hp-menu-back" onClick={() => setOpen(false)} />
+          <div className="hp-menu" role="menu" aria-label={label}>
+            {items.map((it) => (
+              <button
+                key={it.label}
+                type="button"
+                role="menuitem"
+                disabled={it.disabled}
+                onClick={() => {
+                  setOpen(false);
+                  it.onClick();
+                }}
+              >
+                {it.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** ux-fix R3-2: 編集フォームの一番下の「削除」（確認ダイアログは呼び出し側。window.confirm は今のまま） */
+export function SheetDelete({ onClick, label }: { onClick: () => void; label: string }) {
+  return (
+    <div className="phubmanage">
+      <button type="button" className="phubdel" onClick={onClick}>
+        {label}
+      </button>
+    </div>
   );
 }
 

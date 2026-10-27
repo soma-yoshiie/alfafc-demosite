@@ -48,11 +48,12 @@ export default function PlayerSettingsTop({ cat, go }: { cat?: SettingsCat; go: 
   return (
     <div className="st-top">
       <SettingsGroup>{account}</SettingsGroup>
-      <SettingsGroup title="通知">{notif}</SettingsGroup>
-      <SettingsGroup>{version}</SettingsGroup>
+      {/* ux-fix R3-5：通知は見出しを外して「通知 オン」の行だけ。バージョンは一番下の灰色の 1 行 */}
+      <SettingsGroup>{notif}</SettingsGroup>
       <SettingsGroup>
         <SettingsRow label="ログアウト" danger onClick={() => window.dispatchEvent(new Event("alfa-logout"))} />
       </SettingsGroup>
+      <p className="st-verline">バージョン {APP_VERSION}</p>
     </div>
   );
 }

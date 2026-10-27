@@ -38,6 +38,7 @@ import {
   SAMPLE_PLAYERS,
   SAMPLE_TEAM_NAME,
 } from "./sampleTeam";
+import { sampleSavedDrills } from "./sampleLibrary";
 
 const KEY = "soccer_tactics_state_v1";
 const LIB_KEY = "soccer_tactics_library_v1";
@@ -478,6 +479,7 @@ export function loadDrills(): SavedDrill[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(DRILLS_KEY);
+    // デモは seedDrillsIfFirstRun()（ライブラリの初回作成時）で書き込む。ここでは返さない
     if (!raw) return [];
     const data = JSON.parse(raw);
     return Array.isArray(data) ? (data as SavedDrill[]) : [];
@@ -486,6 +488,18 @@ export function loadDrills(): SavedDrill[] {
   }
 }
 
+/** ux-fix R3-3: 本当の初回（戦術のライブラリも練習メニューも未保存）だけ、デモの練習メニュー 1 件を書き込む。
+ *  BoardProvider がライブラリのデモを作るときに呼ぶ。保存済みの人（戦術だけ使ってきた人を含む）には入れない */
+export function seedDrillsIfFirstRun(): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem(LIB_KEY) !== null) return;
+    if (window.localStorage.getItem(DRILLS_KEY) !== null) return;
+    saveDrills(sampleSavedDrills());
+  } catch {
+    /* 書けないときは何もしない */
+  }
+}
 export function saveDrills(drills: SavedDrill[]): void {
   if (typeof window === "undefined") return;
   try {
@@ -960,6 +974,31 @@ export function saveLastEventCategory(id: string): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(LAST_EVENT_CATEGORY_KEY, id);
+  } catch {
+    /* 無視 */
+  }
+}
+
+/** 予定の種類ごとの前回の時刻（予定フォームの初期値。ux-fix R3-5）。{ [categoryId]: { time, endTime } } */
+const LAST_EVENT_TIME_KEY = "soccer_tactics_lasttime_v1";
+export function loadLastEventTime(categoryId: string): { time: string; endTime: string } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(LAST_EVENT_TIME_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, { time?: string; endTime?: string }>) : {};
+    const v = map?.[categoryId];
+    if (!v || typeof v.time !== "string" || !v.time) return null;
+    return { time: v.time, endTime: typeof v.endTime === "string" ? v.endTime : "" };
+  } catch {
+    return null;
+  }
+}
+export function saveLastEventTime(categoryId: string, time: string, endTime: string): void {
+  if (typeof window === "undefined" || !time) return;
+  try {
+    const raw = window.localStorage.getItem(LAST_EVENT_TIME_KEY);
+    const map = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    window.localStorage.setItem(LAST_EVENT_TIME_KEY, JSON.stringify({ ...map, [categoryId]: { time, endTime } }));
   } catch {
     /* 無視 */
   }

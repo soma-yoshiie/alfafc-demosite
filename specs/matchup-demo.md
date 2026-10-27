@@ -75,7 +75,7 @@ export interface MatchupFilter {
   ageGroups: string[];            // 空にしない（最後の 1 つを外したら全部に戻す）
   format: 8 | 11 | 0;             // 0 = どちらも
   when: "weekend" | "month" | "next" | "all";  // 今週末／今月／来月／すべて。既定 all
-  venueOnly: boolean;             // 相手の会場で開ける募集だけ
+  venueOnly: boolean;             // 相手の会場だけ（ux-fix R3-5 で文言を短く）
 }
 export interface MatchupStore { v: 1; teams: OpponentTeam[]; posts: MatchupPost[]; requests: MatchupRequest[]; seededAt: number }
 ```

@@ -28,7 +28,7 @@ import {
 import type { Career } from "@/lib/profile";
 import { localDateStr } from "@/lib/dates";
 import { useBoard } from "../BoardProvider";
-import { Field, HubSheet, MultiSeg, NumField, Seg, SheetSave, numStr, parseNum } from "./common";
+import { Field, HubSheet, MultiSeg, NumField, Seg, SheetDelete, SheetSave, numStr, parseNum } from "./common";
 import type { HubViewer } from "./common";
 
 /**
@@ -137,10 +137,13 @@ export type ChoiceInput = Omit<SchoolChoice, "id" | "rank" | "updatedAt" | "upda
 export function ChoiceForm({
   edit,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: SchoolChoice;
   onSave: (rec: ChoiceInput) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す（確認は呼び出し側） */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -243,6 +246,7 @@ export function ChoiceForm({
         />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="この志望校を削除" />}
     </HubSheet>
   );
 }
@@ -253,10 +257,13 @@ export type ActivityInput = Omit<CareerActivity, "id" | "updatedAt" | "updatedBy
 export function ActivityForm({
   edit,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: CareerActivity;
   onSave: (rec: ActivityInput) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す（確認は呼び出し側） */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -299,6 +306,7 @@ export function ActivityForm({
         />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="この活動を削除" />}
     </HubSheet>
   );
 }
@@ -310,11 +318,14 @@ export function InterviewForm({
   edit,
   viewer,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: Interview;
   viewer: HubViewer;
   onSave: (rec: InterviewInput) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す（確認は呼び出し側） */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -357,6 +368,7 @@ export function InterviewForm({
         />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="この面談の記録を削除" />}
     </HubSheet>
   );
 }
@@ -367,10 +379,13 @@ export type ActionInput = Omit<ActionItem, "id" | "done" | "updatedAt" | "update
 export function ActionForm({
   edit,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: ActionItem;
   onSave: (rec: ActionInput) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す（確認は呼び出し側） */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -401,6 +416,7 @@ export function ActionForm({
         />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="このアクションを削除" />}
     </HubSheet>
   );
 }

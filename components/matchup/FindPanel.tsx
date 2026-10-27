@@ -147,7 +147,7 @@ export function FindPanel({
             onChange={(e) => setFilter({ ...filter, venueOnly: e.target.checked })}
           />
           <span />
-          相手の会場で開ける募集だけ
+          相手の会場だけ
         </label>
       </div>
 

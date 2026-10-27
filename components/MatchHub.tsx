@@ -9,7 +9,7 @@ import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { IconEdit } from "./icons";
 import { useWidth } from "./ProfileCharts";
-import { HubEmpty, HubHead, fmtYMD, usePc, useTabRowMore } from "./hub/common";
+import { HubEmpty, HubHead, usePc, useTabRowMore } from "./hub/common";
 
 /**
  * 試合の詳細（p14 §5。specs/filter-compact-and-match-hub.md）。名簿の個人ページ（PlayerHub）と同じ骨格・同じ
@@ -18,7 +18,10 @@ import { HubEmpty, HubHead, fmtYMD, usePc, useTabRowMore } from "./hub/common";
  *
  * - メニューの形・狭いときの扱い・セクション切替時のスクロール戻しは PlayerHub と同じ（useWidth・NARROW_ON/OFF）。
  * - section/onSection を渡すと親が選択を持つ（無ければ内部 state。保存しない）。
- * - 試合の編集は onEdit（親が試合記録フォームのシートを開く）。削除は基本の末尾（canEdit のときだけ）。
+ * - 試合の編集は onEdit（親が試合記録フォームのシートを開く）。削除は編集フォームの一番下（ux-fix R3-5）。
+ *   記録が無くなったら（削除した・見つからない）onDeleted を呼んで一覧へ戻す。
+ * - ヘッダーは「勝敗バッジ｜相手名・日付・大会・対象｜スコア（一覧と同じ .mscore）｜鉛筆」。基本情報はヘッダーと重ならない
+ *   行（試合時間・フォーメーション・試合会場）だけ。会場が空のスタッフは「会場を追加」の入力。
  */
 
 export type MatchHubSection = "overview" | "goals" | "members";
@@ -44,13 +47,6 @@ function fmtMDW(s: string): string {
   return `${mo}/${d}(${WD[new Date(Number(m[1]), mo - 1, d).getDay()]})`;
 }
 
-/** "YYYY-MM-DD" → "YYYY/M/D(曜)" */
-function fmtYMDW(s: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
-  if (!m) return s;
-  return `${fmtYMD(s)}(${WD[new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getDay()]})`;
-}
-
 /** 試合時間の表示（TeamHub の halfLabel と同じ式。例: 「20分ハーフ」／1 本(periods===1)は「40分」） */
 function halfLabel(m: { halfMinutes?: number; periods?: 1 | 2 }): string | null {
   if (!m.halfMinutes) return null;
@@ -66,6 +62,28 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
     cur = cur.parentElement;
   }
   return null;
+}
+
+/** 試合会場が空のときの入力（「会場を追加」。入力欄を離れる・Enter で保存。空のままなら何もしない） */
+function PlaceAdd({ onSave }: { onSave: (v: string) => void }) {
+  const [v, setV] = useState("");
+  const commit = () => {
+    const t = v.trim();
+    if (t) onSave(t);
+  };
+  return (
+    <input
+      className="st-input mhub-placeadd"
+      value={v}
+      placeholder="会場を追加"
+      aria-label="会場を追加"
+      onChange={(e) => setV(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+      }}
+    />
+  );
 }
 
 export function MatchHub({
@@ -137,6 +155,12 @@ export function MatchHub({
   const tabsMore = useTabRowMore(rootRef, [sec, chips, narrow]);
 
   const m: MatchRecord | undefined = team.team.matches.find((x) => x.id === matchId);
+  // 記録が無くなったら（編集フォームで削除した・古い ID）、親に一覧へ戻してもらう
+  const missing = !m;
+  useEffect(() => {
+    if (missing) onDeleted();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [missing]);
   if (!m) {
     return (
       <div className="phub mhub" ref={rootRef}>
@@ -195,40 +219,24 @@ export function MatchHub({
       <dl className="phubkv">
         {(
           [
-            { k: "日付", v: fmtYMDW(m.date) },
-            { k: "対戦相手", v: m.opponent },
-            { k: "結果", v: `${resLabel} ・ ${m.ourScore} - ${m.theirScore}` },
-            { k: "大会", v: compName ?? "" },
-            { k: "対象", v: targetGroups.length > 0 ? groupPills : "全体" },
             { k: "試合時間", v: half ?? "" },
             { k: "フォーメーション", v: m.formation ?? "" },
-            { k: "試合会場", v: placeText },
+            // 会場が空のスタッフは、その場で書ける入力（離れたら保存）。選手・保護者は空なら行ごと出さない
+            { k: "試合会場", v: placeText || (canEdit ? <PlaceAdd key={m.id} onSave={(v) => team.updateMatch({ ...m, place: v })} /> : null) },
           ] as { k: string; v: React.ReactNode }[]
-        ).map((r) => (
-          <div className="phubkv-row" key={r.k}>
-            <dt>{r.k}</dt>
-            <dd>{r.v === "" ? <span className="phubkv-empty">—</span> : r.v}</dd>
-          </div>
-        ))}
+        )
+          .filter((r) => r.v !== null)
+          .map((r) => (
+            <div className="phubkv-row" key={r.k}>
+              <dt>{r.k}</dt>
+              <dd>{r.v === "" ? <span className="phubkv-empty">—</span> : r.v}</dd>
+            </div>
+          ))}
       </dl>
       <HubHead title="メモ" />
       <div className="phubcard">
         {m.note ? <div className="phubmemo">{m.note}</div> : <div className="phubkv-empty">未入力です。</div>}
       </div>
-      {canEdit && (
-        <button
-          type="button"
-          className="phubdel"
-          onClick={() => {
-            if (window.confirm("この試合記録を削除しますか？")) {
-              team.removeMatch(m.id);
-              onDeleted();
-            }
-          }}
-        >
-          この試合記録を削除
-        </button>
-      )}
     </section>
   );
 
@@ -343,10 +351,6 @@ export function MatchHub({
         <div className="phubhead-top">
           <div className="phubid">
             <span className={`mres ${resCls}`}>{resLabel}</span>
-            {/* p15 §4: 4 つの枠は外し、スコアはバッジの下（個人ページの背番号と同じ位置・同じクラス） */}
-            <span className="phubno">
-              {m.ourScore} - {m.theirScore}
-            </span>
           </div>
           <div className="phubwho">
             <h2 className="phubname" title={m.opponent}>{m.opponent}</h2>
@@ -354,8 +358,13 @@ export function MatchHub({
               <span>{fmtMDW(m.date)}</span>
               {compName && <span>{compName}</span>}
               {targetGroups.length > 0 && groupPills}
-              {half && <span>{half}</span>}
             </div>
+          </div>
+          {/* ux-fix R3-5: スコアは一覧と同じ大きさ（.mscore）で右 */}
+          <div className="mscore mhub-score" aria-label={`スコア ${m.ourScore} 対 ${m.theirScore}`}>
+            {m.ourScore}
+            <span>-</span>
+            {m.theirScore}
           </div>
           {canEdit && (
             <button type="button" className="phubedit" aria-label="試合記録を編集" title="試合記録を編集" onClick={onEdit}>

@@ -42,7 +42,7 @@ export default function OtherHub() {
             <MenuRow
               icon={<IconCog />}
               label="設定"
-              desc="チーム名やプラン、公開範囲を変更する"
+              desc="チーム名やプラン、試合記録の公開を変更する"
               onClick={() => board.setScreen("settings")}
             />
           ) : (

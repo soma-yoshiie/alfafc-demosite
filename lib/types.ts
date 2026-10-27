@@ -923,6 +923,8 @@ interface NoteBase {
   /** スタッフからのコメント（任意） */
   staffComment?: string;
   staffCommentTs?: number;
+  /** コメントした人（「岡本監督」。staffIdentity の名前＋役割。ux-fix R3-5。無い古いコメントは画面側で代表のスタッフに寄せる） */
+  staffCommentBy?: string;
   /** コーチが開いた既読時刻 */
   staffSeenAt?: number;
   /** 選手・保護者が自分のノートの詳細でコメントを見た時刻（ux-fix R2-1。これより後に付いたコメントだけ未読） */

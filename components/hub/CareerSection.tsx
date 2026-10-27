@@ -25,8 +25,9 @@ import { useProfiles } from "../ProfileProvider";
 import {
   HubAdd,
   HubEmpty,
+  HubEditBtn,
   HubHead,
-  HubRowBtn,
+  HubMenu,
   LastUpdated,
   fmtMD,
   fmtYMD,
@@ -115,21 +116,26 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
     [next[i], next[j]] = [next[j], next[i]];
     saveOrder(next);
   };
-  const removeChoice = (c: SchoolChoice) => {
-    if (!window.confirm(`志望校「${c.school}」を削除しますか？`)) return;
+  /* ux-fix R3-2: 削除は編集フォームの一番下から。確認（window.confirm）で止めたら false を返し、フォームは閉じない */
+  const removeChoice = (c: SchoolChoice): boolean => {
+    if (!window.confirm(`志望校「${c.school}」を削除しますか？`)) return false;
     saveOrder(choices.filter((x) => x.id !== c.id));
+    return true;
   };
-  const removeActivity = (a: CareerActivity) => {
-    if (!window.confirm(`${fmtYMD(a.date)} の活動（${ACTIVITY_KIND_LABEL[a.kind]}）を削除しますか？`)) return;
+  const removeActivity = (a: CareerActivity): boolean => {
+    if (!window.confirm(`${fmtYMD(a.date)} の活動（${ACTIVITY_KIND_LABEL[a.kind]}）を削除しますか？`)) return false;
     profiles.removeCareerItem(p.id, "activities", a.id);
+    return true;
   };
-  const removeInterview = (iv: Interview) => {
-    if (!window.confirm(`${fmtYMD(iv.date)} の面談の記録を削除しますか？`)) return;
+  const removeInterview = (iv: Interview): boolean => {
+    if (!window.confirm(`${fmtYMD(iv.date)} の面談の記録を削除しますか？`)) return false;
     profiles.removeCareerItem(p.id, "interviews", iv.id);
+    return true;
   };
-  const removeAction = (a: ActionItem) => {
-    if (!window.confirm(`アクション「${a.text}」を削除しますか？`)) return;
+  const removeAction = (a: ActionItem): boolean => {
+    if (!window.confirm(`アクション「${a.text}」を削除しますか？`)) return false;
     profiles.removeCareerItem(p.id, "actions", a.id);
+    return true;
   };
 
   const kvRows: { k: string; v: React.ReactNode }[] = [
@@ -146,11 +152,7 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
     <section className="phubsec" aria-label="進路">
       <HubHead
         title="進路の希望"
-        action={
-          <HubRowBtn label="進路の希望を編集" onClick={() => setForm({ k: "basic" })}>
-            編集
-          </HubRowBtn>
-        }
+        action={<HubEditBtn label="進路の希望を編集" onClick={() => setForm({ k: "basic" })} />}
       />
       {hasBasics ? (
         <dl className="phubkv">
@@ -205,6 +207,14 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
                 <div className="phubchoice-h">
                   <span className="phubrank">第{i + 1}希望</span>
                   <b className="phubchoice-name">{c.school}</b>
+                  <HubMenu
+                    label={`${c.school} のメニュー`}
+                    items={[
+                      { label: "上へ", disabled: i === 0, onClick: () => move(i, -1) },
+                      { label: "下へ", disabled: i === choices.length - 1, onClick: () => move(i, 1) },
+                      { label: "編集", onClick: () => setForm({ k: "choice", edit: c }) },
+                    ]}
+                  />
                 </div>
                 <div className="phubchoice-tags">
                   {c.type && <span className="phubtag">{SCHOOL_TYPE_LABEL[c.type]}</span>}
@@ -226,20 +236,6 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
                       ))}
                   </dl>
                 )}
-                <div className="phubchoice-act">
-                  <HubRowBtn disabled={i === 0} label={`${c.school} を上へ`} onClick={() => move(i, -1)}>
-                    上へ
-                  </HubRowBtn>
-                  <HubRowBtn disabled={i === choices.length - 1} label={`${c.school} を下へ`} onClick={() => move(i, 1)}>
-                    下へ
-                  </HubRowBtn>
-                  <HubRowBtn label={`${c.school} を編集`} onClick={() => setForm({ k: "choice", edit: c })}>
-                    編集
-                  </HubRowBtn>
-                  <HubRowBtn danger label={`${c.school} を削除`} onClick={() => removeChoice(c)}>
-                    削除
-                  </HubRowBtn>
-                </div>
               </article>
             );
           })}
@@ -264,12 +260,7 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
                 {a.note && <span className="phubpre phubsoft">{a.note}</span>}
               </div>
               <div className="phubrow-act">
-                <HubRowBtn label={`${fmtYMD(a.date)} の活動を編集`} onClick={() => setForm({ k: "activity", edit: a })}>
-                  編集
-                </HubRowBtn>
-                <HubRowBtn danger label={`${fmtYMD(a.date)} の活動を削除`} onClick={() => removeActivity(a)}>
-                  削除
-                </HubRowBtn>
+                <HubEditBtn label={`${fmtYMD(a.date)} の活動を編集`} onClick={() => setForm({ k: "activity", edit: a })} />
               </div>
             </div>
           ))}
@@ -298,12 +289,7 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
                 {iv.staff && <small>担当 {iv.staff}</small>}
               </div>
               <div className="phubrow-act">
-                <HubRowBtn label={`${fmtYMD(iv.date)} の面談を編集`} onClick={() => setForm({ k: "interview", edit: iv })}>
-                  編集
-                </HubRowBtn>
-                <HubRowBtn danger label={`${fmtYMD(iv.date)} の面談を削除`} onClick={() => removeInterview(iv)}>
-                  削除
-                </HubRowBtn>
+                <HubEditBtn label={`${fmtYMD(iv.date)} の面談を編集`} onClick={() => setForm({ k: "interview", edit: iv })} />
               </div>
             </div>
           ))}
@@ -347,12 +333,7 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
                   )}
                 </div>
                 <div className="phubrow-act">
-                  <HubRowBtn label={`${a.text} を編集`} onClick={() => setForm({ k: "action", edit: a })}>
-                    編集
-                  </HubRowBtn>
-                  <HubRowBtn danger label={`${a.text} を削除`} onClick={() => removeAction(a)}>
-                    削除
-                  </HubRowBtn>
+                  <HubEditBtn label={`${a.text} を編集`} onClick={() => setForm({ k: "action", edit: a })} />
                 </div>
               </div>
             );
@@ -374,6 +355,13 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
       {form?.k === "choice" && (
         <ChoiceForm
           edit={form.edit}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (removeChoice(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             profiles.setCareerItem(p.id, "choices", {
@@ -388,6 +376,13 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
       {form?.k === "activity" && (
         <ActivityForm
           edit={form.edit}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (removeActivity(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             profiles.setCareerItem(p.id, "activities", { ...rec, id: form.edit?.id ?? newRecordId("ca") });
@@ -399,6 +394,13 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
         <InterviewForm
           edit={form.edit}
           viewer={viewer}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (removeInterview(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             profiles.setCareerItem(p.id, "interviews", { ...rec, id: form.edit?.id ?? newRecordId("iv") });
@@ -409,6 +411,13 @@ export default function CareerSection({ p, profile, viewer, stage }: HubSectionP
       {form?.k === "action" && (
         <ActionForm
           edit={form.edit}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (removeAction(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             profiles.setCareerItem(p.id, "actions", {

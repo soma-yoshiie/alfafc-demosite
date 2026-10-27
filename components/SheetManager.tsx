@@ -1169,7 +1169,7 @@ function PlayerDetail({ playerId }: { playerId: string }) {
                   <div className="injmain">
                     <div className="injarea">
                       {test?.name ?? "削除済みの種目"}：
-                      <b style={{ color: "var(--lime)" }}>{test ? fmtFitnessValue(f.value, test.unit) : f.value}</b>
+                      <b style={{ color: "var(--ink)" }}>{test ? fmtFitnessValue(f.value, test.unit) : f.value}</b>
                     </div>
                     <div className="injmeta">{f.date}</div>
                   </div>

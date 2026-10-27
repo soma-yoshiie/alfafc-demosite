@@ -71,7 +71,8 @@ const NAV: { title?: string; items: { cat: SettingsCat; label: string }[] }[] = 
   {
     title: "チーム",
     items: [
-      { cat: "basics", label: "チームの基本" },
+      { cat: "teamBasics", label: "チーム名とエンブレム" },
+      { cat: "stage", label: "学校区分" },
       { cat: "groups", label: "学年・グループ" },
       { cat: "categories", label: "予定の種類" },
       { cat: "competitions", label: "大会" },
@@ -84,7 +85,7 @@ const NAV: { title?: string; items: { cat: SettingsCat; label: string }[] }[] = 
     items: [
       { cat: "staff", label: "スタッフ" },
       { cat: "invite", label: "選手・保護者の招待" },
-      { cat: "public", label: "公開範囲" },
+      { cat: "public", label: "試合記録の公開" },
     ],
   },
   {
@@ -110,6 +111,9 @@ const PLAYER_NAV: typeof NAV = [
 
 /** PC で、行が 1 つしか無いカテゴリは左の列を押した時点で下層を出す（行を 1 回余計に押させない。戻りも出さない） */
 const DIRECT_VIEW: Partial<Record<SettingsCat, SettingsView["mode"]>> = {
+  // ux-fix R3-4: チームの基本は 2 項目に分け、押すとすぐ右にフォームを出す
+  teamBasics: "teamBasics",
+  stage: "stage",
   staff: "staff",
   invite: "invite",
   notif: "notif",
@@ -123,11 +127,20 @@ const DIRECT_VIEW: Partial<Record<SettingsCat, SettingsView["mode"]>> = {
   fitnessTests: "fitnessTests",
 };
 
+/**
+ * 選手・保護者の PC：アカウントを選んだら右に名前・メール・パスワードの説明をそのまま展開する（ux-fix R3-3）。
+ * スタッフのアカウントは「行を押す → フォーム」のままなので、選手・保護者だけ。
+ */
+const PLAYER_DIRECT_VIEW: Partial<Record<SettingsCat, SettingsView["mode"]>> = { account: "account" };
+function directViewOf(cat: SettingsCat, coach: boolean): SettingsView["mode"] | undefined {
+  return (!coach ? PLAYER_DIRECT_VIEW[cat] : undefined) ?? DIRECT_VIEW[cat];
+}
+
 /** 下層が属するカテゴリ（スマホで開いたまま PC 幅になっても、左の列と戻りが食い違わないようにする） */
 const VIEW_CAT: Partial<Record<SettingsView["mode"], SettingsCat>> = {
   account: "account",
-  teamBasics: "basics",
-  stage: "basics",
+  teamBasics: "teamBasics",
+  stage: "stage",
   invite: "invite",
   staff: "staff",
   notif: "notif",
@@ -176,9 +189,9 @@ export default function SettingsScreen() {
   const done = useCallback(() => {
     dirtyRef.current = false;
     // PC の 1 行だけのカテゴリは下層をそのまま出し続ける（戻ると 1 行の一覧になるだけなので）
-    const direct = pc ? DIRECT_VIEW[cat] : undefined;
+    const direct = pc ? directViewOf(cat, coach) : undefined;
     setView(direct ? { mode: direct } : { mode: "top" });
-  }, [pc, cat]);
+  }, [pc, cat, coach]);
 
   /** 一覧へ戻る。管理画面の中の戻り（グループのメンバー編集 → 一覧）を先に処理する */
   function goTop() {
@@ -187,7 +200,7 @@ export default function SettingsScreen() {
   }
 
   function selectCat(c: SettingsCat) {
-    const direct = DIRECT_VIEW[c];
+    const direct = directViewOf(c, coach);
     // 今開いている管理画面の項目をもう一度押したとき：部品は作り直されないので、未保存の確認もしない
     // （確認に OK しても下書きが残ったまま dirtyRef だけ false になる）。メンバー編集中なら一覧へ戻すだけ
     if (c === cat && direct && view.mode === direct) {
@@ -200,8 +213,8 @@ export default function SettingsScreen() {
   }
 
   const formProps: SettingsFormProps = { pc, onDirty, saveRef, onDone: done };
-  function renderSub(): React.ReactNode {
-    switch (view.mode) {
+  function renderSub(mode: SettingsView["mode"] = view.mode): React.ReactNode {
+    switch (mode) {
       case "account":
         return coach ? <AccountForm key="account" {...formProps} /> : <PlayerAccountView key="account" />;
       case "staff":
@@ -254,9 +267,12 @@ export default function SettingsScreen() {
     }
   }
 
+  // 選手・保護者の PC は、一覧（top）のままでもアカウントを選んでいれば説明をそのまま展開する（R3-3）
+  const pcDirect = pc && view.mode === "top" && !coach ? directViewOf(cat, coach) : undefined;
+  const mainMode: SettingsView["mode"] = pcDirect ?? view.mode;
+
   const logout = () => window.dispatchEvent(new Event("alfa-logout"));
   const nav = coach ? NAV : PLAYER_NAV;
-  const catLabel = nav.flatMap((g) => g.items).find((i) => i.cat === cat)?.label ?? "設定";
 
   return (
     <div className="app setapp">
@@ -316,20 +332,26 @@ export default function SettingsScreen() {
                 </div>
               </nav>
               <div className="st-main">
-                {view.mode === "top" ? (
+                {mainMode === "top" ? (
                   coach ? (
                     <SettingsTop cat={cat} go={go} />
                   ) : (
                     <PlayerSettingsTop cat={cat} go={go} />
                   )
+                ) : !coach && mainMode === "account" ? (
+                  // 選手・保護者：アカウントの説明と通知のスイッチを同じ欄に出す（右が空白にならないように）
+                  <>
+                    {renderSub("account")}
+                    <NotifPrefsForm key="notif-inline" title="通知" />
+                  </>
                 ) : (
                   <>
-                    {!DIRECT_VIEW[cat] && (
+                    {!directViewOf(cat, coach) && (
                       <button type="button" className="st-back" onClick={goTop}>
-                        ‹ {catLabel}
+                        ‹ 戻る
                       </button>
                     )}
-                    {renderSub()}
+                    {renderSub(mainMode)}
                   </>
                 )}
               </div>

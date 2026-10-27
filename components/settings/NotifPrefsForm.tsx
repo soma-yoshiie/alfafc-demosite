@@ -41,7 +41,7 @@ export function notifValue(role: string, prefs: NotifPrefs): string {
 }
 
 /** 通知（§3-6）。トグルはその場で保存する（保存ボタン・未保存の確認は無し） */
-export default function NotifPrefsForm() {
+export default function NotifPrefsForm({ title }: { title?: string } = {}) {
   const board = useBoard();
   const role = notifRole(board.auth.role);
   const [prefs, setPrefs] = useState<NotifPrefs>(() => loadNotifPrefs());
@@ -54,7 +54,7 @@ export default function NotifPrefsForm() {
 
   return (
     <div className="st-form">
-      <SettingsGroup hint={HINT[role]}>
+      <SettingsGroup title={title} hint={HINT[role]}>
         {KEYS[role].map((key) => (
           <SettingsToggleRow key={key} label={LABELS[role][key] ?? key} checked={prefs[key]} onChange={(v) => toggle(key, v)} />
         ))}

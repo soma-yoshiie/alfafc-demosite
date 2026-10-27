@@ -14,7 +14,7 @@ export const BUILTIN_CATEGORIES: EventCategory[] = [
   { id: "practice", label: "練習", color: "#15233c", builtin: true },
   { id: "match", label: "試合", color: "#d9731f", builtin: true },
 ];
-// ※ practice=ネイビー・match=オレンジは既存CSS（--blue/--match）と一致させること
+// ※ practice=ネイビー・match=オレンジは既存CSS（--ink/--match）と一致させること
 
 export const eventEndDate = (e: TeamEvent) => e.endDate ?? e.date;
 export const isMultiDay = (e: TeamEvent) => eventEndDate(e) > e.date;

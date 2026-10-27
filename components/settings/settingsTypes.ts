@@ -21,7 +21,8 @@ export type SettingsView =
 /** PC の左のカテゴリ（§4）。about は選手の「バージョン」。groups〜fitnessTests は押すとすぐ右に編集画面（管理シートと同じ中身）を出す */
 export type SettingsCat =
   | "account"
-  | "basics"
+  | "teamBasics"
+  | "stage"
   | "groups"
   | "categories"
   | "competitions"

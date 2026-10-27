@@ -87,6 +87,7 @@ import {
   saveState,
   saveTeamLogo,
   saveUserArticles,
+  seedDrillsIfFirstRun,
 } from "@/lib/storage";
 import {
   buildSnapshot,
@@ -94,6 +95,7 @@ import {
   snapshotToBoard,
 } from "@/lib/share";
 import { SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
+import { sampleLibrary } from "@/lib/sampleLibrary";
 import { isOppKey, latestCounterpartTs } from "@/lib/chat";
 import { buildSetPieceState, getSetPiecePreset } from "@/lib/setPiecePresets";
 import {
@@ -1220,7 +1222,7 @@ interface BoardContextValue {
     id: string,
     comment: string,
     drawing?: { plays: PlayPoint[]; playLines: PlayLine[] },
-    opts?: { toast?: string | false }
+    opts?: { toast?: string | false; by?: string }
   ) => void;
   // コーチからの配信物
   deliverables: CoachDeliverable[];
@@ -2050,7 +2052,13 @@ export function BoardProvider({
   // 空配列で初期化して effect で hydrate すると、保存effectが先に走って
   // 保存済みライブラリを空で上書きし、StrictModeの二重マウントで消失が確定する
   const [library, setLibrary] = useState<Library>(
-    () => loadLibrary() ?? { plays: [], folders: [], setPieces: [] }
+    () => {
+      const saved = loadLibrary();
+      if (saved) return saved;
+      // ux-fix R3-3: 本当の初回は練習メニューのデモも一緒に書き込む（loadLibrary が null のときだけ）
+      seedDrillsIfFirstRun();
+      return sampleLibrary();
+    }
   );
   // lazy初期化。effectでのhydrateだと初回ペイントが常に"standard"になり
   // レールのプラン表示がちらつくため、保存済み設定を直接読む
@@ -2965,7 +2973,7 @@ export function BoardProvider({
       id: string,
       comment: string,
       drawing?: { plays: PlayPoint[]; playLines: PlayLine[] },
-      opts?: { toast?: string | false }
+      opts?: { toast?: string | false; by?: string }
     ) => {
       setNotebook((list) =>
         list.map((n) =>
@@ -2974,6 +2982,7 @@ export function BoardProvider({
                 ...n,
                 staffComment: comment.trim() || undefined,
                 staffCommentTs: Date.now(),
+                ...(opts?.by ? { staffCommentBy: opts.by } : {}),
                 // drawing省略時は既存の図を保持（黙って消さない）。空の図を渡したときは消す（レビュー: 消し切って送った場合）
                 ...(drawing !== undefined
                   ? { staffDrawing: drawing.plays.length > 0 || drawing.playLines.length > 0 ? drawing : undefined }

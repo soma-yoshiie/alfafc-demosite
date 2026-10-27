@@ -31,6 +31,7 @@ export interface ClExplore {
   setAudience: (v: AudienceFilter) => void;
   tags: string[];
   toggleTag: (t: string) => void;
+  clearTags: () => void;
   sort: ArticleSort;
   setSort: (v: ArticleSort) => void;
   license: License | "";
@@ -76,6 +77,7 @@ export function useClExplore(): ClExplore {
   return {
     mode, setMode, q, setQ, cat, setCat, price, setPrice, audience, setAudience,
     tags, toggleTag: (t) => setTags((cur) => (cur.includes(t) ? cur.filter((x) => x !== t) : [...cur, t])),
+    clearTags: () => setTags([]),
     sort, setSort, license, setLicense, region, setRegion, role, setRole, active, reset,
   };
 }
@@ -156,6 +158,12 @@ export function ClFilterPanel({
           <div className="calfilterpanel-sec" role="group" aria-label="ハッシュタグ">
             <div className="calfilterpanel-sech">
               <b>ハッシュタグ</b>
+              {/* ux-fix R3-2: 四角のチェックの所は見出しの右に「すべて解除」（選んでいるときだけ） */}
+              {f.tags.length > 0 && (
+                <button type="button" className="calfilterpanel-all" onClick={f.clearTags}>
+                  すべて解除
+                </button>
+              )}
             </div>
             {ARTICLE_TAGS_SUGGEST.map((t) => (
               <Row key={t} on={f.tags.includes(t)} kind="check" label={`#${t}`} onSelect={() => f.toggleTag(t)} />

@@ -73,7 +73,7 @@ export const LEGACY_GROUP_COLORS: string[] = [
 
 /**
  * 全員向け（対象グループなし、または対象グループが全て削除済み）の予定・点・帯に使う色
- * （案A §1）。CSSのvar(--blue)（=var(--ink)のネイビー）と同じ値。Canvas書き出し
+ * （案A §1）。CSSのvar(--ink)のネイビーと同じ値。Canvas書き出し
  * （2段目・lib/exportCalendar.ts）でも同じhexを直接使うためここに定数として置く。
  */
 export const ALL_TARGETS_COLOR = "#15233c";

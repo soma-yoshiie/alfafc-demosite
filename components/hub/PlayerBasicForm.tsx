@@ -34,7 +34,8 @@ import type { HubViewer } from "./common";
 export interface PlayerFormDraft {
   name: string;
   number: string;
-  position: Position;
+  /** "" = 未設定（新規追加の初期値。保存時は必須） */
+  position: Position | "";
   foot: "" | DominantFoot;
   grade: string;
   groupIds: string[];
@@ -44,6 +45,12 @@ export interface PlayerFormDraft {
   school: string;
   term: TermSystem;
 }
+
+/**
+ * ux-fix R3-5：続けて選手を登録するときは、直前に追加した選手の学年・グループを引き継ぐ（新規追加の初期値だけ。
+ * 編集には効かない）。画面を開いている間だけ覚える（保存はしない）。
+ */
+let lastAdded: { grade: string; groupIds: string[] } | null = null;
 
 export function PlayerBasicForm({
   player,
@@ -75,10 +82,14 @@ export function PlayerBasicForm({
   const d = keep?.current ?? null;
   const [name, setName] = useState(d ? d.name : player?.name ?? "");
   const [number, setNumber] = useState(d ? d.number : numStr(player?.number));
-  const [position, setPosition] = useState<Position>(d ? d.position : player?.position ?? ALL_POSITIONS[0]);
+  // ux-fix R3-5：新規追加のポジションは「未設定」で始めて、保存時に必須にする
+  const [position, setPosition] = useState<Position | "">(d ? d.position : player?.position ?? "");
   const [foot, setFoot] = useState<"" | DominantFoot>(d ? d.foot : player?.dominantFoot ?? "");
-  const [grade, setGrade] = useState(d ? d.grade : player?.grade != null ? String(player.grade) : "");
-  const [groupIds, setGroupIds] = useState<string[]>(d ? d.groupIds : player?.groupIds ?? []);
+  const carry = !d && !player ? lastAdded : null;
+  const [grade, setGrade] = useState(d ? d.grade : player?.grade != null ? String(player.grade) : carry?.grade ?? "");
+  const [groupIds, setGroupIds] = useState<string[]>(
+    d ? d.groupIds : player?.groupIds ?? (carry ? carry.groupIds.filter((id) => team.groups.some((g) => g.id === id)) : [])
+  );
   const [email, setEmail] = useState(d ? d.email : player?.email ?? "");
   const [birth, setBirth] = useState(d ? d.birth : prof?.birthDate ?? "");
   const [sex, setSex] = useState<Sex | "">(d ? d.sex : prof?.sex ?? "");
@@ -95,6 +106,10 @@ export function PlayerBasicForm({
     const nm = name.trim();
     if (staff && !nm) {
       board.toast("名前を入力してください");
+      return;
+    }
+    if (position === "") {
+      board.toast("ポジションを選んでください");
       return;
     }
     const num = number.trim() === "" ? null : parseInt(number, 10);
@@ -155,6 +170,7 @@ export function PlayerBasicForm({
       // 生年月日・性別・在籍校・学期制（既定の 3 学期制から変えたとき）のどれか 1 つでも入れたときだけ
       // プロフィールを作る（すべて既定のままなら空のプロフィールは作らない）。学期制だけ変えたときも落とさない
       if (birth || sex || school.trim() || term !== "3") profiles.update(id, profPatch);
+      lastAdded = { grade, groupIds: mergedIds ?? [] };
       onDone(id);
     }
   };
@@ -193,7 +209,13 @@ export function PlayerBasicForm({
           />
         </Field>
         <Field label="ポジション">
-          <select aria-label="ポジション" value={position} onChange={(e) => setPosition(e.target.value as Position)}>
+          <select
+            aria-label="ポジション"
+            value={position}
+            aria-invalid={position === ""}
+            onChange={(e) => setPosition(e.target.value as Position | "")}
+          >
+            {position === "" && <option value="">未設定</option>}
             {ALL_POSITIONS.map((pos) => (
               <option key={pos} value={pos}>
                 {pos}

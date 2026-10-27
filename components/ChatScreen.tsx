@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChatReplyTo } from "@/lib/types";
 import { dmThreadKey } from "@/lib/types";
-import { isOppKey, visibleAnnouncements } from "@/lib/chat";
+import { isOppKey, sortAnnouncements, visibleAnnouncements } from "@/lib/chat";
 import { groupsOfPlayer } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
-import ChatHome, { AnnReadPanel, AnnouncementDetail, useChatHeaderAction, useChatSeg, type AnnReadTab } from "./ChatHome";
+import ChatHome, { AnnReadPanel, AnnouncementDetail, staffConversationRows, useChatHeaderAction, useChatSeg, type AnnReadTab } from "./ChatHome";
 import ChatThread from "./ChatThread";
 import { useMatchups } from "./matchup/MatchupProvider";
 import { IconPlus } from "./icons";
@@ -151,10 +151,25 @@ export default function ChatScreen() {
     () => visibleAnnouncements(team.team.announcements, isStaff, me, team.groups),
     [team.team.announcements, isStaff, me, team.groups]
   );
-  const annId = seg === "ann" && pane.annId && visibleAnns.some((a) => a.id === pane.annId) ? pane.annId : null;
+  // ux-fix R3-3: PC で何も選んでいないときは、先頭のお知らせ（固定があれば固定、無ければ最新＝一覧の先頭）を開く。
+  // 選択として覚えるものではないので pane には入れない（別のものを選べばそちらが優先される）
+  const annId =
+    seg === "ann"
+      ? pane.annId && visibleAnns.some((a) => a.id === pane.annId)
+        ? pane.annId
+        : pc
+          ? sortAnnouncements(visibleAnns)[0]?.id ?? null
+          : null
+      : null;
   // 相手チームとの会話キーはスタッフだけ（選手・保護者の視点では使わない）
   const paneDm = pane.dmPid && isOppKey(pane.dmPid) && !isStaff ? null : pane.dmPid;
-  const dmPid = seg === "msg" ? memberId ?? paneDm : null;
+  // 会話のタブも同じ：何も選んでいないスタッフは最初の会話（左の一覧の先頭）を開く
+  const staffRows = useMemo(
+    () => (isStaff ? staffConversationRows(board.messages, board.chatReads, board.state.players, oppTeams) : []),
+    [isStaff, board.messages, board.chatReads, board.state.players, oppTeams]
+  );
+  const firstDm = pc && isStaff ? staffRows[0]?.key.replace(/^p:/, "") ?? null : null;
+  const dmPid = seg === "msg" ? memberId ?? paneDm ?? firstDm : null;
   const oppDm = dmPid && isStaff && isOppKey(dmPid) ? dmPid : null;
   const oppTeam = oppDm ? oppTeams.find((t) => `opp:${t.id}` === oppDm) ?? null : null;
 

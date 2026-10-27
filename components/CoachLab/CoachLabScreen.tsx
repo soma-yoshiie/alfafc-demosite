@@ -178,7 +178,7 @@ export default function CoachLabScreen() {
       case "article":
         return <CoachLabArticle articleId={current.articleId} onOpenAuthor={openAuthor} onOpenArticle={openArticle} />;
       case "earnings":
-        return isCoach ? <CoachLabEarnings /> : <div className="empty-msg">この画面は指導者のみ利用できます。</div>;
+        return isCoach ? <CoachLabEarnings onWrite={() => goTop({ kind: "write" })} /> : <div className="empty-msg">この画面は指導者のみ利用できます。</div>;
       case "profile":
         return isCoach ? (
           <CoachLabProfileForm onSaved={back} />

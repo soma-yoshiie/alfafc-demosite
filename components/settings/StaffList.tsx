@@ -26,7 +26,8 @@ export function findOwnCoach(authName: string, coaches: string[]): string | unde
 export default function StaffList() {
   const board = useBoard();
   const team = useTeam();
-  const [role, setRole] = useState(ROLES[0]);
+  // ux-fix R3-5：追加の役割の初期値は「コーチ」
+  const [role, setRole] = useState("コーチ");
   const [name, setName] = useState("");
   const coaches = team.team.coaches;
   const own = findOwnCoach(board.auth.name, coaches);
@@ -61,20 +62,18 @@ export default function StaffList() {
                 <span className="st-row-label">{p.name}</span>
                 <span className="st-row-desc">{[p.role, c === own ? "あなた" : ""].filter(Boolean).join("・")}</span>
               </span>
-              <button
-                type="button"
-                className="st-del"
-                onClick={() => {
-                  // 本人の行を消すと、お知らせやメッセージの送信者名が別のスタッフになる（staffIdentity の fallback）
-                  const msg =
-                    c === own
-                      ? `${p.name}はあなたの名前です。削除すると、お知らせやメッセージの送信者名が別のスタッフになります。削除しますか？`
-                      : `${p.name}を削除しますか？`;
-                  if (window.confirm(msg)) team.removeCoach(c);
-                }}
-              >
-                削除
-              </button>
+              {/* ux-fix R3-5：自分の行には削除を出さない（消すとお知らせやメッセージの送信者名が別のスタッフになる） */}
+              {c !== own && (
+                <button
+                  type="button"
+                  className="st-del"
+                  onClick={() => {
+                    if (window.confirm(`${p.name}を削除しますか？`)) team.removeCoach(c);
+                  }}
+                >
+                  削除
+                </button>
+              )}
             </div>
           );
         })}

@@ -25,12 +25,13 @@ import {
   GradeTermFields,
   HubAdd,
   HubEmpty,
+  HubEditBtn,
   HubHead,
-  HubRowBtn,
   HubSheet,
   LastUpdated,
   NumField,
   Seg,
+  SheetDelete,
   SheetSave,
   fmtDiff,
   fmtYMD,
@@ -70,9 +71,11 @@ export default function ExamsSection({ p, profile, stage }: HubSectionProps) {
   // 目標線は、目標を入れたいちばん新しいテストの値
   const targetExam = [...asc].reverse().find((e) => typeof e.targetTotal5 === "number" && e.targetTotal5 > 0);
 
-  const remove = (e: ExamRecord) => {
-    if (!window.confirm(`${e.name}（${fmtYMD(e.date)}）を削除しますか？`)) return;
+  /* ux-fix R3-2: 削除は編集フォームの一番下から（確認で止めたら false。フォームは閉じない） */
+  const remove = (e: ExamRecord): boolean => {
+    if (!window.confirm(`${e.name}（${fmtYMD(e.date)}）を削除しますか？`)) return false;
     profiles.removeRecord(p.id, "exams", e.id);
+    return true;
   };
 
   return (
@@ -125,7 +128,6 @@ export default function ExamsSection({ p, profile, stage }: HubSectionProps) {
               e={e}
               stage={stage}
               onEdit={() => setForm({ edit: e })}
-              onDelete={() => remove(e)}
             />
           ))}
         </div>
@@ -138,6 +140,13 @@ export default function ExamsSection({ p, profile, stage }: HubSectionProps) {
           stage={stage}
           system={system}
           defaultGrade={p.grade ?? 1}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (remove(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             profiles.setRecord(p.id, "exams", { ...rec, id: form.edit?.id ?? newRecordId("ex") });
@@ -155,12 +164,10 @@ function ExamCard({
   e,
   stage,
   onEdit,
-  onDelete,
 }: {
   e: ExamRecord;
   stage: SchoolStage;
   onEdit: () => void;
-  onDelete: () => void;
 }) {
   const t5 = examTotal(e, MAIN5);
   const t9 = examTotal(e, SUBJECTS);
@@ -187,12 +194,7 @@ function ExamCard({
           <span className="phubtag">{EXAM_KIND_LABEL[e.kind]}</span>
         </div>
         <div className="phubrow-act">
-          <HubRowBtn label={`${e.name} を編集`} onClick={onEdit}>
-            編集
-          </HubRowBtn>
-          <HubRowBtn danger label={`${e.name} を削除`} onClick={onDelete}>
-            削除
-          </HubRowBtn>
+          <HubEditBtn label={`${e.name} を編集`} onClick={onEdit} />
         </div>
       </div>
       <div className="phubexam-meta">{meta}</div>
@@ -282,6 +284,7 @@ function ExamForm({
   system,
   defaultGrade,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: ExamRecord;
@@ -289,6 +292,8 @@ function ExamForm({
   system: TermSystem;
   defaultGrade: number;
   onSave: (rec: Omit<ExamRecord, "id" | "updatedAt" | "updatedBy">) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -472,6 +477,7 @@ function ExamForm({
         />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="このテストを削除" />}
     </HubSheet>
   );
 }

@@ -6,7 +6,7 @@ import { INJURY_STATUS_LABEL } from "@/lib/types";
 import { newRecordId } from "@/lib/profile";
 import { localDateStr } from "@/lib/dates";
 import { useBoard } from "../BoardProvider";
-import { Field, HubAdd, HubEmpty, HubHead, HubRowBtn, HubSheet, Seg, SheetSave, fmtYMD } from "./common";
+import { Field, HubAdd, HubEditBtn, HubEmpty, HubHead, HubSheet, Seg, SheetDelete, SheetSave, fmtYMD } from "./common";
 import type { HubSectionProps } from "./common";
 
 /**
@@ -28,9 +28,11 @@ export default function InjuriesSection({ p }: HubSectionProps) {
     board.updatePlayer({ ...live, injuries });
   };
 
-  const remove = (r: InjuryRecord) => {
-    if (!window.confirm(`${fmtYMD(r.date)} の怪我の記録（${r.area}）を削除しますか？`)) return;
+  /* ux-fix R3-2: 削除は編集フォームの一番下から（確認で止めたら false。フォームは閉じない） */
+  const remove = (r: InjuryRecord): boolean => {
+    if (!window.confirm(`${fmtYMD(r.date)} の怪我の記録（${r.area}）を削除しますか？`)) return false;
     commit((p.injuries ?? []).filter((x) => x.id !== r.id));
+    return true;
   };
 
   return (
@@ -52,12 +54,7 @@ export default function InjuriesSection({ p }: HubSectionProps) {
                 {r.note && <small>{r.note}</small>}
               </div>
               <div className="phubrow-act">
-                <HubRowBtn label={`${r.area} の怪我を編集`} onClick={() => setForm({ edit: r })}>
-                  編集
-                </HubRowBtn>
-                <HubRowBtn danger label={`${r.area} の怪我を削除`} onClick={() => remove(r)}>
-                  削除
-                </HubRowBtn>
+                <HubEditBtn label={`${r.area} の怪我を編集`} onClick={() => setForm({ edit: r })} />
               </div>
             </div>
           ))}
@@ -67,6 +64,13 @@ export default function InjuriesSection({ p }: HubSectionProps) {
       {form && (
         <InjuryFormSheet
           edit={form.edit}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (remove(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             const cur = p.injuries ?? [];
@@ -82,10 +86,13 @@ export default function InjuriesSection({ p }: HubSectionProps) {
 function InjuryFormSheet({
   edit,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: InjuryRecord;
   onSave: (rec: InjuryRecord) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -130,6 +137,7 @@ function InjuryFormSheet({
         <input aria-label="メモ" value={note} onChange={(e) => setNote(e.target.value)} placeholder="例）来週フル合流予定" />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="この怪我の記録を削除" />}
     </HubSheet>
   );
 }

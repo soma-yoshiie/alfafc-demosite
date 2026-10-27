@@ -1,8 +1,9 @@
 /* =========================================================
    デザイントークン
    分析サイト風ハイブリッド：白地・クールグレー × 1px罫線。
-   基本の意味色は緑（CTA・達成・選択・フォーカス等）。
-   ブルーは緑と役割が被らない箇所（本人・役割バッジ／情報リンク）のみに限定使用する。
+   色の約束（ux-fix R3-1）：青＝操作・選択、緑＝状態・結果。
+   青（--accent）は主ボタン・選択中・フォーカス・リンク・グラフの系列（出席・勝率）。
+   緑（--primary）は達成・勝ち・出席・記入済み・コメント済の状態表示とロゴだけ（ノートの種類は --note-*）。
    ========================================================= */
 :root {
   /* ---- サーフェス（6段） ---- */
@@ -30,7 +31,7 @@
   --note-practice: #267b6e;
   --note-solo: #91702f;
 
-  /* ---- プライマリ（緑）: CTA・達成・ポジティブ指標のみ ---- */
+  /* ---- プライマリ（緑）: 状態・結果（達成・勝ち・出席・記入済み）だけ。CTA には使わない ---- */
   --primary: #15803d;
   --primary-dim: #11632f;
   --primary-container: #dcefe2;
@@ -96,11 +97,6 @@
   --lime-dim: var(--primary-dim);
   --red: var(--danger);
   --shadow: var(--elev-2);
-  /* 旧:注意/情報/強調 は新パレットに対応エイリアスが無いため、他画面の見た目を変えないよう旧リテラル値のまま維持 */
-  /* 旧デザインで--inkへ集約されていた3色。新inkに追随させてトーンを統一 */
-  --gold: var(--ink);
-  --blue: var(--ink);
-  --orange: var(--ink);
 }
 
 * {
@@ -222,7 +218,7 @@ header {
   font-size: 12px;
   font-weight: 800;
   color: #ffffff;
-  background: var(--lime);
+  background: var(--accent);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -435,16 +431,16 @@ header {
   color: var(--ink);
 }
 .disc.gk {
-  border-color: var(--gold);
+  border-color: var(--ink);
 }
 .disc.df {
-  border-color: var(--blue);
+  border-color: var(--ink);
 }
 .disc.mf {
   border-color: var(--lime);
 }
 .disc.fw {
-  border-color: var(--orange);
+  border-color: var(--ink);
 }
 .tok.drag .disc {
   transform: scale(1.12);
@@ -465,7 +461,7 @@ header {
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  background: var(--gold);
+  background: var(--ink);
   color: #ffffff;
   font-size: 9px;
   font-weight: 800;
@@ -1788,17 +1784,17 @@ header {
   padding: 5px 0;
 }
 .pos.gk {
-  background: var(--gold);
+  background: var(--ink);
 }
 .pos.df {
-  background: var(--blue);
+  background: var(--ink);
 }
 /* p18 §2: MF だけ緑だった（意味のない色分けの名残）。ほかの 3 つと同じ黒（--ink）にそろえる */
 .pos.mf {
   background: var(--ink);
 }
 .pos.fw {
-  background: var(--orange);
+  background: var(--ink);
 }
 .prow .meta {
   flex: 1;
@@ -2054,21 +2050,27 @@ header {
   text-transform: uppercase;
   margin: 0 2px 6px;
 }
+/* ux-fix R3-2: 入力欄は .st-input と同じ（白地・1px --outline-strong・--r-md・44px・15px。PC は 32〜35px・14px） */
 .formfield input,
 .formfield select,
 .formfield textarea {
   width: 100%;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px 13px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
   color: var(--ink);
-  font-size: 15px;
+  font-size: var(--fs-title-s);
   font-family: var(--font-ui);
   outline: none;
 }
 .formfield textarea {
   resize: vertical;
+}
+/* ux-fix R3-2: 1 行の入力欄は 44px（PC は PC reset で 32px、指の PC は coarse で 44px）。:where で詳細度は 0 のまま
+   （チェックボックスなど固有の大きさを持つ入力は除く） */
+.formfield :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]), select, textarea) {
+  min-height: 44px;
 }
 /* Phase D-1(C2-minor): 以前は.formrow自体にマージンが無く、2カラム行(背番号/ポジション等)の
    子.formfieldだけ左右マージンを0にしていたため、行が画面左右端に密着してmobile-redesign v1
@@ -2121,26 +2123,69 @@ header {
   display: flex;
   gap: 10px;
 }
+/* ux-fix R3-5: 予定フォームの日付・時刻。2 列。1 日だけは「開始日」を全幅、その下に「開始時刻｜終了時刻」。複数日は「開始日｜終了日」→「開始時刻｜終了時刻」 */
+.evdt {
+  margin: 0 16px 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.evdt .formfield {
+  margin: 0;
+  min-width: 0;
+}
+.evdt .formfield.evdt-wide {
+  grid-column: 1 / -1;
+}
+.formfield.evdt-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 24px;
+}
+.evdt-hint {
+  margin: -6px 18px 12px;
+  font-size: 12px;
+  color: var(--mut);
+}
+/* 区切り見出し（.st-group-h と同じ 12px・700・--mut・字間 0） */
+.evform-h {
+  margin: 18px 18px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--mut);
+}
+/* ux-fix R3-1/R3-2: 主ボタンは .st-btn と同じ値（青の塗り・15px・700・--r-md・44px）。
+   .ghost は副ボタン（白地・1px --outline-strong・青の文字）、.accent は主と同じ青 */
 .bigbtn {
   width: calc(100% - 32px);
   margin: 6px 16px 14px;
-  padding: 15px;
-  border-radius: 14px;
-  border: 0;
+  min-height: 44px;
+  padding: 0 16px;
+  box-sizing: border-box;
+  border-radius: var(--r-md);
+  border: 1px solid var(--accent);
   cursor: pointer;
-  font-family: var(--font-display);
-  font-size: 20px;
-  letter-spacing: 1.5px;
-  background: var(--lime);
-  color: #ffffff;
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  letter-spacing: 0;
+  background: var(--accent);
+  color: var(--surface-lowest);
 }
 .bigbtn:active {
-  transform: scale(0.98);
+  opacity: 0.85;
 }
 .bigbtn.ghost {
-  background: transparent;
-  color: var(--ink);
-  border: 1px solid var(--line);
+  background: var(--surface-lowest);
+  color: var(--accent);
+  border: 1px solid var(--outline-strong);
+}
+.bigbtn.accent,
+.bigbtn.ghost.accent {
+  background: var(--accent);
+  color: var(--surface-lowest);
+  border-color: var(--accent);
 }
 /* Phase D-1(C3 major review): チーム画面のスマホでは.bigbtn(全幅CTA)を通常の
    ボタン様式へ正規化する(20px/字間1.5px/14px角丸/見出し用フォントのままだと
@@ -2148,9 +2193,9 @@ header {
    描画されないため.teamapp:has(.mhead)で自然にスマホ限定になり、PCの.bigbtn(下方
    のPCブロックで別途正規化済み)は不変 */
 .teamapp:has(.mhead) .bigbtn {
-  font-size: var(--fs-title);
+  font-size: var(--fs-title-s);
   letter-spacing: 0;
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
   font-family: var(--font-ui);
 }
 /* Phase D-1(C2 minor review): 予定詳細シートで.ghost化した「編集する」「この試合の
@@ -2159,8 +2204,8 @@ header {
    方針どおり--accentへ寄せる。新規hex色は追加しない) */
 .teamapp:has(.mhead) .bigbtn.accent {
   background: var(--accent);
-  color: #ffffff;
-  border: 0;
+  color: var(--surface-lowest);
+  border: 1px solid var(--accent);
 }
 /* v2 目視レビュー反映（すべてスマホ限定: .mhead の有無で判定。PC reset 不要）
    major-3: シート見出しのバッジ 11px→12px ／ major-4: 「＋ 大会を登録・管理」の破線を実線白地に
@@ -2475,21 +2520,23 @@ body:has(.mhead) .chatcompose textarea {
    詳細度が同じ(0,1,0)だが本ルールより後段(PC専用@media内)にあるため、PCの見た目は
    衝突せず変わらない（要 getComputedStyle 確認） */
 .libtab {
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 44px;
+  padding: 0 14px;
   border-radius: var(--r-md);
   border: 1px solid var(--outline);
   background: var(--surface-lowest);
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: var(--fs-body);
-  font-weight: 700;
+  font-weight: 400;
+  line-height: 1;
   cursor: pointer;
 }
 .libtab.on {
   background: var(--accent-tint);
   color: var(--accent);
-  border-color: var(--accent);
+  border-color: var(--accent-tint-strong);
+  font-weight: 700;
 }
 .folderhdr {
   display: flex;
@@ -2563,8 +2610,6 @@ body:has(.mhead) .chatcompose textarea {
 .plancard .bigbtn {
   width: 100%;
   margin: 0;
-  font-size: 16px;
-  padding: 12px;
 }
 .pcnow {
   text-align: center;
@@ -2725,7 +2770,7 @@ body:has(.mhead) .chatcompose textarea {
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: var(--gold);
+  background: var(--ink);
   border: 2px solid #ffffff;
 }
 .ditem.deletable::after {
@@ -2774,7 +2819,7 @@ body:has(.mhead) .chatcompose textarea {
 body:has(.mhead) .noteapp .ngchip,
 body:has(.mhead) .cl-toggle button,
 body:has(.mhead) .billtoggle button {
-  height: 36px;
+  height: 44px;
   padding: 0 12px;
   font-size: var(--fs-body);
   font-weight: 400;
@@ -2917,7 +2962,7 @@ body:has(.mhead) .billtoggle button.on {
   color: #ffffff;
 }
 .evkind.practice {
-  background: var(--blue);
+  background: var(--ink);
 }
 .evkind.match {
   background: var(--match);
@@ -3079,7 +3124,7 @@ body:has(.mhead) .billtoggle button.on {
   color: #0f6f3d;
 }
 .att.maybe {
-  color: var(--gold);
+  color: var(--ink);
 }
 .att.no {
   color: var(--red);
@@ -3088,7 +3133,7 @@ body:has(.mhead) .billtoggle button.on {
   color: var(--mut);
 }
 /* mobile-redesign-v2 §3-4: 出席=緑文字をやめ--ink 700(数字はtabular-nums)に。
-   未定=--mut(現状の--gold=--ink相当から明示的にmutへ)。欠席は意味色として--redのまま維持
+   未定=--mut(現状の--ink相当から明示的にmutへ)。欠席は意味色として--redのまま維持
    （変更不要）。地(--panel2=--surface-low)は変更しない */
 .teamapp:has(.mhead) .att {
   font-variant-numeric: tabular-nums;
@@ -3146,8 +3191,8 @@ body:has(.mhead) .billtoggle button.on {
 }
 .attbtn.maybe.on {
   background: #e9edf4;
-  border-color: var(--gold);
-  color: var(--gold);
+  border-color: var(--ink);
+  color: var(--ink);
 }
 .attbtn.no.on {
   background: #fbe6ea;
@@ -3290,7 +3335,7 @@ body:has(.mhead) .billtoggle button.on {
   color: var(--red);
 }
 .calwd.sat {
-  color: var(--blue);
+  color: var(--ink);
 }
 .calcell {
   aspect-ratio: 1 / 1;
@@ -3324,7 +3369,7 @@ body:has(.mhead) .billtoggle button.on {
   color: var(--red);
 }
 .caldate.sat {
-  color: var(--blue);
+  color: var(--ink);
 }
 /* calendar-plan-a §11-2: マスの点(.caldots/.caldotmore)はピル(.calevs/.calev)に置き換えて
    撤去した。.caldot自体は凡例(.callegend .caldot)がまだ使うためここに残す */
@@ -3442,6 +3487,7 @@ body:has(.mhead) .billtoggle button.on {
   font-size: 12px;
   color: var(--mut);
   font-weight: 700;
+  letter-spacing: 0;
 }
 .calfilterpanel-all {
   border: 0;
@@ -3497,6 +3543,10 @@ body:has(.mhead) .billtoggle button.on {
 }
 .calfilter-toggle input {
   display: none;
+}
+/* ux-fix R3-5：練習試合の「相手の会場だけ」は他の行（calfilterpanel-row）と同じ通常の太さ */
+.calfilter-toggle.mtvenue {
+  font-weight: 400;
 }
 .calfilter-toggle > span {
   display: inline-block;
@@ -3558,16 +3608,70 @@ body:has(.mhead) .billtoggle button.on {
   border-bottom: 1.5px solid var(--on-primary);
   transform: rotate(-45deg);
 }
-/* 種類（カテゴリ）の四角いチェック。色は固定ネイビー（--blue）。
-   レビュー指摘: 未チェックの枠が--line(コントラスト比約1.25:1)でほぼ見えなかったため、
-   オフでも種類の色である--blueの枠にする（§3-1「種類のチェックはネイビー」） */
+/* 四角いチェック(.sq)。レビュー指摘: 未チェックの枠が--line(コントラスト比約1.25:1)でほぼ見えなかったため、
+   オフでも見える枠(--mut)にする。R3-2 で選択色は青へ（下の「絞り込みの選択部品」） */
 .calchk.sq {
   border-radius: var(--r-xs);
-  border-color: var(--blue);
 }
-.calchk.sq.on {
-  background: var(--blue);
-  border-color: var(--blue);
+/* ux-fix R3-2: 絞り込みの選択部品は 2 種類にそろえる。四角(.sq)＝いくつでも選ぶ、丸(.rd)＝1 つだけ選ぶ。
+   未選択は灰の枠、選択は青（青＝選択。練習試合の .calchk.mtc と同じ見た目。旧: 種類の四角は ink）。
+   色を持つ行（学年・グループ）は、チェックの色ではなくラベルの前の点 .fdot で示す */
+.calchk.sq,
+.calchk.rd {
+  border-color: var(--mut);
+}
+.calchk.sq.on,
+.calchk.rd.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.calchk.rd {
+  border-radius: 50%;
+}
+.calchk.rd.on {
+  background: var(--surface-lowest);
+}
+.calchk.rd.on::after {
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: none;
+}
+.fdot {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: -2px;
+  border-radius: 50%;
+}
+/* 絞り込みの見出し行（題＋右に「すべて解除」。FilterSecHead）。選んでいないときは見えなくするだけで場所は残す */
+.fsech {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.fsech > div {
+  flex: 1;
+  min-width: 0;
+}
+.fclear {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -4px -8px -4px 0;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
 }
 /* グループ管理シート：行の先頭の色の丸（14px）。見た目上は丸だけ見せつつタップ領域は44px */
 .calgroupdot {
@@ -3708,8 +3812,9 @@ body:has(.mhead) .billtoggle button.on {
 }
 .statbox .sk {
   font-size: 12px;
+  font-weight: 700;
   color: var(--mut);
-  letter-spacing: 1px;
+  letter-spacing: 0;
 }
 .statbox .sv {
   font-family: var(--font-display);
@@ -3740,8 +3845,9 @@ body:has(.mhead) .billtoggle button.on {
 }
 .scorers .sk {
   font-size: 12px;
+  font-weight: 700;
   color: var(--mut);
-  letter-spacing: 1px;
+  letter-spacing: 0;
   margin-bottom: 6px;
 }
 .scorerrow {
@@ -3798,7 +3904,7 @@ body:has(.mhead) .billtoggle button.on {
   background: #0f6f3d;
 }
 .mres.d {
-  background: var(--gold);
+  background: var(--ink);
 }
 .mres.l {
   background: var(--red);
@@ -3857,8 +3963,10 @@ body:has(.mhead) .billtoggle button.on {
   padding: 11px 13px;
 }
 .dsec-h {
-  font-weight: 800;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--mut);
   margin-bottom: 6px;
 }
 .dsec-e {
@@ -3868,6 +3976,52 @@ body:has(.mhead) .billtoggle button.on {
 .dline {
   font-size: 14px;
   line-height: 1.7;
+}
+/* ux-fix R3-5: 予定の詳細の出欠状況。出席数を大きく、未定・欠席・未回答は 1 以上なら色付き（0 は灰色）。
+   DOM は「ラベル→数字」、見た目は数字を上（column-reverse） */
+.attstats {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.attstat {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 4px;
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  color: var(--mut);
+}
+.attstat span {
+  font-size: 12px;
+  font-weight: 700;
+}
+.attstat b {
+  font-family: var(--font-ui);
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 700;
+}
+.attstat.yes {
+  color: var(--primary-dim);
+}
+.attstat.yes b {
+  font-size: 28px;
+}
+.attstat.maybe.has {
+  color: var(--warn);
+}
+.attstat.no.has {
+  color: var(--danger);
+}
+.attstat.none.has {
+  color: var(--accent);
 }
 
 /* ---------- form: score & dynamic rows ---------- */
@@ -3900,12 +4054,13 @@ body:has(.mhead) .billtoggle button.on {
 }
 .dynrow select,
 .dynrow input {
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  min-height: 44px;
   padding: 9px 8px;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-family: var(--font-ui);
   min-width: 0;
 }
@@ -3945,15 +4100,20 @@ body:has(.mhead) .teamapp .dynrow select {
   font-size: 16px;
   cursor: pointer;
 }
+/* ux-fix R3-2: 追加の行内ボタンは .st-btn.ghost の見た目（白地・1px --outline-strong・青の文字・44px） */
 .dynadd {
   width: 100%;
-  background: transparent;
-  border: 1px dashed var(--line);
-  color: var(--lime-dim);
-  border-radius: 11px;
-  padding: 10px;
+  min-height: 44px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  color: var(--accent);
+  border-radius: var(--r-md);
+  padding: 0 16px;
+  box-sizing: border-box;
+  font-family: var(--font-ui);
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--fs-title-s);
+  letter-spacing: 0;
   cursor: pointer;
   margin-top: 2px;
 }
@@ -3963,13 +4123,12 @@ body:has(.mhead) .teamapp .dynrow select {
    スマホだけに限定する（PC/他画面は不変） */
 .teamapp:has(.mhead) .dynadd {
   background: var(--surface-lowest);
-  border: 1px solid var(--outline);
-  color: var(--ink);
+  border: 1px solid var(--outline-strong);
+  color: var(--accent);
   border-radius: var(--r-md);
   /* タップ領域チェック(v1 §2)で41px(<44px)だったため確保 */
   min-height: 44px;
-  /* Phase D-1(C3 minor review): 基底(3168付近)の13pxはv1 §8-2-8の5段のどれでもないため14pxへ */
-  font-size: var(--fs-body);
+  font-size: var(--fs-title-s);
 }
 
 /* ============================================================
@@ -4111,10 +4270,10 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .login-card .formfield input {
   width: 100%;
-  background: var(--panel2);
-  border: 1px solid var(--line);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
   border-radius: var(--r-md);
-  padding: 12px 13px;
+  padding: 10px 12px;
   color: var(--ink);
   font-size: 15px;
   font-family: var(--font-ui);
@@ -4166,11 +4325,11 @@ body:has(.mhead) .teamapp .dynrow select {
   transition: transform 0.18s, background 0.18s;
 }
 .pubtoggle input:checked ~ .switch {
-  background: rgba(19, 138, 77, 0.4);
+  background: var(--accent-tint-strong);
 }
 .pubtoggle input:checked ~ .switch::after {
   transform: translateX(18px);
-  background: var(--lime);
+  background: var(--accent);
 }
 
 /* ---------- 選手管理（出席率・怪我） ---------- */
@@ -4184,7 +4343,7 @@ body:has(.mhead) .teamapp .dynrow select {
 .ratebar i {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--lime-dim), var(--lime));
+  background: var(--accent);
   border-radius: 5px;
 }
 .ratebar.big { height: 10px; margin-top: 8px; }
@@ -4203,7 +4362,7 @@ body:has(.mhead) .teamapp .dynrow select {
   border-radius: 999px;
 }
 .injbadge.out { background: rgba(255, 91, 110, 0.18); color: var(--red); }
-.injbadge.recovering { background: rgba(255, 209, 102, 0.18); color: var(--gold); }
+.injbadge.recovering { background: rgba(255, 209, 102, 0.18); color: var(--ink); }
 .injbadge.ok { background: rgba(126, 224, 160, 0.18); color: #0f6f3d; }
 .injrow {
   display: flex;
@@ -4327,12 +4486,12 @@ body:has(.mhead) .teamapp .dynrow select {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 8px 14px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  padding: 0 14px;
   cursor: pointer;
-  color: var(--ink);
+  color: var(--accent);
   font-family: var(--font-ui);
   flex: 0 0 auto;
   white-space: nowrap;
@@ -4344,7 +4503,7 @@ body:has(.mhead) .teamapp .dynrow select {
   min-height: 44px;
 }
 .formbtn:active { transform: scale(0.97); }
-.formbtn .fb-label { font-weight: 700; font-size: 13px; }
+.formbtn .fb-label { font-weight: 700; font-size: var(--fs-body); }
 /* mobile-redesign B-2: 現在のフォーメーション表示バッジは青(PC既存の.formbtn .fb-curと同じ値) */
 .formbtn .fb-cur {
   font-family: var(--font-display);
@@ -5206,10 +5365,10 @@ body:has(.mhead) .teamapp .dynrow select {
 
 /* ---------- 設定（チーム＋プラン） ---------- */
 .setsec-h {
-  font-weight: 800;
-  font-size: 13px;
+  font-weight: 700;
+  font-size: 12px;
   color: var(--mut);
-  letter-spacing: 1px;
+  letter-spacing: 0;
   margin: 4px 18px 8px;
 }
 
@@ -5306,7 +5465,7 @@ body:has(.mhead) .teamapp .dynrow select {
 .artactbar .bigbtn {
   width: auto;
   margin: 0;
-  padding: 12px 22px;
+  padding: 0 22px;
 }
 .arterr {
   margin-top: 4px;
@@ -5402,13 +5561,15 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .cl-toggle button {
   flex: 1;
+  min-height: 44px;
   border: 1px solid var(--outline);
   background: var(--surface-lowest);
   color: var(--ink);
-  font-weight: 700;
-  font-size: 13px;
-  padding: 9px;
-  border-radius: 8px;
+  font-weight: 400;
+  font-size: var(--fs-body);
+  line-height: 1;
+  padding: 0 12px;
+  border-radius: var(--r-md);
   cursor: pointer;
   font-family: var(--font-ui);
 }
@@ -5418,7 +5579,8 @@ body:has(.mhead) .teamapp .dynrow select {
 .cl-toggle button.on {
   background: var(--accent-tint);
   color: var(--accent);
-  border-color: var(--accent);
+  border-color: var(--accent-tint-strong);
+  font-weight: 700;
 }
 .cl-authortabs {
   margin: 0 16px 12px;
@@ -5649,25 +5811,27 @@ body:has(.mhead) .teamapp .dynrow select {
    のため青へ（PC既存の見た目はPCブロック末尾の「mobile-redesign PC reset」でミラーして維持） */
 .cl-followbtn {
   flex: none;
+  min-height: 44px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #ffffff;
-  font-size: 12px;
+  color: var(--surface-lowest);
+  font-size: var(--fs-title-s);
   font-weight: 700;
-  border-radius: 999px;
-  padding: 7px 14px;
+  letter-spacing: 0;
+  border-radius: var(--r-md);
+  padding: 0 16px;
   cursor: pointer;
   font-family: var(--font-ui);
   white-space: nowrap;
 }
 .cl-followbtn.on {
-  background: transparent;
-  color: var(--ink);
-  border-color: var(--line);
+  background: var(--surface-lowest);
+  color: var(--accent);
+  border-color: var(--outline-strong);
 }
 .cl-followbtn.compact {
-  padding: 5px 10px;
-  font-size: 12px;
+  padding: 0 12px;
+  font-size: var(--fs-body);
 }
 
 /* ---- 指導者ミニ表示（記事カード・記事ページの著者行） ---- */
@@ -5831,7 +5995,7 @@ body:has(.mhead) .teamapp .dynrow select {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  background: var(--lime);
+  background: var(--accent);
   margin-top: 5px;
 }
 .cl-timeline-body {
@@ -5936,15 +6100,15 @@ body:has(.mhead) .teamapp .dynrow select {
 /* ---- 有料ライン ---- */
 .cl-paywall {
   margin: 14px 0;
-  border: 1px solid rgba(21, 128, 61, 0.3);
-  background: var(--primary-container);
+  border: 1px solid var(--accent-tint-strong);
+  background: var(--accent-tint);
   border-radius: var(--r-lg);
   padding: 16px;
 }
 .cl-paywall-title {
   font-weight: 800;
   font-size: 15px;
-  color: var(--primary-dim);
+  color: var(--ink);
 }
 .cl-paywall-stats {
   font-size: 12px;
@@ -5965,7 +6129,7 @@ body:has(.mhead) .teamapp .dynrow select {
 .cl-paywall-refund {
   font-size: 12px;
   font-weight: 700;
-  color: var(--primary-dim);
+  color: var(--accent);
 }
 .cl-paywall-refund.no {
   color: var(--mut);
@@ -6022,9 +6186,9 @@ body:has(.mhead) .teamapp .dynrow select {
   font-family: var(--font-ui);
 }
 .cl-likebtn.on {
-  border-color: var(--lime);
-  background: var(--lime);
-  color: #ffffff;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--surface-lowest);
 }
 .cl-likebtn.static {
   border: 0;
@@ -6480,19 +6644,22 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .logintabs button {
   flex: 1;
+  min-height: 44px;
   border: 1px solid var(--outline);
   background: var(--surface-lowest);
   color: var(--ink);
+  font-family: var(--font-ui);
   font-weight: 400;
-  font-size: 14px;
-  padding: 10px;
+  font-size: var(--fs-body);
+  line-height: 1;
+  padding: 0 12px;
   border-radius: var(--r-md);
   cursor: pointer;
 }
 .logintabs button.on {
   background: var(--accent-tint);
   color: var(--accent);
-  border-color: var(--accent);
+  border-color: var(--accent-tint-strong);
   font-weight: 700;
 }
 .login-err {
@@ -6507,12 +6674,13 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .login-switch {
   width: 100%;
+  min-height: 44px;
   background: transparent;
   border: 0;
   color: var(--accent);
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-weight: 700;
-  margin-top: 12px;
+  margin-top: 8px;
   cursor: pointer;
 }
 .login-note b { color: var(--accent); }
@@ -6545,21 +6713,21 @@ body:has(.mhead) .teamapp .dynrow select {
 
 /* ---------- パスワード表示トグル ---------- */
 .pwwrap { position: relative; }
-.login-card .pwwrap input { padding-right: 46px; }
+.login-card .pwwrap input { padding-right: 50px; }
 .pweye {
   position: absolute;
-  right: 6px;
+  right: 2px;
   top: 50%;
   transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: 0;
   background: transparent;
   color: var(--mut);
   display: grid;
   place-items: center;
   cursor: pointer;
-  border-radius: 9px;
+  border-radius: var(--r-md);
 }
 .pweye:active { color: var(--ink); }
 .pweye svg { width: 19px; height: 19px; }
@@ -6721,7 +6889,7 @@ body:has(.mhead) .teamapp .dynrow select {
   margin-top: 2px;
 }
 .agdate.sun b { color: var(--red); }
-.agdate.sat b { color: var(--blue); }
+.agdate.sat b { color: var(--ink); }
 .agevents {
   flex: 1;
   min-width: 0;
@@ -7449,13 +7617,13 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .chatcompose textarea {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   max-height: 120px;
   resize: none;
-  padding: 9px 12px;
-  border-radius: 18px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-low);
   color: var(--ink);
   font-size: 15px;
   font-family: inherit;
@@ -7510,14 +7678,16 @@ body:has(.mhead) .teamapp .dynrow select {
   align-items: center;
   justify-content: center;
   min-height: 44px;
-  padding: 0 18px;
+  padding: 0 16px;
+  box-sizing: border-box;
   border-radius: var(--r-md);
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: var(--on-primary);
+  color: var(--surface-lowest);
   font-family: var(--font-ui);
-  font-size: var(--fs-body);
+  font-size: var(--fs-title-s);
   font-weight: 700;
+  letter-spacing: 0;
   cursor: pointer;
 }
 .annbtn:active {
@@ -7550,7 +7720,8 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .annlist > .annbtn,
 .annlist > .annlistend,
-.msglist > .chatnewbtn {
+.msglist > .chatnewbtn,
+.msglist > .annlistend {
   width: 100%;
 }
 /* カードは div（役割なし）。詳細を開く .anncardmain（button）と、選手の「了解」（.annfoot の button）は兄弟。
@@ -7594,17 +7765,12 @@ body:has(.mhead) .teamapp .dynrow select {
 .anncardmain:has(+ .annfoot) {
   padding-bottom: 8px;
 }
-/* 固定：左に 3px の --accent の線と「固定」ラベル（.annpin） */
-.anncard.pinned {
-  border-left: 3px solid var(--accent);
-}
+/* 固定：「固定」の文字（.annpin）だけ（ux-fix R3-5：左の青い線は選択中だけにした） */
 .anncard.sel {
   background: var(--accent-tint);
   border-color: var(--accent-tint-strong);
-}
-/* 固定のカードを選んでも左の 3px の --accent の線は残す（.sel の border-color に上書きされないように） */
-.anncard.pinned.sel {
-  border-left-color: var(--accent);
+  /* 選択中だけ左に 3px の --accent の線（枠の太さは変えず、内側に重ねて 2px のずれを出さない） */
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .annrow1 {
   display: flex;
@@ -7720,10 +7886,16 @@ body:has(.mhead) .teamapp .dynrow select {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
-.annackbtn.on {
+/* ux-fix R3-5：選手の了解。まだ＝青塗り（押す側）、押した後＝「✓ 了解済み」の薄い表示 */
+.annackbtn:not(.on):not(:disabled) {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-primary);
+}
+.annackbtn.on {
+  background: var(--surface-low);
+  border-color: var(--outline);
+  color: var(--mut);
 }
 .annackbtn.on::before {
   content: "✓ ";
@@ -7830,6 +8002,11 @@ body:has(.mhead) .teamapp .dynrow select {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+/* ux-fix R3-5：スタッフの詳細の右上の「…」（削除はここ） */
+.anndtags .anndmore {
+  margin-left: auto;
+  display: flex;
 }
 .anndtitle {
   font-size: var(--fs-headline);
@@ -7942,6 +8119,22 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--mut);
   font-size: var(--fs-body-s);
   font-variant-numeric: tabular-nums;
+}
+/* 選手選び（新しいメッセージ）の行は button。既読パネルの行と同じ見た目 */
+button.annreadrow.pick {
+  width: 100%;
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+button.annreadrow.pick:active {
+  background: var(--surface-low);
 }
 .annreadempty {
   padding: 20px 0;
@@ -8376,7 +8569,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .stattitle {
   font-weight: 800;
-  color: var(--gold);
+  color: var(--ink);
   margin-bottom: 8px;
 }
 .cmprow {
@@ -8590,10 +8783,10 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .formfield select,
 .noteapp .formfield textarea {
   width: 100%;
-  background: var(--surface-low);
-  border: 1px solid transparent;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
   border-radius: var(--r-md);
-  padding: 12px 13px;
+  padding: 10px 12px;
   color: var(--ink);
   font-size: var(--fs-title-s);
   font-family: var(--font-ui);
@@ -8618,24 +8811,26 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .bigbtn {
   width: calc(100% - 32px);
   margin: 6px 16px 14px;
-  padding: 15px;
+  min-height: 44px;
+  padding: 0 16px;
   border-radius: var(--r-md);
-  border: 0;
+  border: 1px solid var(--accent);
   cursor: pointer;
   font-family: var(--font-ui);
   font-weight: 700;
   font-size: var(--fs-title-s);
-  letter-spacing: 0.02em;
-  background: var(--primary);
-  color: var(--on-primary);
-  box-shadow: var(--elev-1);
+  letter-spacing: 0;
+  background: var(--accent);
+  color: var(--surface-lowest);
+  box-shadow: none;
 }
 .noteapp .bigbtn:active {
-  transform: scale(0.98);
+  transform: none;
+  opacity: 0.85;
 }
 .noteapp .bigbtn.ghost {
   background: var(--surface-lowest);
-  color: var(--ink);
+  color: var(--accent);
   border: 1px solid var(--outline-strong);
   box-shadow: none;
 }
@@ -8677,12 +8872,13 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .noteapp .dynrow select,
 .noteapp .dynrow input {
-  background: var(--surface-low);
-  border: 1px solid transparent;
-  border-radius: var(--r-sm);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  min-height: 44px;
   padding: 10px 9px;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-family: var(--font-ui);
   min-width: 0;
   outline: none;
@@ -8719,13 +8915,14 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .noteapp .dynadd {
   width: 100%;
-  background: transparent;
-  border: 1px dashed var(--outline-strong);
-  color: var(--primary-dim);
-  border-radius: var(--r-sm);
-  padding: 10px;
+  min-height: 44px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  color: var(--accent);
+  border-radius: var(--r-md);
+  padding: 0 16px;
   font-weight: 700;
-  font-size: 13px;
+  font-size: var(--fs-title-s);
   cursor: pointer;
   margin-top: 2px;
 }
@@ -8758,7 +8955,7 @@ body:has(.mhead) .teamapp .dynrow select {
   background: var(--accent-tint);
 }
 .noteapp .sendtgt input {
-  accent-color: var(--primary);
+  accent-color: var(--accent);
 }
 .noteapp .convchev {
   color: var(--mut);
@@ -8935,15 +9132,13 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .notecard.unread .notewho {
   font-weight: 700;
 }
-.noteapp .notecard.unread .notewho::before {
-  content: "";
+.noteapp .notecard.unread .notedot {
   display: inline-block;
+  flex: 0 0 8px;
   width: 8px;
   height: 8px;
-  margin-right: 6px;
   border-radius: 50%;
   background: var(--accent);
-  vertical-align: 1px;
 }
 /* 状態タグ「未読」（--accent の文字。地は「共有」と同じ accent-tint）。「未コメント」は既存 .notetag の中立色、
    「コメント済」は既存 .notetag.done。スタッフの一覧のタグ（状態・種別）だけ12px（文字12px以上。選手側は11pxのまま） */
@@ -8960,6 +9155,64 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .notecard.staffview {
   padding: 8px 12px;
   min-height: 52px;
+}
+/* ux-fix R3-5: スタッフの提出一覧の行。1 段目＝（未読の点）名前＋共有・反応の小さなアイコン、
+   2 段目＝種類・日付（固定幅の列で行どうしの縦がそろう）＋右端に状態バッジ 1 つ。.notetop は使わない（折り返しの上書きが多いため） */
+.noteapp .notecard.staffview .svtop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.noteapp .notecard.staffview .svtop .notewho {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.noteapp .notecard.staffview .notemini {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--mut);
+}
+.noteapp .notecard.staffview .notemini svg {
+  width: 14px;
+  height: 14px;
+}
+.noteapp .notecard.staffview .notemini.react {
+  color: var(--accent);
+}
+.noteapp .notecard.staffview .svsub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 0;
+}
+.noteapp .notecard.staffview .svsub .notetag {
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 20px;
+}
+.noteapp .notecard.staffview .svtop {
+  line-height: 1.3;
+}
+.noteapp .notecard.staffview .notedot-sp {
+  flex: 0 0 8px;
+  width: 8px;
+}
+.noteapp .notecard.staffview .svkind {
+  flex: 0 0 52px;
+  box-sizing: border-box;
+  text-align: left;
+  padding: 0;
+  line-height: 20px;
+}
+.noteapp .notecard.staffview .svdate {
+  flex: 0 0 76px;
+  white-space: nowrap;
+}
+.noteapp .notecard.staffview .svsub .notetag {
+  margin-left: auto;
 }
 .noteapp .notebody {
   font-size: 13px;
@@ -9111,7 +9364,7 @@ body:has(.mhead) .teamapp .dynrow select {
 .noteapp .notesec-h {
   font-size: var(--fs-label);
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   color: var(--mut);
   margin-bottom: 6px;
 }
@@ -9128,8 +9381,9 @@ body:has(.mhead) .teamapp .dynrow select {
   resize: vertical;
   padding: 11px 12px;
   border-radius: var(--r-md);
-  border: 1px solid transparent;
-  background: var(--surface-low);
+  /* ux-fix R3-2 レビュー: 入力欄は白地・1px --outline-strong（.st-input と同じ） */
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-lowest);
   color: var(--ink);
   font-size: var(--fs-body);
   font-family: inherit;
@@ -9142,7 +9396,7 @@ body:has(.mhead) .teamapp .dynrow select {
   box-shadow: 0 0 0 3px var(--accent-tint);
 }
 .noteapp .notesec.staffcmt .notesec-b {
-  background: var(--primary-container);
+  background: var(--accent-tint);
   border: 0;
   border-radius: var(--r-md);
   padding: 11px 13px;
@@ -9227,7 +9481,7 @@ body:has(.mhead) .teamapp .dynrow select {
   gap: 5px;
   font-size: var(--fs-body-s);
   font-weight: 700;
-  color: var(--primary-dim);
+  color: var(--accent);
   margin-bottom: 6px;
 }
 /* コメント・リアクションはないが既読済み */
@@ -9254,6 +9508,21 @@ body:has(.mhead) .teamapp .dynrow select {
   font-weight: 600;
   cursor: pointer;
   padding: 4px;
+}
+/* ux-fix R3-5: 選手の「削除する」は押せる大きさ（44px）。名前の行の「チームに共有中」・コメントの署名 */
+.noteapp .notedacts .linkdanger {
+  min-height: 44px;
+  padding: 0 12px;
+}
+.noteapp .notewho .notewho-tag {
+  margin-left: 8px;
+  vertical-align: middle;
+  font-weight: 700;
+}
+.noteapp .cmtby {
+  margin: 6px 2px 0;
+  font-size: var(--fs-label);
+  color: var(--mut);
 }
 
 /* =========================================================
@@ -9296,15 +9565,16 @@ body:has(.mhead) .teamapp .dynrow select {
   border: 1px solid var(--outline);
   background: var(--surface-lowest);
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--fs-body);
+  font-weight: 400;
   font-family: var(--font-ui);
   cursor: pointer;
 }
 .noteapp .ngchip.on {
-  border-color: var(--accent);
+  border-color: var(--accent-tint-strong);
   color: var(--accent);
   background: var(--accent-tint);
+  font-weight: 700;
 }
 
 /* ---------- notebook-staff-redesign §2: スマホのヘッダー右のベルの未読数（赤丸に件数）----------
@@ -9387,7 +9657,7 @@ body:has(.mhead) .noteapp .mhead-action .mhead-badge {
 body:has(.mhead) .noteapp .nbtop .ngchip {
   height: 44px;
   padding: 0 10px;
-  font-size: 13px;
+  font-size: var(--fs-body);
 }
 .noteapp .nbsel {
   padding: 0 2px 4px;
@@ -9745,7 +10015,7 @@ body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
   border: 0;
 }
 .noteapp .ps-chip b {
-  color: var(--primary-dim);
+  color: var(--accent);
 }
 .noteapp .sharetoggle {
   display: flex;
@@ -9758,7 +10028,7 @@ body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
 .noteapp .sharetoggle input {
   width: 18px;
   height: 18px;
-  accent-color: var(--primary);
+  accent-color: var(--accent);
 }
 
 /* =========================================================
@@ -10008,7 +10278,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .formgroup .formfield input,
 .noteapp .formgroup .formfield select,
 .noteapp .formgroup .formfield textarea {
-  background: var(--surface-low);
+  background: var(--surface-lowest);
 }
 
 /* 練習ノート：スタッフ配信の練習メニュー選択 */
@@ -10188,11 +10458,11 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   display: block;
   height: 100%;
   border-radius: var(--r-full);
-  background: var(--primary);
+  background: var(--accent);
 }
 .noteapp .noteform input[type="range"] {
   width: 100%;
-  accent-color: var(--primary);
+  accent-color: var(--accent);
 }
 
 /* =========================================================
@@ -10303,9 +10573,9 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   cursor: pointer;
 }
 .noteapp .star.on {
-  color: var(--primary-dim);
-  border-color: var(--primary);
-  background: var(--primary-container);
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 
 /* 回答一覧（コーチ） */
@@ -10422,20 +10692,20 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 }
 .noteapp .chart-line .cla,
 .teamapp .chart-line .cla {
-  fill: var(--primary);
+  fill: var(--accent);
   opacity: 0.08;
 }
 .noteapp .chart-line .cl,
 .teamapp .chart-line .cl {
   fill: none;
-  stroke: var(--primary);
+  stroke: var(--accent);
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 .noteapp .chart-line .clp,
 .teamapp .chart-line .clp {
-  fill: var(--primary);
+  fill: var(--accent);
 }
 .noteapp .chart-line .clv,
 .teamapp .chart-line .clv {
@@ -10455,12 +10725,12 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .cl-legend,
 .teamapp .cl-legend { display: flex; gap: 14px; margin-top: 6px; font-size: var(--fs-label); font-weight: 600; }
 .noteapp .cl-legend .lg1,
-.teamapp .cl-legend .lg1 { color: var(--primary); }
+.teamapp .cl-legend .lg1 { color: var(--accent); }
 .noteapp .cl-legend .lg2,
 .teamapp .cl-legend .lg2 { color: var(--accent); }
 .noteapp .spark { margin-top: 8px; }
 .noteapp .spark svg { width: 100%; height: 26px; display: block; }
-.noteapp .spark .sp { fill: none; stroke: var(--primary); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.noteapp .spark .sp { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
 /* 多系列チャート（案D） */
 .noteapp .mlchart svg,
@@ -10546,8 +10816,12 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   display: block;
   height: 100%;
   border-radius: var(--r-full);
-  background: var(--primary);
+  background: var(--accent);
 }
+/* ux-fix R3-1: ノートの種類の割合は種類の色（--note-*） */
+.noteapp .statrow.sr-match .srb span { background: var(--note-match); }
+.noteapp .statrow.sr-practice .srb span { background: var(--note-practice); }
+.noteapp .statrow.sr-solo .srb span { background: var(--note-solo); }
 .noteapp .statrow .srv {
   flex: 0 0 auto;
   font-weight: 700;
@@ -10566,13 +10840,13 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   background: var(--surface-high);
 }
 .noteapp .statheat .shc.l1 {
-  background: #b7dcc0;
+  background: var(--accent-tint-strong);
 }
 .noteapp .statheat .shc.l2 {
-  background: #6cb886;
+  background: rgba(44, 111, 214, 0.45);
 }
 .noteapp .statheat .shc.l3 {
-  background: var(--primary);
+  background: rgba(44, 111, 214, 0.85);
 }
 
 /* 選手KPIカード */
@@ -10823,9 +11097,8 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .repsec-h {
   font-size: var(--fs-body-s);
   font-weight: 700;
-  color: var(--accent);
-  border-left: 3px solid var(--accent);
-  padding-left: 8px;
+  letter-spacing: 0;
+  color: var(--mut);
   margin-bottom: 8px;
 }
 .noteapp .repsummary {
@@ -10884,7 +11157,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   height: 56px;
   border-radius: var(--r-lg);
   border: 0;
-  background: var(--primary);
+  background: var(--accent);
   color: var(--on-primary);
   font-size: 26px;
   font-weight: 600;
@@ -10962,8 +11235,8 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   width: 42px;
   height: 42px;
   border-radius: var(--r-md);
-  background: var(--primary-container);
-  color: var(--primary-dim);
+  background: var(--accent-tint);
+  color: var(--accent-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11087,10 +11360,10 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   color: var(--primary-dim);
 }
 .noteapp .weekdot.today {
-  box-shadow: inset 0 0 0 1.5px var(--primary);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
 }
 .noteapp .weekdot.sel {
-  background: var(--primary);
+  background: var(--accent);
   color: var(--on-primary);
 }
 .noteapp .daypanel {
@@ -11122,8 +11395,8 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   padding: 2px 8px;
 }
 .noteapp .pill.prac {
-  background: var(--primary-container);
-  color: var(--primary-dim);
+  background: var(--surface-low);
+  color: var(--note-practice);
 }
 .noteapp .pill.match {
   background: rgba(35, 96, 216, 0.1);
@@ -11132,7 +11405,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .homesec-h {
   font-size: var(--fs-label);
   font-weight: 700;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   color: var(--mut);
   margin: 16px 2px 7px;
   display: flex;
@@ -11256,7 +11529,21 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   display: inline-flex;
   align-items: center;
   min-height: 44px;
-  padding: 0 13px;
+  padding: 0 14px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-size: var(--fs-body);
+  font-weight: 400;
+  line-height: 1;
+}
+/* ux-fix R3-2: 種類の切り替えは全丸のチップではなく .mseg-item.on と同じ見た目 */
+.noteapp .nbplchips .chip.on {
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
 }
 
 /* 検索バー風ボタン（一覧の上） */
@@ -11454,19 +11741,19 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .dxseg {
   display: flex;
   gap: 2px;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: var(--surface-low);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
   padding: 3px;
 }
 .dxseg button {
   flex: 1;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--r-md);
   background: transparent;
   padding: 7px 2px;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 400;
   font-family: var(--font-ui);
   color: var(--mut);
   cursor: pointer;
@@ -11475,9 +11762,10 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 /* mobile-redesign B-2: 選択=青(PC既存の.dxseg button.onと同じ値。ベタ塗り(background:accent)は
    保存/送信の主CTAと同じフィルになり紛らわしいため、.dxpal button.onと同じ二層分離形式にする) */
 .dxseg button.on {
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-tint-strong);
   background: var(--accent-tint);
   color: var(--accent);
+  font-weight: 700;
 }
 .dxrow {
   display: flex;
@@ -12023,13 +12311,15 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   border-radius: var(--r-md);
   object-fit: cover;
 }
+/* ux-fix R3-5：エンブレムが無いときは色の丸と頭文字（灰色の四角の仮置きに見えないように） */
 .mhome-emblem.empty {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--surface-low);
-  border: 1px solid var(--outline);
-  color: var(--ink);
+  border-radius: 50%;
+  background: var(--accent);
+  border: 0;
+  color: var(--on-primary);
   font-size: var(--fs-title-s);
   font-weight: 700;
 }
@@ -13119,7 +13409,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   background: var(--accent);
   color: var(--surface-lowest);
   font-family: var(--font-ui);
-  font-size: var(--fs-body);
+  font-size: var(--fs-title-s);
   font-weight: 700;
   letter-spacing: 0;
 }
@@ -13136,11 +13426,11 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
    （レビュー css-1／css-2／css-3：44px の確保と見た目の一致） */
 .setapp:has(.mhead) .st-manage .dynadd {
   background: var(--surface-lowest);
-  border: 1px solid var(--outline);
-  color: var(--ink);
+  border: 1px solid var(--outline-strong);
+  color: var(--accent);
   border-radius: var(--r-md);
   min-height: 44px;
-  font-size: var(--fs-body);
+  font-size: var(--fs-title-s);
 }
 .setapp:has(.mhead) .st-manage .sech {
   font-weight: 700;
@@ -13154,6 +13444,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   padding: 0 4px 8px;
   font-size: var(--fs-body-s);
   font-weight: 700;
+  letter-spacing: 0;
   color: var(--mut);
 }
 .st-card {
@@ -13166,6 +13457,14 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   margin: 8px 4px 0;
   font-size: var(--fs-body-s);
   line-height: 1.5;
+  color: var(--mut);
+}
+/* 選手・保護者の設定の一番下の「バージョン」（ux-fix R3-5。行ではなく灰色の 1 行） */
+.st-verline {
+  margin: 0;
+  padding: 4px 4px 0;
+  text-align: center;
+  font-size: var(--fs-body-s);
   color: var(--mut);
 }
 .st-row {
@@ -13398,8 +13697,9 @@ button.st-row:active {
   background: var(--accent);
   color: var(--surface-lowest);
   font-family: var(--font-ui);
-  font-size: var(--fs-body);
+  font-size: var(--fs-title-s);
   font-weight: 700;
+  letter-spacing: 0;
   cursor: pointer;
 }
 .st-btn:active {
@@ -14197,8 +14497,8 @@ button.st-row:active {
   align-items: baseline;
   gap: 8px;
   font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 1.5px;
+  font-weight: 700;
+  letter-spacing: 0;
   color: var(--mut);
   margin: 18px 2px 8px;
 }
@@ -14231,7 +14531,7 @@ button.st-row:active {
 }
 .attgh.none { color: var(--mut); }
 .attgh.no { color: var(--red); }
-.attgh.maybe { color: var(--gold); }
+.attgh.maybe { color: var(--ink); }
 .attgh.yes { color: #0f6f3d; }
 /* mobile-redesign-v2 §3-4(緑残存の自動走査対応): 出欠記録のグループ見出し「出席 n人」も
    table未記載だが緑残存走査の対象(出欠記録)のため、.att.yesと同じ考え方で--inkへ */
@@ -14469,8 +14769,9 @@ button.st-row:active {
   transition: transform 0.15s;
 }
 .formfield label.daytoggle input:checked + span {
-  background: var(--lime);
-  border-color: var(--lime);
+  /* ux-fix R3-1 レビュー: スイッチの ON は青（緑は状態表示だけ） */
+  background: var(--accent);
+  border-color: var(--accent);
 }
 .formfield label.daytoggle input:checked + span::after {
   transform: translateX(17px);
@@ -14514,7 +14815,7 @@ button.st-row:active {
   align-items: center;
   gap: 6px;
   padding: 7px 13px;
-  border-radius: 999px;
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--panel2);
   color: var(--mut);
@@ -14560,6 +14861,11 @@ button.st-row:active {
   font-weight: 400;
   cursor: pointer;
   white-space: nowrap;
+}
+/* ux-fix R3-2 レビュー: フォームの選択（予定の対象・最近の場所・配信先・選手のグループ）は角丸 8px。全丸は絞り込みのチップだけ */
+.formfield .grouppick-item,
+.sendtgt .grouppick-item {
+  border-radius: var(--r-md);
 }
 .grouppick-item.on {
   border-color: var(--accent);
@@ -14711,9 +15017,11 @@ body:has(.mhead) .grouppick-item {
   text-align: center;
 }
 .wdchip.on {
-  border-color: var(--lime);
-  background: var(--lime);
-  color: #ffffff;
+  /* ux-fix R3-2 レビュー: 選択中は切り替え（.mseg-item.on）と同じ見た目 */
+  border-color: var(--accent-tint-strong);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
 }
 
 /* 詳細シート：埋め込み地図・リンクボタン */
@@ -14726,14 +15034,19 @@ body:has(.mhead) .grouppick-item {
   margin: 0 16px 14px;
 }
 .maplinks a {
+  /* ux-fix R3-5 レビュー: 「地図で開く」「経路案内」は副ボタン（白地・1px 枠・青文字）と同じ見た目・44px */
   flex: 1;
-  text-align: center;
-  padding: 10px;
-  border-radius: 11px;
-  border: 1px solid var(--line);
-  background: var(--panel2);
-  color: var(--ink);
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-lowest);
+  color: var(--accent);
+  font-size: var(--fs-title-s);
   font-weight: 700;
   text-decoration: none;
 }
@@ -15095,26 +15408,31 @@ body:has(.mhead) .grouppick-item {
 }
 
 /* ---- アニメ編集のツール切替（移動/ルート） ---- */
+/* ux-fix R3-2: 地は --surface-low。全丸をやめ、選択中は .mseg-item.on と同じ（accent-tint 地・accent 文字・700・--r-md） */
 .toolseg {
   display: flex;
   margin-left: auto;
-  background: var(--panel2);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 3px;
-  gap: 2px;
+  background: var(--surface-low);
+  border: 0;
+  border-radius: var(--r-md);
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
 }
 .tseg {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
+  min-height: 44px;
   border: 0;
-  border-radius: 999px;
-  padding: 7px 13px;
+  border-radius: var(--r-md);
+  padding: 0 14px;
   background: transparent;
-  color: var(--mut);
-  font-weight: 800;
-  font-size: 12.5px;
+  color: var(--ink);
+  font-weight: 400;
+  font-size: var(--fs-body);
+  line-height: 1;
   cursor: pointer;
   font-family: var(--font-ui);
   transition: 0.12s;
@@ -15124,8 +15442,9 @@ body:has(.mhead) .grouppick-item {
   height: 14px;
 }
 .tseg.on {
-  background: var(--lime);
-  color: #ffffff;
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-weight: 700;
 }
 .tseg:active {
   transform: scale(0.96);
@@ -15764,7 +16083,14 @@ body:has(.mhead) .grouppick-item {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.reclist .mscore {
+/* ux-fix R3-5: 対象バッジは 2 段目（日付の前）。msub の 12px の行に収まる小ささにして、日付との間をあける */
+.reclist .msub .evgroups {
+  max-width: 45%;
+  margin-right: 6px;
+  padding: 0 6px;
+}
+.reclist .mscore,
+.mhub .mhub-score {
   font-family: var(--font-ui);
   font-size: 17px;
   font-weight: 700;
@@ -15772,7 +16098,8 @@ body:has(.mhead) .grouppick-item {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.reclist .mscore span {
+.reclist .mscore span,
+.mhub .mhub-score span {
   margin: 0 2px;
 }
 /* 選手フォーム（TeamHub のシート）末尾のキャプテン・削除：ホームインジケータの分を空ける */
@@ -15849,6 +16176,18 @@ body:has(.mhead) .grouppick-item {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* ux-fix R3-5: 試合の詳細のヘッダー。勝敗バッジだけの左、スコアは一覧と同じ .mscore を右（鉛筆の左）に置く */
+.mhub .phubid {
+  min-width: 0;
+}
+.mhub .mhub-score {
+  flex: none;
+  align-self: center;
+  white-space: nowrap;
+}
+.mhub .mhub-placeadd {
+  width: 100%;
+}
 .phubcap {
   margin-left: 6px;
   font-size: var(--fs-body);
@@ -15899,6 +16238,52 @@ body:has(.mhead) .grouppick-item {
 .phubedit:hover {
   background: var(--surface-low);
   color: var(--ink);
+}
+/* ux-fix R3-2: 見出し行・行・カードの右端に置く鉛筆（HubEditBtn）と「…」（HubMenu）。張り出しの負マージンは持たない */
+.phubedit.inline {
+  margin: 0;
+}
+.hp-menuwrap {
+  position: relative;
+  flex: none;
+}
+.hp-menu-back {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+.hp-menu {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 31;
+  min-width: 132px;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-3);
+}
+.hp-menu button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+.hp-menu button:active {
+  background: var(--surface-low);
+}
+.hp-menu button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 /* 4 マス（押すと該当セクションへ。スマホは 2×2） */
 .phubkpi {
@@ -15998,20 +16383,24 @@ body:has(.mhead) .grouppick-item {
 .phubtabs button {
   flex: none;
   min-height: 44px;
-  padding: 0 16px;
+  padding: 0 14px;
   white-space: nowrap;
+  font-family: var(--font-ui);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 400;
+  line-height: 1;
   color: var(--ink);
   background: var(--surface-lowest);
   border: 1px solid var(--outline);
-  border-radius: var(--r-full);
+  border-radius: var(--r-md);
   cursor: pointer;
 }
+/* ux-fix R3-2: 切り替えの選択中は .mseg-item.on と同じ（地 accent-tint・文字 accent・700）。青の塗りの丸はやめた */
 .phubtabs button.on {
-  color: var(--on-primary);
-  background: var(--accent);
-  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-tint);
+  border-color: var(--accent-tint-strong);
+  font-weight: 700;
 }
 /* 右端のフェード：まだ右に続くことを示す（スクロールしても右端に貼り付く） */
 /* ux-fix R2-4: 右に続きがあるとき（.more。hub/common の useTabRowMore）だけフェードを出す */
@@ -16849,13 +17238,13 @@ body:has(.mhead) .grouppick-item {
 }
 .phubsheet .bigbtn {
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   margin: 6px 0 4px;
   font-family: var(--font-ui);
-  font-size: var(--fs-title);
+  font-size: var(--fs-title-s);
   font-weight: 700;
   letter-spacing: 0;
-  border-radius: var(--r-lg);
+  border-radius: var(--r-md);
 }
 .phubsheet .bigbtn.ghost {
   margin-top: 12px;
@@ -16899,18 +17288,21 @@ body:has(.mhead) .grouppick-item {
   min-width: 56px;
   min-height: 44px;
   padding: 0 10px;
+  font-family: var(--font-ui);
   font-size: var(--fs-body);
-  font-weight: 600;
+  font-weight: 400;
+  line-height: 1;
   color: var(--ink);
   background: var(--surface-lowest);
-  border: 1px solid var(--outline-strong);
+  border: 1px solid var(--outline);
   border-radius: var(--r-md);
   cursor: pointer;
 }
 .phubseg button.on {
   color: var(--accent);
   background: var(--accent-tint);
-  border-color: var(--accent);
+  border-color: var(--accent-tint-strong);
+  font-weight: 700;
 }
 
 /* §4 グラフ（依存なしの SVG。.noteapp の .chart-line には依存しない）。文字は SVG の中でも 12px */
@@ -17334,21 +17726,20 @@ body:has(.mhead) .grouppick-item {
   font-size: var(--fs-body-s);
   color: var(--mut);
 }
-.phubtable thead th button {
-  width: 100%;
-  min-height: 44px;
-  padding: 4px 6px;
+/* ux-fix R3-5：列見出しは文字だけ、その下に編集の鉛筆の四角（.phubedit） */
+.phubtable thead th .phubcolt {
+  display: block;
+  padding-top: 8px;
   font-size: var(--fs-body-s);
   font-weight: 600;
   line-height: 1.3;
-  color: var(--accent);
-  background: none;
-  border: 0;
-  border-radius: var(--r-md);
-  cursor: pointer;
+  color: var(--ink);
 }
-.phubtable thead th button span {
+.phubtable thead th .phubcolt span {
   display: block;
+}
+.phubtable thead th .phubedit {
+  margin: 2px auto 4px;
 }
 .phubtable td .d {
   margin-left: 4px;
@@ -17418,8 +17809,12 @@ body:has(.mhead) .grouppick-item {
 }
 .phubchoice-h {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
+}
+/* ux-fix R3-2: 志望校の「…」はカードの右上に寄せる（44px のボタンの分だけ張り出す） */
+.phubchoice-h .hp-menuwrap {
+  margin: -10px -10px -10px auto;
 }
 .phubrank {
   flex: none;
@@ -18334,6 +18729,175 @@ textarea.st-input.mt-msg {
    PC (min-width: 1024px) レイアウト群
    ※ 同一詳細度の基底ルールに勝つため、ファイル末尾にまとめて配置
    ============================================================ */
+/* ===== ux-fix R3-3: 空の状態と PC の空白 ===== */
+/* 予定の詳細（PC のペイン）：削除は一番下の小さな赤い文字（PC だけなので 32px。指の PC は coarse で 44px） */
+.evdelrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 6px;
+}
+.evdel {
+  min-height: 32px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  cursor: pointer;
+}
+.evdel:hover {
+  text-decoration: underline;
+}
+
+/* 設定（選手・保護者の PC）：アカウントの説明と通知のスイッチを同じ欄に縦に並べる */
+.st-form + .st-form {
+  margin-top: 24px;
+}
+/* ライブラリが空のときの主ボタン（つくる画面を開く） */
+.libcta {
+  margin-top: 14px;
+}
+.libcta .st-btn {
+  width: auto;
+  display: inline-flex;
+  padding: 0 20px;
+}
+/* お知らせの詳細（スタッフ）の本文の下：「既読 52/70・了解 41」と学年ごとの未読 */
+.annsum {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--surface-low);
+  border-radius: var(--r-md);
+}
+.annsumline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  color: var(--mut);
+  font-size: var(--fs-body);
+}
+.annsumline > span + span::before {
+  content: "・";
+  margin: 0 8px;
+}
+.annsumline b {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.annsumgrades {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+.annsumlabel {
+  font-weight: 700;
+}
+.annsumgrade b {
+  color: var(--ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* PC の名簿：何も選んでいないときの概要（怪我中・キャプテンの行は押すと個人ページへ） */
+.rosoverview .sech {
+  margin-top: 18px;
+}
+.rosovinj {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  text-align: left;
+  cursor: pointer;
+}
+.rosovinj:hover {
+  background: var(--surface-low);
+}
+.rosovinj-nm {
+  font-weight: 700;
+}
+.rosovinj-area {
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+.rosovhint {
+  margin-top: 18px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+}
+/* コーチラボ「書く」（0 件）の右ペイン：中央に主ボタンと 1 行の説明 */
+.cl-writefirst {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.cl-writefirst .st-btn {
+  width: auto;
+  padding: 0 24px;
+}
+.cl-writefirst p {
+  margin: 0;
+  font-size: var(--fs-body);
+}
+/* コーチラボ「収益」（記事 0 件）：数字カードを畳んで書く導線だけ */
+.cl-earnempty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 16px 16px;
+  padding: 28px 16px;
+  background: var(--surface-low);
+  border-radius: var(--r-lg);
+  color: var(--mut);
+  font-size: var(--fs-body);
+  text-align: center;
+}
+.cl-earnempty p {
+  margin: 0;
+}
+.cl-earnempty .st-btn {
+  width: auto;
+  padding: 0 24px;
+}
+/* 収益：手数料の説明は振込の枠の中の 1 行、申請ボタンは右寄せの通常幅 */
+.cl-payoutfee {
+  margin-bottom: 10px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--mut);
+}
+.cl-payoutact {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.cl-payoutact .st-btn {
+  width: auto;
+  padding: 0 20px;
+}
+.cl-payoutact .st-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 @media (min-width: 1024px) {
   /* ============================================================
      Phase A: 階層の復元
@@ -23365,7 +23929,7 @@ textarea.st-input.mt-msg {
   .conbrand-team { font-size: 12px; color: var(--mut); font-weight: 600; margin-top: 1px; }
   /* 設定プレビューと同じ下地を持たせ、白抜き・淡色ロゴがレール(白)で消えないようにする */
   .conemblem { width: 26px; height: 26px; flex: none; object-fit: contain; border-radius: var(--r-sm); background: var(--surface-low); border: 1px solid var(--outline); }
-  .conemblem.empty { display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--mut); }
+  .conemblem.empty { display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--on-primary); background: var(--accent); border: 0; border-radius: 50%; }
   /* 長いクラブ名でレールから溢れないよう2行で省略する */
   .conbrandtx { min-width: 0; }
   .conclub { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.15; word-break: keep-all; overflow-wrap: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -25678,6 +26242,293 @@ textarea.st-input.mt-msg {
   .noteapp .nbplayerclear {
     min-height: 32px;
   }
+
+  /* === ux-fix R3-1/R3-2: 主ボタンの PC 値（.st-btn と同じ：32px・--r-md・14px・700・青の塗り）。
+     .ghost は副ボタン（白地・1px --outline-strong・青の文字）。1 本目の PC ブロックの 13px・600・--r-sm・400 を後勝ちで上書き。
+     「1 画面 1 CTA」で降格している .teammain の塗りボタン（白地）は色を触らない。タッチ端末は下の coarse で 44px ===
+  */
+  .st-btn {
+    font-size: var(--fs-body);
+  }
+  .bigbtn,
+  .noteapp .bigbtn,
+  .plancard .bigbtn,
+  .artactbar .bigbtn,
+  .st-manage .bigbtn,
+  .dynadd,
+  .noteapp .dynadd {
+    min-height: 32px;
+  }
+  .bigbtn,
+  .noteapp .bigbtn,
+  .plancard .bigbtn,
+  .artactbar .bigbtn,
+  .st-manage .bigbtn,
+  .phubsheet .bigbtn,
+  .annbtn,
+  .dynadd,
+  .noteapp .dynadd,
+  .cl-followbtn {
+    padding: 0 16px;
+    border-radius: var(--r-md);
+    font-size: var(--fs-body);
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  .bigbtn.ghost,
+  .noteapp .bigbtn.ghost,
+  .dynadd,
+  .noteapp .dynadd {
+    background: var(--surface-lowest);
+    border-color: var(--outline-strong);
+    color: var(--accent);
+    font-weight: 700;
+  }
+  .bigbtn.accent,
+  .bigbtn.ghost.accent {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--surface-lowest);
+  }
+  .formbtn {
+    padding: 0 14px;
+    border-radius: var(--r-md);
+    border-color: var(--outline-strong);
+    color: var(--accent);
+  }
+  .formbtn .fb-label {
+    font-size: var(--fs-body);
+    font-weight: 700;
+  }
+  .cl-followbtn {
+    min-height: 32px;
+  }
+  .cl-followbtn.compact {
+    padding: 0 12px;
+  }
+  .login-switch {
+    min-height: 32px;
+    margin-top: 6px;
+  }
+  .pweye {
+    width: 32px;
+    height: 32px;
+  }
+  .login-card .pwwrap input {
+    padding-right: 42px;
+  }
+
+  /* === ux-fix R3-2: 部品の統一（PC）===
+     切り替え（タブ・セグメント）は .mseg-item と同じ見た目 1 つ（36px・--r-md・選択中は accent-tint 地＋accent 文字・700）。
+     全丸のピルは絞り込みのチップ（.catchip／「すべて｜未読」）にだけ残す。PC 既存の灰トラック・青ベタ・全丸はここで揃える。
+     入力欄は .st-input と同じ（白地・1px --outline-strong・--r-md・32px・14px）。区切り見出しは .st-group-h（12px・700・--mut）。 */
+  .phubtabs button,
+  .phubseg button,
+  .libtab,
+  .logintabs button,
+  .cl-toggle button,
+  .noteapp .ngchip,
+  .noteapp .nbtop .ngchip,
+  .noteapp .nbplchips .chip,
+  .tseg {
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--outline);
+    border-radius: var(--r-md);
+    background: var(--surface-lowest);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: var(--fs-body);
+    font-weight: 400;
+    letter-spacing: 0;
+    line-height: 1;
+    box-shadow: none;
+  }
+  .phubtabs button.on,
+  .phubseg button.on,
+  .libtab.on,
+  .logintabs button.on,
+  .cl-toggle button.on,
+  .noteapp .ngchip.on,
+  .noteapp .nbtop .ngchip.on,
+  .noteapp .nbplchips .chip.on,
+  .tseg.on {
+    background: var(--accent-tint);
+    color: var(--accent);
+    border-color: var(--accent-tint-strong);
+    font-weight: 700;
+    box-shadow: none;
+  }
+  .phubseg button {
+    padding: 0 10px;
+  }
+  .noteapp .nbtop .ngchip,
+  .noteapp .nbplchips .chip {
+    min-height: 32px;
+    padding: 0 10px;
+  }
+  .tseg,
+  .lgedit-modeseg .tseg {
+    min-height: 36px;
+    border: 0;
+    background: transparent;
+  }
+  .tseg.on,
+  .lgedit-modeseg .tseg.on {
+    border: 0;
+  }
+  .logintabs,
+  .cl-toggle {
+    gap: 8px;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+  }
+  .phubrate .phubseg button {
+    min-height: 32px;
+  }
+  /* 入力欄 */
+  .formfield :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]), select, textarea) {
+    min-height: 32px;
+  }
+  .formfield > input,
+  .formfield > select,
+  .formfield > textarea,
+  .noteapp .formfield > input,
+  .noteapp .formfield > select,
+  .noteapp .formfield > textarea {
+    border-radius: var(--r-md);
+  }
+  .dynrow select,
+  .dynrow input,
+  .noteapp .dynrow select,
+  .noteapp .dynrow input {
+    min-height: 32px;
+    padding: 6px 8px;
+    font-size: var(--fs-body);
+  }
+  .chatcompose textarea {
+    min-height: 32px;
+    padding: 6px 10px;
+    font-size: var(--fs-body);
+  }
+  .login-card .formfield input {
+    padding: 7px 10px;
+    font-size: var(--fs-body);
+  }
+  /* 区切り見出し */
+  .sech,
+  .setsec-h,
+  .dsec-h,
+  .noteapp .notesec-h,
+  .noteapp .homesec-h,
+  .noteapp .repsec-h {
+    font-weight: 700;
+    letter-spacing: 0;
+  }
+  /* 編集の入口（「…」メニュー） */
+  .hp-menu button {
+    min-height: 32px;
+  }
+  /* ux-fix R3-2: 絞り込みの見出しの右の「すべて解除」は PC の列では詰める（指の PC は coarse で 44px に戻す） */
+  .nbside .fclear,
+  .rosside .fclear {
+    min-height: 20px;
+    margin: 0;
+    padding: 0 2px;
+  }
+  .clside .calfilterpanel-all {
+    min-height: 20px;
+    padding: 0 2px;
+  }
+  /* ux-fix R3-3: 空の状態の主ボタンは PC の .st-btn の左寄せ（align-self）を打ち消して中央に置く */
+  .cl-earnempty .st-btn,
+  .cl-writefirst .st-btn {
+    align-self: center;
+  }
+  /* ux-fix R3-3: PC の名簿の概要（怪我中・キャプテンの行）は 36px。指の PC は下の coarse ブロックで 44px へ戻す */
+  .rosovinj {
+    min-height: 36px;
+  }
+  /* ux-fix R3-5: スタッフの提出一覧の行（名前＋小さなアイコン／種類・日付の列＋状態バッジ）。
+     上の左ペイン用の折り返しの上書き（.notewho の flex:100%・.notetag の margin-left:0）より詳細度を上げて戻す */
+  .coachapp:has(.nbmain) .scroll .notecard.staffview .svtop .notewho {
+    flex: 0 1 auto;
+  }
+  .coachapp:has(.nbmain) .scroll .notecard.staffview .svsub {
+    margin-top: 0;
+  }
+  .coachapp:has(.nbmain) .scroll .notecard.staffview .svsub .notetag {
+    margin-left: auto;
+  }
+  /* ux-fix R3-5: 選手の「削除する」は PC で 36px */
+  .noteapp .notedacts .linkdanger {
+    min-height: 36px;
+  }
+  /* ux-fix R3-5: 試合の詳細のヘッダーのスコア（一覧と同じ .mscore）・会場の入力は PC で 32px */
+  .mhub .mhub-placeadd {
+    min-height: 32px;
+  }
+  /* ux-fix R3-5: 試合の詳細のスコアは PC の一覧の行と同じ 15px */
+  .mhub .mhub-score {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  /* ux-fix R3-5: 名簿（PC）— 位置の札は枠線だけ（塗りの黒は選択・状態と紛れる）、行の高さは 52px の 1 種類。
+     補足（絞り込みと違うカスタムグループ）は文字 1 行だけにして、バッジの積み重ねで行が 44／64／90px に割れないようにする */
+  .roslist .ptable .pos,
+  .roslist .ptable .pos.gk,
+  .roslist .ptable .pos.df,
+  .roslist .ptable .pos.mf,
+  .roslist .ptable .pos.fw {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--outline-strong);
+    border-radius: var(--r-sm);
+    padding: 2px 9px;
+  }
+  .roslist .ptable .ptable-row td {
+    height: 52px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+  .roslist .ptable .ptable-sub {
+    display: block;
+    max-width: 150px;
+    margin-top: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 16px;
+    color: var(--mut);
+  }
+  .roslist .ptable .ptable-sub:empty {
+    display: none;
+  }
+  /* ux-fix R3-5: PC のダイアログ右上の「×」は 32px の四角（--r-md。30px の丸をやめて、ほかの PC の操作部品と同じ形に） */
+  .teamapp .sheetx,
+  .conshell ~ .sheet .sheetx {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-md);
+  }
+  /* ux-fix R3-1 レビュー: R3 で .ghost が副ボタンになったので、右ペイン（.teammain）の塗りの .bigbtn は主ボタン＝青に戻す
+     （1 本目の PC ブロックの「1 画面 1 CTA」の降格を後勝ちで打ち消す。.artpane の降格はそのまま） */
+  .teammain .bigbtn:not(.ghost) {
+    background: var(--accent);
+    color: var(--on-primary);
+    border: 0;
+  }
+  .teammain .bigbtn:not(.ghost):hover {
+    background: var(--accent-strong);
+  }
+  .maplinks a {
+    min-height: 32px;
+    font-size: var(--fs-body);
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -25789,6 +26640,15 @@ textarea.st-input.mt-msg {
       ここでその並びを増やさないため)。
    ========================================================= */
 @media (pointer: coarse) and (min-width: 1024px) {
+  .maplinks a {
+    min-height: 44px;
+  }
+  .dynrow select,
+  .dynrow input,
+  .noteapp .dynrow select,
+  .noteapp .dynrow input {
+    padding: 9px 8px;
+  }
   /* ux-fix R2-7: ノートの詳細のスタンプ・次の未読へ・未読 N 件を開く・予定の詳細へも指サイズ 44px */
   .noteapp .reactbtn,
   .noteapp .cmtnext,
@@ -25928,6 +26788,9 @@ textarea.st-input.mt-msg {
   .mt-form .mt-form-submit,
   /* ux-fix R2-5: コーチラボの絞り込み列・条件の行も 44px へ戻す */
   .clside .calfilterpanel-row,
+  .clside .calfilterpanel-all,
+  .nbside .fclear,
+  .rosside .fclear,
   .clside .calfilterpanel-manage,
   .clside .clpanel-select,
   .cl-filterline-pc {
@@ -25985,5 +26848,77 @@ textarea.st-input.mt-msg {
   .lgedit-del {
     width: 44px;
     height: 44px;
+  }
+  /* ux-fix R3-1/R3-2: 主ボタン・副ボタン・ログインの小さい操作も指サイズ 44px へ戻す */
+  .bigbtn,
+  .noteapp .bigbtn,
+  .plancard .bigbtn,
+  .artactbar .bigbtn,
+  .phubsheet .bigbtn,
+  .dynadd,
+  .noteapp .dynadd,
+  .formbtn,
+  .cl-followbtn,
+  .login-switch {
+    height: auto;
+    min-height: 44px;
+  }
+  .bigbtn,
+  .noteapp .bigbtn,
+  .plancard .bigbtn,
+  .artactbar .bigbtn {
+    padding: 0 16px;
+  }
+  .pweye {
+    width: 44px;
+    height: 44px;
+  }
+  .login-card .pwwrap input {
+    padding-right: 50px;
+  }
+  /* ux-fix R3-2: 切り替え・入力欄・「…」メニューも指サイズ 44px へ戻す */
+  .phubtabs button,
+  .phubseg button,
+  .libtab,
+  .logintabs button,
+  .cl-toggle button,
+  .noteapp .ngchip,
+  .noteapp .nbtop .ngchip,
+  .noteapp .nbplchips .chip,
+  .tseg,
+  .lgedit-modeseg .tseg,
+  .hp-menu button,
+  .dynrow select,
+  .dynrow input,
+  .noteapp .dynrow select,
+  .noteapp .dynrow input {
+    min-height: 44px;
+  }
+  .libtab,
+  .noteapp .ngchip {
+    padding: 0 14px;
+    font-size: var(--fs-body);
+  }
+  .formfield :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]), select, textarea),
+  .chatcompose textarea {
+    min-height: 44px;
+  }
+  .login-card .formfield input {
+    padding: 10px 12px;
+    font-size: var(--fs-title-s);
+  }
+  /* ux-fix R3-3: PC の名簿の概要の行も指サイズ 44px へ戻す */
+  .rosovinj {
+    min-height: 44px;
+  }
+  /* ux-fix R3-3: 予定の詳細（PC のペイン）の小さな削除も指サイズ 44px へ戻す */
+  .evdel {
+    min-height: 44px;
+  }
+  .noteapp .notedacts .linkdanger {
+    min-height: 44px;
+  }
+  .mhub .mhub-placeadd {
+    min-height: 44px;
   }
 }

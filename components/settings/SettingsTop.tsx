@@ -110,7 +110,8 @@ export default function SettingsTop({
   );
   const matchesPublic = (
     <SettingsToggleRow
-      label="試合記録を選手・保護者に公開"
+      label="試合記録の公開"
+      desc="選手・保護者に見せる"
       checked={board.matchesPublic}
       onChange={board.setMatchesPublic}
     />
@@ -132,12 +133,8 @@ export default function SettingsTop({
     return (
       <div className="st-top">
         {cat === "account" && <SettingsGroup>{account}</SettingsGroup>}
-        {cat === "basics" && (
-          <SettingsGroup>
-            {teamBasics}
-            {stage}
-          </SettingsGroup>
-        )}
+        {cat === "teamBasics" && <SettingsGroup>{teamBasics}</SettingsGroup>}
+        {cat === "stage" && <SettingsGroup>{stage}</SettingsGroup>}
         {cat === "groups" && <SettingsGroup>{groups}</SettingsGroup>}
         {cat === "categories" && <SettingsGroup>{categories}</SettingsGroup>}
         {cat === "competitions" && <SettingsGroup>{competitions}</SettingsGroup>}

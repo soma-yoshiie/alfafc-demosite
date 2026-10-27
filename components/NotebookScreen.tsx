@@ -54,16 +54,18 @@ import { deliverableTargetsPlayer, eventTargetPlayers, playerInGroup, resolveFil
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
 import { categoryOf, eventNoteTarget } from "@/lib/calendarUtils";
 import { staffUnreadNotes } from "@/lib/notebookStats";
+import { staffIdentity } from "@/lib/chat";
 import { isUnreadStaffComment } from "@/lib/badges";
 import { eventSubmitStats, noteBelongsToEvent } from "@/lib/eventNotes";
 import { DeliverBlock, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
 import { useGroupFilter } from "./GroupChips";
+import { FilterRow, FilterSecHead } from "./FilterRow";
 import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
-import { IconBell, IconFilter, NoteKindIcon } from "./icons";
+import { IconBell, IconFilter, IconShare, NoteKindIcon } from "./icons";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const PLAY_KINDS: PlayKind[] = ["receive", "shot", "miss"];
@@ -1099,7 +1101,7 @@ function PlayerAnalysis() {
   const kindBreakdown = (
     <>
       {(["match", "practice", "solo"] as NoteKind[]).map((k) => (
-        <div key={k} className="statrow">
+        <div key={k} className={`statrow sr-${k}`}>
           <span className="srl">{NOTE_KIND_LABEL[k]}</span>
           <span className="srb">
             <span style={{ width: kindTotal ? `${(kindCounts[k] / kindTotal) * 100}%` : "0%" }} />
@@ -1730,11 +1732,10 @@ function UnreadPill({ count }: { count: number }) {
 
 /**
  * スタッフの提出一覧の絞り込みパネル（notebook-staff-redesign §3-2）。スマホは下からのシート、
- * PCは左の常設列(.nbside)の中身として、同じ部品を両方から呼ぶ。種類・学年・グループ・状態は
- * すべて単一選択。種類・状態の行は右に四角のチェック(.calchk.sq)、学年・グループの行は左に
- * グループ色の丸チェック(.calchk。選択中は色で塗って白いレ点、非選択は色の枠だけ。TeamHub の
- * カレンダーの絞り込みと同じ文法)。学年とグループは同じ値（useGroupFilter("notebook")）を
- * 共有するので「すべて」は先頭のセクションに1行だけ置く。
+ * PCは左の常設列(.nbside)の中身として、同じ部品を両方から呼ぶ。ux-fix R3-2: 種類・学年・グループ・状態は
+ * すべて四角のチェック（FilterRow）。どれも選んでいない＝すべてなので「すべて」の行は置かず、見出しの右の
+ * 「すべて解除」で戻す。学年・グループの色はラベルの前の点。値は今のところ 1 つだけ持つので、
+ * 選んでいる行をもう一度押すと外れて「すべて」に戻る。学年とグループは同じ値（useGroupFilter("notebook")）を共有する。
  * グループ（kind==="custom"）が0件ならセクションごと出さない。
  */
 function NotebookFilterPanel({
@@ -1760,43 +1761,42 @@ function NotebookFilterPanel({
 }) {
   const grades = groups.filter((g) => g.kind === "grade");
   const customs = groups.filter((g) => g.kind === "custom");
-  // color: undefined=種類・状態の行（右に四角のチェック）／文字列=学年・グループの行（左に色の丸チェック。
-  // 「すべて」だけ --mut）
-  const row = (key: string, label: string, on: boolean, onClick: () => void, color?: string) => (
-    <button key={key} type="button" className={`nbfrow${on ? " on" : ""}`} aria-pressed={on} onClick={onClick}>
-      {color !== undefined && (
-        <span
-          className={`calchk${on ? " on" : ""}`}
-          style={{ background: on ? color : "transparent", borderColor: on ? "transparent" : color }}
-        />
-      )}
-      <span className="nbfname">{label}</span>
-      {color === undefined && <span className={`calchk sq${on ? " on" : ""}`} />}
-    </button>
+  // ux-fix R3-2 レビュー: 種類・学年／グループ・状態は値を 1 つしか持たない（選ぶと入れ替わる）ので丸のラジオ。
+  // 複数同時に選べるようにする（配列化）のは別の作業。どれも選んでいない＝すべて、選んでいる行をもう一度押すと外れる
+  const row = (key: string, label: string, on: boolean, onClick: () => void, dot?: string) => (
+    <FilterRow key={key} rowCls="nbfrow" nameCls="nbfname" on={on} label={label} onClick={onClick} dot={dot} shape="rd" />
   );
-  const sec = (title: string, rows: React.ReactNode) => (
+  const sec = (title: string, active: boolean, onClear: () => void, rows: React.ReactNode) => (
     <div className="nbfsec" key={title}>
-      <div className="nbfsec-h">{title}</div>
-      <div className="nbfrows">{rows}</div>
+      <FilterSecHead headCls="nbfsec-h" title={title} active={active} onClear={onClear} />
+      <div className="nbfrows" role="group" aria-label={title}>
+        {rows}
+      </div>
     </div>
   );
+  const clearGroup = () => onGroup(null);
   const groupRows = (list: TeamGroup[]) =>
-    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(g.id), g.color ?? "var(--mut)"));
-  const allRow = row("g-all", "すべて", groupId === null, () => onGroup(null), "var(--mut)");
+    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(groupId === g.id ? null : g.id), g.color ?? "var(--mut)"));
+  const inGrades = grades.some((g) => g.id === groupId);
+  const inCustoms = customs.some((g) => g.id === groupId);
   return (
     <div className="nbfpanel">
-      {sec("種類", [
-        row("k-all", "すべて", kind === "all", () => onKind("all")),
-        ...(["match", "practice", "solo"] as NoteKind[]).map((k) =>
-          row(`k-${k}`, NOTE_KIND_LABEL[k], kind === k, () => onKind(k))
-        ),
-      ])}
-      {grades.length > 0 && sec("学年", [allRow, ...groupRows(grades)])}
-      {customs.length > 0 && sec("グループ", [...(grades.length === 0 ? [allRow] : []), ...groupRows(customs)])}
+      {sec(
+        "種類",
+        kind !== "all",
+        () => onKind("all"),
+        (["match", "practice", "solo"] as NoteKind[]).map((k) =>
+          row(`k-${k}`, NOTE_KIND_LABEL[k], kind === k, () => onKind(kind === k ? "all" : k))
+        )
+      )}
+      {grades.length > 0 && sec("学年", inGrades, clearGroup, groupRows(grades))}
+      {customs.length > 0 && sec("グループ", inCustoms, clearGroup, groupRows(customs))}
       {sec(
         "状態",
-        (["all", "unread", "nocomment", "commented"] as NoteStatus[]).map((st) =>
-          row(`s-${st}`, NOTE_STATUS_LABEL[st], status === st, () => onStatus(st))
+        status !== "all",
+        () => onStatus("all"),
+        (["unread", "nocomment", "commented"] as NoteStatus[]).map((st) =>
+          row(`s-${st}`, NOTE_STATUS_LABEL[st], status === st, () => onStatus(status === st ? "all" : st))
         )
       )}
       {/* p14 §1-1: 一番下に「絞り込みを編集…」（名簿・カレンダーと同じ） */}
@@ -1846,19 +1846,70 @@ function NoteCard({
   // 状態タグは「未読／未コメント／コメント済」の3値（既読でコメント無しを未読と出していた誤りを直す）。
   // 選手側は who の有無を問わず従来のまま（who無し=タグなし、チームの共有=コメント済／未読）
   const unread = !!staffView && !entry.staffSeenAt;
-  return (
-    <button
-      className={`notecard${selected ? " sel" : ""}${staffView ? " staffview" : ""}${unread ? " unread" : ""}`}
-      onClick={onClick}
+  const iconBox = (
+    <div
+      className={`notecond k-${entry.kind}`}
+      {...(showKind ? {} : { role: "img", "aria-label": `${NOTE_KIND_LABEL[entry.kind]}ノート` })}
     >
+      <NoteKindIcon kind={entry.kind} />
+    </div>
+  );
+  // ux-fix R3-5: スタッフの提出一覧の行は「名前（＋共有・反応の小さなアイコン）」と
+  // 「種類・日付（固定幅の列）＋状態バッジ 1 つ」の 2 段。未読は左の線と名前の前の点だけ（青いバッジは出さない）。
+  // 状態バッジは 未読＞コメント済＞未コメント の 1 つ（未読のときは点が状態を表すので文字のバッジは出さない）
+  if (staffView) {
+    const shared = entry.kind === "practice" && (entry as PracticeNote).isPublic;
+    return (
+      <button
+        className={`notecard staffview${selected ? " sel" : ""}${unread ? " unread" : ""}`}
+        onClick={onClick}
+      >
+        {iconBox}
+        <div className="notemain">
+          <div className="svtop">
+            {/* 既読の行にも同じ幅の空きを置き、名前の左端を行どうしでそろえる */}
+            {unread ? <i className="notedot" role="img" aria-label="未読" /> : <i className="notedot-sp" aria-hidden="true" />}
+            {who && <span className="notewho">{who}</span>}
+            {shared && (
+              <span className="notemini" role="img" aria-label="チームに共有中" title="チームに共有中">
+                <IconShare aria-hidden="true" />
+              </span>
+            )}
+            {entry.staffReaction && (
+              <span
+                className="notemini react"
+                role="img"
+                aria-label={STAFF_REACTION_LABEL[entry.staffReaction]}
+                title={STAFF_REACTION_LABEL[entry.staffReaction]}
+              >
+                <E n={REACTION_ICON[entry.staffReaction]} />
+              </span>
+            )}
+          </div>
+          <div className="svsub">
+            {showKind && (
+              <span className="dlvtag svkind" style={{ borderColor: "var(--line)", color: "var(--mut)" }}>
+                {NOTE_KIND_LABEL[entry.kind]}
+              </span>
+            )}
+            <span className="notedate svdate">{fmt(entry.date)}</span>
+            {!unread &&
+              (entry.staffComment ? (
+                <span className="notetag done">コメント済</span>
+              ) : (
+                <span className="notetag">未コメント</span>
+              ))}
+          </div>
+        </div>
+        <span className="convchev">›</span>
+      </button>
+    );
+  }
+  return (
+    <button className={`notecard${selected ? " sel" : ""}`} onClick={onClick}>
       {/* p17 §3: 体調の顔・漢字 1 文字をやめ、種類のアイコン（色は .k-種類） */}
       {/* p17 レビュー: 種類の文字タグを出さないカード（showKind なし）では、アイコンの枠に種類の名前を持たせる */}
-      <div
-        className={`notecond k-${entry.kind}`}
-        {...(showKind ? {} : { role: "img", "aria-label": `${NOTE_KIND_LABEL[entry.kind]}ノート` })}
-      >
-        <NoteKindIcon kind={entry.kind} />
-      </div>
+      {iconBox}
       <div className="notemain">
         <div className="notetop">
           {who && <span className="notewho">{who}</span>}
@@ -1870,26 +1921,17 @@ function NoteCard({
           <span className="notedate">{fmt(entry.date)}</span>
           {entry.kind === "practice" && (entry as PracticeNote).isPublic && <span className="notetag share">共有</span>}
           {entry.staffReaction && (
-            <span style={{ color: "var(--primary-dim)", fontSize: 14 }}>
+            <span style={{ color: "var(--accent)", fontSize: 14 }}>
               <E n={REACTION_ICON[entry.staffReaction]} />
             </span>
           )}
-          {staffView ? (
-            unread ? (
-              <span className="notetag unread">未読</span>
-            ) : entry.staffComment ? (
-              <span className="notetag done">コメント済</span>
-            ) : (
-              <span className="notetag">未コメント</span>
-            )
-          ) : entry.staffComment ? (
+          {entry.staffComment ? (
             <span className="notetag done">コメント済</span>
           ) : who ? (
             <span className="notetag">未読</span>
           ) : null}
         </div>
-        {/* p17 §2: スタッフの提出カードは本文の抜粋を出さない（選手側は今のまま） */}
-        {!staffView && <div className="notebody">{summarize(entry)}</div>}
+        <div className="notebody">{summarize(entry)}</div>
       </div>
       <span className="convchev">›</span>
     </button>
@@ -2937,6 +2979,12 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   );
 }
 
+/** コメントの署名「岡本監督・10/10 02:00」の日時（M/D HH:mm 24 時間。ux-fix R3-5） */
+function fmtStamp(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 /** 「送信済み 10/10 18:30」の日時（M/D H:mm 24 時間） */
 function fmtSentAt(ts: number): string {
   const d = new Date(ts);
@@ -2959,6 +3007,7 @@ function NoteDetail({
   nextUnread?: { count: number; onOpen: () => void };
 }) {
   const board = useBoard();
+  const team = useTeam();
   const entry = board.notebook.find((n) => n.id === id);
   const [comment, setComment] = useState(entry?.staffComment ?? "");
   // ux-fix R2-7: この画面で送ったか（送ったら「次の未読へ」を出す）
@@ -2991,19 +3040,28 @@ function NoteDetail({
   const dirty =
     comment.trim() !== (entry.staffComment ?? "") ||
     JSON.stringify({ plays: drawPlays, playLines: drawLines }) !== savedDrawing;
+  // ux-fix R3-5: コメントを書いた人（「岡本監督」）。送ったときの本人を覚える。古いコメントは代表のスタッフに寄せる
+  const ident = staffIdentity(board.auth.name, team.team.coaches);
+  const ownName = `${ident.name}${ident.role}`;
   const sendComment = () => {
     // レビュー: 保存済みの図を消し切って送ったときは空の図を渡して消す（undefined は「既存の図を保持」）
     board.setNoteComment(
       entry.id,
       comment,
       drawPlays.length > 0 || drawLines.length > 0 || entry.staffDrawing ? { plays: drawPlays, playLines: drawLines } : undefined,
-      { toast: "送りました" }
+      { toast: "送りました", by: ownName }
     );
     // notebook-staff-redesign §5: 送信したら描画エリアを畳む（図は state に残り、保存もされたまま）
     setDrawOpen(false);
     setSentHere(true);
   };
   const sentAt = entry.staffComment && entry.staffCommentTs ? fmtSentAt(entry.staffCommentTs) : "";
+  const byline = (() => {
+    if (!entry.staffComment || !entry.staffCommentTs) return "";
+    const first = staffIdentity("", team.team.coaches);
+    return `${entry.staffCommentBy ?? `${first.name}${first.role}`}・${fmtStamp(entry.staffCommentTs)}`;
+  })();
+  const sharedNote = entry.kind === "practice" && !!(entry as PracticeNote).isPublic;
 
   return (
     <div className="notedetail">
@@ -3013,7 +3071,10 @@ function NoteDetail({
           <NoteKindIcon kind={entry.kind} />
         </div>
         <div>
-          <div className="notewho">{who}</div>
+          <div className="notewho">
+            {who}
+            {sharedNote && <span className="notetag share notewho-tag">チームに共有中</span>}
+          </div>
           <div className="notedate">
             {NOTE_KIND_LABEL[entry.kind]}ノート ・ {fmt(entry.date)}
             {entry.condition && (
@@ -3156,6 +3217,7 @@ function NoteDetail({
             </div>
           )}
           {entry.staffComment && <div className="notesec-b">{entry.staffComment}</div>}
+          {byline && <div className="cmtby">{byline}</div>}
           {entry.staffDrawing && (
             <>
               <div className="notesec-h" style={{ marginTop: 12 }}>コーチの図</div>
@@ -3177,6 +3239,10 @@ function NoteDetail({
           <button
             className="linkdanger"
             onClick={() => {
+              // ux-fix R3-5: 確認してから消す。コーチのコメントがあれば、一緒に消えることを伝える
+              const hasStaff = !!(entry.staffComment || entry.staffReaction || entry.staffDrawing);
+              const msg = `このノートを削除しますか？${hasStaff ? "コーチのコメントも消えます。" : ""}`;
+              if (!window.confirm(msg)) return;
               board.deleteNote(entry.id);
               onDeleted();
             }}
@@ -3341,7 +3407,6 @@ function PracticeDetail({ note }: { note: PracticeNote }) {
           ))}
         </div>
       )}
-      {note.isPublic && <div className="notetag share" style={{ display: "inline-block" }}>チームに共有中</div>}
     </>
   );
 }

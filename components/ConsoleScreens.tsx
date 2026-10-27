@@ -72,6 +72,17 @@ function fmtDateTime(ts: number): string {
   });
 }
 
+/** 空のライブラリの主ボタン（ux-fix R3-3）。つくる画面を開く */
+function LibOpenCta({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <div className="libcta">
+      <button type="button" className="st-btn" onClick={onClick}>
+        {label}
+      </button>
+    </div>
+  );
+}
+
 export function LibraryScreen() {
   const board = useBoard();
   // board-squad-and-pc-polish §1: PCは左レールで戻れるため「‹ ホーム」は出さない(モバイルは「‹ メニュー」のまま)
@@ -274,6 +285,7 @@ export function LibraryScreen() {
                 <b>まだ保存した戦術がありません。</b>
                 <br />
                 戦術ボードで作って保存すると、ここに並びます。
+                <LibOpenCta label="戦術ボードを開く" onClick={() => board.setScreen("board")} />
               </div>
             ) : (
               <div className="liblist">
@@ -311,6 +323,7 @@ export function LibraryScreen() {
                 <b>まだ保存した練習メニューがありません。</b>
                 <br />
                 練習メニューで作って保存すると、ここに並びます。
+                <LibOpenCta label="練習メニューを開く" onClick={() => board.setScreen("drill")} />
               </div>
             )
           ) : (
@@ -333,11 +346,15 @@ export function LibraryScreen() {
             </div>
           )
         ) : setPieces.length === 0 ? (
-          <div className="empty-msg">
-            <b>保存されたセットプレーはありません</b>
-            <br />
-            セットプレーデザイン画面で作って保存・送信から追加できます
-          </div>
+          // PC は右のペイン（.libempty）に同じ案内とボタンを出すので、左は出さない（同義の空文を 2 つ並べない）
+          !pc && (
+            <div className="empty-msg">
+              <b>保存されたセットプレーはありません</b>
+              <br />
+              セットプレーデザイン画面で作って保存・送信から追加できます
+              <LibOpenCta label="セットプレーデザインを開く" onClick={() => board.setScreen("setpiece")} />
+            </div>
+          )
         ) : (
           <div className="liblist">
             {setPieces.map((p) => (
@@ -358,6 +375,7 @@ export function LibraryScreen() {
                   <b>保存された戦術はありません</b>
                   <br />
                   戦術ボードの右上の保存から追加できます
+                  <LibOpenCta label="戦術ボードを開く" onClick={() => board.setScreen("board")} />
                 </>
               ) : (
                 <>
@@ -376,6 +394,7 @@ export function LibraryScreen() {
                   <b>保存された練習メニューはありません</b>
                   <br />
                   練習メニューを作成して保存すると、ここに一覧できます
+                  <LibOpenCta label="練習メニューを開く" onClick={() => board.setScreen("drill")} />
                 </>
               ) : (
                 <>
@@ -393,6 +412,7 @@ export function LibraryScreen() {
                 <b>保存されたセットプレーはありません</b>
                 <br />
                 セットプレーデザイン画面で作って保存・送信から追加できます
+                <LibOpenCta label="セットプレーデザインを開く" onClick={() => board.setScreen("setpiece")} />
               </>
             ) : (
               <>

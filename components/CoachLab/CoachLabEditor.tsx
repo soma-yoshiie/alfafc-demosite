@@ -883,9 +883,18 @@ export default function CoachLabEditor({
           <OwnArticleList articles={board.userArticles} editId={editId} onSelect={setEditId} />
         </div>
         <div className="cl-writemain screenbody">
-          {editorNode ?? (
-            <div className="artempty">左の一覧から記事を選ぶか、＋ 新しい記事を書く から始めてください</div>
-          )}
+          {editorNode ??
+            // ux-fix R3-3: 0 件のときは右の中央に主ボタンと 1 行の説明。「左の一覧から…」の案内は 1 件以上あるときだけ
+            (board.userArticles.length === 0 ? (
+              <div className="artempty cl-writefirst">
+                <button type="button" className="st-btn" onClick={() => setEditId("new")}>
+                  最初の記事を書く
+                </button>
+                <p>書いた記事は下書きとして残り、公開すると「探す」に並びます。</p>
+              </div>
+            ) : (
+              <div className="artempty">左の一覧から記事を選ぶか、＋ 新しい記事を書く から始めてください</div>
+            ))}
         </div>
       </>
     );
@@ -903,7 +912,7 @@ export default function CoachLabEditor({
       ) : (
         <>
           <button type="button" className="cl-linkbtn cl-backtolist" onClick={() => setEditId(null)}>
-            ‹ 記事一覧に戻る
+            ‹ 戻る
           </button>
           {editorNode}
         </>

@@ -32,7 +32,8 @@ import {
   HubAdd,
   HubEmpty,
   HubHead,
-  HubRowBtn,
+  HubEditBtn,
+  SheetDelete,
   HubSheet,
   LastUpdated,
   NumField,
@@ -149,9 +150,11 @@ export default function GradesSection({ p, profile, stage }: HubSectionProps) {
     if (!window.confirm(`${lbl(c)} の成績表を削除しますか？`)) return;
     profiles.removeRecord(p.id, "reportCards", c.id);
   };
-  const removeCert = (c: Certification) => {
-    if (!window.confirm(`${c.kind} ${c.level} の記録を削除しますか？`)) return;
+  /* ux-fix R3-2: 削除は編集フォームの一番下から（確認で止めたら false。フォームは閉じない） */
+  const removeCert = (c: Certification): boolean => {
+    if (!window.confirm(`${c.kind} ${c.level} の記録を削除しますか？`)) return false;
     profiles.removeRecord(p.id, "certifications", c.id);
+    return true;
   };
 
   const certs = [...profile.certifications].sort((a, b) =>
@@ -169,9 +172,7 @@ export default function GradesSection({ p, profile, stage }: HubSectionProps) {
       <div className="phubcard phubgoal">
         <div className="phubgoal-h">
           <div className="phubcard-t">成績の目標</div>
-          <HubRowBtn label="成績の目標を編集" onClick={() => setForm({ k: "goal" })}>
-            {goalEmpty ? "目標を設定" : "目標を編集"}
-          </HubRowBtn>
+          <HubEditBtn label={goalEmpty ? "成績の目標を設定" : "成績の目標を編集"} onClick={() => setForm({ k: "goal" })} />
         </div>
         {goalEmpty ? (
           <div className="phubkv-empty">
@@ -254,7 +255,7 @@ export default function GradesSection({ p, profile, stage }: HubSectionProps) {
       )}
 
       {/* 通知表の表 */}
-      <HubHead title="通知表" sub="列の見出しを押すと編集・削除" />
+      <HubHead title="通知表" />
       <HubAdd onClick={() => setForm({ k: "card" })}>学期を追加</HubAdd>
       {cards.length === 0 ? (
         <HubEmpty hint="通知表をもらったら「学期を追加」から評定を入れます。教科ごとの推移と、評定平均・合計が出ます。" />
@@ -267,10 +268,12 @@ export default function GradesSection({ p, profile, stage }: HubSectionProps) {
                   <th scope="col">教科</th>
                   {shown.map((c) => (
                     <th scope="col" key={c.id}>
-                      <button type="button" aria-label={`${lbl(c)} の成績表を編集・削除`} onClick={() => setForm({ k: "card", edit: c })}>
+                      <span className="phubcolt">
                         <span>{gradeLabel(stage, c.grade)}</span>
                         <span>{termLabel(c.term)}</span>
-                      </button>
+                      </span>
+                      {/* ux-fix R3-5：見出しは文字だけにして、編集・削除は列見出しの下の鉛筆の四角から */}
+                      <HubEditBtn label={`${lbl(c)} の成績表を編集・削除`} onClick={() => setForm({ k: "card", edit: c })} />
                     </th>
                   ))}
                   {hasGoalCols && (
@@ -436,12 +439,7 @@ export default function GradesSection({ p, profile, stage }: HubSectionProps) {
                 {c.date && <small>取得 {fmtYMD(c.date)}</small>}
               </div>
               <div className="phubrow-act">
-                <HubRowBtn label={`${c.kind} ${c.level} を編集`} onClick={() => setForm({ k: "cert", edit: c })}>
-                  編集
-                </HubRowBtn>
-                <HubRowBtn danger label={`${c.kind} ${c.level} を削除`} onClick={() => removeCert(c)}>
-                  削除
-                </HubRowBtn>
+                <HubEditBtn label={`${c.kind} ${c.level} を編集`} onClick={() => setForm({ k: "cert", edit: c })} />
               </div>
             </div>
           ))}
@@ -492,6 +490,13 @@ export default function GradesSection({ p, profile, stage }: HubSectionProps) {
       {form?.k === "cert" && (
         <CertForm
           edit={form.edit}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (removeCert(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             profiles.setRecord(p.id, "certifications", { ...rec, id: form.edit?.id ?? newRecordId("ce") });
@@ -712,10 +717,13 @@ const CERT_KINDS = ["英検", "数検", "漢検"];
 function CertForm({
   edit,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: Certification;
   onSave: (rec: Omit<Certification, "id" | "updatedAt" | "updatedBy">) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -752,6 +760,7 @@ function CertForm({
         <input aria-label="取得日" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="この検定を削除" />}
     </HubSheet>
   );
 }

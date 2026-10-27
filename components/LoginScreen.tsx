@@ -184,8 +184,12 @@ export default function LoginScreen({ onLogin }: { onLogin: (s: Session) => void
 
       <div className="login-note">
         ※ デモ版です。スタッフは任意のメール／パスワードで契約できます。
-        <br />
-        選手デモ：<b>sora@alfafc.example</b> ／ 共通パスワード <b>{DEFAULT_PLAYER_PASSWORD}</b>
+        {tab === "player" && (
+          <>
+            <br />
+            選手デモ：<b>sora@alfafc.example</b> ／ 共通パスワード <b>{DEFAULT_PLAYER_PASSWORD}</b>
+          </>
+        )}
       </div>
     </div>
   );

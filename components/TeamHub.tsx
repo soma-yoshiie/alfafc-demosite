@@ -39,7 +39,6 @@ import {
   eventEndDate,
   eventNoteTarget,
   gmapsDirUrl,
-  gmapsEmbedUrl,
   gmapsSearchUrl,
   isAllTargets,
   isMultiDay,
@@ -54,12 +53,14 @@ import {
   loadCalSideOpen,
   loadGroupFilter,
   loadLastEventCategory,
+  loadLastEventTime,
   loadRecSideOpen,
   loadRosSideOpen,
   saveCalFilter,
   saveCalSideOpen,
   saveGroupFilter,
   saveLastEventCategory,
+  saveLastEventTime,
   saveRecSideOpen,
   saveRosSideOpen,
 } from "@/lib/storage";
@@ -114,6 +115,7 @@ import { CompetitionsManage } from "./team/manage/CompetitionsManage";
 import { LeagueEdit } from "./team/manage/LeagueEdit";
 import { FitnessTestsManage } from "./team/manage/FitnessTestsManage";
 import { Sheet } from "./team/Sheet";
+import { FilterRow, FilterSecHead } from "./FilterRow";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
 const PC_MQ = "(min-width: 1024px)";
@@ -146,11 +148,6 @@ function fmtDate(s: string): string {
   if (!y) return s;
   const dt = new Date(y, m - 1, d);
   return `${m}/${d}(${WD[dt.getDay()]})`;
-}
-/** 試合時間の表示（例: 「20分ハーフ」／1本(periods===1)は「40分」）。halfMinutes未設定はnull */
-function halfLabel(m: { halfMinutes?: number; periods?: 1 | 2 }): string | null {
-  if (!m.halfMinutes) return null;
-  return `${m.halfMinutes}分${m.periods === 1 ? "" : "ハーフ"}`;
 }
 function todayStr(): string {
   // toISOString(UTC基準)だとJSTの0〜9時に「今日」が前日にズレる(lib/dates.ts参照)
@@ -1009,7 +1006,7 @@ function Inner() {
                   {recPcOpen && (
                     <div className="mhubpane">
                       <div className="tmback" onClick={() => setRecOpen(null)}>
-                        ‹ 試合記録
+                        ‹ 戻る
                       </div>
                       <MatchHub
                         key={recOpen}
@@ -1108,13 +1105,7 @@ function Inner() {
                         <RecPlayerPane id={recSel.id} players={players} setRecSel={setRecSel} />
                       ))}
                     {activeTab === "ros" &&
-                      (rosSel ? (
-                        rosHub
-                      ) : (
-                        <div className="empty-msg" style={{ margin: "auto" }}>
-                          選手を選ぶと、ここに内容が出ます
-                        </div>
-                      ))}
+                      (rosSel ? rosHub : <RosterOverviewPane players={players} onPick={pickRos} />)}
                     {activeTab === "att" &&
                       (attSel.kind === "overview" ? (
                         <AttOverviewPane
@@ -1376,24 +1367,6 @@ function MatchGroupsBadge({ m, groups, full }: { m: MatchRecord; groups: TeamGro
   return (
     <span className={`evgroups targeted${full ? " full" : ""}`} title={full ? undefined : label}>
       {label}
-    </span>
-  );
-}
-
-/* 選手の所属カスタムグループのバッジ（groups-everywhere §5。名簿の行に表示。最大2個＋「+n」） */
-function PlayerGroupBadges({ p, groups }: { p: Player; groups: TeamGroup[] }) {
-  const custom = groups.filter((g) => g.kind === "custom" && playerInGroup(p, g));
-  if (custom.length === 0) return null;
-  const shown = custom.slice(0, 2);
-  const extra = custom.length - shown.length;
-  return (
-    <span style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
-      {shown.map((g) => (
-        <span key={g.id} className="evgroups targeted">
-          {g.label}
-        </span>
-      ))}
-      {extra > 0 && <span className="evgroups">+{extra}</span>}
     </span>
   );
 }
@@ -2080,10 +2053,9 @@ function CalFilterPanel({
                 }
               }}
             >
-              <span
-                className={`calchk${on ? " on" : ""}`}
-                style={{ background: on ? g.color : "transparent", borderColor: on ? "transparent" : g.color }}
-              />
+              {/* ux-fix R3-2: 四角のチェック（表示する＝オン）。グループの色はラベルの前の点 */}
+              <span className={`calchk sq${on ? " on" : ""}`} />
+              <i className="fdot" style={{ background: g.color ?? "var(--mut)" }} aria-hidden="true" />
               <span>{g.label}</span>
             </div>
           );
@@ -2386,7 +2358,7 @@ function MatchesTab({
                 <div key={s.pid} className="scorerrow">
                   <span className="rank">{s.rank}</span>
                   <span className="snm">{nameOf(s.pid)}</span>
-                  <span className="sgoals" style={{ color: "var(--blue)" }}>{s.n}</span>
+                  <span className="sgoals" style={{ color: "var(--ink)" }}>{s.n}</span>
                 </div>
               ))}
             </div>
@@ -2441,13 +2413,12 @@ function MatchesTab({
                   <div className="mopp">
                     {/* p14 §4: 相手名だけを 1 行で省略できるよう包む（バッジは後ろのまま） */}
                     <span className="moppname">vs {m.opponent}</span>
-                    {/* groups-phase2 §3-3: 対象バッジ（全体のときは出さない） */}
-                    <MatchGroupsBadge m={m} groups={team.groups} />
                   </div>
+                  {/* ux-fix R3-5: 対象バッジ（全体のときは出さない。groups-phase2 §3-3）は 2 段目の先頭。試合時間は一覧では出さない（詳細の基本情報に出る） */}
                   <div className="msub">
+                    <MatchGroupsBadge m={m} groups={team.groups} />
                     {fmtDate(m.date)}
                     {cmpName(m) ? ` ・ ${cmpName(m)}` : ""}
-                    {halfLabel(m) ? ` ・ ${halfLabel(m)}` : ""}
                   </div>
                 </div>
                 <div className="mscore">
@@ -2485,7 +2456,7 @@ const ROS_STATUS_OPTIONS: { key: RosStatus; label: string }[] = [
 /**
  * 試合記録の絞り込みの中身（p14 §2-1）。名簿の RosterFilterPanel と同じ器・同じ .rosf* のクラスで、
  * PCは試合記録タブの左の常設列(.rosside)、スマホは下からのシート(RosterFilterSheet)の中身になる。
- * 大会は右に四角のチェック、学年・グループは左に色の丸チェック（どちらも単一選択）。
+ * ux-fix R3-2: 大会・学年・グループは四角のチェック（どれも選んでいない＝すべて。色はラベルの前の点）、期間は丸のラジオ。
  * 「大会を登録・管理…」は大会セクションの直下、「絞り込みを編集…」は一番下（どちらもスタッフだけ）
  */
 function RecFilterPanel({
@@ -2519,37 +2490,39 @@ function RecFilterPanel({
 }) {
   const grades = groups.filter((g) => g.kind === "grade");
   const customs = groups.filter((g) => g.kind === "custom");
-  // color: undefined=大会の行（右に四角のチェック）／文字列=学年・グループの行（左に色の丸チェック。「すべて」だけ --mut）
-  const row = (key: string, label: string, on: boolean, onClick: () => void, color?: string) => (
-    <button key={key} type="button" className={`rosfrow${on ? " on" : ""}`} aria-pressed={on} onClick={onClick}>
-      {color !== undefined && (
-        <span
-          className={`calchk${on ? " on" : ""}`}
-          style={{ background: on ? color : "transparent", borderColor: on ? "transparent" : color }}
-        />
-      )}
-      <span className="rosfname">{label}</span>
-      {color === undefined && <span className={`calchk sq${on ? " on" : ""}`} />}
-    </button>
+  // ux-fix R3-2: 大会・学年・グループは四角のチェック（どれも選んでいない＝すべて。選んでいる行をもう一度押すと外れる）、
+  // 期間は丸のラジオ。学年・グループの色はラベルの前の点
+  // ux-fix R3-2 レビュー: 大会・学年／グループも値を 1 つしか持たない（選ぶと入れ替わる）ので丸のラジオ（期間と同じ）
+  const row = (key: string, label: string, on: boolean, onClick: () => void, dot?: string, shape: "sq" | "rd" = "rd") => (
+    <FilterRow key={key} rowCls="rosfrow" nameCls="rosfname" on={on} label={label} onClick={onClick} dot={dot} shape={shape} />
   );
-  const sec = (title: string, rows: React.ReactNode) => (
+  const sec = (title: string, rows: React.ReactNode, clear?: { active: boolean; onClear: () => void }) => (
     <div className="rosfsec" key={title}>
-      <div className="rosfsec-h">{title}</div>
-      <div className="rosfrows">{rows}</div>
+      {clear ? (
+        <FilterSecHead headCls="rosfsec-h" title={title} active={clear.active} onClear={clear.onClear} />
+      ) : (
+        <div className="rosfsec-h">{title}</div>
+      )}
+      <div className="rosfrows" role={clear ? "group" : "radiogroup"} aria-label={title}>
+        {rows}
+      </div>
     </div>
   );
   const groupRows = (list: TeamGroup[]) =>
-    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(g.id), g.color ?? "var(--mut)"));
-  const allRow = row("g-all", "すべて", groupId === null, () => onGroup(null), "var(--mut)");
+    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(groupId === g.id ? null : g.id), g.color ?? "var(--mut)"));
+  const clearGroup = { active: false, onClear: () => onGroup(null) };
   const hasComps = comps.length > 0 || hasOther;
   return (
     <div className="rosfpanel">
       {hasComps &&
-        sec("大会", [
-          row("c-all", "すべて", cmp === "all", () => onCmp("all")),
-          ...comps.map((c) => row(`c-${c.id}`, c.name, cmp === c.id, () => onCmp(c.id))),
-          ...(hasOther ? [row("c-none", "その他", cmp === "none", () => onCmp("none"))] : []),
-        ])}
+        sec(
+          "大会",
+          [
+            ...comps.map((c) => row(`c-${c.id}`, c.name, cmp === c.id, () => onCmp(cmp === c.id ? "all" : c.id))),
+            ...(hasOther ? [row("c-none", "その他", cmp === "none", () => onCmp(cmp === "none" ? "all" : "none"))] : []),
+          ],
+          { active: cmp !== "all", onClear: () => onCmp("all") }
+        )}
       {/* 大会が 0 件で「その他」も無いときは、スタッフにだけ「大会を登録・管理…」を見出しなしで出す */}
       {onManageCompetitions && (
         <button type="button" className="rosfmanage" onClick={onManageCompetitions}>
@@ -2559,10 +2532,12 @@ function RecFilterPanel({
       {/* p15 §2: 期間は大会・グループが 0 件でも常に出す（大会 →「大会を登録・管理…」→ 期間 → 学年 → グループ） */}
       {sec(
         "期間",
-        REC_PERIOD_OPTIONS.map((o) => row(`pr-${o.key}`, o.label, period === o.key, () => onPeriod(o.key)))
+        REC_PERIOD_OPTIONS.map((o) => row(`pr-${o.key}`, o.label, period === o.key, () => onPeriod(o.key), undefined, "rd"))
       )}
-      {grades.length > 0 && sec("学年", [allRow, ...groupRows(grades)])}
-      {customs.length > 0 && sec("グループ", [...(grades.length === 0 ? [allRow] : []), ...groupRows(customs)])}
+      {grades.length > 0 &&
+        sec("学年", groupRows(grades), { ...clearGroup, active: grades.some((g) => g.id === groupId) })}
+      {customs.length > 0 &&
+        sec("グループ", groupRows(customs), { ...clearGroup, active: customs.some((g) => g.id === groupId) })}
       {/* p14 §1-1: 「絞り込みを編集…」はパネルの一番下 */}
       {onManageGroups && (
         <button type="button" className="rosfmanage" onClick={onManageGroups}>
@@ -2576,7 +2551,7 @@ function RecFilterPanel({
 /**
  * 名簿の絞り込みの中身（player-hub §2-1）。PCは名簿タブの左の常設列(.rosside)、スマホは下からのシート
  * (RosterFilterSheet)の中身として、同じ部品をどちらからも呼ぶ。行の文法は提出の NotebookFilterPanel と同じ
- * （学年・グループは左に色の丸チェック、ポジション・状態は右に四角のチェック。いずれも単一選択）。
+ * （ux-fix R3-2: すべて四角のチェック。色はラベルの前の点。「すべて」の行は無く、見出しの右の「すべて解除」で戻す）。
  * CSS は .teamapp でも効くよう .rosf* の名前で用意してある
  */
 function RosterFilterPanel({
@@ -2602,40 +2577,37 @@ function RosterFilterPanel({
 }) {
   const grades = groups.filter((g) => g.kind === "grade");
   const customs = groups.filter((g) => g.kind === "custom");
-  // color: undefined=ポジション・状態の行（右に四角のチェック）／文字列=学年・グループの行（左に色の丸チェック。
-  // 「すべて」だけ --mut）
-  const row = (key: string, label: string, on: boolean, onClick: () => void, color?: string) => (
-    <button key={key} type="button" className={`rosfrow${on ? " on" : ""}`} aria-pressed={on} onClick={onClick}>
-      {color !== undefined && (
-        <span
-          className={`calchk${on ? " on" : ""}`}
-          style={{ background: on ? color : "transparent", borderColor: on ? "transparent" : color }}
-        />
-      )}
-      <span className="rosfname">{label}</span>
-      {color === undefined && <span className={`calchk sq${on ? " on" : ""}`} />}
-    </button>
+  // ux-fix R3-2: 学年・グループ・ポジション・状態はすべて四角のチェック（どれも選んでいない＝すべて。選んでいる行を
+  // もう一度押すと外れる）。学年・グループの色はラベルの前の点
+  // ux-fix R3-2 レビュー: 学年／グループ・ポジション・状態は値を 1 つしか持たないので丸のラジオ
+  const row = (key: string, label: string, on: boolean, onClick: () => void, dot?: string) => (
+    <FilterRow key={key} rowCls="rosfrow" nameCls="rosfname" on={on} label={label} onClick={onClick} dot={dot} shape="rd" />
   );
-  const sec = (title: string, rows: React.ReactNode) => (
+  const sec = (title: string, active: boolean, onClear: () => void, rows: React.ReactNode) => (
     <div className="rosfsec" key={title}>
-      <div className="rosfsec-h">{title}</div>
-      <div className="rosfrows">{rows}</div>
+      <FilterSecHead headCls="rosfsec-h" title={title} active={active} onClear={onClear} />
+      <div className="rosfrows" role="group" aria-label={title}>
+        {rows}
+      </div>
     </div>
   );
   const groupRows = (list: TeamGroup[]) =>
-    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(g.id), g.color ?? "var(--mut)"));
-  const allRow = row("g-all", "すべて", groupId === null, () => onGroup(null), "var(--mut)");
+    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(groupId === g.id ? null : g.id), g.color ?? "var(--mut)"));
   return (
     <div className="rosfpanel">
-      {grades.length > 0 && sec("学年", [allRow, ...groupRows(grades)])}
-      {customs.length > 0 && sec("グループ", [...(grades.length === 0 ? [allRow] : []), ...groupRows(customs)])}
+      {grades.length > 0 && sec("学年", grades.some((g) => g.id === groupId), () => onGroup(null), groupRows(grades))}
+      {customs.length > 0 && sec("グループ", customs.some((g) => g.id === groupId), () => onGroup(null), groupRows(customs))}
       {sec(
         "ポジション",
-        ROS_POS_OPTIONS.map((o) => row(`p-${o.key}`, o.label, pos === o.key, () => onPos(o.key)))
+        pos !== "all",
+        () => onPos("all"),
+        ROS_POS_OPTIONS.filter((o) => o.key !== "all").map((o) => row(`p-${o.key}`, o.label, pos === o.key, () => onPos(pos === o.key ? "all" : o.key)))
       )}
       {sec(
         "状態",
-        ROS_STATUS_OPTIONS.map((o) => row(`s-${o.key}`, o.label, status === o.key, () => onStatus(o.key)))
+        status !== "all",
+        () => onStatus("all"),
+        ROS_STATUS_OPTIONS.filter((o) => o.key !== "all").map((o) => row(`s-${o.key}`, o.label, status === o.key, () => onStatus(status === o.key ? "all" : o.key)))
       )}
       {/* p14 §1-1: 「絞り込みを編集…」はパネルの一番下（状態の後） */}
       {onManageGroups && (
@@ -2838,9 +2810,13 @@ function RosterTab({
                         <td className="ptable-nm col-name">
                           {p.name}
                           {captainId === p.id ? " (C)" : ""}
-                          {/* 最終修正: 左ペインが狭く「グループ」列だとバッジが右端で切れるため、氏名の下に置く */}
+                          {/* ux-fix R3-5: 行の高さを 1 種類にするため、補足はスマホの行と同じ「絞り込みと違うカスタムグループ」の
+                              文字 1 行だけ（バッジの積み重ねで 44px／64px／90px に分かれていた） */}
                           <div className="ptable-sub">
-                            <PlayerGroupBadges p={p} groups={team.groups} />
+                            {team.groups
+                              .filter((g) => g.kind === "custom" && playerInGroup(p, g) && g.id !== group?.id && g.label !== p.position)
+                              .map((g) => g.label)
+                              .join(" ・ ")}
                           </div>
                         </td>
                         <td><span className={`pos ${groupOf(p.position)}`}>{p.position}</span></td>
@@ -3082,6 +3058,101 @@ function LeagueTableView({ rows }: { rows: Standing[] }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/**
+ * PC の名簿で何も選んでいないときの右ペイン（ux-fix R3-3）。「チーム全体のサマリー」（RecSummaryPane）と同じ文法
+ * （.tmdetail の見出し＋1 行の要約＋.sech の区画）で、学年ごとの人数・ポジション別の人数・怪我中の一覧・キャプテンを出す。
+ * 一覧の絞り込みには連動しない（名簿全体の概要）。怪我中の行とキャプテンは押すとその選手の個人ページへ
+ */
+function RosterOverviewPane({ players, onPick }: { players: Player[]; onPick: (id: string) => void }) {
+  const board = useBoard();
+  const team = useTeam();
+  const stage = team.team.schoolStage ?? "elementary";
+  const captain = players.find((p) => p.id === board.state.captain) ?? null;
+
+  const gradeRows = (() => {
+    const m = new Map<number | null, number>();
+    players.forEach((p) => m.set(p.grade ?? null, (m.get(p.grade ?? null) ?? 0) + 1));
+    return [...m.entries()]
+      .sort((a, b) => (a[0] ?? 99) - (b[0] ?? 99))
+      .map(([g, n]) => ({ key: String(g), label: g != null ? gradeLabel(stage, g) : "学年未設定", n }));
+  })();
+  const posRows = ROS_POS_OPTIONS.filter((o) => o.key !== "all").map((o) => ({
+    key: o.key,
+    label: o.label,
+    n: players.filter((p) => groupOf(p.position) === o.key).length,
+  }));
+  const injured = players
+    .map((p) => ({ p, inj: (p.injuries ?? []).find((x) => x.status !== "ok") }))
+    .filter((r): r is { p: Player; inj: NonNullable<(typeof r)["inj"]> } => !!r.inj);
+  const maxGrade = Math.max(1, ...gradeRows.map((r) => r.n));
+  const maxPos = Math.max(1, ...posRows.map((r) => r.n));
+
+  const bars = (rows: { key: string; label: string; n: number }[], max: number) => (
+    <div className="list">
+      {rows.map((r) => (
+        <div key={r.key} className="attbarrow">
+          <span className="attbarlabel">{r.label}</span>
+          <span className="attbar">
+            <i style={{ width: `${Math.round((r.n / max) * 100)}%` }} />
+          </span>
+          <span className="attbarpct">{r.n}人</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="tmdetail screenbody rosoverview">
+      <h2>名簿のサマリー</h2>
+      <div className="recsumrow" aria-label="名簿の要約">
+        <span>
+          選手 <b>{players.length}</b> 人
+        </span>
+        <span>
+          怪我中 <b>{injured.length}</b> 人
+        </span>
+        <span>
+          キャプテン <b>{captain ? captain.name : "未設定"}</b>
+        </span>
+      </div>
+
+      <div className="sech">学年ごとの人数</div>
+      {players.length === 0 ? <div className="empty-msg">選手がいません。</div> : bars(gradeRows, maxGrade)}
+
+      <div className="sech">ポジション別の人数</div>
+      {bars(posRows, maxPos)}
+
+      <div className="sech">怪我中の選手</div>
+      {injured.length === 0 ? (
+        <div className="empty-msg">怪我中の選手はいません。</div>
+      ) : (
+        <div className="list">
+          {injured.map(({ p, inj }) => (
+            <button key={p.id} type="button" className="rosovinj" onClick={() => onPick(p.id)}>
+              <span className="rosovinj-nm">{p.name}</span>
+              <span className={`injbadge ${inj.status}`}>{INJURY_STATUS_LABEL[inj.status]}</span>
+              <span className="rosovinj-area">{inj.area}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="sech">キャプテン</div>
+      {captain ? (
+        <div className="list">
+          <button type="button" className="rosovinj" onClick={() => onPick(captain.id)}>
+            <span className="rosovinj-nm">{captain.name} (C)</span>
+            <span className="rosovinj-area">{captain.position}</span>
+          </button>
+        </div>
+      ) : (
+        <div className="empty-msg">キャプテンは未設定です。</div>
+      )}
+      <div className="rosovhint">左の一覧から選手を選ぶと、個人ページが開きます</div>
     </div>
   );
 }
@@ -3544,7 +3615,7 @@ function RecMatchPane({
   return (
     <div className="mhubpane">
       <div className="tmback" onClick={() => setRecSel({ kind: "summary" })}>
-        ‹ サマリー
+        ‹ 戻る
       </div>
       <MatchHub
         key={id}
@@ -3605,7 +3676,7 @@ function RecPlayerPane({
   return (
     <div className="tmdetail screenbody">
       <div className="tmback" onClick={() => setRecSel({ kind: "summary" })}>
-        ‹ サマリー
+        ‹ 戻る
       </div>
       {!p ? (
         <div className="empty-msg">この選手は見つかりません。</div>
@@ -3855,7 +3926,7 @@ function AttEventPane({
   return (
     <div className="tmdetail screenbody">
       <div className="tmback" onClick={() => setAttSel({ kind: "overview" })}>
-        ‹ サマリー
+        ‹ 戻る
       </div>
       {!ev ? (
         <div className="empty-msg">この予定は削除されました。</div>
@@ -3896,7 +3967,7 @@ function AttPlayerPane({
   return (
     <div className="tmdetail screenbody">
       <div className="tmback" onClick={() => setAttSel({ kind: "overview" })}>
-        ‹ サマリー
+        ‹ 戻る
       </div>
       {!p ? (
         <div className="empty-msg">この選手は見つかりません。</div>
@@ -4124,8 +4195,21 @@ function SheetHost({
   const [allDay, setAllDay] = useState(ev?.allDay ?? false);
   const [date, setDate] = useState(initDate);
   const [endDate, setEndDate] = useState(ev ? eventEndDate(ev) : initDate);
-  const [time, setTime] = useState(ev?.time ?? "");
-  const [endTime, setEndTime] = useState(ev?.endTime ?? "");
+  // ux-fix R3-5: 新規の予定の時刻は、選んでいる種類の前回の値から始める（触るまで種類を替えるたびに追従する）
+  const [time, setTime] = useState(() => ev?.time ?? (!ev ? loadLastEventTime(categoryId)?.time ?? "" : ""));
+  const [endTime, setEndTime] = useState(() => ev?.endTime ?? (!ev ? loadLastEventTime(categoryId)?.endTime ?? "" : ""));
+  const [timeTouched, setTimeTouched] = useState(false);
+  const timeFromLast = !ev && !timeTouched && time !== "";
+  // 「複数日」をオンにしたときだけ終了日を出す（編集で複数日の予定は最初からオン）
+  const [multiDay, setMultiDay] = useState(() => (ev ? isMultiDay(ev) : false));
+  const pickCategory = (id: string) => {
+    setCategoryId(id);
+    if (!ev && !timeTouched) {
+      const last = loadLastEventTime(id);
+      setTime(last?.time ?? "");
+      setEndTime(last?.endTime ?? "");
+    }
+  };
   const [place, setPlace] = useState(ev?.place ?? "");
   const [address, setAddress] = useState(ev?.address ?? "");
   // groups-editing-and-place-history §6: 場所の入力履歴（同じ場所で繰り返し練習することが
@@ -4161,10 +4245,15 @@ function SheetHost({
   const [evGroupIds, setEvGroupIds] = useState<string[]>(ev?.groupIds ?? []);
 
   const onChangeStartDate = (v: string) => {
-    const span = diffDays(date, endDate);
+    const span = multiDay ? diffDays(date, endDate) : 0;
     setDate(v);
     const nextEnd = addDays(v, span);
     setEndDate(nextEnd < v ? v : nextEnd);
+  };
+  const toggleMultiDay = (on: boolean) => {
+    setMultiDay(on);
+    // オンにしたら終了日は翌日から。オフに戻したら 1 日だけの予定へ
+    setEndDate(on ? addDays(date, 1) : date);
   };
 
   // match form
@@ -4334,7 +4423,7 @@ function SheetHost({
                 type="button"
                 className={`evcatchip${categoryId === c.id ? " on" : ""}`}
                 aria-pressed={categoryId === c.id}
-                onClick={() => setCategoryId(c.id)}
+                onClick={() => pickCategory(c.id)}
               >
                 {c.label}
               </button>
@@ -4346,19 +4435,83 @@ function SheetHost({
               // 管理シートから戻ったときに入力が消えないようにする
               onClick={() => setSheet({ type: "categories", from: ev, date: evDefaultDate })}
             >
-              ＋ 管理
+              ＋ 種類を追加
             </button>
           </div>
         </div>
-        {/* p16 §5-3: サッカーノートの予定別に出すか。種類を切り替えても触るまでは種類の既定に従う */}
         <div className="formfield">
-          <label className="daytoggle notetoggle">
-            <input type="checkbox" checked={noteOn} onChange={(e) => setNoteTouched(e.target.checked)} />
-            <span />
-            サッカーノートに反映する
-          </label>
-          <div className="fieldhint phubhint">オンにすると、サッカーノートの予定別に出ます</div>
+          <label>タイトル</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例）通常練習 / 練習試合 vs ○○" />
         </div>
+        {kind === "match" && (
+          <div className="formfield">
+            <label>大会</label>
+            <select value={evCompId} onChange={(e) => setEvCompId(e.target.value)}>
+              <option value="">大会なし（練習試合など）</option>
+              {team.team.competitions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {/* ux-fix R3-5: 日付・時刻。終了日は「複数日」をオンにしたときだけ。時刻は種類ごとの前回の値から始める */}
+        <div className="formfield evdt-toggles">
+          <label className="daytoggle">
+            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+            <span />
+            終日
+          </label>
+          <label className="daytoggle">
+            <input type="checkbox" checked={multiDay} onChange={(e) => toggleMultiDay(e.target.checked)} />
+            <span />
+            複数日
+          </label>
+        </div>
+        <div className="evdt">
+          <div className={`formfield${multiDay ? "" : " evdt-wide"}`}>
+            <label>開始日</label>
+            <input type="date" value={date} onChange={(e) => onChangeStartDate(e.target.value)} />
+          </div>
+          {multiDay && (
+            <div className="formfield">
+              <label>終了日</label>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value < date ? date : e.target.value)}
+              />
+            </div>
+          )}
+          {!allDay && (
+            <div className="formfield">
+              <label>開始時刻</label>
+              <input
+                type="time"
+                value={time}
+                onChange={(e) => {
+                  setTimeTouched(true);
+                  setTime(e.target.value);
+                }}
+              />
+            </div>
+          )}
+          {!allDay && (
+            <div className="formfield">
+              <label>終了時刻</label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => {
+                  setTimeTouched(true);
+                  setEndTime(e.target.value);
+                }}
+              />
+            </div>
+          )}
+        </div>
+        {timeFromLast && !allDay && <div className="fieldhint evdt-hint">前回の{team.categories.find((c) => c.id === categoryId)?.label ?? "予定"}の時刻を入れています</div>}
         {/* §2: 対象（グループの複数選択）。「全員」＝選択中のグループを全部外す */}
         <div className="formfield">
           <label>対象</label>
@@ -4391,65 +4544,58 @@ function SheetHost({
             <button
               type="button"
               className="grouppick-item manage"
-              aria-label="グループを管理"
+              aria-label="グループを追加"
               // Phase D-1(C1-major): 編集中の予定フォームの内容(from/date)を引き継ぐ
               onClick={() => setSheet({ type: "groups", from: ev, date: evDefaultDate })}
             >
-              ＋ 管理
+              ＋ グループを追加
             </button>
           </div>
         </div>
         <div className="formfield">
-          <label>タイトル</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="例）通常練習 / 練習試合 vs ○○" />
+          <label>場所</label>
+          <input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="例）市営グラウンド" />
         </div>
-        {kind === "match" && (
-          <div className="formfield">
-            <label>大会</label>
-            <select value={evCompId} onChange={(e) => setEvCompId(e.target.value)}>
-              <option value="">大会なし（練習試合など）</option>
-              {team.team.competitions.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+        {/* groups-editing-and-place-history §6: 過去に入れた場所の履歴。タップで場所と
+            (履歴に住所があれば)住所を一緒に入れる。履歴が無いチームでは行ごと出さない */}
+        {placeHistShown.length > 0 && (
+          <div className="placehist">
+            <span className="placehist-l">最近の場所</span>
+            {placeHistShown.map((h) => (
+              <button
+                key={h.place}
+                type="button"
+                className={`grouppick-item${h.place === placeTrim ? " on" : ""}`}
+                onClick={() => {
+                  setPlace(h.place);
+                  // レビュー指摘(第2回・minor): 住所が無い履歴を選んでも直前の住所欄が
+                  // 残ってしまい、別会場の住所が付いた予定ができてしまっていた。
+                  // その場所で設定されていた住所（無ければ空）に必ず揃える
+                  setAddress(h.address ?? "");
+                }}
+              >
+                {/* レビュー指摘(minor・第2回): 長い場所名で省略記号(…)が出ずに枠線で
+                    文字ごと切れていた。.grouppick-item自身(inline-flex)にはtext-overflow
+                    が効かないため、テキストをspanで包みそちらをブロック化して効かせる */}
+                <span>{h.place}</span>
+              </button>
+            ))}
           </div>
         )}
         <div className="formfield">
-          <label className="daytoggle">
-            <input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)} />
+          <label>住所</label>
+          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="地図表示用（任意）" />
+        </div>
+        {/* ux-fix R3-5: その他（ノートに反映・繰り返し・メモ） */}
+        <div className="evform-h">その他</div>
+        {/* p16 §5-3: サッカーノートの予定別に出すか。種類を切り替えても触るまでは種類の既定に従う */}
+        <div className="formfield">
+          <label className="daytoggle notetoggle">
+            <input type="checkbox" checked={noteOn} onChange={(e) => setNoteTouched(e.target.checked)} />
             <span />
-            終日
+            サッカーノートに反映する
           </label>
-        </div>
-        <div className="formgrid">
-          <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>開始日</label>
-            <input type="date" value={date} onChange={(e) => onChangeStartDate(e.target.value)} />
-          </div>
-          {!allDay && (
-            <div className="formfield" style={{ flex: 1, margin: 0 }}>
-              <label>開始時刻</label>
-              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-            </div>
-          )}
-        </div>
-        <div className="formgrid">
-          <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>終了日</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value < date ? date : e.target.value)}
-            />
-          </div>
-          {!allDay && (
-            <div className="formfield" style={{ flex: 1, margin: 0 }}>
-              <label>終了時刻</label>
-              <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
-            </div>
-          )}
+          <div className="fieldhint phubhint">オンにすると、サッカーノートの予定別に出ます</div>
         </div>
         {!ev && (
           <div className="formfield">
@@ -4503,40 +4649,6 @@ function SheetHost({
           </div>
         )}
         <div className="formfield">
-          <label>場所</label>
-          <input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="例）市営グラウンド" />
-        </div>
-        {/* groups-editing-and-place-history §6: 過去に入れた場所の履歴。タップで場所と
-            (履歴に住所があれば)住所を一緒に入れる。履歴が無いチームでは行ごと出さない */}
-        {placeHistShown.length > 0 && (
-          <div className="placehist">
-            <span className="placehist-l">最近の場所</span>
-            {placeHistShown.map((h) => (
-              <button
-                key={h.place}
-                type="button"
-                className={`grouppick-item${h.place === placeTrim ? " on" : ""}`}
-                onClick={() => {
-                  setPlace(h.place);
-                  // レビュー指摘(第2回・minor): 住所が無い履歴を選んでも直前の住所欄が
-                  // 残ってしまい、別会場の住所が付いた予定ができてしまっていた。
-                  // その場所で設定されていた住所（無ければ空）に必ず揃える
-                  setAddress(h.address ?? "");
-                }}
-              >
-                {/* レビュー指摘(minor・第2回): 長い場所名で省略記号(…)が出ずに枠線で
-                    文字ごと切れていた。.grouppick-item自身(inline-flex)にはtext-overflow
-                    が効かないため、テキストをspanで包みそちらをブロック化して効かせる */}
-                <span>{h.place}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="formfield">
-          <label>住所</label>
-          <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="地図表示用（任意）" />
-        </div>
-        <div className="formfield">
           <label>メモ</label>
           <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="持ち物・集合など" />
         </div>
@@ -4571,7 +4683,7 @@ function SheetHost({
             // 組込みカテゴリ（練習/試合）は categoryId を保存せず kind のフォールバックに任せる
             const catForSave =
               categoryId === "practice" || categoryId === "match" ? undefined : categoryId;
-            const finalEndDate = endDate && endDate !== date ? endDate : undefined;
+            const finalEndDate = multiDay && endDate && endDate !== date ? endDate : undefined;
             const finalAllDay = allDay || undefined;
             const data = {
               kind,
@@ -4598,6 +4710,7 @@ function SheetHost({
               noteTarget: noteOn === catNoteDefault(categoryId) ? undefined : noteOn,
             };
             saveLastEventCategory(categoryId);
+            if (!allDay) saveLastEventTime(categoryId, time, endTime);
             if (!ev) {
               let rule: RecurrenceRule | undefined;
               if (freqSel === "monthly") {
@@ -4781,6 +4894,101 @@ function SheetHost({
             } else {
               whenText = `${fmtDate(e.date)}${fmtTimeRange(e) ? ` ${fmtTimeRange(e)}` : ""}`;
             }
+            // ux-fix R3-3: スタッフの操作。PC のペインは内容の直下に主操作、削除は末尾の小さな赤い文字（evdel）。スマホは従来の並び
+            const delCls = pane ? "evdel" : "bigbtn ghost";
+            const delStyle = pane ? undefined : { color: "var(--red)" };
+            const coachMain = (
+              <>
+                    {e.kind === "match" && (
+                      <button
+                        // p15 §6-4: 紐づく記録があるときは「この試合の結果を記録」を出さず、記録を開く（二重作成を防ぐ）
+                        // mobile-redesign-v2 §3-4(緑残存の自動走査対応): 緑残存走査の対象
+                        // (予定詳細)のため、モバイルでは--accent地の強調にする(PC(pane)は
+                        // 変更しない・元の緑bigbtnのまま)。Phase D-1(C2 minor review):
+                        // 直下の「編集する」もghostだと主従の差が消えるため、試合の予定は
+                        // こちらを唯一の強調にする
+                        className={`bigbtn${pane ? "" : " accent"}`}
+                        onClick={() => {
+                          if (rec) {
+                            onOpenMatch?.(rec.id);
+                            return;
+                          }
+                          setSheet({
+                            type: "match",
+                            prefill: {
+                              date: e.date,
+                              opponent: opponentFromTitle(e.title),
+                              eventId: e.id,
+                              competitionId: e.competitionId,
+                            },
+                          });
+                        }}
+                      >
+                        {rec ? "試合記録を開く" : "この試合の結果を記録"}
+                      </button>
+                    )}
+                    <button
+                      // Phase D-1(C2 minor review): モバイルでは主操作を1つだけ強調する。
+                      // 試合の予定は上の「この試合の結果を記録」が主役なのでghost、
+                      // 非試合の予定はこちらが唯一の操作なのでaccentで強調する
+                      className={
+                        pane
+                          ? `bigbtn${e.kind === "match" ? " ghost" : ""}`
+                          : `bigbtn${e.kind === "match" ? " ghost" : " accent"}`
+                      }
+                      onClick={() => setSheet({ type: "event", event: e })}
+                    >
+                      編集する
+                    </button>
+              </>
+            );
+            const coachDelete = (
+              <>
+                    {e.seriesId ? (
+                      <>
+                        <button
+                          className={delCls}
+                          style={delStyle}
+                          onClick={() => {
+                            if (window.confirm(`「${e.title}」を削除しますか？（この回のみ）`)) {
+                              team.removeEventOnly(e.id);
+                              close();
+                            }
+                          }}
+                        >
+                          この予定のみ削除
+                        </button>
+                        <button
+                          className={delCls}
+                          style={delStyle}
+                          onClick={() => {
+                            if (
+                              window.confirm(`「${e.title}」以降の繰り返し予定をすべて削除しますか？`)
+                            ) {
+                              team.removeSeriesFollowing(e);
+                              close();
+                            }
+                          }}
+                        >
+                          以降すべて削除
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className={delCls}
+                        style={delStyle}
+                        onClick={() => {
+                          if (window.confirm(`「${e.title}」を削除しますか？`)) {
+                            team.removeEventOnly(e.id);
+                            close();
+                          }
+                        }}
+                      >
+                        削除する
+                      </button>
+                    )}
+              </>
+            );
             return (
               <>
                 <h2>
@@ -4788,10 +4996,13 @@ function SheetHost({
                   {/* Phase D-1(C3 major): 他2箇所(EventCard/リスト表示)と同じclassName="evkind"
                       構成にする。無印styleのままだと.teamapp:has(.mhead)の打ち消しが効かず、
                       このシートだけ種別ピルが色塗り+白文字のまま残ってしまう */}
-                  <span className="evkind" style={{ background: cat.color }}>
-                    <i className="evdot" style={{ background: cat.color }} />
-                    {cat.label}
-                  </span>
+                  {/* ux-fix R3-5: タイトルに種類の名前が入っている（「全体練習」＝練習）ときは種類のチップを重ねて出さない */}
+                  {!e.title.includes(cat.label) && (
+                    <span className="evkind" style={{ background: cat.color }}>
+                      <i className="evdot" style={{ background: cat.color }} />
+                      {cat.label}
+                    </span>
+                  )}
                 </h2>
                 <div className="detail">
                   {/* p15 §6-5: 試合結果（紐づく記録があるときだけ。日時・場所の前） */}
@@ -5020,8 +5231,25 @@ function SheetHost({
                       <>
                         <div className="dsec">
                           <div className="dsec-h">出欠状況</div>
-                          <div className="dline">
-                            出席 {s.yes} ・ 未定 {s.maybe} ・ 欠席 {s.no} ・ 未回答 {s.none}
+                          {/* ux-fix R3-5: 出席数を大きく。未定・欠席・未回答は 1 以上なら色を付ける（0 は灰色）。
+                              DOM は「ラベル→数字」の順（読み上げ・本文検索のため）で、見た目は数字を上にする */}
+                          <div className="attstats" role="group" aria-label="出欠状況">
+                            <div className="attstat yes">
+                              <span>出席</span>
+                              <b>{s.yes}</b>
+                            </div>
+                            <div className={`attstat maybe${s.maybe > 0 ? " has" : ""}`}>
+                              <span>未定</span>
+                              <b>{s.maybe}</b>
+                            </div>
+                            <div className={`attstat no${s.no > 0 ? " has" : ""}`}>
+                              <span>欠席</span>
+                              <b>{s.no}</b>
+                            </div>
+                            <div className={`attstat none${s.none > 0 ? " has" : ""}`}>
+                              <span>未回答</span>
+                              <b>{s.none}</b>
+                            </div>
                           </div>
                           {unanswered.length > 0 && (
                             <>
@@ -5107,16 +5335,9 @@ function SheetHost({
                       );
                     })()}
                 </div>
-                {mapQuery && (
-                  <div className="mapframe">
-                    <iframe
-                      src={gmapsEmbedUrl(mapQuery)}
-                      loading="lazy"
-                      referrerPolicy="no-referrer-when-downgrade"
-                      style={{ border: 0, width: "100%", height: 220, borderRadius: 12 }}
-                    />
-                  </div>
-                )}
+                {/* ux-fix R3-3: PC のペインは操作を内容のすぐ下へ詰める（地図の後ろに置くと画面の外へ落ちる）。削除は一番下の小さな赤い文字 */}
+                {pane && isCoach && coachMain}
+                {/* ux-fix R3-5: 場所に座標は持っていないので、地図の埋め込みは出さない（埋め込みの中にも「マップで開く」があり、下のボタンと重なっていた）。ボタンだけ */}
                 {mapQuery && (
                   <div className="maplinks">
                     <a href={gmapsSearchUrl(mapQuery)} target="_blank" rel="noopener noreferrer">
@@ -5129,90 +5350,8 @@ function SheetHost({
                 )}
                 {isCoach && (
                   <>
-                    {e.kind === "match" && (
-                      <button
-                        // p15 §6-4: 紐づく記録があるときは「この試合の結果を記録」を出さず、記録を開く（二重作成を防ぐ）
-                        // mobile-redesign-v2 §3-4(緑残存の自動走査対応): 緑残存走査の対象
-                        // (予定詳細)のため、モバイルでは--accent地の強調にする(PC(pane)は
-                        // 変更しない・元の緑bigbtnのまま)。Phase D-1(C2 minor review):
-                        // 直下の「編集する」もghostだと主従の差が消えるため、試合の予定は
-                        // こちらを唯一の強調にする
-                        className={`bigbtn${pane ? "" : " accent"}`}
-                        onClick={() => {
-                          if (rec) {
-                            onOpenMatch?.(rec.id);
-                            return;
-                          }
-                          setSheet({
-                            type: "match",
-                            prefill: {
-                              date: e.date,
-                              opponent: opponentFromTitle(e.title),
-                              eventId: e.id,
-                              competitionId: e.competitionId,
-                            },
-                          });
-                        }}
-                      >
-                        {rec ? "試合記録を開く" : "この試合の結果を記録"}
-                      </button>
-                    )}
-                    <button
-                      // Phase D-1(C2 minor review): モバイルでは主操作を1つだけ強調する。
-                      // 試合の予定は上の「この試合の結果を記録」が主役なのでghost、
-                      // 非試合の予定はこちらが唯一の操作なのでaccentで強調する
-                      className={
-                        pane
-                          ? `bigbtn${e.kind === "match" ? " ghost" : ""}`
-                          : `bigbtn${e.kind === "match" ? " ghost" : " accent"}`
-                      }
-                      onClick={() => setSheet({ type: "event", event: e })}
-                    >
-                      編集する
-                    </button>
-                    {e.seriesId ? (
-                      <>
-                        <button
-                          className="bigbtn ghost"
-                          style={{ color: "var(--red)" }}
-                          onClick={() => {
-                            if (window.confirm(`「${e.title}」を削除しますか？（この回のみ）`)) {
-                              team.removeEventOnly(e.id);
-                              close();
-                            }
-                          }}
-                        >
-                          この予定のみ削除
-                        </button>
-                        <button
-                          className="bigbtn ghost"
-                          style={{ color: "var(--red)" }}
-                          onClick={() => {
-                            if (
-                              window.confirm(`「${e.title}」以降の繰り返し予定をすべて削除しますか？`)
-                            ) {
-                              team.removeSeriesFollowing(e);
-                              close();
-                            }
-                          }}
-                        >
-                          以降すべて削除
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="bigbtn ghost"
-                        style={{ color: "var(--red)" }}
-                        onClick={() => {
-                          if (window.confirm(`「${e.title}」を削除しますか？`)) {
-                            team.removeEventOnly(e.id);
-                            close();
-                          }
-                        }}
-                      >
-                        削除する
-                      </button>
-                    )}
+                    {!pane && coachMain}
+                    {pane ? <div className="evdelrow">{coachDelete}</div> : coachDelete}
                   </>
                 )}
               </>
@@ -5632,6 +5771,21 @@ function SheetHost({
         >
           {mr ? "保存する" : "記録する"}
         </button>
+        {/* ux-fix R3-5: 削除は編集の一番下。消したあと、詳細は見つからなくなり親が一覧へ戻す（MatchHub） */}
+        {mr && (
+          <button
+            type="button"
+            className="phubdel"
+            onClick={() => {
+              if (window.confirm("この試合記録を削除しますか？")) {
+                team.removeMatch(mr.id);
+                close();
+              }
+            }}
+          >
+            この試合記録を削除
+          </button>
+        )}
       </Sheet>
 
       {/* p14 §3-3: 順位表の閲覧（スマホ・PCの選手の入口行から。表は横スクロール可）。スタッフだけ「編集する」 */}

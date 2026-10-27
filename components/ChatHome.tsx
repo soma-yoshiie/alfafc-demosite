@@ -2,7 +2,7 @@
 
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Announcement, ChatAttachment, ChatMessage, ChatReplyTo, Player, SavedPlay } from "@/lib/types";
+import type { Announcement, ChatAttachment, ChatMessage, ChatReads, ChatReplyTo, Player, SavedPlay, SchoolStage } from "@/lib/types";
 import { dmThreadKey, gradeLabel } from "@/lib/types";
 import { loadChatSeg, saveChatSeg, type ChatSeg } from "@/lib/storage";
 import {
@@ -31,6 +31,7 @@ import { useMatchups } from "./matchup/MatchupProvider";
 import { useChatBadgeInput } from "./useChatBadgeInput";
 import { announcementBadge, messageBadge } from "@/lib/badges";
 import ChatThread, { AttachmentView } from "./ChatThread";
+import { HubMenu } from "./hub/common";
 
 /*
  * チャットの入口（chat-plan-a §3-1〜§3-3）。「お知らせ」と「メッセージ」の 2 つに分ける。
@@ -150,7 +151,7 @@ export default function ChatHome({ pc, lockSegment, onOpenAnn, onOpenDm, selecte
       {seg === "ann" ? (
         <AnnouncementsView pc={pc} showCompose={!!pc && !lockSegment} selectedId={selectedAnnId} onOpen={onOpenAnn} />
       ) : (
-        <MessagesView pc={pc} selectedDm={selectedDm} onOpenDm={onOpenDm} />
+        <MessagesView pc={pc} showCompose={!!pc && !lockSegment} selectedDm={selectedDm} onOpenDm={onOpenDm} />
       )}
     </div>
   );
@@ -338,7 +339,7 @@ function AnnCard({
               if (memberId) team.toggleAnnouncementAck(a.id, memberId);
             }}
           >
-            了解 {stats.acked.length}
+            {acked ? "了解済み" : `了解 ${stats.acked.length}`}
           </button>
         </div>
       )}
@@ -411,6 +412,25 @@ export function AnnouncementDetail({
         <div className="anndtags">
           <TargetChip a={a} />
           {a.pinned && <span className="annpin">固定</span>}
+          {/* ux-fix R3-5：スタッフの「削除」は「…」メニューへ（確認は必ず出す） */}
+          {isStaff && (
+            <span className="anndmore">
+              <HubMenu
+                label="お知らせのメニュー"
+                items={[
+                  {
+                    label: "削除",
+                    onClick: () => {
+                      if (window.confirm("このお知らせを削除しますか？")) {
+                        team.removeAnnouncement(a.id);
+                        onClose?.();
+                      }
+                    },
+                  },
+                ]}
+              />
+            </span>
+          )}
         </div>
         <div className="anndtitle">{subject}</div>
         <div className="anndfrom">
@@ -431,6 +451,10 @@ export function AnnouncementDetail({
         </div>
       )}
 
+      {/* ux-fix R3-3: 本文の下に「既読 52/70・了解 41」の 1 行と、学年ごとの未読数（スタッフだけ）。
+          一覧の「了解 N/M ›」「既読 N/M ›」と同じ数 */}
+      {isStaff && <AnnReadSummary a={a} />}
+
       {!isStaff && (
         <div className="anndactions">
           <button
@@ -440,7 +464,7 @@ export function AnnouncementDetail({
             disabled={!memberId}
             onClick={() => memberId && team.toggleAnnouncementAck(a.id, memberId)}
           >
-            了解 {ackCount}
+            {acked ? "了解済み" : `了解 ${ackCount}`}
           </button>
           <button type="button" className="annbtn" disabled={!memberId} onClick={reply}>
             スタッフに返信
@@ -460,22 +484,101 @@ export function AnnouncementDetail({
             >
               {a.pinned ? "固定を外す" : "上部に固定する"}
             </button>
-            <button
-              type="button"
-              className="annbtn ghost danger"
-              onClick={() => {
-                if (window.confirm("このお知らせを削除しますか？")) {
-                  team.removeAnnouncement(a.id);
-                  onClose?.();
-                }
-              }}
-            >
-              削除
-            </button>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+/** 詳細の本文の下の 1 行（ux-fix R3-3）。「既読 52/70・了解 41」と、未読が残る学年ごとの人数 */
+function AnnReadSummary({ a }: { a: Announcement }) {
+  const { board, team } = useChatViewer();
+  const stats = announcementStats(a, board.state.players, team.groups);
+  const stage = team.team.schoolStage ?? "junior";
+  const byGrade = new Map<number | null, number>();
+  stats.unseen.forEach((p) => byGrade.set(p.grade ?? null, (byGrade.get(p.grade ?? null) ?? 0) + 1));
+  const rows = [...byGrade.entries()].sort((x, y) => (x[0] ?? 99) - (y[0] ?? 99));
+  return (
+    <div className="annsum" aria-label="既読の状況">
+      <div className="annsumline">
+        <span>
+          既読 <b>{stats.seen.length}/{stats.recipients.length}</b>
+        </span>
+        <span>
+          了解 <b>{stats.acked.length}</b>
+        </span>
+      </div>
+      {stats.recipients.length > 0 && (
+        <div className="annsumgrades">
+          {rows.length === 0 ? (
+            <span className="annsumdone">全員が読みました</span>
+          ) : (
+            <>
+              <span className="annsumlabel">未読</span>
+              {rows.map(([g, n]) => (
+                <span key={String(g)} className="annsumgrade">
+                  {g == null ? "学年未設定" : gradeLabel(stage, g)} <b>{n}</b>
+                </span>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 学年見出し＋背番号順の選手一覧（既読パネルと「新しいメッセージ」の選手選びで共用。ux-fix R3-5）。
+ * onPick を渡すと行が button になる（選手選び）。無ければ表示だけ（既読パネル）
+ */
+export function PlayersByGrade({
+  players,
+  stage,
+  onPick,
+}: {
+  players: Player[];
+  stage: SchoolStage;
+  onPick?: (playerId: string) => void;
+}) {
+  // 学年ごとに束ねる（学年の小さい順。学年が無い選手は末尾）。同じ学年は背番号順（背番号なしは末尾）
+  const map = new Map<number | null, Player[]>();
+  players.forEach((p) => {
+    const g = p.grade ?? null;
+    map.set(g, [...(map.get(g) ?? []), p]);
+  });
+  const groups = [...map.entries()].sort((x, y) => (x[0] ?? 99) - (y[0] ?? 99));
+  return (
+    <>
+      {groups.map(([g, ps]) => (
+        <div key={String(g)} className="annreadgroup">
+          <div className="annreadhead">{g == null ? "学年未設定" : gradeLabel(stage, g)}</div>
+          {[...ps]
+            .sort((x, y) => (x.number ?? Number.MAX_SAFE_INTEGER) - (y.number ?? Number.MAX_SAFE_INTEGER))
+            .map((p) => {
+              const inner = (
+                <>
+                  <span className="chatavatar sm" aria-hidden="true">
+                    {firstChar(p.name)}
+                  </span>
+                  <span className="annreadname">{p.name}</span>
+                  {p.number != null && <span className="annreadno">#{p.number}</span>}
+                </>
+              );
+              return onPick ? (
+                <button key={p.id} type="button" className="annreadrow pick" onClick={() => onPick(p.id)}>
+                  {inner}
+                </button>
+              ) : (
+                <div key={p.id} className="annreadrow">
+                  {inner}
+                </div>
+              );
+            })}
+        </div>
+      ))}
+    </>
   );
 }
 
@@ -498,30 +601,7 @@ export function AnnReadPanel({ a, initialTab = "unseen" }: { a: Announcement; in
     return stats.recipients.filter((p) => !ackSet.has(p.id));
   }, [stats]);
 
-  // 学年ごとに束ねる（学年の小さい順。学年が無い選手は末尾）
-  const groupByGrade = (list: Player[]) => {
-    const map = new Map<number | null, Player[]>();
-    list.forEach((p) => {
-      const g = p.grade ?? null;
-      map.set(g, [...(map.get(g) ?? []), p]);
-    });
-    return [...map.entries()].sort((x, y) => (x[0] ?? 99) - (y[0] ?? 99));
-  };
-  const renderGrades = (list: Player[]) =>
-    groupByGrade(list).map(([g, ps]) => (
-      <div key={String(g)} className="annreadgroup">
-        <div className="annreadhead">{g == null ? "学年未設定" : gradeLabel(stage, g)}</div>
-        {ps.map((p) => (
-          <div key={p.id} className="annreadrow">
-            <span className="chatavatar sm" aria-hidden="true">
-              {firstChar(p.name)}
-            </span>
-            <span className="annreadname">{p.name}</span>
-            {p.number != null && <span className="annreadno">#{p.number}</span>}
-          </div>
-        ))}
-      </div>
-    ));
+  const renderGrades = (list: Player[]) => <PlayersByGrade players={list} stage={stage} />;
 
   const tabs: { key: AnnReadTab; label: string; n: number }[] = [
     { key: "unseen", label: "未読", n: stats.unseen.length },
@@ -672,12 +752,37 @@ function previewOf(m: ChatMessage): string {
   return m.from === "coach" ? `あなた：${body}` : body;
 }
 
+/**
+ * スタッフの「メッセージ」の会話の行（新しい順）。選手との会話と相手チームとの会話を混ぜる。
+ * 名簿から消した選手・一覧に無い相手チームの会話は行にしない（赤丸 staffUnreadTotal も同じ条件で数える）。
+ * PC で何も選んでいないときに最初の会話を開く（ChatScreen）のにも同じ並びを使う
+ */
+export function staffConversationRows(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  players: Player[],
+  oppTeams: ReturnType<typeof useMatchups>["teams"]
+) {
+  const dm = dmSummaries(messages, reads)
+    .map((s) => ({ s, p: players.find((x) => x.id === s.playerId) ?? null }))
+    .filter((r): r is { s: (typeof r)["s"]; p: Player } => !!r.p)
+    .map((r) => ({ kind: "dm" as const, key: r.s.key, name: r.p.name, last: r.s.last, unread: r.s.unread, p: r.p }));
+  const opp = oppSummaries(messages, reads)
+    .map((s) => ({ s, t: oppTeams.find((x) => x.id === s.teamId) ?? null }))
+    .filter((r): r is { s: (typeof r)["s"]; t: (typeof oppTeams)[number] } => !!r.t)
+    .map((r) => ({ kind: "opp" as const, key: r.s.key, name: r.t.name, last: r.s.last, unread: r.s.unread, t: r.t }));
+  return [...dm, ...opp].sort((a, b) => b.last.ts - a.last.ts);
+}
+
 function MessagesView({
   pc,
+  showCompose,
   selectedDm,
   onOpenDm,
 }: {
   pc?: boolean;
+  /** PC の一覧の上に作成ボタンを出す（お知らせの一覧と同じ位置。ux-fix R3-5） */
+  showCompose?: boolean;
   selectedDm?: string | null;
   onOpenDm?: (playerOrKey: string) => void;
 }) {
@@ -694,18 +799,10 @@ function MessagesView({
 
   // 選手との会話と相手チームとの会話を、最新の発言の新しい順に混ぜる。
   // 名簿から消した選手・一覧に無い相手チームの会話は行にしない（赤丸 staffUnreadTotal も同じ条件で数える）
-  const allRows = useMemo(() => {
-    if (!isStaff) return [];
-    const dm = dmSummaries(board.messages, board.chatReads)
-      .map((s) => ({ s, p: players.find((x) => x.id === s.playerId) ?? null }))
-      .filter((r): r is { s: (typeof r)["s"]; p: Player } => !!r.p)
-      .map((r) => ({ kind: "dm" as const, key: r.s.key, name: r.p.name, last: r.s.last, unread: r.s.unread, p: r.p }));
-    const opp = oppSummaries(board.messages, board.chatReads)
-      .map((s) => ({ s, t: oppTeams.find((x) => x.id === s.teamId) ?? null }))
-      .filter((r): r is { s: (typeof r)["s"]; t: (typeof oppTeams)[number] } => !!r.t)
-      .map((r) => ({ kind: "opp" as const, key: r.s.key, name: r.t.name, last: r.s.last, unread: r.s.unread, t: r.t }));
-    return [...dm, ...opp].sort((a, b) => b.last.ts - a.last.ts);
-  }, [isStaff, board.messages, board.chatReads, players, oppTeams]);
+  const allRows = useMemo(
+    () => (isStaff ? staffConversationRows(board.messages, board.chatReads, players, oppTeams) : []),
+    [isStaff, board.messages, board.chatReads, players, oppTeams]
+  );
   const rows = useMemo(() => {
     const kw = q.trim().toLowerCase();
     return allRows
@@ -759,15 +856,17 @@ function MessagesView({
   }
 
   /* ---- スタッフ：やり取りのある 1 対 1 だけ（新しい順） ---- */
-  const newBtn = (
-    <button type="button" className="annbtn ghost chatnewbtn" onClick={() => board.openSheet({ type: "chatNew" })}>
-      ＋ 新しいメッセージ
-    </button>
-  );
+  // ux-fix R3-5：作成ボタンはお知らせの一覧と同じ位置（PC＝一覧の上、一覧の末尾、空のときは案内の下）
+  const compose = () => board.openSheet({ type: "chatNew" });
   const hasAny = allRows.length > 0;
 
   return (
     <div className="msglist">
+      {showCompose && (
+        <button type="button" className="annbtn ghost chatnewbtn" onClick={compose}>
+          ＋ 新しいメッセージ
+        </button>
+      )}
       {hasAny && (
         <>
           <input
@@ -791,7 +890,13 @@ function MessagesView({
       {!hasAny ? (
         <div className="empty-msg">
           まだメッセージはありません
-          <div style={{ marginTop: 14 }}>{newBtn}</div>
+          {!showCompose && (
+            <div style={{ marginTop: 14 }}>
+              <button type="button" className="annbtn chatnewbtn" onClick={compose}>
+                ＋ 新しいメッセージ
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <>
@@ -837,7 +942,10 @@ function MessagesView({
               })}
             </div>
           )}
-          {newBtn}
+          {/* お知らせの一覧の末尾（＋ お知らせを書く）と同じ作り */}
+          <button type="button" className="st-btn ghost annlistend chatnewbtn" onClick={compose}>
+            ＋ 新しいメッセージ
+          </button>
         </>
       )}
     </div>
@@ -880,21 +988,7 @@ export function NewMessagePicker({ onPick }: { onPick: (playerId: string) => voi
       {list.length === 0 ? (
         <div className="empty-msg">該当する選手がいません。</div>
       ) : (
-        <div className="convlist">
-          {list.map((p) => (
-            <button key={p.id} type="button" className="convrow" onClick={() => onPick(p.id)}>
-              <div className="convavatar">{firstChar(p.name)}</div>
-              <div className="convmain">
-                <div className="convtop">
-                  <span className="convname">{p.name}</span>
-                  {p.number != null && <span className="convcount">#{p.number}</span>}
-                </div>
-                <div className="convprev">{p.grade != null ? gradeLabel(stage, p.grade) : "学年未設定"}</div>
-              </div>
-              <span className="convchev">›</span>
-            </button>
-          ))}
-        </div>
+        <PlayersByGrade players={list} stage={stage} onPick={onPick} />
       )}
     </div>
   );

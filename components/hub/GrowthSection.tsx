@@ -20,12 +20,13 @@ import { TrendChart } from "../ProfileCharts";
 import {
   Field,
   HubAdd,
+  HubEditBtn,
   HubEmpty,
   HubHead,
-  HubRowBtn,
   HubSheet,
   LastUpdated,
   NumField,
+  SheetDelete,
   SheetSave,
   fmtDiff,
   fmtYMD,
@@ -91,10 +92,12 @@ export default function GrowthSection({ p, profile, stage, age }: HubSectionProp
     }
   };
 
-  const remove = (m: Measurement) => {
-    if (!window.confirm(`${fmtYMD(m.date)} の測定記録を削除しますか？`)) return;
+  /* ux-fix R3-2: 削除は編集フォームの一番下から（確認で止めたら false。フォームは閉じない） */
+  const remove = (m: Measurement): boolean => {
+    if (!window.confirm(`${fmtYMD(m.date)} の測定記録を削除しますか？`)) return false;
     profiles.removeRecord(p.id, "measurements", m.id);
     syncPlayer(profile.measurements.filter((x) => x.id !== m.id));
+    return true;
   };
 
   const hasAny = asc.length > 0;
@@ -206,12 +209,7 @@ export default function GrowthSection({ p, profile, stage, age }: HubSectionProp
                 {m.note && <small>{m.note}</small>}
               </div>
               <div className="phubrow-act">
-                <HubRowBtn label={`${fmtYMD(m.date)} の測定を編集`} onClick={() => setForm({ edit: m })}>
-                  編集
-                </HubRowBtn>
-                <HubRowBtn danger label={`${fmtYMD(m.date)} の測定を削除`} onClick={() => remove(m)}>
-                  削除
-                </HubRowBtn>
+                <HubEditBtn label={`${fmtYMD(m.date)} の測定を編集`} onClick={() => setForm({ edit: m })} />
               </div>
             </div>
           ))}
@@ -222,6 +220,13 @@ export default function GrowthSection({ p, profile, stage, age }: HubSectionProp
       {form && (
         <MeasurementForm
           edit={form.edit}
+          onDelete={
+            form.edit
+              ? () => {
+                  if (remove(form.edit!)) setForm(null);
+                }
+              : undefined
+          }
           onClose={() => setForm(null)}
           onSave={(rec) => {
             // 同じ日付の別の記録があれば上書き確認（追加なら相手の id に載せ替え、編集なら相手を消して自分を残す）
@@ -259,10 +264,13 @@ function BmiMeter({ value, min, max }: { value: number; min: number; max: number
 function MeasurementForm({
   edit,
   onSave,
+  onDelete,
   onClose,
 }: {
   edit?: Measurement;
   onSave: (rec: Omit<Measurement, "id" | "updatedAt" | "updatedBy">) => void;
+  /** 編集のときだけ。フォームの一番下に「削除」を出す */
+  onDelete?: () => void;
   onClose: () => void;
 }) {
   const board = useBoard();
@@ -304,6 +312,7 @@ function MeasurementForm({
         <input aria-label="メモ" value={note} onChange={(e) => setNote(e.target.value)} placeholder="例）学校の健康診断" />
       </Field>
       <SheetSave onClick={save} />
+      {onDelete && <SheetDelete onClick={onDelete} label="この測定を削除" />}
     </HubSheet>
   );
 }
