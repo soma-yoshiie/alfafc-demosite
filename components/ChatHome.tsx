@@ -10,7 +10,6 @@ import {
   announcementParts,
   announcementStats,
   announcementTarget,
-  announcementUnreadCount,
   attachmentLabel,
   dmSummaries,
   fmtDateTime,
@@ -19,7 +18,6 @@ import {
   memberUnreadTotal,
   oppSummaries,
   sortAnnouncements,
-  staffUnreadTotal,
   visibleAnnouncements,
   STAFF_FALLBACK,
 } from "@/lib/chat";
@@ -30,6 +28,8 @@ import { E } from "./Emoji";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import { MobileSegments } from "./MobileSegments";
 import { useMatchups } from "./matchup/MatchupProvider";
+import { useChatBadgeInput } from "./useChatBadgeInput";
+import { announcementBadge, messageBadge } from "@/lib/badges";
 import ChatThread, { AttachmentView } from "./ChatThread";
 
 /*
@@ -126,17 +126,13 @@ export interface ChatHomeProps {
 
 export default function ChatHome({ pc, lockSegment, onOpenAnn, onOpenDm, selectedAnnId, selectedDm }: ChatHomeProps) {
   const { board, team, isStaff, memberId, me } = useChatViewer();
-  const { teams: oppTeams } = useMatchups();
   const [savedSeg, setSeg] = useChatSeg();
   const seg = lockSegment ?? savedSeg;
 
   // 未読の赤丸（chat-plan-a §3-1）。スタッフ：メッセージの未読の合計。選手：自分宛ての未読お知らせ／スタッフからの未読
-  const annBadge = !isStaff && me ? announcementUnreadCount(team.team.announcements, me, team.groups) : 0;
-  const msgBadge = isStaff
-    ? staffUnreadTotal(board.messages, board.chatReads, board.state.players, oppTeams.map((t) => t.id))
-    : memberId
-      ? memberUnreadTotal(board.messages, board.chatReads, memberId)
-      : 0;
+  const badgeInput = useChatBadgeInput();
+  const annBadge = announcementBadge(badgeInput);
+  const msgBadge = messageBadge(badgeInput);
 
   return (
     <div className={`chathome${pc ? " pc" : ""}`}>

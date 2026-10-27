@@ -13,12 +13,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { localDateStr } from "@/lib/dates";
-import { weeklyNoteCounts } from "@/lib/homeStats";
 import { NOTE_KIND_LABEL } from "@/lib/types";
 import type { EventCategory, NoteKind, TeamEvent } from "@/lib/types";
 import { eventTargetsPlayer, playerInGroup } from "@/lib/groups";
 import { attachmentLabel, isMemberFrom } from "@/lib/chat";
 import { linkedEventIds } from "@/lib/matchEvents";
+import { eventPhase } from "@/lib/calendarUtils";
 import { loadNotifPrefs } from "@/lib/storage";
 import type { useBoard } from "./BoardProvider";
 import type { useTeam } from "./TeamProvider";
@@ -43,6 +43,15 @@ export function opponentFromTitle(title: string): string | null {
 export function categoryLabel(e: TeamEvent, categories: EventCategory[]): string {
   const id = e.categoryId ?? e.kind;
   return categories.find((c) => c.id === id)?.label ?? (e.kind === "match" ? "試合" : "練習");
+}
+
+/** ヒーローの残り時間の文字（ux-fix R1-2）。開始済み＝開催中／1日以上＝あと N 日／1時間以上＝あと N 時間／それ以外＝あと N 分（0 分は「まもなく」）。 */
+export function fmtCountdown(cd: { days: number; hours: number; minutes: number; started: boolean }): string {
+  if (cd.started) return "開催中";
+  if (cd.days >= 1) return `あと ${cd.days} 日`;
+  if (cd.hours >= 1) return `あと ${cd.hours} 時間`;
+  if (cd.minutes >= 1) return `あと ${cd.minutes} 分`;
+  return "まもなく";
 }
 
 /** 60秒interval + visibilitychangeで停止/再開 + アンマウントでclear */
@@ -98,6 +107,12 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
   const todayISO = localDateStr();
   const players = board.state.players;
   const mePlayer = forPlayerId ? players.find((p) => p.id === forPlayerId) ?? null : null;
+  // ux-fix R1-2（レビュー）: 「次の予定」は時刻で終了を判定するので、開いたままでも分ごとに選び直す
+  const [nowMin, setNowMin] = useState<number>(() => Math.floor(Date.now() / 60000));
+  useEffect(() => {
+    const id = setInterval(() => setNowMin(Math.floor(Date.now() / 60000)), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   /* ---------------- 区画1: ヒーロー(次の予定/試合) ---------------- */
   const nextEvent = useMemo<TeamEvent | null>(() => {
@@ -106,10 +121,12 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
     const done = linkedEventIds(team.team.matches);
     const list = [...team.team.events]
       .filter((e) => e.date >= todayISO && !done.has(e.id))
+      // ux-fix R1-2: 今日の終わった予定（時刻で「終了」）は次の予定にしない
+      .filter((e) => eventPhase(e, new Date(nowMin * 60000)) !== "after")
       .filter((e) => !mePlayer || eventTargetsPlayer(e, mePlayer, team.groups))
       .sort((a, b) => (`${a.date} ${a.time ?? ""}` < `${b.date} ${b.time ?? ""}` ? -1 : 1));
     return list[0] ?? null;
-  }, [team.team.events, team.team.matches, todayISO, mePlayer, team.groups]);
+  }, [team.team.events, team.team.matches, todayISO, mePlayer, team.groups, nowMin]);
 
   const isMatch = nextEvent?.kind === "match";
   // タイトルから対戦相手を抽出できた試合予定だけを対戦カード表示にする。抽出できなければ非試合と同じ「タイトル+カテゴリ」表示にフォールバック
@@ -181,12 +198,9 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
   }, [nextEvent, unansweredNext, uncommented, board, prefsVer]);
   const bellBadge = bellRows.reduce((sum, r) => sum + r.badge, 0);
 
-  /* ---------------- 区画3: ハイライト用の週のノート数・今月の集計 ----------------
+  /* ---------------- 区画3: ハイライト用の今月の集計 ----------------
      p18 §4・§5: 指標タイル・グラフ・今月のトピック・最新の動きをホームから外したので、
      それ専用だった集計（出席率・勝率・順位・トピック・フィード）は削除した */
-  const notesSeries = useMemo(() => weeklyNoteCounts(board.notebook, 7), [board.notebook]);
-  const notesThisWeek = notesSeries.at(-1)?.value ?? 0;
-
   const ym = todayISO.slice(0, 7);
   const monthEvents = useMemo(
     () => team.team.events.filter((e) => e.date.startsWith(ym) && e.date <= todayISO),
@@ -202,9 +216,6 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
         : 0;
     if (fullAttendanceCount > 0) chips.push({ text: `全員出席 ${fullAttendanceCount}回`, kind: "att" });
 
-    const weekMax = Math.max(0, ...notesSeries.map((p) => p.value ?? 0));
-    if (notesThisWeek > 0 && notesThisWeek >= weekMax) chips.push({ text: "ノート提出 週間最高", kind: "notes" });
-
     const firstGoalDate: Record<string, string> = {};
     [...team.team.matches]
       .sort((a, b) => (a.date < b.date ? -1 : 1))
@@ -215,7 +226,7 @@ export function useMatchdayData(board: BoardCtx, team: TeamCtx, forPlayerId?: st
     if (firstGoalCount > 0) chips.push({ text: `初得点 ${firstGoalCount}人`, kind: "goal" });
 
     return chips;
-  }, [monthEvents, team, players, notesSeries, notesThisWeek, ym]);
+  }, [monthEvents, team, players, ym]);
 
   const teamName = board.state.teamName ?? "マイチーム";
 
@@ -250,6 +261,8 @@ export type HomeTimelineItem = {
 export type HomeTimelineScope = {
   key: string;
   label: string;
+  /** 学年の色（グループの色）。「すべて」は無し（画面側で --accent） */
+  color?: string;
   items: HomeTimelineItem[];
   unread: number;
   unreadNotes: number;
@@ -299,12 +312,13 @@ export function useHomeTimeline(board: BoardCtx, team: TeamCtx): HomeTimelineSco
       });
     });
     all.sort((a, b) => b.ts - a.ts);
-    const scopeOf = (key: string, label: string, list: HomeTimelineItem[]): HomeTimelineScope => {
+    const scopeOf = (key: string, label: string, list: HomeTimelineItem[], color?: string): HomeTimelineScope => {
       const unreadNotes = list.filter((i) => i.kind === "note" && i.unread).length;
       const unreadMessages = list.filter((i) => i.kind === "message" && i.unread).length;
       return {
         key,
         label,
+        color,
         items: list.slice(0, HOME_TIMELINE_MAX),
         unread: unreadNotes + unreadMessages,
         unreadNotes,
@@ -322,7 +336,8 @@ export function useHomeTimeline(board: BoardCtx, team: TeamCtx): HomeTimelineSco
             all.filter((i) => {
               const pl = byId.get(i.playerId);
               return !!pl && playerInGroup(pl, g);
-            })
+            }),
+            g.color
           )
         );
       });

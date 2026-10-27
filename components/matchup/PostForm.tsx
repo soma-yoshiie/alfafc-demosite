@@ -120,9 +120,9 @@ export function PostForm({
   const submit = () => {
     const picked = Array.from(new Set(dates.filter((d) => d !== ""))).sort();
     const e: typeof errs = {};
-    if (picked.length === 0) e.date = "日にちを 1 つ以上入れてください";
-    else if (picked.some((d) => !DATE_RE.test(d))) e.date = "日にちの形が正しくありません";
-    else if (picked.some((d) => d < today)) e.date = "今日より前の日にちは選べません";
+    if (picked.length === 0) e.date = "日程を 1 つ以上入れてください";
+    else if (picked.some((d) => !DATE_RE.test(d))) e.date = "日程の形が正しくありません";
+    else if (picked.some((d) => d < today)) e.date = "今日より前の日程は選べません";
     if (!ageGroup) e.age = "年代を選んでください";
     const p = Number(periods);
     const m = Number(minutes);
@@ -162,13 +162,13 @@ export function PostForm({
         )}
       </div>
 
-      <Field label="日にち" err={errs.date}>
+      <Field label="日程" err={errs.date}>
         {dates.map((d, i) => (
           <div key={i} className="mt-daterow">
             <input
               type="date"
               className="st-input"
-              aria-label={`日にち ${i + 1}`}
+              aria-label={`日程 ${i + 1}`}
               min={today}
               value={d}
               onChange={(e) => setDateAt(i, e.target.value)}
@@ -182,7 +182,7 @@ export function PostForm({
         ))}
         {dates.length < MAX_DATES && (
           <button type="button" className="mt-link" onClick={() => setDates((cur) => [...cur, ""])}>
-            ＋ 日にちを足す
+            ＋ 日程を足す
           </button>
         )}
       </Field>

@@ -1777,7 +1777,7 @@ export function LibraryBody({
               <div className="empty-msg">
                 <b>保存された戦術はありません</b>
                 <br />
-                盤面を作って共有・出力→ライブラリに保存から追加できます
+                戦術ボードの右上の保存から追加できます
               </div>
             ) : (
               <>
@@ -2041,7 +2041,7 @@ export function ArticlesBody({
     <>
       {!hideTitle && (
         <h2>
-          コーチラボ <span>{list.length}本</span>
+          コーチラボ <span>{list.length} 件</span>
         </h2>
       )}
       <div className="catbar">

@@ -19,6 +19,7 @@ import {
   useMeId,
 } from "./CoachLabParts";
 import { ArticleCard } from "./CoachLabExplore";
+import { MobileHeaderMore } from "../MobileHeader";
 
 const REFUND_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -190,12 +191,17 @@ export default function CoachLabArticle({
             <span key={t} className="cl-tagchip">#{t}</span>
           ))}
           <span className="cl-metadot">{fmtDate(a.publishedAt ?? a.ts)}</span>
-          <span className="cl-metadot">読了{readingMinutes(a.body)}分</span>
+          <span className="cl-metadot">{readingMinutes(a.body)} 分で読める</span>
         </div>
         <h1 className="cl-article-title">{a.title}</h1>
         <div className="cl-article-authorrow">
           <AuthorMini profile={profile} onOpen={onOpenAuthor} />
-          {!isMine && <FollowButton authorId={authorId} />}
+          {!isMine && (
+            <div className="cl-article-authoracts">
+              <FollowButton authorId={authorId} />
+              <MobileHeaderMore label="記事のメニュー" items={[{ label: "問題を報告", onClick: handleReport }]} />
+            </div>
+          )}
         </div>
 
         <div className="artbody cl-article-body">
@@ -247,10 +253,6 @@ export default function CoachLabArticle({
               </div>
             </>
           )}
-
-          <button type="button" className="cl-linkbtn cl-report" onClick={handleReport}>
-            問題を報告
-          </button>
         </div>
       </div>
 

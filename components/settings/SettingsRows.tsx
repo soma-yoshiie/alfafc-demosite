@@ -29,6 +29,7 @@ export function SettingsRow({
   desc,
   onClick,
   danger,
+  warn,
 }: {
   label: string;
   value?: string;
@@ -36,6 +37,8 @@ export function SettingsRow({
   /** 無い行は押せない見た目（› なし） */
   onClick?: () => void;
   danger?: boolean;
+  /** 値の前に注意の点（.st-warn）を付ける（共通パスワードが未変更、など） */
+  warn?: boolean;
 }) {
   const body = (
     <>
@@ -43,7 +46,12 @@ export function SettingsRow({
         <span className="st-row-label">{label}</span>
         {desc && <span className="st-row-desc">{desc}</span>}
       </span>
-      {value && <span className="st-row-val">{value}</span>}
+      {value && (
+        <span className="st-row-val">
+          {warn && <i className="st-warn" aria-hidden="true" />}
+          {value}
+        </span>
+      )}
       {onClick && !danger && (
         <span className="st-row-chev" aria-hidden="true">
           ›

@@ -48,7 +48,7 @@ export function PostFacts({ post, team, mine }: { post: MatchupPost; team?: Oppo
   const kind = (mine ? VENUE_KIND_NOTE_MINE : VENUE_KIND_NOTE)[post.venue.kind];
   return (
     <dl className="mt-kv">
-      <KvRow label="日にち">
+      <KvRow label="日程">
         {dates.map((d) => (
           <span key={d} className="mt-line">
             {fmtPostDate(d)}
@@ -75,7 +75,7 @@ export function PostFacts({ post, team, mine }: { post: MatchupPost; team?: Oppo
       <KvRow label="審判">{REFEREE_LABEL[post.referee]}</KvRow>
       <KvRow label="レベルの目安">{post.levelHint}</KvRow>
       {mine && <KvRow label="見せる相手">{VISIBILITY_LABEL[post.visibility]}</KvRow>}
-      {post.note && <KvRow label="相手に伝えること">{post.note}</KvRow>}
+      {post.note && <KvRow label={team ? `${team.name} から` : "相手に伝えること"}>{post.note}</KvRow>}
     </dl>
   );
 }
@@ -121,9 +121,9 @@ export function PostDetail({
             </div>
           </div>
         </div>
-        <div className="mt-tags mt-dtags">
-          <span className="mt-tag">{n === 0 ? "初対戦" : `対戦 ${n} 回`}</span>
-          <span className="mt-tag">{team.cancelCount === 0 ? "直前の中止なし" : `直前の中止 ${team.cancelCount} 回`}</span>
+        {/* ux-fix R1-8（レビュー）: 一覧のカードと同じ、枠なし・灰色の 1 行 */}
+        <div className="mt-lg mt-dtags">
+          {n === 0 ? "初対戦" : `対戦 ${n} 回`}・{team.cancelCount === 0 ? "直前の中止なし" : `直前の中止 ${team.cancelCount} 回`}
         </div>
 
         <section className="mt-sec">
@@ -158,24 +158,24 @@ export function PostDetail({
           <>
             {dates.length >= 2 && (
               <>
-                <div className="mt-foot-label">申し込む日にち</div>
+                <div className="mt-foot-label">申し込む日程</div>
                 <Seg
                   options={dates.map((d) => ({ value: d, label: fmtPostDate(d) }))}
                   value={pickedDate}
                   onChange={(v) => v && setDate(v)}
-                  ariaLabel="申し込む日にち"
+                  ariaLabel="申し込む日程"
                 />
               </>
             )}
             <label className="mt-foot-label" htmlFor={msgId}>
-              相手への一言（任意）
+              {team.name} への一言（任意）
             </label>
             <textarea
               id={msgId}
               className="st-input mt-msg"
               rows={2}
               maxLength={200}
-              placeholder="例）11 人制 20 分 3 本で希望です"
+              placeholder="例）人数が 12 人のため交代ありで希望です"
               value={msg}
               onChange={(e) => setMsg(e.target.value)}
             />

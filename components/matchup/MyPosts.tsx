@@ -153,9 +153,8 @@ export function MyPostDetail({
                         <span className="mt-req-name">{t.name}</span>
                         <span className="mt-req-ts">{fmtReqTime(r.ts, today)}</span>
                       </div>
-                      <div className="mt-tags">
-                        <span className="mt-tag">{t.league}</span>
-                        <span className="mt-tag">{n === 0 ? "初対戦" : `対戦 ${n} 回`}</span>
+                      <div className="mt-lg">
+                        {t.league}・{n === 0 ? "初対戦" : `対戦 ${n} 回`}
                       </div>
                       {r.message && <p className="mt-req-msg">{r.message}</p>}
                     </div>

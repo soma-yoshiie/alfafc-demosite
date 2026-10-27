@@ -8,6 +8,7 @@ import MobileHome from "./MobileHome";
 import {
   useMatchdayData,
   useHomeTimeline,
+  fmtCountdown,
   fmtEventDate,
   categoryLabel,
   type BoardCtx,
@@ -36,7 +37,6 @@ export default function HomeMenu() {
   const teamCtx = useTeam();
   const coach = board.auth.role === "coach";
   const pc = usePc();
-  const logout = () => window.dispatchEvent(new Event("alfa-logout"));
   const today = new Date().toLocaleDateString("ja-JP", {
     month: "long",
     day: "numeric",
@@ -45,13 +45,13 @@ export default function HomeMenu() {
 
   // PC×コーチのみ「マッチデー・ボード」へ刷新。モバイル・選手のJSXは以下、一切変更しない
   if (pc && coach) {
-    return <MatchdayBoard board={board} team={teamCtx} logout={logout} today={today} />;
+    return <MatchdayBoard board={board} team={teamCtx} today={today} />;
   }
 
   // p18 §5: PC（選手）ホームもスタッフと同じ .mdb-root の器で作り直した（旧 .app.homeapp の JSX は廃止）。
   // フックは PlayerPcHome の中で呼ぶ（HomeMenu のフックの数と順序を一定に保つため）
   if (pc) {
-    return <PlayerPcHome board={board} team={teamCtx} logout={logout} today={today} />;
+    return <PlayerPcHome board={board} team={teamCtx} today={today} />;
   }
 
   // ---- ここからモバイル（コーチ・選手共通）。mobile-home-v3: 行メニュー/今日やること/チームのいまを廃し、
@@ -69,12 +69,10 @@ export default function HomeMenu() {
 function MatchdayBoard({
   board,
   team,
-  logout,
   today,
 }: {
   board: BoardCtx;
   team: TeamCtx;
-  logout: () => void;
   today: string;
 }) {
   const {
@@ -117,7 +115,6 @@ function MatchdayBoard({
             <div className="mdb-date">{today}</div>
             <div className="mdb-name">
               こんにちは、{board.auth.name}さん
-              <span className="mdb-role">スタッフ</span>
             </div>
           </div>
           <div className="mdb-greetactions">
@@ -157,9 +154,6 @@ function MatchdayBoard({
                 </div>
               )}
             </div>
-            <button className="homeout" onClick={logout}>
-              ログアウト
-            </button>
           </div>
         </div>
       </div>
@@ -222,6 +216,7 @@ function MdbHero({
   metaLabel,
   metaValue,
   ctaLabel,
+  ctaGhost,
   onCta,
   emptyLabel,
   emptyCtaLabel,
@@ -237,6 +232,8 @@ function MdbHero({
   metaLabel: string;
   metaValue: string;
   ctaLabel: string;
+  /** 回答済みのとき白い枠だけの控えめなボタンにする */
+  ctaGhost?: boolean;
   onCta: () => void;
   emptyLabel: string;
   emptyCtaLabel: string;
@@ -286,14 +283,16 @@ function MdbHero({
         ) : (
           <div className="mdb-eventcard">
             <span className="mdb-eventtitle">{nextEvent.title}</span>
-            <span className="mdb-eventcat">{categoryLabel(nextEvent, categories)}</span>
+            {!nextEvent.title.includes(categoryLabel(nextEvent, categories)) && (
+              <span className="mdb-eventcat">{categoryLabel(nextEvent, categories)}</span>
+            )}
           </div>
         )}
 
         <div className="mdb-countdownwrap">
           {cd && (
             <div className="mdb-countdown" key={fadeKey}>
-              {cd.started ? "まもなく開始" : `${cd.days}日 ${cd.hours}時間 ${cd.minutes}分`}
+              {fmtCountdown(cd)}
             </div>
           )}
         </div>
@@ -330,7 +329,7 @@ function MdbHero({
         <div className="mdb-metaitem mdb-metaitem-att">
           <span className="mdb-metalabel">{metaLabel}</span>
           <span className="mdb-metaval">{metaValue}</span>
-          <button type="button" className="mdb-cta" onClick={onCta}>
+          <button type="button" className={`mdb-cta${ctaGhost ? " ghost" : ""}`} onClick={onCta}>
             {ctaLabel}
           </button>
         </div>
@@ -348,12 +347,10 @@ function MdbHero({
 function PlayerPcHome({
   board,
   team,
-  logout,
   today,
 }: {
   board: BoardCtx;
   team: TeamCtx;
-  logout: () => void;
   today: string;
 }) {
   const me = board.auth.playerId ?? "";
@@ -371,13 +368,7 @@ function PlayerPcHome({
             <div className="mdb-date">{today}</div>
             <div className="mdb-name">
               こんにちは、{board.auth.name}さん
-              <span className="mdb-role">選手・保護者</span>
             </div>
-          </div>
-          <div className="mdb-greetactions">
-            <button className="homeout" onClick={logout}>
-              ログアウト
-            </button>
           </div>
         </div>
       </div>
@@ -393,7 +384,8 @@ function PlayerPcHome({
           teamName={d.teamName}
           metaLabel="自分の出欠"
           metaValue={attLabel}
-          ctaLabel="出欠を回答する"
+          ctaLabel={myAttendance ? "出欠を変更する" : "出欠を回答する"}
+          ctaGhost={!!myAttendance}
           onCta={() => {
             board.setTeamIntent({ tab: "cal", eventId: d.nextEvent!.id });
             board.setScreen("team");

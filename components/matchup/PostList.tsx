@@ -7,7 +7,7 @@ import { fmtPostDates, matchCountWith, postPlaceLabel, upcomingDates } from "@/l
 /**
  * 相手の募集の一覧（specs/matchup-demo.md §4-2）。カードに出す情報は 5 つだけ：
  * チーム名・日付・場所・所属リーグ・対戦回数（距離・年代・人数制・本数・審判・費用・中止の回数・一言は詳細だけ）。
- * 全体が 1 つのボタン。右端の「申し込む ›」も独立したボタンにはせず、押すとカードと同じく詳細を開く。
+ * 全体が 1 つのボタン。右端の「詳細 ›」も独立したボタンにはせず、押すとカードと同じく詳細を開く。
  */
 
 export function PostList({
@@ -35,7 +35,7 @@ export function PostList({
     <div className="mt-listwrap">
       <div className="mt-listbar">
         {lead}
-        <span className="mt-count">{posts.length} 件・近い順</span>
+        <span className="mt-count">{posts.length} 件・距離が近い順</span>
       </div>
       {posts.length === 0 ? (
         <div className="empty-msg">条件に合う募集はありません。絞り込みをゆるめるか、自分の募集を出してみてください。</div>
@@ -58,16 +58,15 @@ export function PostList({
                 <span className="mt-card-h">
                   {state && <span className="mt-state">{state}</span>}
                   <span className="mt-name">{t.name}</span>
-                  <span className="mt-apply">{state ? "詳細 ›" : "申し込む ›"}</span>
+                  <span className="mt-apply">詳細 ›</span>
                 </span>
                 <span className="mt-meta">
                   <span className="mt-date">{fmtPostDates(upcomingDates(p, today))}</span>
                   <span className="mt-sep" aria-hidden="true" />
                   <span className="mt-place">{postPlaceLabel(p, t)}</span>
                 </span>
-                <span className="mt-tags">
-                  <span className="mt-tag">{t.league}</span>
-                  <span className="mt-tag">{n === 0 ? "初対戦" : `対戦 ${n} 回`}</span>
+                <span className="mt-lg">
+                  {t.league}・{n === 0 ? "初対戦" : `対戦 ${n} 回`}
                 </span>
               </button>
             );

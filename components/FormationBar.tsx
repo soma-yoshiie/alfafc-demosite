@@ -133,7 +133,7 @@ export default function FormationBar() {
               onClick={() => {
                 board.addOpponent();
                 if (oppCount === 0)
-                  board.toast("相手トークンを配置しました（ドラッグで移動・タップで編集）");
+                  board.toast("相手トークンを配置しました（ドラッグで移動・押して編集）");
               }}
             >
               <span className="oppdot" />

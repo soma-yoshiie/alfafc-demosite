@@ -347,7 +347,7 @@ export function MatchHub({
             </span>
           </div>
           <div className="phubwho">
-            <h2 className="phubname">vs {m.opponent}</h2>
+            <h2 className="phubname" title={m.opponent}>{m.opponent}</h2>
             <div className="phubsub">
               <span>{fmtMDW(m.date)}</span>
               {compName && <span>{compName}</span>}

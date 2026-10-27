@@ -79,7 +79,7 @@ export function MobileHeaderMore({
   items,
 }: {
   label?: string;
-  items: { label: string; icon: React.ReactNode; onClick: () => void }[];
+  items: { label: string; icon?: React.ReactNode; onClick: () => void }[];
 }) {
   const [open, setOpen] = useState(false);
   return (

@@ -28,7 +28,7 @@ export function MenuRow({
   badge,
   onClick,
 }: {
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   label: string;
   desc?: string;
   badge?: number;
@@ -41,9 +41,11 @@ export function MenuRow({
       onClick={onClick}
       aria-label={badge ? `${label} 未読${badge}件` : undefined}
     >
-      <span className="mrow-icon" aria-hidden="true">
-        {icon}
-      </span>
+      {icon && (
+        <span className="mrow-icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
       <span className="mrow-body">
         <span className="mrow-toprow">
           {/* .mrow-labelのtextContentはラベル文字列のみに保つ（バッジは兄弟要素にする）。

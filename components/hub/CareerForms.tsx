@@ -276,8 +276,8 @@ export function ActivityForm({
         <Field label="日付">
           <input aria-label="日付" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <Field label="種別">
-          <select aria-label="種別" value={kind} onChange={(e) => setKind(e.target.value as ActivityKind)}>
+        <Field label="種類">
+          <select aria-label="種類" value={kind} onChange={(e) => setKind(e.target.value as ActivityKind)}>
             {optionsOf(ACTIVITY_KIND_LABEL).map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}

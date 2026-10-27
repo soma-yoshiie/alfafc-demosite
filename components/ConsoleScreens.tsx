@@ -217,9 +217,6 @@ export function LibraryScreen() {
         <header>
           <div className="brand">
             <div className="logo">ライブラリ</div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {board.state.teamName ?? "マイチーム"}
-            </div>
           </div>
         </header>
       ) : (
@@ -360,13 +357,11 @@ export function LibraryScreen() {
                 <>
                   <b>保存された戦術はありません</b>
                   <br />
-                  盤面を作って共有・出力→ライブラリに保存から追加できます
+                  戦術ボードの右上の保存から追加できます
                 </>
               ) : (
                 <>
-                  <b>項目が選択されていません</b>
-                  <br />
-                  左の一覧から選ぶとプレビューが表示されます
+                  戦術を選ぶと、ここに内容が出ます
                 </>
               )}
             </div>
@@ -384,9 +379,7 @@ export function LibraryScreen() {
                 </>
               ) : (
                 <>
-                  <b>項目が選択されていません</b>
-                  <br />
-                  左の一覧から選ぶとプレビューが表示されます
+                  練習メニューを選ぶと、ここに内容が出ます
                 </>
               )}
             </div>
@@ -403,9 +396,7 @@ export function LibraryScreen() {
               </>
             ) : (
               <>
-                <b>項目が選択されていません</b>
-                <br />
-                左の一覧から選ぶとプレビューが表示されます
+                セットプレーを選ぶと、ここに内容が出ます
               </>
             )}
           </div>

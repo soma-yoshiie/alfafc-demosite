@@ -118,8 +118,8 @@ export function ArticleCard({
         <AuthorMini profile={profile} onOpen={onOpenAuthor} />
         <div className="cl-cardmeta">
           <PriceTag price={a.price} />
-          <span>参考{cl.likeCount(a.id)}</span>
-          <span>読了{readingMinutes(a.body)}分</span>
+          {cl.likeCount(a.id) > 0 && <span>参考になった {cl.likeCount(a.id)}</span>}
+          <span>{readingMinutes(a.body)} 分で読める</span>
         </div>
       </div>
     </div>
@@ -151,15 +151,14 @@ function AuthorCard({
       <Avatar name={profile.name} hue={profile.hue} size="lg" />
       <div className="cl-authorcard-tx">
         <div className="cl-authorcard-name">{profile.name}</div>
-        <div className="cl-authorcard-headline">{profile.headline}</div>
-        <LicenseBadgeRow licenses={profile.licenses} max={3} />
-        {(profile.team || profile.region) && (
-          <div className="cl-authorcard-team">
-            {[profile.team, profile.region].filter(Boolean).join(" ・ ")}
+        {(profile.headline || profile.team) && (
+          <div className="cl-authorcard-headline">
+            {[profile.headline, profile.team].filter(Boolean).join("・")}
           </div>
         )}
+        <LicenseBadgeRow licenses={profile.licenses} max={3} />
         <div className="cl-authorcard-stats">
-          フォロワー{cl.followerCount(profile.id)} ・ 記事{articleCount}本
+          フォロワー{cl.followerCount(profile.id)} ・ 記事 {articleCount} 件
         </div>
       </div>
       <FollowButton authorId={profile.id} />
@@ -279,7 +278,7 @@ export function CoachLabExplore({ onOpenAuthor, onOpenArticle }: OpenHandlers) {
               <option value="likes">参考になった数</option>
               <option value="purchases">購入数</option>
             </select>
-            <span className="cl-count">{articleResults.length}本</span>
+            <span className="cl-count">{articleResults.length} 件</span>
           </div>
           {articleResults.length === 0 ? (
             <div className="empty-msg">該当する記事がありません。条件を減らすか、指導者で探してみてください。</div>

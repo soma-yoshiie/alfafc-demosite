@@ -188,7 +188,7 @@ export function PlayerBasicForm({
             aria-label="背番号"
             value={number}
             inputMode="numeric"
-            placeholder="未設定可"
+            placeholder="例）10"
             onChange={(e) => setNumber(sanitizeNum(e.target.value, 0).slice(0, 3))}
           />
         </Field>

@@ -16,6 +16,7 @@ import { PLAN_INFO } from "@/lib/types";
 import {
   useMatchdayData,
   useHomeTimeline,
+  fmtCountdown,
   fmtEventDate,
   categoryLabel,
   type BoardCtx,
@@ -28,7 +29,6 @@ export default function MobileHome() {
   const board = useBoard();
   const team = useTeam();
   const coach = board.auth.role === "coach";
-  const logout = () => window.dispatchEvent(new Event("alfa-logout"));
   const today = new Date().toLocaleDateString("ja-JP", {
     month: "long",
     day: "numeric",
@@ -36,9 +36,9 @@ export default function MobileHome() {
   });
 
   return coach ? (
-    <MobileStaffHome board={board} team={team} today={today} logout={logout} />
+    <MobileStaffHome board={board} team={team} today={today} />
   ) : (
-    <MobilePlayerHome board={board} team={team} today={today} logout={logout} />
+    <MobilePlayerHome board={board} team={team} today={today} />
   );
 }
 
@@ -71,20 +71,6 @@ function MhomeHeader({ board, coach }: { board: BoardCtx; coach: boolean }) {
   );
 }
 
-/** フッター（「ALFA FOOTBALL」＋ログアウト。既存の.mhome-footをそのまま再利用する） */
-function MhomeFoot({ logout }: { logout: () => void }) {
-  return (
-    <div className="mhome-foot">
-      <div className="mhome-footlogo">
-        ALFA<b> FOOTBALL</b>
-      </div>
-      <button type="button" className="mhome-logout" onClick={logout}>
-        ログアウト
-      </button>
-    </div>
-  );
-}
-
 type MatchdayData = ReturnType<typeof useMatchdayData>;
 
 /**
@@ -105,6 +91,7 @@ function MhomeHero({
   metaLabel,
   metaValue,
   ctaLabel,
+  ctaGhost,
   onCta,
   emptyLabel,
   emptyCtaLabel,
@@ -120,6 +107,8 @@ function MhomeHero({
   metaLabel: string;
   metaValue: string;
   ctaLabel: string;
+  /** 回答済みのとき白い枠だけの控えめなボタンにする */
+  ctaGhost?: boolean;
   onCta: () => void;
   emptyLabel: string;
   emptyCtaLabel: string;
@@ -159,12 +148,14 @@ function MhomeHero({
         ) : (
           <div className="mh-eventcard">
             <span className="mh-eventtitle">{nextEvent.title}</span>
-            <span className="mh-eventcat">{categoryLabel(nextEvent, categories)}</span>
+            {!nextEvent.title.includes(categoryLabel(nextEvent, categories)) && (
+              <span className="mh-eventcat">{categoryLabel(nextEvent, categories)}</span>
+            )}
           </div>
         )}
         {cd && (
           <div className="mh-countdown">
-            {cd.started ? "まもなく開始" : `${cd.days}日 ${cd.hours}時間 ${cd.minutes}分`}
+            {fmtCountdown(cd)}
           </div>
         )}
       </div>
@@ -203,7 +194,7 @@ function MhomeHero({
         </div>
       </div>
 
-      <button type="button" className="mh-cta" onClick={onCta}>
+      <button type="button" className={`mh-cta${ctaGhost ? " ghost" : ""}`} onClick={onCta}>
         {ctaLabel}
       </button>
     </div>
@@ -216,12 +207,10 @@ function MobileStaffHome({
   board,
   team,
   today,
-  logout,
 }: {
   board: BoardCtx;
   team: TeamCtx;
   today: string;
-  logout: () => void;
 }) {
   const d = useMatchdayData(board, team);
   const [bellOpen, setBellOpen] = useState(false);
@@ -238,7 +227,6 @@ function MobileStaffHome({
             <div className="homedate">{today}</div>
             <div className="homename">
               こんにちは、{board.auth.name}さん
-              <span className="homerole">スタッフ</span>
             </div>
           </div>
           <button
@@ -316,10 +304,6 @@ function MobileStaffHome({
             ))}
           </div>
         )}
-
-        <div className="mh-section">
-          <MhomeFoot logout={logout} />
-        </div>
       </div>
     </div>
   );
@@ -331,12 +315,10 @@ function MobilePlayerHome({
   board,
   team,
   today,
-  logout,
 }: {
   board: BoardCtx;
   team: TeamCtx;
   today: string;
-  logout: () => void;
 }) {
   const me = board.auth.playerId ?? "";
 
@@ -358,7 +340,6 @@ function MobilePlayerHome({
           <div className="homedate">{today}</div>
           <div className="homename">
             こんにちは、{board.auth.name}さん
-            <span className="homerole">選手・保護者</span>
           </div>
         </div>
 
@@ -373,7 +354,8 @@ function MobilePlayerHome({
             teamName={d.teamName}
             metaLabel="自分の出欠"
             metaValue={attLabel}
-            ctaLabel="出欠を回答する"
+            ctaLabel={myAttendance ? "出欠を変更する" : "出欠を回答する"}
+          ctaGhost={!!myAttendance}
             onCta={() => {
               board.setTeamIntent({ tab: "cal", eventId: d.nextEvent!.id });
               board.setScreen("team");
@@ -388,10 +370,6 @@ function MobilePlayerHome({
         <HomeGoals playerId={me} variant="mobile" />
 
         <HomeAnnouncements viewer="player" variant="mobile" />
-
-        <div className="mh-section">
-          <MhomeFoot logout={logout} />
-        </div>
       </div>
     </div>
   );

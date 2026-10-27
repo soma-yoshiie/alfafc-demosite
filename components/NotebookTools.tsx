@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { MatchNote, NoteKind, NotebookEntry, Player, PracticeNote, SoloNote, TeamGroup } from "@/lib/types";
 import { NOTE_KIND_LABEL, SOLO_KIND_LABEL } from "@/lib/types";
 import { E, ConditionIcon } from "./Emoji";
-import { NoteKindIcon } from "./icons";
+import { IconChat, IconSend, NoteKindIcon } from "./icons";
 import { MultiLine, Sparkline } from "./Charts";
 import { loadTeam } from "@/lib/storage";
 import { computePlayerKpi, computeTeamSummary } from "@/lib/coaching";
@@ -58,6 +58,16 @@ export function unreadEventCount(input: NotifInput, seenAt: number): number {
 
 /** 通知ターゲットの安定キー（PCマスター・ディテールの選択中ハイライト判定用） */
 /* ===================== 通知 ===================== */
+/** 通知の種類のアイコン：ノート＝ノートの種類、配信＝紙飛行機、お知らせ＝吹き出し */
+function notifIcon(target: NotifTarget | undefined, notebook: NotebookEntry[]) {
+  if (target?.kind === "note") {
+    const note = notebook.find((e) => e.id === target.id);
+    return note ? <NoteKindIcon kind={note.kind} /> : <NoteKindIcon kind="practice" />;
+  }
+  if (target?.kind === "announcement") return <IconChat />;
+  return <IconSend />;
+}
+
 export function NotificationsView({
   seenAt,
   onNavigate,
@@ -119,9 +129,10 @@ export function NotificationsView({
             className={`notifrow${n.ts > seenAt ? " unread" : ""}${isSel(n.id) ? " sel" : ""}`}
             onClick={() => n.target && onNavigate(n.target, n.id)}
           >
-            <span className={`notifdot ${n.level}`} />
+            <span className="notifico" aria-hidden="true">{notifIcon(n.target, board.notebook)}</span>
             <span className="notiftext">{n.text}</span>
             <span className="notifdate">{fmtTs(n.ts)}</span>
+            <span className="notifgo" aria-hidden="true">›</span>
           </button>
         ))
       )}
@@ -538,7 +549,7 @@ const PLAYER_COLORS = ["#3b82f6", "#10a15c", "#ec4899", "#8b5cf6"];
 const OTHER_COLOR = "#f59e0b";
 
 const PLAYER_TABS = ["すべて", "試合", "練習", "自主練"] as const;
-const COACH_TABS = ["選手別", "種別"] as const;
+const COACH_TABS = ["選手ごと", "種類ごと"] as const;
 
 type AnalyticsSeries = { label: string; color: string; values: number[]; total: number };
 

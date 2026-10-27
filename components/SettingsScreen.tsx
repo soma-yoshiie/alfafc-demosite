@@ -146,8 +146,13 @@ export default function SettingsScreen() {
   // モバイルはnavFromに従いhome/otherへ（ホームの行/その他ハブの行のどちらから開いたかで戻り先が変わる。mobile-redesign-v2 §2）
   const pc = usePc();
   const coach = board.auth.role === "coach";
-  const [view, setView] = useState<SettingsView>({ mode: "top" });
+  // ux-fix R1-7: 「その他」のアカウントのカードから来たときは、最初からアカウントの下層を開く
+  const [view, setView] = useState<SettingsView>(() => (board.settingsIntent ? { mode: board.settingsIntent.mode } : { mode: "top" }));
   const [cat, setCat] = useState<SettingsCat>("account");
+  const { settingsIntent, setSettingsIntent } = board;
+  useEffect(() => {
+    if (settingsIntent) setSettingsIntent(null);
+  }, [settingsIntent, setSettingsIntent]);
   const dirtyRef = useRef(false);
   const saveRef = useRef<(() => void) | null>(null);
   /** 管理画面（グループのメンバー編集など）が「戻る」を先に処理するための口。true を返したら画面を変えない */
@@ -260,9 +265,6 @@ export default function SettingsScreen() {
         <header>
           <div className="brand">
             <div className="logo">設定</div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {board.state.teamName ?? "マイチーム"}
-            </div>
           </div>
         </header>
       ) : (

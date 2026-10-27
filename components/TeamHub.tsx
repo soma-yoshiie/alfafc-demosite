@@ -95,6 +95,8 @@ import { IconDownload, IconEdit, IconFilter, IconPlus } from "./icons";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
+import { useChatBadgeInput } from "./useChatBadgeInput";
+import { chatBadge } from "@/lib/badges";
 import ChatHome, { useChatHeaderAction } from "./ChatHome";
 import PlayerHub from "./PlayerHub";
 import { MatchHub } from "./MatchHub";
@@ -217,8 +219,8 @@ const STATUS_MARK: Record<AttendanceStatus, string> = { yes: "○", maybe: "△"
  * ロジックを一本化する（旧: MatchesTab内に閉じていた集計）。上位n件への絞り込みは呼び出し側で行う
  */
 function scorerAssisterRanks(matches: MatchRecord[]): {
-  scorers: { pid: string; n: number }[];
-  assisters: { pid: string; n: number }[];
+  scorers: { pid: string; n: number; rank: number }[];
+  assisters: { pid: string; n: number; rank: number }[];
 } {
   const gc: Record<string, number> = {};
   const ac: Record<string, number> = {};
@@ -228,10 +230,17 @@ function scorerAssisterRanks(matches: MatchRecord[]): {
       if (g.assistPlayerId) ac[g.assistPlayerId] = (ac[g.assistPlayerId] ?? 0) + 1;
     });
   });
-  const rank = (obj: Record<string, number>) =>
-    Object.entries(obj)
+  // 同点は同じ順位（1・1・1・4 の競技順位）
+  const rank = (obj: Record<string, number>) => {
+    const sorted = Object.entries(obj)
       .map(([pid, n]) => ({ pid, n }))
-      .sort((a, b) => b.n - a.n);
+      .sort((x, y) => y.n - x.n);
+    const out: { pid: string; n: number; rank: number }[] = [];
+    sorted.forEach((x, i) => {
+      out.push({ ...x, rank: i > 0 && out[i - 1].n === x.n ? out[i - 1].rank : i + 1 });
+    });
+    return out;
+  };
   return { scorers: rank(gc), assisters: rank(ac) };
 }
 
@@ -439,6 +448,9 @@ function Inner() {
   const [attPeriod, setAttPeriod] = useState<AttPeriod>("all");
 
   const isCoach = team.viewer.role === "coach";
+  // セグメント「チャット」の未読（lib/badges.ts。下部タブ「チーム」・PC レールのチャットと同じ数）
+  const chatInput = useChatBadgeInput();
+  const chatUnread = chatBadge(chatInput);
   const me = team.viewer.memberPlayerId
     ? players.find((p) => p.id === team.viewer.memberPlayerId) ?? null
     : null;
@@ -766,9 +778,6 @@ function Inner() {
                 "チーム"
               )}
             </div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {board.state.teamName ?? "マイチーム"}
-            </div>
           </div>
           {/* 右上CTAはタブ連動(PC専用・.teamctaはモバイル基底でdisplay:none):
               カレンダー=予定を追加 / 試合記録=試合結果を記録 / 名簿=新規選手を追加。
@@ -806,7 +815,7 @@ function Inner() {
         />
       ) : recFull ? (
         // p14 §5-2: 試合の詳細の全画面。絞り込み・＋のアクションは出さない
-        <MobileHeader title={recMatch ? `vs ${recMatch.opponent}` : "試合記録"} onBack={() => setRecOpen(null)} />
+        <MobileHeader title={recMatch ? recMatch.opponent : "試合記録"} onBack={() => setRecOpen(null)} />
       ) : (
         // mobile-redesign-v2 §3-3: タイトルは変更なし。右のアクションはタブ連動で
         // headerAction(スタッフのみ)1つだけだったが、案A §3-2でカレンダータブのときだけ
@@ -841,7 +850,7 @@ function Inner() {
       )}
 
       {pc ? (
-        // PCのrolebarは変更しない
+        // PCのrolebar（スタッフの表示切替）は変更しない。選手ログイン時は帯を出さない
         board.auth.role === "coach" ? (
           <div className="rolebar">
             <span>表示</span>
@@ -866,18 +875,12 @@ function Inner() {
               {isCoach ? "全員を管理" : `${me?.name ?? "選手"} として閲覧`}
             </span>
           </div>
-        ) : (
-          <div className="rolebar">
-            <span className="rolehint" style={{ textAlign: "left", flex: 1 }}>
-              {me?.name ?? "選手"} さんとして閲覧できます
-            </span>
-          </div>
-        )
+        ) : null
       ) : (
         // mobile-redesign-v2 §3-3: スマホでは通常時のrolebarは出さない。選手として閲覧中
         // だけセグメントの上に帯を出す（戻すボタンで復帰。名簿タブの「選手・保護者の見え方を
-        // 確認」からこの状態に入る）。選手ログイン時の帯（「〇〇さんとして閲覧できます」）は
-        // スマホでは出さない
+        // 確認」からこの状態に入る）。選手ログイン時の「〜さんとして閲覧できます」の帯は
+        // PC・スマホとも出さない（ux-fix R1-5）
         !isCoach &&
         board.auth.role === "coach" && (
           <div className="mrolebanner">
@@ -897,6 +900,7 @@ function Inner() {
           items={tabs.map(([t, label]) => ({
             key: t,
             label,
+            ...(t === "chat" ? { badge: chatUnread, badgeClass: "chatsegbadge" } : {}),
             on: activeTab === t,
             onSelect: () => {
               setRecOpen(null);
@@ -1103,9 +1107,7 @@ function Inner() {
                         rosHub
                       ) : (
                         <div className="empty-msg" style={{ margin: "auto" }}>
-                          <b>選手が選択されていません</b>
-                          <br />
-                          左の一覧から選ぶと詳細が表示されます
+                          選手を選ぶと、ここに内容が出ます
                         </div>
                       ))}
                     {activeTab === "att" &&
@@ -1411,7 +1413,7 @@ function EventCard({
   const team = useTeam();
   const s = team.summary(ev.id);
   const cat = categoryOf(ev, team.categories);
-  const ongoing = isOngoing(ev, todayStr());
+  const ongoing = isOngoing(ev, new Date());
   const selected = attSel?.kind === "event" && attSel.id === ev.id;
   return (
     <div
@@ -1486,7 +1488,7 @@ function EventCard({
           <span className="att yes">出席 {s.yes}</span>
           <span className="att maybe">未定 {s.maybe}</span>
           <span className="att no">欠席 {s.no}</span>
-          <span className="att none">未記録 {s.none}</span>
+          <span className="att none">未回答 {s.none}</span>
           <span className="evopen">記録を見る ›</span>
         </div>
       )}
@@ -1534,6 +1536,18 @@ function CalendarTab({
   // 3か所で共用する（calendar-plan-a §11-2で月表示下の「今日からの予定」は撤去した）
   const passesFilter = (e: TeamEvent) =>
     calEventVisible(e, calFilter, { isCoach, me, groups: team.groups, categories: team.categories, calMine });
+  // ux-fix R1-1: 選手・保護者の「未回答」（自分が対象で、これから／開催中の予定に出欠の返事が無い）
+  const [onlyUnanswered, setOnlyUnanswered] = useState(false);
+  // レビュー: 選手として閲覧中にオンにしたままスタッフ表示へ戻しても残らないように
+  useEffect(() => {
+    if (isCoach) setOnlyUnanswered(false);
+  }, [isCoach]);
+  const isUnanswered = (e: TeamEvent) =>
+    !isCoach &&
+    !!me &&
+    eventEndDate(e) >= todayStr() &&
+    eventTargetsPlayer(e, me, team.groups) &&
+    !team.team.attendance[e.id]?.[me.id]?.status;
 
   const first = new Date(ym.y, ym.m, 1);
   const startWd = first.getDay();
@@ -1560,6 +1574,14 @@ function CalendarTab({
   const monthDays = Array.from({ length: daysInMonth }, (_, i) => i + 1)
     .map((d) => ({ d, ds: dateStr(d), evs: eventsOn(d) }))
     .filter((x) => x.evs.length > 0);
+
+  // リスト表示に並べる日。選手の「未回答だけ」がオンなら未回答の予定だけを残す（空になった日は外す）
+  const listDays =
+    onlyUnanswered && !isCoach
+      ? monthDays
+          .map((x) => ({ ...x, evs: x.evs.filter(isUnanswered) }))
+          .filter((x) => x.evs.length > 0)
+      : monthDays;
 
   // 案A §1 レビュー指摘対応: 凡例はカテゴリ色ではなく、マスの点・帯と同じグループ色
   // (groupColorOf)に揃える。その月に登場する対象グループ／全員向けを重複なく列挙し
@@ -1841,6 +1863,7 @@ function CalendarTab({
                           className={`calev ${corner}`}
                           style={{ "--gc": groupColorOf(e, team.groups) } as React.CSSProperties}
                         >
+                          {isUnanswered(e) && <i className="calev-dot" aria-label="未回答" />}
                           {prefix}
                           {rec ? (
                             <span className="calev-score">{matchResultOf(rec).score} </span>
@@ -1870,7 +1893,7 @@ function CalendarTab({
                   試合はピル先頭の「試 」で示す方式に変えたため、輪の見本は撤去し
                   文字だけの凡例に置き換える */}
               {monthHasMatch && <span>試＝試合</span>}
-              {isCoach && <span className="calhint">日付をタップで予定を追加</span>}
+              {isCoach && <span className="calhint">日付を{pc ? "クリック" : "タップ"}で予定を追加</span>}
             </div>
           )}
           {/* calendar-plan-a §11-2: スマホの月表示下の「今日からの予定」は撤去した
@@ -1894,14 +1917,21 @@ function CalendarTab({
               </button>
             </div>
           )}
-          {monthDays.length === 0 ? (
+          {!isCoach && me && (
+            <label className="calfilter-toggle">
+              <input type="checkbox" checked={onlyUnanswered} onChange={(e) => setOnlyUnanswered(e.target.checked)} />
+              <span />
+              未回答だけ
+            </label>
+          )}
+          {listDays.length === 0 ? (
             <div className="empty-msg">
-              <b>この月の予定はありません</b>
+              <b>{onlyUnanswered && !isCoach ? "未回答の予定はありません" : "この月の予定はありません"}</b>
               <br />
-              月を変更すると他の予定を確認できます
+              {onlyUnanswered && !isCoach ? "出欠にすべて答えています" : "月を変更すると他の予定を確認できます"}
             </div>
           ) : (
-            renderAgendaRows(monthDays)
+            renderAgendaRows(listDays)
           )}
           {/* mobile-redesign-v2 §3-3: スマホではヘッダー右上の「予定を追加」に一本化し、
               リスト表示末尾の全幅緑ボタンは描画しない（PCは変更しない） */}
@@ -2320,9 +2350,9 @@ function MatchesTab({
           {scorers.length > 0 && (
             <div className="scorers">
               <div className="sk">得点ランキング</div>
-              {scorers.map((s, i) => (
+              {scorers.map((s) => (
                 <div key={s.pid} className="scorerrow">
-                  <span className="rank">{i + 1}</span>
+                  <span className="rank">{s.rank}</span>
                   <span className="snm">{nameOf(s.pid)}</span>
                   <span className="sgoals">{s.n}点</span>
                 </div>
@@ -2332,11 +2362,11 @@ function MatchesTab({
           {assisters.length > 0 && (
             <div className="scorers">
               <div className="sk">アシストランキング</div>
-              {assisters.map((s, i) => (
+              {assisters.map((s) => (
                 <div key={s.pid} className="scorerrow">
-                  <span className="rank">{i + 1}</span>
+                  <span className="rank">{s.rank}</span>
                   <span className="snm">{nameOf(s.pid)}</span>
-                  <span className="sgoals" style={{ color: "var(--blue)" }}>{s.n}A</span>
+                  <span className="sgoals" style={{ color: "var(--blue)" }}>{s.n}</span>
                 </div>
               ))}
             </div>
@@ -2880,7 +2910,7 @@ function AttendanceRecordBody({ eventId, players }: { eventId: string; players: 
   const s = team.summary(eventId);
   const [showOut, setShowOut] = useState(false);
   const order: { key: AttendanceStatus | "none"; label: string }[] = [
-    { key: "none", label: "未記録" },
+    { key: "none", label: "未回答" },
     { key: "no", label: "欠席" },
     { key: "maybe", label: "未定" },
     { key: "yes", label: "出席" },
@@ -2945,7 +2975,7 @@ function AttendanceRecordBody({ eventId, players }: { eventId: string; players: 
         <span className="att yes">出席 {s.yes}</span>
         <span className="att maybe">未定 {s.maybe}</span>
         <span className="att no">欠席 {s.no}</span>
-        <span className="att none">未記録 {s.none}</span>
+        <span className="att none">未回答 {s.none}</span>
       </div>
       {/* Phase D-1(C2-major): 対象外を展開したとき、この.list(flex:1 1 0%)がもう一方の
           .list(旧実装ではflex:1、今はflex:0 0 auto)と高さを奪い合っていた。flex:0 0 autoは
@@ -3575,17 +3605,18 @@ function RecPlayerPane({
             <div className="empty-msg">記録がありません。</div>
           ) : (
             <div className="list">
+              <div className="cmphead" aria-hidden="true">
+                <span className="cmpcol">得点</span>
+                <span className="cmpcol">アシスト</span>
+              </div>
               {rows.map((r) => (
                 <div key={r.matchId} className="cmprow">
                   <div className="cmpinfo">
                     <div className="cmpnm">vs {r.opponent}</div>
                     <div className="cmpsub">{fmtDate(r.date)}</div>
                   </div>
-                  <div className="sgoals">
-                    {r.goals > 0 ? `${r.goals}点` : ""}
-                    {r.goals > 0 && r.assists > 0 ? " ・ " : ""}
-                    {r.assists > 0 ? `${r.assists}A` : ""}
-                  </div>
+                  <div className="sgoals cmpcol">{r.goals > 0 ? r.goals : "–"}</div>
+                  <div className="sgoals cmpcol">{r.assists > 0 ? r.assists : "–"}</div>
                 </div>
               ))}
             </div>
@@ -3870,7 +3901,7 @@ function AttPlayerPane({
             <div className="list">
               {history.map((e) => {
                 const entry = team.team.attendance[e.id]?.[id];
-                const label = entry?.status ? STATUS_MARK[entry.status] : "未記録";
+                const label = entry?.status ? STATUS_MARK[entry.status] : "未回答";
                 return (
                   <div key={e.id} className="cmprow">
                     <div className="cmpinfo">
@@ -3916,6 +3947,58 @@ const MATCH_FORMATIONS_11: Record<string, string[]> = {
 };
 // 保存済みの記録の解決用（state の初期値・スタメン欄の描画・保存時の lineup は 8・11 人制どちらのキーでも引く）
 const MATCH_FORMATION_SLOTS: Record<string, string[]> = { ...MATCH_FORMATIONS_8, ...MATCH_FORMATIONS_11 };
+
+/* ---------------- 自分の出欠（選手・保護者。ux-fix R1-1） ---------------- */
+const SELF_ATT_LABEL: Record<AttendanceStatus, string> = { yes: "出席", maybe: "未定", no: "欠席" };
+
+/** 予定の詳細の「自分の出欠」。3択を押した時点で保存し、一言は入力欄を離れたときに保存する。過去の予定は文字だけ */
+function SelfAttendance({ event, playerId }: { event: TeamEvent; playerId: string }) {
+  const board = useBoard();
+  const team = useTeam();
+  const cur = team.team.attendance[event.id]?.[playerId];
+  const [comment, setComment] = useState(cur?.comment ?? "");
+  const past = eventEndDate(event) < todayStr();
+  if (past) {
+    return (
+      <div className="dsec attself">
+        <div className="dsec-h">自分の出欠</div>
+        <div className="dline">{cur?.status ? `${SELF_ATT_LABEL[cur.status]}で回答済み` : "未回答"}</div>
+      </div>
+    );
+  }
+  const save = (status: AttendanceStatus, text: string) => {
+    team.setAttendance(event.id, playerId, status, text.trim() || undefined);
+    board.toast("出欠を送りました");
+  };
+  return (
+    <div className="dsec attself">
+      <div className="dsec-h">自分の出欠</div>
+      <div className="attself-seg" role="group" aria-label="自分の出欠">
+        {(["yes", "no", "maybe"] as AttendanceStatus[]).map((st) => (
+          <button
+            key={st}
+            type="button"
+            className={`mseg-item${cur?.status === st ? " on" : ""}`}
+            aria-pressed={cur?.status === st}
+            onClick={() => save(st, comment)}
+          >
+            {SELF_ATT_LABEL[st]}
+          </button>
+        ))}
+      </div>
+      <input
+        className="attself-input"
+        value={comment}
+        placeholder="例）塾のため 30 分遅れます"
+        onChange={(e) => setComment(e.target.value)}
+        onBlur={() => {
+          if (cur?.status && comment.trim() !== (cur.comment ?? "")) save(cur.status, comment);
+        }}
+      />
+      {!cur?.status && <div className="dsec-e">まだ答えていません</div>}
+    </div>
+  );
+}
 
 /* ---------------- Sheets ---------------- */
 const EMPTY_CALFILTER: CalFilter = { hiddenGroupIds: [], hideAllTargets: false, hiddenCategoryIds: [] };
@@ -4122,7 +4205,7 @@ function SheetHost({
     setMGroupIdsState(ids);
     if (!mr) saveGroupFilter("matchForm", ids);
   };
-  // 「対象外の選手も候補に出す」（既定オフ）
+  // 「ほかの学年・グループの選手も出す」（既定オフ）
   const [mShowAll, setMShowAll] = useState(false);
   // スタメン: 現在のフォーメーションの枠のみを対象に、未選択(空文字)の枠は除外する
   // (フォーメーション未設定の場合はスタメンUI自体を出さないため保存もしない)。保存と未保存の判定(§7)で共用
@@ -4162,7 +4245,7 @@ function SheetHost({
   // アンマウント（フォームを閉じた・別のシートに替わった）ときは未保存なしに戻す
   useEffect(() => () => onMatchDirty?.(false), [onMatchDirty]);
   const mGroups = resolveFilterGroups(mGroupIds, team.groups);
-  // 選手選択selectの候補ベース：対象が空、または「対象外も候補に出す」ONなら全選手、
+  // 選手選択selectの候補ベース：対象が空、または「ほかの学年・グループの選手も出す」ONなら全選手、
   // それ以外は対象グループのいずれかに所属する選手（OR）
   const mBase =
     mGroups.length === 0 || mShowAll ? players : players.filter((p) => mGroups.some((g) => playerInGroup(p, g)));
@@ -4584,7 +4667,6 @@ function SheetHost({
                           </span>
                           {/* p15 §6-5: 紐づく試合記録があれば結果のタグ */}
                           <EvTitle cls="evtitle" title={e.title} r={eventResultOf(e, team.team.matches, isCoach, board.matchesPublic)} />
-                          <span className="evopen" style={{ marginLeft: "auto" }}>詳細 ›</span>
                         </div>
                         <div className="evmeta">
                           {[timeLabel, e.place, compName].filter(Boolean).join(" ・ ")}
@@ -4596,6 +4678,34 @@ function SheetHost({
                             <span className="evgroups targeted">メンバー発表</span>
                           )}
                         </div>
+                        {/* ux-fix R1-1: 選手・保護者は日別シートから出席／欠席を答えられる（自分が対象の予定だけ） */}
+                        {!isCoach && me && eventTargetsPlayer(e, me, team.groups) && (() => {
+                          const mine = team.team.attendance[e.id]?.[me.id];
+                          const past = eventEndDate(e) < todayStr();
+                          const answer = (st: AttendanceStatus) => {
+                            team.setAttendance(e.id, me.id, st, mine?.comment);
+                            board.toast("出欠を送りました");
+                          };
+                          return (
+                            <div className="attself-quick" onClick={(ev) => ev.stopPropagation()}>
+                              {mine?.status && (
+                                <span className="attself-state">{SELF_ATT_LABEL[mine.status]}で回答済み</span>
+                              )}
+                              {!past &&
+                                (["yes", "no"] as AttendanceStatus[]).map((st) => (
+                                  <button
+                                    key={st}
+                                    type="button"
+                                    className={`mseg-item${mine?.status === st ? " on" : ""}`}
+                                    aria-pressed={mine?.status === st}
+                                    onClick={() => answer(st)}
+                                  >
+                                    {SELF_ATT_LABEL[st]}
+                                  </button>
+                                ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })
@@ -4622,7 +4732,7 @@ function SheetHost({
             const s = team.summary(e.id);
             const cat = categoryOf(e, team.categories);
             const multiDay = isMultiDay(e);
-            const ongoing = isOngoing(e, todayStr());
+            const ongoing = isOngoing(e, new Date());
             const series = e.seriesId ? team.team.series?.find((x) => x.id === e.seriesId) : undefined;
             const mapQuery = e.address || e.place || "";
             // p15 §6-5: 紐づく試合記録（公開の条件は eventResultOf）。得点者は人ごとの点数（1 点は数字なし）
@@ -4723,12 +4833,17 @@ function SheetHost({
                       </div>
                     )}
                     {/* p16 §5-5: サッカーノートの予定別に出るか（スタッフだけ） */}
-                    {isCoach && (
-                      <div className="dline">
-                        サッカーノート：{eventNoteTarget(e, team.categories) ? "反映する" : "反映しない"}
+                    {/* ux-fix R1-5: オン（既定）のときは行を出さず、オフのときだけ灰色で知らせる */}
+                    {isCoach && !eventNoteTarget(e, team.categories) && (
+                      <div className="dline" style={{ color: "var(--mut)" }}>
+                        ノートの予定別には出しません
                       </div>
                     )}
                   </div>
+                  {/* ux-fix R1-1: 選手・保護者が自分の出欠を答える（自分が対象の予定だけ。対象外は下の「参加する」） */}
+                  {!isCoach && me && eventTargetsPlayer(e, me, team.groups) && (
+                    <SelfAttendance key={`${e.id}_${me.id}`} event={e} playerId={me.id} />
+                  )}
                   {/* board-squad-and-pc-polish §3: 試合のメンバー（スタメン／ベンチ）。
                       選手・保護者は登録が無ければ欄ごと出さない */}
                   {e.kind === "match" && (isCoach || e.squad) && (
@@ -4867,7 +4982,7 @@ function SheetHost({
                     <div className="dsec">
                       <div className="dsec-h">出欠状況</div>
                       <div className="dline">
-                        出席 {s.yes} ・ 未定 {s.maybe} ・ 欠席 {s.no} ・ 未記録 {s.none}
+                        出席 {s.yes} ・ 未定 {s.maybe} ・ 欠席 {s.no} ・ 未回答 {s.none}
                       </div>
                       <button
                         className="bigbtn ghost"
@@ -5108,7 +5223,7 @@ function SheetHost({
                   （label+checkbox、ON時--accent）を新設してここだけで使う */}
               <label className="formcheck">
                 <input type="checkbox" checked={mShowAll} onChange={(e) => setMShowAll(e.target.checked)} />
-                対象外の選手も候補に出す
+                ほかの学年・グループの選手も出す
               </label>
             </div>
           </>
@@ -5218,7 +5333,7 @@ function SheetHost({
                 firstPidが""になるため、ボタンがdisabledに見えないまま無反応になっていた。
                 理由を出してdisabledにする（戦術ボード§2-1の空メッセージと同じ考え方） */}
             {!firstPid
-              ? "この対象に選手がいません。「対象外の選手も候補に出す」で選べます"
+              ? "この対象に選手がいません。「ほかの学年・グループの選手も出す」で選べます"
               : ourScoreNum === 0
               ? "得点を入力すると得点者を追加できます"
               : goals.length >= ourScoreNum
@@ -5314,7 +5429,7 @@ function SheetHost({
           </button>
           {!firstPid && (
             <div className="fieldhint">
-              この対象に選手がいません。「対象外の選手も候補に出す」で選べます
+              この対象に選手がいません。「ほかの学年・グループの選手も出す」で選べます
             </div>
           )}
         </div>

@@ -1167,6 +1167,9 @@ interface BoardContextValue {
   /** p18 §3-1: ホームのタイムラインからサッカーノート（スタッフの提出の一覧）でそのノートの詳細を開く意図（消費後はnullに戻す） */
   noteIntent: { noteId: string } | null;
   setNoteIntent: (v: { noteId: string } | null) => void;
+  /** ux-fix R1-7: 「その他」のアカウントのカードから設定のアカウントを開く意図（SettingsScreen が消費して null に戻す） */
+  settingsIntent: { mode: "account" } | null;
+  setSettingsIntent: (v: { mode: "account" } | null) => void;
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
   /**
@@ -2051,6 +2054,8 @@ export function BoardProvider({
   >(null);
   // p18 §3-1: ホームのタイムライン → サッカーノートの詳細（teamIntent と同じ作法。NotebookScreen が消費して null に戻す）
   const [noteIntent, setNoteIntent] = useState<{ noteId: string } | null>(null);
+  // ux-fix R1-7: 「その他」のアカウントのカード → 設定のアカウント（noteIntent と同じ作法。SettingsScreen が消費する）
+  const [settingsIntent, setSettingsIntent] = useState<{ mode: "account" } | null>(null);
   // チャット（戦術・トレーニング・画像・動画の送信）。送信元が全画面共通のため Board に保持。
   // lazy初期化で保存データを直接読む（mount後のload→saveの競合・上書きを防ぐ。TeamProviderと同方針）
   // chat-plan-a §2-3・§6: メッセージと既読時刻は同じ時刻基準のシードから作る（保存済みならそれを優先）
@@ -3445,7 +3450,7 @@ export function BoardProvider({
     (v: boolean) => {
       setMatchesPublicState(v);
       persistSettings({ matchesPublic: v });
-      showToast(v ? "試合記録を選手に公開しました" : "試合記録を非公開にしました");
+      showToast(v ? "試合記録を選手・保護者に公開しました" : "試合記録を非公開にしました");
     },
     [persistSettings, showToast]
   );
@@ -3800,6 +3805,8 @@ export function BoardProvider({
       setTeamIntent,
       noteIntent,
       setNoteIntent,
+      settingsIntent,
+      setSettingsIntent,
       messages,
       sendMessage,
       removeMessage,
@@ -3939,6 +3946,8 @@ export function BoardProvider({
       setTeamIntent,
       noteIntent,
       setNoteIntent,
+      settingsIntent,
+      setSettingsIntent,
       messages,
       sendMessage,
       removeMessage,

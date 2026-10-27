@@ -8,6 +8,7 @@ import { benchOf, benchSizeOf, outsideOf } from "@/lib/squad";
 import type { Player } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
+import { usePc } from "./hub/common";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 
 /** メンバー外セクションの開閉状態を記憶するsessionStorageキー（タブを閉じるまでの簡易な永続化） */
@@ -37,6 +38,7 @@ function writeStoredOutsideOpen(open: boolean): void {
 export default function Bench() {
   const board = useBoard();
   const team = useTeam();
+  const isPc = usePc();
   const { players } = board.state;
   // groups-phase2 §2-3: 配置シート・名簿シートと共有する絞り込み(key "board")。
   // チップの絞り込みはベンチ・メンバー外の両方に効く
@@ -309,7 +311,7 @@ export default function Bench() {
             ＋
           </button>
         </div>
-        <i>タップで編集 ／ ピッチへドラッグで交代</i>
+        <i>{isPc ? "クリック" : "タップ"}で編集 ／ ピッチへドラッグで交代</i>
       </div>
       {/* board-squad-and-pc-polish §2-4: 戦術ボードの現在のメンバーを試合予定へ登録する（スタッフのみ）。
           スタメンが1人も居ないときはシートを開かずtoastで知らせる */}

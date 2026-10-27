@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import type { SeasonRange } from "@/lib/seasonReport";
-import { buildSeasonReport, renderSeasonImage } from "@/lib/seasonReport";
+import { buildSeasonReport, fmtSeasonRange, renderSeasonImage } from "@/lib/seasonReport";
 import { downloadDataUrl } from "@/lib/exportImage";
 import { addDaysStr, countByDay, localDateStr, weekStart } from "@/lib/dates";
 import { loadTeam } from "@/lib/storage";
@@ -71,8 +71,8 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
         </div>
       </div>
       <div className="reportacts noprint">
-        <button className="bigbtn" onClick={() => window.print()}><E n="printer" /> 印刷 / PDF保存</button>
-        <button className="bigbtn ghost" onClick={saveImage}><E n="image" /> 画像で保存</button>
+        <button className="st-btn repbtn" onClick={() => window.print()}><E n="printer" /> PDF で保存</button>
+        <button className="st-btn ghost repbtn" onClick={saveImage}><E n="image" /> 画像で保存</button>
       </div>
 
       {/* 印刷・画面共通のレポート本体 */}
@@ -82,14 +82,16 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
             <div className="repbrand">ALFA<b> FOOTBALL</b> ／ シーズンレポート</div>
             <div className="repname">{data.playerName}<span>{data.teamName}{data.number != null ? ` ・ #${data.number}` : ""}</span></div>
           </div>
-          <div className="reprange">{data.range.from}<br />〜 {data.range.to}</div>
+          <div className="reprange">{fmtSeasonRange(data.range)}</div>
         </div>
 
         <div className="repgrid">
           <RepStat v={`${data.matches}`} l="試合数" />
           <RepStat v={data.attendancePct != null ? `${data.attendancePct}%` : "—"} l="出席率" />
           <RepStat v={`${data.noteCounts.total}`} l="ノート" />
-          <RepStat v={`${data.soloCount}`} l={`自主練(最長${data.soloBestStreak}週)`} />
+          <RepStat v={`${data.noteCounts.match}`} l="試合ノート" />
+          <RepStat v={`${data.soloCount}回`} l="自主練" />
+          <RepStat v={`${data.soloBestStreak}週`} l="連続記録" />
           <RepStat v={data.assignmentTotal ? `${data.assignmentDone}/${data.assignmentTotal}` : "—"} l="課題達成" />
         </div>
 
@@ -116,7 +118,7 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
           </RepSec>
         )}
 
-        <RepSec h="総括（自動生成）">
+        <RepSec h="総括">
           <div className="repsummary">{data.summary}</div>
         </RepSec>
 
@@ -135,8 +137,6 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
             {data.staffComments.map((t, i) => <div key={i} className="repline"><E n="comment" /> {t}</div>)}
           </RepSec>
         )}
-
-        <div className="repfoot">ノート内容・出欠・配信回答から自動集計（AI不使用・ルールベース）</div>
       </div>
     </div>
   );

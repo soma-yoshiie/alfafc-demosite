@@ -171,9 +171,6 @@ export default function MatchupScreen() {
         <header>
           <div className="brand">
             <div className="logo">練習試合</div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {board.state.teamName ?? "マイチーム"}
-            </div>
           </div>
         </header>
         <div className={`mt-pc${withSide ? "" : " noside"}`}>
@@ -206,7 +203,7 @@ export default function MatchupScreen() {
               (selPost && selTeam ? (
                 <PostDetail key={selPost.id} post={selPost} team={selTeam} matches={matches} pc />
               ) : (
-                <div className="empty-msg">募集を選ぶと詳しい内容が出ます。</div>
+                <div className="empty-msg">募集を選ぶと、ここに内容が出ます</div>
               ))}
             {tab === "mine" &&
               (formOpen ? (
@@ -214,7 +211,7 @@ export default function MatchupScreen() {
               ) : minePost ? (
                 <MyPostDetail key={minePost.id} post={minePost} teams={mt.teams} matches={matches} />
               ) : (
-                <div className="empty-msg">募集を選ぶと詳しい内容が出ます。</div>
+                <div className="empty-msg">募集を選ぶと、ここに内容が出ます</div>
               ))}
           </section>
         </div>

@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { loadNotifPrefs, loadNotifSeen } from "@/lib/storage";
-import { buildEventNotifications } from "@/lib/notifications";
+import { chatBadge, noteBadge } from "@/lib/badges";
 import { PLAN_INFO } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
+import { useChatBadgeInput } from "./useChatBadgeInput";
 import LogoMark from "./Logo";
 import {
   IconCalendarCheck,
@@ -24,6 +25,43 @@ import {
 } from "./icons";
 
 /* ===================== サブナビ（画面側からレールへ登録） ===================== */
+
+/** サイドバーのチーム名：語の途中で折れないよう、「FC」「クラブ」などの直後（無ければ最初の空白の後ろ）に折り位置を入れる。
+ *  FC／SC／AC は前後に英字が続かないとき（語として独立しているとき）だけ折り位置にする（SCORPIONS の SC では折らない）。
+ *  折り位置が 1 つも無い（空白も FC も無い長い和名）ときは broken=false を返し、呼び出し側が 2 行の省略（.nobreak）に戻す */
+function breakTeamName(name: string): { node: ReactNode; broken: boolean } {
+  const m = name.match(/^(.*?(?:(?<![A-Za-z])(?:FC|SC|AC)(?![A-Za-z])|ＦＣ|クラブ))(\s*)(\S.*)$/);
+  if (m) {
+    return {
+      broken: true,
+      node: (
+        <>
+          {m[1]}
+          {m[2]}
+          <wbr />
+          {m[3]}
+        </>
+      ),
+    };
+  }
+  const i = name.search(/\s/);
+  if (i > 0) {
+    const rest = name.slice(i).trimStart();
+    if (rest) {
+      return {
+        broken: true,
+        node: (
+          <>
+            {name.slice(0, i)}{" "}
+            <wbr />
+            {rest}
+          </>
+        ),
+      };
+    }
+  }
+  return { node: name, broken: false };
+}
 
 export type ConsoleSubnavItem = {
   key: string;
@@ -199,22 +237,28 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
     };
   }, []);
 
+  // ノートの入口の数字（lib/badges.ts。スタッフ＝未読の提出、選手・保護者＝未読のコメント＋未回答の配信）。
+  // 通知の設定でノートを切っていれば 0
   const noteUnread = useMemo(() => {
-    if (!loadNotifPrefs().notebook) return 0;
     const identity = coach ? "coach" : "p:" + (board.auth.playerId ?? "");
-    const seen = loadNotifSeen()[identity] ?? 0;
-    return buildEventNotifications({
+    return noteBadge({
       role: board.auth.role,
-      playerId: board.auth.playerId,
       notebook: board.notebook,
       deliverables: board.deliverables,
       players: board.state.players,
-      team: teamCtx.team,
-    }).filter((n) => n.ts > seen).length;
-  }, [coach, board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, teamCtx.team, seenVer]);
+      groups: teamCtx.groups,
+      notifPrefs: loadNotifPrefs(),
+      playerId: coach ? null : board.auth.playerId ?? null,
+      seen: loadNotifSeen()[identity] ?? 0,
+    });
+  }, [coach, board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, teamCtx.groups, seenVer]);
+
+  // チャットの入口の数字（PC レールのチャット・スマホ下部タブのチーム。lib/badges.ts）
+  const chatInput = useChatBadgeInput();
+  const chatUnread = useMemo(() => chatBadge(chatInput), [chatInput]);
 
   // 下部タブ(.mtab)。項目数はスタッフ5・選手/保護者5（mobile-redesign-v2 §1・player-hub §2-2）。
-  // チャット未読は既存の未読計算が無いため出さない。STAFF_MTAB/PLAYER_MTABの並びが
+  // 「ノート」はノートの数字、「チーム」はチャットの数字。STAFF_MTAB/PLAYER_MTABの並びが
   // そのままタブの並びになる（並び替えは配列の並びを変えるだけで済む）
   type MtabItem = {
     key: string;
@@ -228,7 +272,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
     key: d.key,
     label: d.label,
     icon: d.icon,
-    badge: d.key === "notebook" ? noteUnread : undefined,
+    badge: d.key === "notebook" ? noteUnread : d.key === "team" ? chatUnread : undefined,
     on: d.screens.has(board.screen),
     onSelect: () => board.setScreen(d.target),
   }));
@@ -251,7 +295,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         { item: { key: "library", label: "ライブラリ", icon: <IconFolder />, onSelect: () => board.setScreen("library") } },
         { sec: "チーム", item: { key: "notebook", label: "サッカーノート", icon: <IconNote />, badge: noteUnread, onSelect: () => board.setScreen("notebook") } },
         { item: { key: "team", label: "チーム運営", icon: <IconCalendarCheck />, onSelect: () => board.setScreen("team") } },
-        { item: { key: "chat", label: "チャット", icon: <IconChat />, onSelect: () => board.setScreen("chat") } },
+        { item: { key: "chat", label: "チャット", icon: <IconChat />, badge: chatUnread, onSelect: () => board.setScreen("chat") } },
         // matchup-demo §1: 「その他」の先頭（スタッフだけ）
         { sec: "その他", item: { key: "matchup", label: "練習試合", icon: <IconMatchup />, onSelect: () => board.setScreen("matchup") } },
         { item: { key: "articles", label: "コーチラボ", icon: <IconLab />, onSelect: () => board.setScreen("articles") } },
@@ -264,7 +308,7 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
         { item: { key: "team", label: "チーム", icon: <IconCalendarCheck />, onSelect: () => board.setScreen("team") } },
         // player-hub §2-2: チームの後・チャットの前
         { item: { key: "profile", label: "プロフィール", icon: <IconUser />, onSelect: () => board.setScreen("profile") } },
-        { item: { key: "chat", label: "チャット", icon: <IconChat />, onSelect: () => board.setScreen("chat") } },
+        { item: { key: "chat", label: "チャット", icon: <IconChat />, badge: chatUnread, onSelect: () => board.setScreen("chat") } },
         // settings-plan-a §5: 選手・保護者にも設定（アカウント・通知）。末尾
         { item: { key: "settings", label: "設定", icon: <IconCog />, onSelect: () => board.setScreen("settings") } },
       ];
@@ -284,8 +328,8 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
             </div>
           )}
           <div className="conbrandtx">
-            <div className="conclub" title={board.state.teamName ?? "マイチーム"}>
-              {board.state.teamName ?? "マイチーム"}
+            <div className={`conclub${breakTeamName(board.state.teamName ?? "マイチーム").broken ? "" : " nobreak"}`} title={board.state.teamName ?? "マイチーム"}>
+              {breakTeamName(board.state.teamName ?? "マイチーム").node}
             </div>
             {coach && <div className="conbrand-team">{PLAN_INFO[board.plan].name}プラン</div>}
           </div>

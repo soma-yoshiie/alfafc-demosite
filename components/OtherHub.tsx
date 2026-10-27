@@ -3,7 +3,7 @@
 /**
  * 「その他」ハブ（新設・スマホ専用画面。mobile-redesign-v2 §2）。
  * 下部タブ「その他」の遷移先。コーチラボ・設定（選手はコーチラボ・セットプレーデザイン）と
- * ログアウトへの入口をまとめる。PCのレール（ConsoleShell の .conrail）には出さない
+ * アカウント（設定のアカウントへ）とログアウトをまとめる。PCのレール（ConsoleShell の .conrail）には出さない
  * （BoardProvider.ScreenName にのみ追加。PCのDOM・見た目・挙動は変更しない）。
  */
 
@@ -15,7 +15,6 @@ import { IconCog, IconLab, IconMatchup, IconSetPiece } from "./icons";
 export default function OtherHub() {
   const board = useBoard();
   const coach = board.auth.role === "coach";
-  // ホーム末尾の mhome-logout と同じ処理を共有する
   const logout = () => window.dispatchEvent(new Event("alfa-logout"));
 
   return (
@@ -65,11 +64,22 @@ export default function OtherHub() {
           )}
         </MenuGroup>
 
-        <div className="mhome-foot">
-          <button type="button" className="mhome-logout" onClick={logout}>
-            ログアウト
+        {/* ux-fix R1-7: ログアウトはホームから外し、ここと設定のアカウントだけに残す。アカウントのカードは設定のアカウントへ */}
+        <MenuGroup>
+          <MenuRow
+            label={board.auth.name || "アカウント"}
+            desc={`${coach ? "スタッフ" : "選手・保護者"}・${board.state.teamName ?? "マイチーム"}`}
+            onClick={() => {
+              board.setSettingsIntent({ mode: "account" });
+              board.setScreen("settings");
+            }}
+          />
+        </MenuGroup>
+        <MenuGroup>
+          <button type="button" className="mrow mrow-danger" onClick={logout}>
+            <span className="mrow-label">ログアウト</span>
           </button>
-        </div>
+        </MenuGroup>
       </div>
     </div>
   );

@@ -169,9 +169,6 @@ export default function CoachLabScreen() {
           )}
           <div className="brand" style={!isRoot ? { marginLeft: 4 } : undefined}>
             <div className="logo">コーチラボ</div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {tag}
-            </div>
           </div>
         </header>
       ) : (

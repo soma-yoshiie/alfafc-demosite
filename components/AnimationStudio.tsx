@@ -166,7 +166,7 @@ export default function AnimationStudio() {
             className={`stepchip${s === board.activeStep ? " on" : ""}`}
             title={
               s === board.activeStep
-                ? "もう一度タップでこの場面を再生"
+                ? "もう一度押すとこの場面を再生"
                 : `場面${s + 1}へ`
             }
             onClick={() =>

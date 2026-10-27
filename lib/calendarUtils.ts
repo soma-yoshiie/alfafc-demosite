@@ -24,8 +24,32 @@ export const occursOn = (e: TeamEvent, ymd: string) =>
   ymd >= e.date && ymd <= eventEndDate(e);
 export const isUpcomingOrOngoing = (e: TeamEvent, today: string) =>
   eventEndDate(e) >= today;
-export const isOngoing = (e: TeamEvent, today: string) =>
-  e.date <= today && today <= eventEndDate(e);
+/**
+ * 予定の進み具合を時刻で判定する（ux-fix R1-2）。
+ * 開始＝date＋time（無ければ 0:00）。終了＝endDate＋endTime。endTime が無いときは
+ * time があれば開始＋2時間、終日（または time 無し）なら endDate の 23:59。
+ */
+export function eventPhase(e: TeamEvent, now: Date): "before" | "ongoing" | "after" {
+  const at = (ymd: string, hm: string | undefined, fallbackMin: number) => {
+    const [y, m, d] = ymd.split("-").map(Number);
+    if (hm) {
+      const [hh, mm] = hm.split(":").map(Number);
+      return new Date(y, m - 1, d, hh || 0, mm || 0, 0, 0).getTime();
+    }
+    return new Date(y, m - 1, d, 0, fallbackMin, 0, 0).getTime();
+  };
+  const timed = !e.allDay && !!e.time;
+  const start = at(e.date, timed ? e.time : undefined, 0);
+  let end: number;
+  if (!e.allDay && e.endTime) end = at(eventEndDate(e), e.endTime, 0);
+  else if (timed) end = at(eventEndDate(e), e.time, 0) + 2 * 3600000; // 単日なら 開始＋2時間
+  else end = at(eventEndDate(e), undefined, 23 * 60 + 59);
+  const t = now.getTime();
+  if (t < start) return "before";
+  if (t > end) return "after";
+  return "ongoing";
+}
+export const isOngoing = (e: TeamEvent, now: Date) => eventPhase(e, now) === "ongoing";
 export const byStartAsc = (a: TeamEvent, b: TeamEvent) =>
   eventStartKey(a) < eventStartKey(b) ? -1 : 1;
 

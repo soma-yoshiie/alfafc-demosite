@@ -75,8 +75,8 @@ export default function CoachLabAuthor({
           )}
           <div className="cl-authorhead-stats">
             <span>フォロワー {cl.followerCount(profile.id)}</span>
-            <span>記事 {articles.length}本</span>
-            <span>参考になった {totalLikes}</span>
+            <span>記事 {articles.length} 件</span>
+            {totalLikes > 0 && <span>参考になった {totalLikes}</span>}
           </div>
         </div>
         {isMe ? (

@@ -66,11 +66,7 @@ export default function ProfileScreen() {
         <header>
           <div className="brand">
             <div className="logo">プロフィール</div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {board.state.teamName ?? "マイチーム"}
-            </div>
           </div>
-          <span className="hdrusr">{board.auth.name}</span>
         </header>
       ) : (
         // 下部タブ「プロフィール」の直下画面のため戻るは出さない。右のヘッダーアクションも無い

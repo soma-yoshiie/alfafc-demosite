@@ -119,7 +119,7 @@ export default function ActivitySection({ p }: HubSectionProps) {
                       {entry?.comment ? ` ・ ${entry.comment}` : ""}
                     </span>
                   </div>
-                  <div className="phubrow-st">{entry?.status ? STATUS_LABEL[entry.status] : "未記録"}</div>
+                  <div className="phubrow-st">{entry?.status ? STATUS_LABEL[entry.status] : "未回答"}</div>
                 </div>
               );
             })}

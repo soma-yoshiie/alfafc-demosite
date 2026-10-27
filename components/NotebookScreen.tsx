@@ -53,6 +53,7 @@ import { attendanceRate } from "@/lib/teamStats";
 import { deliverableTargetsPlayer, eventTargetPlayers, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { buildEventNotifications, type NotifTarget } from "@/lib/notifications";
 import { categoryOf, eventNoteTarget } from "@/lib/calendarUtils";
+import { staffUnreadNotes } from "@/lib/notebookStats";
 import { DeliverBlock, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
 import { useGroupFilter } from "./GroupChips";
@@ -414,9 +415,6 @@ export default function NotebookScreen() {
             <div className="logo">
               サッカー<b>ノート</b>
             </div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {isCoach ? "提出された振り返り" : `${board.auth.name} さん`}
-            </div>
           </div>
           {isRoot && (
             <>
@@ -437,10 +435,6 @@ export default function NotebookScreen() {
                 <E n="bell" />
                 {unread > 0 && <span className="hdrbellbadge">{unread > 9 ? "9+" : unread}</span>}
               </button>
-              <span className="hdrusr">
-                {board.auth.name}
-                {isCoach ? " ・ 管理者" : ""}
-              </span>
             </>
           )}
         </header>
@@ -602,17 +596,13 @@ export default function NotebookScreen() {
               />
             ) : (
               <div className="nbempty">
-                <b>提出を選択してください</b>
-                <br />
-                左の一覧から開くと内容が表示されます
+                提出を選ぶと、ここに内容が出ます
               </div>
             ))}
           {tab === "notifs" &&
             (selNotif == null ? (
               <div className="nbempty">
-                <b>通知が選択されていません</b>
-                <br />
-                左の一覧から開くと詳細が表示されます
+                通知を選ぶと、ここに内容が出ます
               </div>
             ) : selNotif.target.kind === "note" ? (
               <NoteDetail
@@ -625,9 +615,7 @@ export default function NotebookScreen() {
             ) : selNotif.target.kind === "deliver" ? (
               // notebook-staff-redesign §2: スタッフに配信の閲覧入口は無い（navTarget で弾くため通常は到達しない）
               <div className="nbempty">
-                <b>通知が選択されていません</b>
-                <br />
-                左の一覧から開くと詳細が表示されます
+                通知を選ぶと、ここに内容が出ます
               </div>
             ) : (
               <NoteSearch
@@ -1196,7 +1184,7 @@ function NoteList({
     if (status === "nocomment") return scoped.filter((n) => !!n.staffSeenAt && !n.staffComment);
     return scoped.filter((n) => !!n.staffComment);
   }, [scoped, isCoach, status, selectedId]);
-  const unreadCount = useMemo(() => (isCoach ? base.filter((n) => !n.staffSeenAt).length : 0), [base, isCoach]);
+  const unreadCount = useMemo(() => (isCoach ? staffUnreadNotes(base) : 0), [base, isCoach]);
   // 表示する提出。未読だけ(unreadOnly)は状態とANDで重ねる
   const entries = useMemo(
     () => (isCoach && unreadOnly ? base.filter((n) => !n.staffSeenAt || n.id === selectedId) : base),
@@ -1972,7 +1960,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
         <div className="formgroup-h">コーチの練習メニュー</div>
         {autoSelected && (
           <div className="evnote" style={{ marginBottom: 8 }}>
-            今日のメニューを自動で選択しています（タップで解除できます）
+            今日のメニューを自動で選択しています（押すと解除できます）
           </div>
         )}
         {menuOptions.length === 0 ? (

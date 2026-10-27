@@ -43,7 +43,9 @@ export default function SettingsTop({
   const t = team.team;
   const players = board.state.players.length;
   const customCats = team.categories.filter((c) => !c.builtin).length;
-  const groupNames = team.groups.map((g) => g.label).join("・") || "未登録";
+  // ux-fix R1-5: 値が切れないよう、学年＋グループの合計の個数にする
+  const groupCount = team.groups.length;
+  const groupValue = groupCount > 0 ? `${groupCount} 個` : "未登録";
   const comps = t.competitions.length;
   const tests = (t.fitnessTests ?? []).length;
   const prefs = loadNotifPrefs();
@@ -68,7 +70,7 @@ export default function SettingsTop({
   const stage = (
     <SettingsRow label="学校区分" value={STAGE_LABEL[team.schoolStage]} onClick={() => go({ mode: "stage" })} />
   );
-  const groups = <SettingsRow label="学年・グループ" value={groupNames} onClick={() => go({ mode: "groups" })} />;
+  const groups = <SettingsRow label="学年・グループ" value={groupValue} onClick={() => go({ mode: "groups" })} />;
   const categories = (
     <SettingsRow
       label="予定の種類"
@@ -101,7 +103,8 @@ export default function SettingsTop({
   const invite = (
     <SettingsRow
       label="選手・保護者の招待"
-      value={board.playerPassword ? "共通パスワード 設定済み" : "共通パスワード 既定のまま"}
+      value={board.playerPassword ? "変更済み" : "未変更"}
+      warn={!board.playerPassword}
       onClick={() => go({ mode: "invite" })}
     />
   );

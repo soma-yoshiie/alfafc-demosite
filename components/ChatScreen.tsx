@@ -161,9 +161,6 @@ export default function ChatScreen() {
         <header>
           <div className="brand">
             <div className="logo">チャット</div>
-            <div className="tag team" style={{ marginTop: 4 }}>
-              {board.state.teamName ?? "マイチーム"}
-            </div>
           </div>
         </header>
       ) : (
@@ -237,7 +234,7 @@ export default function ChatScreen() {
             </div>
           ) : (
             <div className="chatempty">
-              {seg === "ann" ? "左の一覧からお知らせを選んでください" : "左の一覧から会話を選んでください"}
+              {seg === "ann" ? "お知らせを選ぶと、ここに内容が出ます" : "会話を選ぶと、ここに内容が出ます"}
             </div>
           )}
         </div>

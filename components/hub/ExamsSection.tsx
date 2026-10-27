@@ -366,8 +366,8 @@ function ExamForm({
         <input aria-label="テスト名" value={name} onChange={(e) => setName(e.target.value)} placeholder={`例）${autoName}`} />
       </Field>
       <div className="formrow">
-        <Field label="種別">
-          <select aria-label="種別" value={kind} onChange={(e) => setKind(e.target.value as ExamKind)}>
+        <Field label="種類">
+          <select aria-label="種類" value={kind} onChange={(e) => setKind(e.target.value as ExamKind)}>
             {KINDS.map((k) => (
               <option key={k} value={k}>
                 {EXAM_KIND_LABEL[k]}

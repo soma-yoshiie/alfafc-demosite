@@ -41,6 +41,20 @@ export interface SeasonReportData {
   summary: string;
 }
 
+/** 「2026年1月1日〜10月10日」（年が違うときだけ終了側にも年を付ける） */
+export function fmtSeasonRange(r: SeasonRange): string {
+  const parse = (d: string) => {
+    const [y, m, day] = d.split("-").map(Number);
+    return { y, m, day };
+  };
+  const a = parse(r.from);
+  const b = parse(r.to);
+  if (!a.y || !b.y) return `${r.from}〜${r.to}`;
+  const left = `${a.y}年${a.m}月${a.day}日`;
+  const right = a.y === b.y ? `${b.m}月${b.day}日` : `${b.y}年${b.m}月${b.day}日`;
+  return `${left}〜${right}`;
+}
+
 const inRange = (date: string, r: SeasonRange) => date >= r.from && date <= r.to;
 const tsDate = (ts: number) => localDateStr(new Date(ts));
 
@@ -70,6 +84,11 @@ export function buildSeasonReport(
     roles.forEach((r) => (posCounts[r] = (posCounts[r] ?? 0) + 1));
   });
   const positions = Object.entries(posCounts).sort((a, b) => b[1] - a[1]);
+
+  // 試合数：試合記録の出場（playerSeasonStats と同じ「lineup に自分がいる」。期間で絞る）
+  const appearances = (team?.matches ?? []).filter(
+    (m) => inRange(m.date, range) && (m.lineup ?? []).some((l) => l.playerId === player.id)
+  ).length;
 
   // 出席（期間内の予定。groups-everywhere §4: この選手が対象の予定だけを母数にする）
   let yes = 0;
@@ -114,7 +133,7 @@ export function buildSeasonReport(
     number: player.number,
     teamName,
     range,
-    matches: matchNotes.length,
+    matches: appearances,
     positions,
     attendancePct: total ? Math.round((yes / total) * 100) : null,
     attendance: { yes, total },
@@ -154,7 +173,7 @@ export function generateSeasonSummary(d: Omit<SeasonReportData, "summary">): str
 /* ---------- 共有用1枚画像（PNG dataURL） ---------- */
 export function renderSeasonImage(d: SeasonReportData): string {
   const W = 750;
-  const H = 1040;
+  const H = 1130;
   const scale = 2;
   const canvas = document.createElement("canvas");
   canvas.width = W * scale;
@@ -175,7 +194,7 @@ export function renderSeasonImage(d: SeasonReportData): string {
   ctx.font = "600 14px sans-serif";
   ctx.fillText("シーズンレポート", 28, 74);
   ctx.textAlign = "right";
-  ctx.fillText(`${d.range.from} 〜 ${d.range.to}`, W - 28, 74);
+  ctx.fillText(fmtSeasonRange(d.range), W - 28, 74);
   ctx.textAlign = "left";
 
   // 選手名
@@ -191,7 +210,9 @@ export function renderSeasonImage(d: SeasonReportData): string {
     ["試合数", `${d.matches}`],
     ["出席率", d.attendancePct != null ? `${d.attendancePct}%` : "—"],
     ["ノート", `${d.noteCounts.total}`],
-    ["自主練", `${d.soloCount}`],
+    ["試合ノート", `${d.noteCounts.match}`],
+    ["自主練", `${d.soloCount}回`],
+    ["連続記録", `${d.soloBestStreak}週`],
     ["課題達成", d.assignmentTotal ? `${d.assignmentDone}/${d.assignmentTotal}` : "—"],
   ];
   const gx = 28;
@@ -212,7 +233,8 @@ export function renderSeasonImage(d: SeasonReportData): string {
     ctx.fillText(st[0], x + 14, y + 60);
   });
 
-  let y = gy + 2 * (bh + 10) + 24;
+  const rows = Math.ceil(stats.length / 3);
+  let y = gy + rows * (bh + 10) + 24;
   // 出場ポジション
   if (d.positions.length) {
     ctx.fillStyle = "#9ec92a";

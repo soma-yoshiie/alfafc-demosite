@@ -113,7 +113,7 @@ export default function GrowthSection({ p, profile, stage, age }: HubSectionProp
             {curH != null && <small>cm</small>}
           </div>
           <div className="d">
-            {lastH && prevH ? `前回比 ${fmtDiff(lastH.height! - prevH.height!)}cm` : lastH ? fmtYMD(lastH.date) : "登録値"}
+            {lastH && prevH ? `前回比 ${fmtDiff(lastH.height! - prevH.height!)}cm` : lastH ? fmtYMD(lastH.date) : ""}
           </div>
         </div>
         <div className="phubnumcard">
@@ -123,7 +123,7 @@ export default function GrowthSection({ p, profile, stage, age }: HubSectionProp
             {curW != null && <small>kg</small>}
           </div>
           <div className="d">
-            {lastW && prevW ? `前回比 ${fmtDiff(lastW.weight! - prevW.weight!)}kg` : lastW ? fmtYMD(lastW.date) : "登録値"}
+            {lastW && prevW ? `前回比 ${fmtDiff(lastW.weight! - prevW.weight!)}kg` : lastW ? fmtYMD(lastW.date) : ""}
           </div>
         </div>
         <div className="phubnumcard">

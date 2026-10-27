@@ -8,7 +8,7 @@
  * データの集計は homeData.tsx（useHomeTimeline）。クラスは hp-*（app/globals.css の基底）。
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { announcementParts, announcementStats, announcementTarget, fmtListDate, sortAnnouncements, visibleAnnouncements } from "@/lib/chat";
 import { saveChatSeg } from "@/lib/storage";
 import { dmThreadKey, gradeLabel } from "@/lib/types";
@@ -22,8 +22,6 @@ import { fmtEventDate, type HomeTimelineScope } from "./homeData";
 
 export type HomeVariant = "pc" | "mobile";
 
-/** タイルの色クラス（今の 4 つの枠の色を順に繰り返す） */
-const TILE_COLORS = ["mdb-tile-notes", "mdb-tile-att", "mdb-tile-win", "mdb-tile-rank"] as const;
 /** スマホの一覧は先頭これだけ。残りは「すべて表示」で出す */
 const MOBILE_FIRST = 8;
 /** 最新のお知らせの件数 */
@@ -42,22 +40,25 @@ export function HomeTimeline({ scopes, variant }: { scopes: HomeTimelineScope[];
 
   const tiles = (
     <>
-      {scopes.map((s, i) => (
+      {scopes.map((s) => (
         <button
           key={s.key}
           type="button"
-          className={`kpitile ${TILE_COLORS[i % TILE_COLORS.length]}${s.key === scope.key ? " on" : ""}`}
+          className={`kpitile hp-tile${s.key === scope.key ? " on" : ""}`}
+          // 色は左の線だけ。学年は学年の色、「すべて」は色を渡さず --accent（CSS の既定）
+          style={s.color ? ({ "--tile-color": s.color } as CSSProperties) : undefined}
           aria-pressed={s.key === scope.key}
           onClick={() => {
             setSelKey(s.key);
             setShowAll(false);
           }}
         >
-          <div className="kv">{s.unread}</div>
+          <div className="kv">
+            <small>未読</small>
+            {s.unread}
+          </div>
           <div className="kl">{s.label}</div>
-          <span className="mdb-kpidelta">
-            {s.unread === 0 ? "未読なし" : `ノート ${s.unreadNotes} ・ メッセージ ${s.unreadMessages}`}
-          </span>
+          <span className="mdb-kpidelta">{`ノート ${s.unreadNotes} ・ メッセージ ${s.unreadMessages}`}</span>
         </button>
       ))}
     </>
@@ -66,8 +67,14 @@ export function HomeTimeline({ scopes, variant }: { scopes: HomeTimelineScope[];
   const list = (
     <>
       <div className="hp-h">
-        <span>タイムライン</span>
-        <small>{scope.label}</small>
+        <span>
+          タイムライン<small className="hp-h-sub">{scope.label}</small>
+        </span>
+        {!pc && !showAll && items.length > MOBILE_FIRST && (
+          <button type="button" className="hp-link" onClick={() => setShowAll(true)}>
+            すべて見る（{items.length}）›
+          </button>
+        )}
       </div>
       {items.length === 0 ? (
         <div className="hp-empty">まだ届いていません。</div>
@@ -108,11 +115,6 @@ export function HomeTimeline({ scopes, variant }: { scopes: HomeTimelineScope[];
             <span className="hp-row-time">{fmtListDate(it.ts)}</span>
           </button>
         ))
-      )}
-      {!pc && !showAll && items.length > MOBILE_FIRST && (
-        <button type="button" className="hp-more" onClick={() => setShowAll(true)}>
-          すべて表示（{items.length} 件）
-        </button>
       )}
     </>
   );

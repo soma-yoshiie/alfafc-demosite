@@ -55,7 +55,7 @@
   /* ---- タイポグラフィ ---- */
   --font-ui: var(--font-manrope), var(--font-noto), "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
   --font-display: var(--font-bebas), var(--font-manrope), sans-serif;
-  --fs-label: 11px;
+  --fs-label: 12px;
   --fs-body-s: 12px;
   --fs-body: 14px;
   --fs-title-s: 15px;
@@ -198,10 +198,10 @@ header {
   white-space: nowrap;
 }
 .logo b {
-  color: var(--lime);
+  color: var(--ink);
 }
 .tag {
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 3px;
   color: var(--mut);
   text-transform: uppercase;
@@ -219,7 +219,7 @@ header {
 .tag.team {
   letter-spacing: 0.3px;
   text-transform: none;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: #ffffff;
   background: var(--lime);
@@ -506,7 +506,7 @@ header {
 .role {
   margin-top: 11px;
   font-family: var(--font-display);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: rgba(255, 255, 255, 0.82);
   line-height: 1;
@@ -644,7 +644,7 @@ header {
   padding: 8px 10px;
 }
 .stat .k {
-  font-size: 9px;
+  font-size: 12px;
   letter-spacing: 2px;
   color: var(--mut);
   text-transform: uppercase;
@@ -1657,7 +1657,7 @@ header {
   gap: 8px;
 }
 .sheet h2 span, .screenbody h2 span {
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-ui);
   font-weight: 700;
   color: var(--accent);
@@ -1696,6 +1696,26 @@ header {
 .libapp .libpane,
 .libapp .libmain {
   padding-bottom: calc(56px + env(safe-area-inset-bottom));
+}
+/* ux-fix R1-6: ライブラリ（スマホ）は左右 16px（.libpane／.libmain が持つ。.libacts はその中なので足さない）。
+   作成ボタンの角丸は --r-md。PC の padding は 1 つ目の PC ブロックが後から確定するが、.libacts と角丸は
+   PC に打ち消しが無いので、スマホ（.mhead があるとき）だけに限定する */
+.libapp .libpane,
+.libapp .libmain {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.libapp:has(.mhead) .libpane {
+  padding-top: 12px;
+}
+.libapp:has(.mhead) .libacts .bigbtn {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+.libapp:has(.mhead) .libctrls .formbtn,
+.libapp:has(.mhead) .libacts .bigbtn {
+  border-radius: var(--r-md);
 }
 /* mobile-redesign Phase D-1(C1-critical §1-4/§8-4 #20): 同義の空状態(戦術/練習/セットプレー
    未選択・0件)が.libpane側の.empty-msgと.libmain側の.libemptyの2つ縦に並んで見える対策。
@@ -1792,7 +1812,7 @@ header {
   text-overflow: ellipsis;
 }
 .prow .sub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
 }
 /* mobile-redesign B-2: 数値の強調はink(PC既存の.prow .numと同じ値) */
@@ -1866,7 +1886,7 @@ header {
 /* 勝/分/敗の小バッジ（.sheetスコープ・トークンのみ使用） */
 .sheet .statwdl {
   font-family: var(--font-ui);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0;
   padding: 2px 7px;
@@ -1964,7 +1984,7 @@ header {
   margin-bottom: 6px;
 }
 .rolememo .rmrole {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--on-primary);
   background: var(--accent);
@@ -2231,7 +2251,7 @@ body:has(.mhead) .chatcompose textarea {
   gap: 10px;
 }
 .fphint {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: rgba(234, 255, 240, 0.7);
   background: rgba(10, 14, 12, 0.55);
@@ -2392,7 +2412,7 @@ body:has(.mhead) .chatcompose textarea {
   text-overflow: ellipsis;
 }
 .playsub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 2px;
   white-space: nowrap;
@@ -2426,7 +2446,7 @@ body:has(.mhead) .chatcompose textarea {
   color: var(--ink);
   border-radius: 9px;
   padding: 6px 4px;
-  font-size: 11px;
+  font-size: 12px;
   max-width: 84px;
 }
 /* ライブラリ統合タブ（戦術/練習）の既定は非表示。
@@ -2474,12 +2494,12 @@ body:has(.mhead) .chatcompose textarea {
   color: var(--mut);
   border-radius: 8px;
   padding: 4px 9px;
-  font-size: 11px;
+  font-size: 12px;
   cursor: pointer;
 }
 .folderempty {
   color: var(--mut);
-  font-size: 11px;
+  font-size: 12px;
   padding: 4px 10px 6px;
 }
 
@@ -2541,7 +2561,7 @@ body:has(.mhead) .chatcompose textarea {
   padding: 12px 0 2px;
 }
 .planseote {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   /* mobile-redesign Phase D-2(major §8-3-13): 中央揃えは空状態・数値タイルのみ。本文の注記は
      左揃えへ（PCは打ち消しリセットで中央揃えのまま維持） */
@@ -2571,7 +2591,7 @@ body:has(.mhead) .chatcompose textarea {
   color: var(--ink);
 }
 .pchint {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 2px;
 }
@@ -2754,7 +2774,7 @@ body:has(.mhead) .billtoggle button.on {
   font-weight: 700;
 }
 .pcbadge {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--on-primary);
   background: var(--accent);
@@ -2784,7 +2804,7 @@ body:has(.mhead) .billtoggle button.on {
   flex-shrink: 0;
 }
 .teamapp .rolebar > span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   font-weight: 700;
 }
@@ -3137,7 +3157,7 @@ body:has(.mhead) .billtoggle button.on {
 }
 .attname small {
   display: block;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   font-weight: 600;
 }
@@ -3163,7 +3183,7 @@ body:has(.mhead) .billtoggle button.on {
   gap: 8px;
 }
 .msgfrom {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--on-primary);
   background: var(--accent);
@@ -3171,7 +3191,7 @@ body:has(.mhead) .billtoggle button.on {
   border-radius: 999px;
 }
 .msgdate {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
 }
 .msgdel {
@@ -3322,7 +3342,7 @@ body:has(.mhead) .billtoggle button.on {
   gap: 14px;
   align-items: center;
   margin-top: 12px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
 }
 .callegend span {
@@ -3674,7 +3694,7 @@ body:has(.mhead) .billtoggle button.on {
   text-align: center;
 }
 .statbox .sk {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--mut);
   letter-spacing: 1px;
 }
@@ -3706,7 +3726,7 @@ body:has(.mhead) .billtoggle button.on {
   margin-top: 10px;
 }
 .scorers .sk {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   letter-spacing: 1px;
   margin-bottom: 6px;
@@ -3725,7 +3745,7 @@ body:has(.mhead) .billtoggle button.on {
   background: var(--panel2);
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--ink);
 }
@@ -3784,7 +3804,7 @@ body:has(.mhead) .billtoggle button.on {
   font-size: 15px;
 }
 .msub {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 2px;
 }
@@ -4006,7 +4026,7 @@ body:has(.mhead) .teamapp .dynrow select {
 .splash-skip {
   position: absolute;
   bottom: calc(env(safe-area-inset-bottom) + 26px);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 2px;
   color: var(--mut);
   opacity: 0;
@@ -4089,7 +4109,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .login-note {
   color: var(--mut);
-  font-size: 11px;
+  font-size: 12px;
   margin-top: 16px;
   max-width: 360px;
   text-align: center;
@@ -4157,14 +4177,14 @@ body:has(.mhead) .teamapp .dynrow select {
 .ratebar.big { height: 10px; margin-top: 8px; }
 .ratetxt {
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 .injbadge {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   padding: 4px 8px;
   border-radius: 999px;
@@ -4181,7 +4201,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .injmain { flex: 1; min-width: 0; }
 .injarea { font-weight: 700; font-size: 14px; }
-.injmeta { font-size: 11px; color: var(--mut); margin-top: 2px; }
+.injmeta { font-size: 12px; color: var(--mut); margin-top: 2px; }
 .injbtn {
   flex: 0 0 auto;
   width: 30px;
@@ -5153,7 +5173,7 @@ body:has(.mhead) .teamapp .dynrow select {
   text-align: center;
 }
 .profcell .pk {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--mut);
   letter-spacing: 1px;
 }
@@ -5164,7 +5184,7 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--ink);
 }
 .profcell .pv small {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   font-family: var(--font-ui);
   margin-left: 1px;
@@ -5194,7 +5214,7 @@ body:has(.mhead) .teamapp .dynrow select {
 /* mobile-redesign B-1: カテゴリバッジは情報ラベル=青（PC既存の.sheet/.screenbody .artcatと同じ値） */
 .artcat {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--on-primary);
   background: var(--accent);
@@ -5206,7 +5226,7 @@ body:has(.mhead) .teamapp .dynrow select {
    （.dlvtag と同じ配色トークンを流用。モバイルのシート/PC画面どちらでも使うためBASEに置く） */
 .spkindbadge {
   display: inline-block;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--primary-dim);
   background: var(--primary-container);
@@ -5490,7 +5510,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .cl-cardcat {
   align-self: flex-start;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--accent);
   background: var(--accent-tint);
@@ -5517,9 +5537,10 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .cl-cardfoot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 4px 8px;
   margin-top: 4px;
   padding-top: 8px;
   border-top: 1px solid var(--outline);
@@ -5528,7 +5549,7 @@ body:has(.mhead) .teamapp .dynrow select {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   flex-shrink: 0;
   white-space: nowrap;
@@ -5556,7 +5577,7 @@ body:has(.mhead) .teamapp .dynrow select {
   margin: 4px 0;
 }
 .cl-badge {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--accent);
   background: var(--accent-tint);
@@ -5571,7 +5592,7 @@ body:has(.mhead) .teamapp .dynrow select {
 
 /* ---- 価格タグ ---- */
 .cl-price {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--mut);
 }
@@ -5602,7 +5623,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .cl-followbtn.compact {
   padding: 5px 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* ---- 指導者ミニ表示（記事カード・記事ページの著者行） ---- */
@@ -5641,7 +5662,7 @@ body:has(.mhead) .teamapp .dynrow select {
   margin-top: 1px;
 }
 .cl-authormini-team {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5684,12 +5705,12 @@ body:has(.mhead) .teamapp .dynrow select {
   margin-top: 1px;
 }
 .cl-authorcard-team {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 2px;
 }
 .cl-authorcard-stats {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 6px;
 }
@@ -5722,7 +5743,7 @@ body:has(.mhead) .teamapp .dynrow select {
   margin-top: 4px;
 }
 .cl-authorhead-note {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 2px;
 }
@@ -5774,7 +5795,7 @@ body:has(.mhead) .teamapp .dynrow select {
   min-width: 0;
 }
 .cl-timeline-period {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--accent);
 }
@@ -5803,7 +5824,7 @@ body:has(.mhead) .teamapp .dynrow select {
   display: block;
 }
 .cl-article-main {
-  padding: 4px 16px 24px;
+  padding: 12px 16px 24px;
 }
 .cl-article-side {
   display: none;
@@ -5813,7 +5834,7 @@ body:has(.mhead) .teamapp .dynrow select {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   margin-bottom: 8px;
 }
@@ -5821,7 +5842,7 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--mut);
 }
 .cl-tagchip {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--accent);
   background: var(--accent-tint);
@@ -5843,6 +5864,29 @@ body:has(.mhead) .teamapp .dynrow select {
   padding-bottom: 14px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--outline);
+}
+.cl-article-authoracts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* 本文・添付・関連カードの左端を題名と同じ 16px（.cl-article-main の余白）にそろえる */
+.cl-article-main .cl-article-body {
+  padding-left: 0;
+  padding-right: 0;
+}
+.cl-article-main .artatt {
+  margin-left: 0;
+  margin-right: 0;
+}
+.cl-article-main .setsec-h {
+  margin-left: 0;
+  margin-right: 0;
+}
+.cl-article-main .cl-grid {
+  padding-left: 0;
+  padding-right: 0;
 }
 
 /* ---- 有料ライン ---- */
@@ -5875,7 +5919,7 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--ink);
 }
 .cl-paywall-refund {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--primary-dim);
 }
@@ -5887,7 +5931,7 @@ body:has(.mhead) .teamapp .dynrow select {
   margin: 12px 0 6px;
 }
 .cl-paywall-note {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   text-align: center;
 }
@@ -5899,7 +5943,7 @@ body:has(.mhead) .teamapp .dynrow select {
   margin: 10px 0;
 }
 .cl-purchased-badge {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--primary-dim);
   background: var(--primary-container);
@@ -5969,6 +6013,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 
 .cl-sidecard {
+  flex-wrap: wrap;
   border: 1px solid var(--outline);
   border-radius: var(--r-lg);
   padding: 14px;
@@ -6003,7 +6048,7 @@ body:has(.mhead) .teamapp .dynrow select {
   background: var(--panel);
 }
 .cl-kpi-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   font-weight: 700;
 }
@@ -6057,7 +6102,7 @@ body:has(.mhead) .teamapp .dynrow select {
 .cl-table th {
   color: var(--mut);
   font-weight: 700;
-  font-size: 11px;
+  font-size: 12px;
   background: var(--surface-low);
 }
 .cl-table tr:last-child td {
@@ -6116,7 +6161,7 @@ body:has(.mhead) .teamapp .dynrow select {
   cursor: default;
 }
 .cl-payouthint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 6px;
   text-align: center;
@@ -6128,7 +6173,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .cl-fielderr {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--red);
   font-weight: 700;
 }
@@ -6264,7 +6309,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .cl-form .reqb,
 .cl-form .optb {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   border-radius: var(--r-full);
   padding: 2px 7px;
@@ -6447,7 +6492,7 @@ body:has(.mhead) .teamapp .dynrow select {
   font-weight: 600;
 }
 .fieldhint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   margin: 6px 2px 0;
   line-height: 1.5;
@@ -6627,7 +6672,7 @@ body:has(.mhead) .teamapp .dynrow select {
   line-height: 1;
 }
 .agdate span {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   margin-top: 2px;
 }
@@ -6656,7 +6701,7 @@ body:has(.mhead) .teamapp .dynrow select {
    TeamHub.tsx側のインラインborderLeftColorだけに一本化する（PC・スマホ共通） */
 .agkind {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   padding: 2px 7px;
   border-radius: 999px;
@@ -6676,7 +6721,7 @@ body:has(.mhead) .teamapp .dynrow select {
 }
 .agtime {
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   font-variant-numeric: tabular-nums;
 }
@@ -8129,7 +8174,7 @@ body:has(.mhead) .teamapp .dynrow select {
   height: 18px;
 }
 .todaystat-l {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--mut);
   font-weight: 700;
 }
@@ -8194,7 +8239,7 @@ body:has(.mhead) .teamapp .dynrow select {
   border-radius: 10px;
   background: var(--red);
   color: #fff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   display: flex;
   align-items: center;
@@ -8285,6 +8330,20 @@ body:has(.mhead) .teamapp .dynrow select {
   color: var(--mut);
   margin-top: 2px;
 }
+/* 選手の試合別の得点・アシスト：数字だけの2列（見出しで意味を示す） */
+.cmphead {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 12px 4px;
+  font-size: 12px;
+  color: var(--mut);
+}
+.cmpcol {
+  width: 56px;
+  text-align: right;
+  flex: none;
+}
 
 .noteapp .scroll {
   padding: 4px 16px calc(env(safe-area-inset-bottom) + 24px);
@@ -8312,7 +8371,7 @@ body:has(.mhead) .teamapp .dynrow select {
   white-space: nowrap;
 }
 .noteapp .logo b {
-  color: var(--primary);
+  color: var(--ink);
   font-weight: 700;
 }
 .noteapp .tag {
@@ -9660,7 +9719,7 @@ body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
   position: absolute;
   top: 4px;
   left: 6px;
-  font-size: 10px;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
   pointer-events: none;
 }
@@ -10194,7 +10253,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   margin-top: 5px;
 }
 .noteapp .dbd {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   margin-top: 3px;
 }
@@ -10239,14 +10298,14 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .chart-line .clv,
 .teamapp .chart-line .clv {
   fill: var(--mut);
-  font-size: 9.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
   text-anchor: middle;
 }
 .noteapp .chart-line .cll,
 .teamapp .chart-line .cll {
   fill: var(--mut);
-  font-size: 9px;
+  font-size: 12px;
   text-anchor: middle;
 }
 .noteapp .chart-line .cl2,
@@ -10267,7 +10326,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .mlchart .gr,
 .teamapp .mlchart .gr { stroke: var(--outline); }
 .noteapp .mlchart text,
-.teamapp .mlchart text { font-size: 8.5px; fill: var(--mut); }
+.teamapp .mlchart text { font-size: 12px; fill: var(--mut); }
 
 /* 分析パネル（案D） */
 .noteapp .apanel { background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--r-lg); overflow: hidden; margin-bottom: 12px; }
@@ -10493,24 +10552,33 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   cursor: pointer;
   margin-bottom: 7px;
 }
+.noteapp .notifrow {
+  min-height: 44px;
+}
 .noteapp .notifrow.unread {
-  background: #edf6f0;
+  background: var(--accent-tint);
 }
-.noteapp .notifdot {
+.noteapp .notifico {
   flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--mut);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--mut);
 }
-.noteapp .notifdot.warn {
-  background: var(--danger);
+.noteapp .notifico svg {
+  width: 22px;
+  height: 22px;
 }
-.noteapp .notifdot.info {
-  background: var(--warn);
+.noteapp .notifrow.unread .notifico {
+  color: var(--accent);
 }
-.noteapp .notifdot.good {
-  background: var(--primary);
+.noteapp .notifgo {
+  flex: 0 0 auto;
+  font-size: var(--fs-title);
+  line-height: 1;
+  color: var(--mut);
 }
 .noteapp .notiftext {
   flex: 1;
@@ -10531,8 +10599,10 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   gap: 8px;
   margin: 10px 0 14px;
 }
-.noteapp .reportacts .bigbtn {
+.noteapp .reportacts .repbtn {
   flex: 1;
+  width: auto;
+  gap: 6px;
 }
 
 /* レポート本体＝白い紙（印刷でそのまま使える・ライト固定） */
@@ -10556,7 +10626,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   font-size: var(--fs-body-s);
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #2f7d00;
+  color: var(--accent);
 }
 .noteapp .repbrand b {
   color: #16201a;
@@ -10581,7 +10651,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 }
 .noteapp .repgrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
   gap: 8px;
   margin: 16px 0 6px;
 }
@@ -10598,10 +10668,10 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   font-size: 26px;
   line-height: 1;
   letter-spacing: 0.5px;
-  color: #2f7d00;
+  color: var(--ink);
 }
 .noteapp .repsl {
-  font-size: 10px;
+  font-size: var(--fs-body-s);
   color: #5a6b62;
   margin-top: 4px;
 }
@@ -10611,8 +10681,8 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .repsec-h {
   font-size: var(--fs-body-s);
   font-weight: 700;
-  color: #2f7d00;
-  border-left: 3px solid #2f7d00;
+  color: var(--accent);
+  border-left: 3px solid var(--accent);
   padding-left: 8px;
   margin-bottom: 8px;
 }
@@ -10631,7 +10701,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   color: #16201a;
 }
 .noteapp .reportsheet .ps-chip b {
-  color: #2f7d00;
+  color: var(--ink);
 }
 .noteapp .repheat {
   display: grid;
@@ -10647,9 +10717,9 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   border-radius: 2px;
   background: #eef1ec;
 }
-.noteapp .repheat-c.l1 { background: #b7dcc0; }
-.noteapp .repheat-c.l2 { background: #6cb886; }
-.noteapp .repheat-c.l3 { background: #2f7d00; }
+.noteapp .repheat-c.l1 { background: var(--accent-tint); }
+.noteapp .repheat-c.l2 { background: var(--accent); opacity: 0.55; }
+.noteapp .repheat-c.l3 { background: var(--accent); }
 .noteapp .repfoot {
   margin-top: 20px;
   font-size: var(--fs-label);
@@ -10769,7 +10839,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   margin-top: 1px;
 }
 .noteapp .daybadge {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--primary-dim);
   background: var(--primary-container);
@@ -10845,7 +10915,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   border-radius: var(--r-sm);
   background: var(--surface-low);
   color: var(--mut);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   display: flex;
   align-items: center;
@@ -10885,7 +10955,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   margin-left: auto;
 }
 .noteapp .pill {
-  font-size: 10.5px;
+  font-size: 12px;
   font-weight: 700;
   border-radius: var(--r-full);
   padding: 2px 8px;
@@ -11082,7 +11152,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 }
 .dxsec h3 {
   margin: 0 0 8px;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: var(--mut);
   text-transform: uppercase;
@@ -11092,7 +11162,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 }
 .dxsec h3 .dxhint {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.2px;
   font-weight: 600;
   color: var(--mut);
@@ -11136,7 +11206,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   margin-top: 8px;
 }
 .dxrow .dxlbl {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--mut);
 }
@@ -11162,7 +11232,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   border-radius: 11px;
   border: 1px solid var(--line);
   background: var(--panel2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   font-family: var(--font-ui);
   color: var(--ink);
@@ -11302,7 +11372,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   gap: 8px;
 }
 .dxpanelbody h2 span {
-  font-size: 11px;
+  font-size: 12px;
   font-family: var(--font-ui);
   font-weight: 700;
   color: var(--lime);
@@ -11375,7 +11445,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.08);
   color: inherit;
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1;
   cursor: pointer;
 }
@@ -11466,7 +11536,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   /* player-hub §2-2: ボタン既定の横 padding(6px)だと「プロフィール」(12px×6文字)の最小幅が等分(390px÷5=78px)を
      超えて、そのタブだけ広がる。等分を保つため padding を詰め、最小幅の下限を外す */
   min-width: 0;
-  padding: 0 2px;
+  padding: 0 1px;
   min-height: 48px;
   display: flex;
   flex-direction: column;
@@ -11479,7 +11549,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   font-family: var(--font-ui);
   /* player-hub §2-2: 選手のタブが5つ（「プロフィール」6文字）になるため折り返さない。
      390px 幅では 12px、360px 以下だけ 11px に落ちる（下部タブのラベルだけの例外。新しい @media は作らない） */
-  font-size: clamp(11px, 3.1vw, 12px);
+  font-size: clamp(11px, 3.2vw, 12px);
   white-space: nowrap;
   font-weight: 400;
   position: relative;
@@ -11570,6 +11640,15 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .mrow:active {
   background: var(--surface-low);
 }
+/* ux-fix R1-7: 「その他」のログアウト。.mrowcard の中の 44px の赤文字の行 */
+.mrow.mrow-danger {
+  min-height: 44px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.mrow-danger .mrow-label {
+  color: var(--danger);
+}
 .mrow-icon {
   flex: none;
   width: 24px;
@@ -11629,12 +11708,14 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 
 /* ---- コーチングハブ（新設・スマホ専用。§1-3） ---- */
 .chubapp .scroll {
+  padding-top: 16px;
   padding-left: 16px;
   padding-right: 16px;
 }
 
 /* ---- 「その他」ハブ（新設・スマホ専用。mobile-redesign-v2 §2） ---- */
 .otherapp .scroll {
+  padding-top: 16px;
   padding-left: 16px;
   padding-right: 16px;
 }
@@ -11820,7 +11901,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   border-radius: 9px;
   background: var(--danger);
   color: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 18px;
   text-align: center;
@@ -11861,7 +11942,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   border-radius: 9px;
   background: var(--danger);
   color: #ffffff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   line-height: 18px;
   text-align: center;
@@ -11995,7 +12076,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 /* 色・太さともPCの.mdb-vsの実測値(#ffffff/700)に合わせる(レビューPhase D-1 C1-major/C3-minor) */
 .mhome-root .mh-vs {
   flex: none;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: #ffffff;
 }
@@ -12101,6 +12182,12 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   font-weight: 700;
   font-family: var(--font-ui);
   cursor: pointer;
+}
+/* ux-fix R1-1: 出欠に回答済みのとき。白い枠だけの控えめなボタン */
+.mhome-root .mh-cta.ghost {
+  background: transparent;
+  border: 1px solid var(--on-primary);
+  color: var(--on-primary);
 }
 
 /* ---- 指標タイル 2×2 ---- */
@@ -12641,6 +12728,41 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   white-space: normal;
 }
 
+/* ux-fix R1-7: 学年カードは白地・文字は --ink。色は左の線だけ（学年の色は --tile-color、「すべて」は --accent）。
+   選択中は --accent の枠。数字の横に「未読」（0 件も「未読 0」） */
+.hp-scopes .kpitile.hp-tile {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-left: 4px solid var(--tile-color, var(--accent));
+}
+.hp-scopes .kpitile.hp-tile.on {
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.hp-scopes .kpitile.hp-tile .kv {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--ink);
+}
+.hp-scopes .kpitile.hp-tile .kv small {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mut);
+}
+.hp-scopes .kpitile.hp-tile .kl,
+.hp-scopes .kpitile.hp-tile .mdb-kpidelta,
+.hp-scopes .kpitile.hp-tile.on .kl,
+.hp-scopes .kpitile.hp-tile.on .mdb-kpidelta {
+  color: var(--mut);
+}
+.hp-h-sub {
+  margin-left: 8px;
+}
+
 /* =========================================================
    設定画面（specs/settings-plan-a.md §2・§7。components/SettingsScreen.tsx・settings/）
    行の左にアイコンは置かない。基底はスマホ（タップ 44px）。PC の左カテゴリ列・密度（40px/32px・四角）は
@@ -12789,6 +12911,15 @@ button.st-row:active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.st-warn {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--warn);
+  vertical-align: middle;
 }
 .st-row-chev {
   flex: none;
@@ -12976,27 +13107,6 @@ button.st-row:active {
   color: var(--danger);
 }
 /* プラン */
-.st-plannow {
-  padding: 16px;
-  border: 1px solid var(--accent-tint-strong);
-  border-radius: var(--r-lg);
-  background: var(--accent-tint);
-}
-.st-plannow-k {
-  font-size: var(--fs-body-s);
-  color: var(--mut);
-}
-.st-plannow-name {
-  margin-top: 2px;
-  font-size: var(--fs-title);
-  font-weight: 700;
-  color: var(--ink);
-}
-.st-plannow-sum {
-  margin-top: 4px;
-  font-size: var(--fs-body);
-  color: var(--ink);
-}
 .st-plans {
   display: flex;
   flex-direction: column;
@@ -13036,6 +13146,10 @@ button.st-row:active {
 .st-plan-price {
   font-size: var(--fs-headline);
   font-weight: 700;
+  color: var(--ink);
+}
+.st-plan-sum {
+  font-size: var(--fs-body);
   color: var(--ink);
 }
 .st-plan-price small {
@@ -13150,13 +13264,29 @@ button.st-row:active {
   background: var(--surface-low);
 }
 .mhead-back.mhead-spacer {
-  visibility: hidden;
-  cursor: default;
+  display: none;
+}
+/* 戻るの無い最上位の画面：見出しの左を 16px にそろえる（spacer は display:none なので隙間が付かない。
+   .mhead の余白 6px + 10px。サッカーノートは .noteapp header の余白が 16px なので足さない） */
+.mhead-back.mhead-spacer + .mhead-tx {
+  padding-left: 10px;
+}
+.noteapp .mhead-back.mhead-spacer + .mhead-tx {
+  padding-left: 0;
 }
 .mhead-tx {
   flex: 1;
   min-width: 0;
   padding: 0 4px;
+}
+/* ヘッダーのすぐ下のタブ・チップ行は、ヘッダーと 12px あける（ux-fix R1-6） */
+.mhead + .fbar,
+.mhead + .mseg-wrap {
+  padding-top: 12px;
+}
+.teamapp:has(.mhead) .mhead + .fbar {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 .mhead-title {
   font-size: var(--fs-title);
@@ -13794,6 +13924,65 @@ button.st-row:active {
 /* p15 §6-5: 紐づく試合記録があるとき、時刻の代わりにスコアを出す（スマホ・PCとも表示） */
 .calev-score {
   font-weight: 700;
+}
+/* ux-fix R1-1: 選手・保護者のカレンダーで、自分の出欠が未回答の予定の印（6px の点） */
+.calev-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+/* ux-fix R1-1: 予定の詳細の「自分の出欠」（3 択＋一言）。選択の見た目は .mseg-item / .mseg-item.on のまま */
+.attself-seg {
+  display: flex;
+  gap: 8px;
+}
+.attself-seg .mseg-item {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 44px;
+  justify-content: center;
+}
+.attself-input {
+  display: block;
+  width: 100%;
+  height: 44px;
+  margin-top: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+}
+.attself-input::placeholder {
+  color: var(--mut);
+}
+/* ux-fix R1-1: 日別シートの各予定の「出席／欠席」（回答済みの文字つき） */
+.attself-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.attself-quick .mseg-item {
+  flex: 0 0 auto;
+  min-width: 88px;
+  height: 44px;
+  justify-content: center;
+}
+.attself-state {
+  flex: 1 1 auto;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--mut);
 }
 /* p15 §6-5: リスト表示・日別シート・出欠カードの題名の後ろに付ける試合結果のタグ（勝・分・敗＋スコア） */
 /* レビュー指摘: 結果があるときは題名を flex にし、文字だけを省略してタグは常に見せる（スマホで見切れていた） */
@@ -15314,6 +15503,13 @@ body:has(.mhead) .grouppick-item {
   font-weight: 700;
   line-height: 1.25;
   overflow-wrap: anywhere;
+}
+/* 試合の詳細：相手名だけ。長いときは 1 行で省略（語の途中で折り返さない） */
+.mhub .phubname {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .phubcap {
   margin-left: 6px;
@@ -17033,11 +17229,6 @@ body:has(.mhead) .grouppick-item {
   margin-left: 8px;
   vertical-align: 1px;
 }
-/* レポートの「印刷 / PDF保存」「画像で保存」：.noteapp .bigbtn の左右 16px を外し、日付欄の左端に揃える */
-.phub-report .reportacts .bigbtn {
-  margin-left: 0;
-  margin-right: 0;
-}
 
 /* ============================================================
    練習試合（specs/matchup-demo.md §4。.mt-*。MatchupScreen／PostList／FindPanel）。
@@ -17195,6 +17386,17 @@ body:has(.mhead) .grouppick-item {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 所属リーグ・対戦回数：枠なしの灰色の 1 行「市リーグ 1 部・対戦 1 回」 */
+.mt-lg {
+  display: block;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  line-height: 1.4;
+}
+.mt-km {
+  flex: none;
   white-space: nowrap;
 }
 .mt-tags {
@@ -21955,7 +22157,7 @@ textarea.st-input.mt-msg {
     border-radius: 8px;
     background: var(--red);
     color: #ffffff;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 700;
     line-height: 16px;
     text-align: center;
@@ -22012,7 +22214,7 @@ textarea.st-input.mt-msg {
   .coachapp .heattoggle { display: block; }
   .coachapp .heatcard { display: block; background: var(--surface-lowest); border: 1px solid var(--outline); border-radius: var(--r-lg); padding: 14px; margin-bottom: 12px; }
   .coachapp .heattbl { width: 100%; border-collapse: collapse; font-size: var(--fs-body-s); font-variant-numeric: tabular-nums; }
-  .coachapp .heattbl th { text-align: left; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--mut); padding: 2px 6px 8px; border-bottom: 1px solid var(--outline); }
+  .coachapp .heattbl th { text-align: left; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; color: var(--mut); padding: 2px 6px 8px; border-bottom: 1px solid var(--outline); }
   .coachapp .heattbl td { padding: 7px 6px; border-bottom: 1px solid var(--outline); }
   .coachapp .heattbl tr:last-child td { border-bottom: 0; }
   .coachapp .heattbl .hdot { color: var(--outline-strong); }
@@ -22389,7 +22591,7 @@ textarea.st-input.mt-msg {
   }
   .ptable-alerts .kpialert {
     padding: 3px 8px;
-    font-size: 10.5px;
+    font-size: 12px;
   }
   .ptable-report {
     margin-left: auto;
@@ -22513,7 +22715,7 @@ textarea.st-input.mt-msg {
     background: #f6f8fa;
   }
   .noteapp .notifrow.unread {
-    background: #edf6f0;
+    background: var(--accent-tint);
   }
 
   /* コーチ提出一覧(.notecard、3ペイン左列限定=12799で既にコンパクト化済みの行のみ対象)。
@@ -22609,17 +22811,17 @@ textarea.st-input.mt-msg {
   .conbrand { padding: 4px 12px 14px; display: flex; align-items: center; gap: 8px; }
   .conbrand .rail-mark { width: 22px; height: 22px; flex: none; }
   .conbrand .logo { font-size: 15px; }
-  .conbrand-team { font-size: 11px; color: var(--mut); font-weight: 600; margin-top: 1px; }
+  .conbrand-team { font-size: 12px; color: var(--mut); font-weight: 600; margin-top: 1px; }
   /* 設定プレビューと同じ下地を持たせ、白抜き・淡色ロゴがレール(白)で消えないようにする */
   .conemblem { width: 26px; height: 26px; flex: none; object-fit: contain; border-radius: var(--r-sm); background: var(--surface-low); border: 1px solid var(--outline); }
   .conemblem.empty { display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--mut); }
   /* 長いクラブ名でレールから溢れないよう2行で省略する */
   .conbrandtx { min-width: 0; }
-  .conclub { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.15; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .conclub { font-size: 13.5px; font-weight: 700; color: var(--ink); line-height: 1.15; word-break: keep-all; overflow-wrap: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .conproduct { display: flex; align-items: center; gap: 8px; padding: 10px 12px; margin-top: auto; opacity: 0.75; }
   .conproduct .rail-mark { width: 16px; height: 16px; flex: none; }
-  .conproduct .logo { font-size: 11.5px; }
-  .connavsec { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; color: var(--mut); text-transform: uppercase; padding: 14px 12px 4px; }
+  .conproduct .logo { font-size: 12px; }
+  .connavsec { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; color: var(--mut); text-transform: uppercase; padding: 14px 12px 4px; }
   .conrail-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; background: none; border-radius: 8px; font-size: var(--fs-body-s); font-weight: 600; color: var(--ink); cursor: pointer; text-align: left; font-family: inherit; }
   .conrail-item:hover { background: rgba(0, 0, 0, 0.05); }
   .conrail-item.on { background: var(--accent-tint); color: var(--accent); }
@@ -22627,7 +22829,7 @@ textarea.st-input.mt-msg {
   .conrail-item svg { width: 17px; height: 17px; flex: none; }
   .conrail-item.sub { padding-left: 34px; font-weight: 500; }
   .conrail-sub { display: flex; flex-direction: column; gap: 2px; margin: 2px 0 4px; }
-  .conrail-badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .conrail-badge { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--red); color: #fff; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
   .conuser { padding: 12px; border-top: 1px solid var(--outline); font-size: var(--fs-body-s); color: var(--mut); }
   /* シェル外オーバーレイ(シート/トースト)はメインカラム基準へ寄せる(レール208px÷2=104px補正) */
   .sheet { left: 208px; }
@@ -22679,7 +22881,7 @@ textarea.st-input.mt-msg {
 
   /* 探す/フォロー中/指導者ページ: カードグリッドを3列に、指導者一覧を2列に */
   .clapp .cl-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 16px;
     padding: 4px 24px 24px;
     max-width: 1400px;
@@ -22888,11 +23090,11 @@ textarea.st-input.mt-msg {
   .att,
   .calwd,
   .homerole {
-    font-size: 11px;
+    font-size: 12px;
   }
   .ongoing,
   .teamapp .rolehint {
-    font-size: 10px;
+    font-size: 12px;
   }
   /* Phase D-1(C1-major): 「今日のまとめ」の赤・オレンジ中和はPCの通知パネル
      (.coachapp:has(.nbmain))にも波及するため、元の配色(7883/7887行と同値)に戻す */
@@ -24678,6 +24880,93 @@ textarea.st-input.mt-msg {
     min-height: 32px;
     align-self: flex-start;
   }
+
+  /* ux-fix R1-1: 自分の出欠（予定の詳細）は PC では 36px（指ポインタは上の coarse ブロックで 44px に戻す） */
+  .attself-seg .mseg-item,
+  .attself-quick .mseg-item,
+  .attself-input {
+    height: 36px;
+  }
+  .attself-quick .mseg-item {
+    min-width: 72px;
+  }
+  /* ux-fix R1-1: ヒーローの出欠ボタン（回答済み）。白い枠だけ */
+  .mdb-hero .mdb-cta.ghost {
+    background: transparent;
+    border: 1px solid var(--on-primary);
+    color: var(--on-primary);
+  }
+  .mdb-hero .mdb-cta.ghost:hover {
+    background: color-mix(in srgb, var(--on-primary) 16%, transparent);
+  }
+
+  /* ux-fix R1-8: 練習試合の詳細の下端（一言と「申し込む」）は、列をスクロールしても常に見せる */
+  .mt-detail-foot {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding: 12px 0;
+    border-top: 1px solid var(--outline);
+    background: var(--bg);
+  }
+
+  /* ux-fix R1-6: 1 つ目の PC ブロックにある 12px 未満の画面の文字を 12px に（ブロック自体は編集しない） */
+  .bpanelbody h2 span,
+  .artform .reqb,
+  .artform .optb,
+  .mdb-role,
+  .mdb-bellcount,
+  .mdb-bellbadge,
+  .mdb-bellreason,
+  .mdb-vs,
+  .mdb-eventcat,
+  .mdb-metalabel,
+  .mdb-kpidelta,
+  .mdb-chartlabel,
+  .mdb-rankgap td,
+  .mdb-autorow,
+  .mdb-panel-sub,
+  .mdb-topicrank,
+  .mdb-topicfallback,
+  .mdb-feedicon,
+  .mdb-feedtime,
+  .mdb-chip,
+  .noteapp .pill,
+  .noteapp .chart-line .clv,
+  .teamapp .chart-line .clv,
+  .noteapp .mlchart text,
+  .teamapp .mlchart text {
+    font-size: 12px;
+  }
+  /* ux-fix R1-6（レビュー）: 折り位置の無い長いチーム名は 2 行の省略に戻す */
+  .conclub.nobreak {
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  /* ux-fix R1-6: コーチラボの記事ページ。関連カードの左端も本文・見出しとそろえる */
+  .clapp .cl-article-main .cl-grid {
+    max-width: none;
+    margin: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* ux-fix R1-7: 学年カード（PC）。四角（--r-md）で、タイルの間に隙間。選択中でも白地のまま */
+  .mdb-pulse .kpiband.hp-scopes {
+    gap: 8px;
+    padding: 12px 16px;
+  }
+  .hp-scopes .kpitile.hp-tile {
+    border-radius: var(--r-md);
+    border-right: 1px solid var(--outline);
+  }
+  .hp-scopes .kpitile.hp-tile.on {
+    border-right-color: var(--accent);
+  }
+  .hp-scopes .kpitile.hp-tile:hover:not(.on) {
+    background: var(--surface-low);
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -24824,6 +25113,12 @@ textarea.st-input.mt-msg {
     min-height: 44px;
   }
   .chatsegwrap .mseg-item {
+    height: 44px;
+  }
+  /* ux-fix R1-1: 自分の出欠の操作も指サイズ 44px へ戻す */
+  .attself-seg .mseg-item,
+  .attself-quick .mseg-item,
+  .attself-input {
     height: 44px;
   }
   /* Phase Aはスコープ付きセレクタ(.noteapp/.plancard等)でも詰めているため、
