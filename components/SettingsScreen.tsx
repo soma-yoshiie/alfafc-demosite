@@ -273,6 +273,12 @@ export default function SettingsScreen() {
 
   const logout = () => window.dispatchEvent(new Event("alfa-logout"));
   const nav = coach ? NAV : PLAYER_NAV;
+  // boundary-plan-a §1: PC の右のパネルの題名（一覧ならカテゴリ名、下層ならその項目名）と「‹ 戻る」の有無
+  const mainTitle =
+    mainMode === "top"
+      ? (nav.flatMap((g) => g.items).find((it) => it.cat === cat)?.label ?? VIEW_TITLE.top)
+      : VIEW_TITLE[mainMode];
+  const showBack = mainMode !== "top" && !(!coach && mainMode === "account") && !directViewOf(cat, coach);
 
   return (
     <div className="app setapp">
@@ -332,28 +338,32 @@ export default function SettingsScreen() {
                 </div>
               </nav>
               <div className="st-main">
-                {mainMode === "top" ? (
-                  coach ? (
-                    <SettingsTop cat={cat} go={go} />
+                {/* boundary-plan-a §1: 白いパネルの先頭に今開いている項目名の行（下層では「‹ 戻る」を左に置く） */}
+                <div className="st-maint">
+                  {showBack && (
+                    <button type="button" className="st-back" onClick={goTop}>
+                      ‹ 戻る
+                    </button>
+                  )}
+                  <h2 className="st-maint-t">{mainTitle}</h2>
+                </div>
+                <div className="st-mainb">
+                  {mainMode === "top" ? (
+                    coach ? (
+                      <SettingsTop cat={cat} go={go} />
+                    ) : (
+                      <PlayerSettingsTop cat={cat} go={go} />
+                    )
+                  ) : !coach && mainMode === "account" ? (
+                    // 選手・保護者：アカウントの説明と通知のスイッチを同じ欄に出す（右が空白にならないように）
+                    <>
+                      {renderSub("account")}
+                      <NotifPrefsForm key="notif-inline" title="通知" />
+                    </>
                   ) : (
-                    <PlayerSettingsTop cat={cat} go={go} />
-                  )
-                ) : !coach && mainMode === "account" ? (
-                  // 選手・保護者：アカウントの説明と通知のスイッチを同じ欄に出す（右が空白にならないように）
-                  <>
-                    {renderSub("account")}
-                    <NotifPrefsForm key="notif-inline" title="通知" />
-                  </>
-                ) : (
-                  <>
-                    {!directViewOf(cat, coach) && (
-                      <button type="button" className="st-back" onClick={goTop}>
-                        ‹ 戻る
-                      </button>
-                    )}
-                    {renderSub(mainMode)}
-                  </>
-                )}
+                    renderSub(mainMode)
+                  )}
+                </div>
               </div>
             </div>
           ) : view.mode === "top" ? (

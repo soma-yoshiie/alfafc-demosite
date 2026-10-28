@@ -1,7 +1,7 @@
 // カレンダー機能拡張のヘルパー集約（パレット・カテゴリ・日付・繰り返し展開・地図URL）
 
-import type { CalFilter, EventCategory, Player, RecurrenceRule, TeamEvent, TeamGroup } from "./types";
-import { COLOR_CHOICES, eventTargetsPlayer } from "./groups";
+import type { CalColorMode, CalFilter, EventCategory, Player, RecurrenceRule, TeamEvent, TeamGroup } from "./types";
+import { COLOR_CHOICES, eventTargetsPlayer, groupColorOf } from "./groups";
 
 /**
  * カテゴリの色の選択肢（calendar-plan-a §11-3）。グループの色選択と同じ7色＋カスタムに
@@ -60,6 +60,21 @@ export function categoryOf(e: TeamEvent, cats: EventCategory[]): EventCategory {
     BUILTIN_CATEGORIES.find((c) => c.id === e.kind) ??
     BUILTIN_CATEGORIES[0]
   );
+}
+
+/**
+ * 予定の表示色（calendar-plan-a §12-2）。色の決め方はここ1か所：月のマスのチップ・リスト行・
+ * 画像保存・PCのリストはすべてこれを通す。mode==="group"は対象グループの色（全員向けはネイビー）、
+ * "kind"は種類（カテゴリ。組込みの練習・試合も EventCategory.color）の色。
+ * 予定の詳細の種類チップ(.evkind)は常に種類の色のままなので、これは使わない。
+ */
+export function eventColorOf(
+  e: TeamEvent,
+  groups: TeamGroup[],
+  categories: EventCategory[],
+  mode: CalColorMode
+): string {
+  return mode === "kind" ? categoryOf(e, categories).color : groupColorOf(e, groups);
 }
 
 /** p16 §5: 種類の既定（未定義なら 組込み＝true／それ以外＝false） */

@@ -1,6 +1,7 @@
 import type {
   Announcement,
   BoardState,
+  CalColorMode,
   CalFilter,
   ChatMessage,
   ChatReads,
@@ -66,6 +67,8 @@ const CALGROUP_KEY_OLD = "soccer_tactics_calgroup_v1";
 const CALFILTER_KEY = "soccer_tactics_calfilter_v2";
 // calendar-plan-a §11-1: PCの絞り込みパネル(.calside)の開閉状態。値は"open"/"closed"のみ
 const CALSIDE_OPEN_KEY = "soccer_tactics_calside_v1";
+// calendar-plan-a §12-2: カレンダーの色分け（"group"／"kind"）。端末ごと・スタッフ／選手／保護者で共通
+const CALCOLOR_KEY = "soccer_tactics_calcolor_v1";
 const NBSIDE_OPEN_KEY = "soccer_tactics_nbside_v1";
 const ROSSIDE_OPEN_KEY = "soccer_tactics_rosside_v1";
 // p14 §2-2: PCの試合記録の絞り込み列(.rosside)の開閉状態。値は"open"/"closed"のみ
@@ -1063,6 +1066,28 @@ export function saveCalSideOpen(open: boolean): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(CALSIDE_OPEN_KEY, open ? "open" : "closed");
+  } catch {
+    /* 無視 */
+  }
+}
+
+/**
+ * カレンダーの色分けの基準（calendar-plan-a §12-2）。既定は"group"（対象グループの色）。
+ * "kind"のときだけ"kind"を保存し、それ以外（未保存・壊れた値）は"group"へフォールバックする。
+ */
+export function loadCalColorMode(): CalColorMode {
+  if (typeof window === "undefined") return "group";
+  try {
+    return window.localStorage.getItem(CALCOLOR_KEY) === "kind" ? "kind" : "group";
+  } catch {
+    return "group";
+  }
+}
+
+export function saveCalColorMode(mode: CalColorMode): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(CALCOLOR_KEY, mode);
   } catch {
     /* 無視 */
   }

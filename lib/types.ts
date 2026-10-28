@@ -674,6 +674,13 @@ export interface CalFilter {
   hiddenCategoryIds: string[];
 }
 
+/**
+ * カレンダーの色分けの基準（calendar-plan-a §12-2）。"group"=対象グループの色（既定）、
+ * "kind"=予定の種類（カテゴリ）の色。lib/storage.ts の loadCalColorMode/saveCalColorMode で
+ * localStorage soccer_tactics_calcolor_v1 に保存（端末ごと・ロール共通）。
+ */
+export type CalColorMode = "group" | "kind";
+
 export type AttendanceStatus = "yes" | "maybe" | "no";
 
 export interface AttendanceEntry {

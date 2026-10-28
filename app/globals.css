@@ -1824,6 +1824,36 @@ header {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* boundary-plan-a §2: スマホの名簿は学年ごとに白いカード 1 枚（iOS のグループ化リスト）。行の間の線は左 72px
+   （余白 16 + 札 40 + 間 16）から右端まで。PC の名簿（.ptable）はここに入らない */
+.teamapp:has(.mhead) .rosgrp > .sech {
+  margin: 20px 4px 8px;
+}
+.teamapp:has(.mhead) .roscard {
+  overflow: hidden;
+  padding: 0;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+}
+.teamapp:has(.mhead) .roscard .prow.rosmrow {
+  position: relative;
+  gap: 16px;
+  padding: 0 16px;
+  border-radius: 0;
+}
+.teamapp:has(.mhead) .roscard .prow.rosmrow:active {
+  background: var(--surface-low);
+}
+.teamapp:has(.mhead) .roscard .prow.rosmrow + .prow.rosmrow::before {
+  content: "";
+  position: absolute;
+  left: 72px;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--outline);
+}
 /* mobile-redesign B-2: 数値の強調はink(PC既存の.prow .numと同じ値) */
 .prow .num {
   font-family: var(--font-display);
@@ -3789,6 +3819,69 @@ body:has(.mhead) .billtoggle button.on {
 }
 .teamapp:has(.mhead) .callegend span {
   white-space: nowrap;
+}
+
+/* ============================================================
+   スマホのカレンダーの「面」（boundary-plan-a §3）。月の曜日の帯とマスを白いカード 1 枚（.calcard）に載せ、
+   マスの間は 1px の線（右と下）、月初・月末の空のマスは沈め、今日は --accent-tint。凡例とリスト表示の日の行は
+   それぞれ別の白いカード。700px 以上（タブレット）は下の 700px ブロックで元の箱型へ戻す。PC は .mhead が無いので対象外
+   ============================================================ */
+.teamapp:has(.mhead) .calcard {
+  overflow: hidden;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+}
+.teamapp:has(.mhead) .calcard .calhead {
+  align-items: center;
+  height: 32px;
+  background: var(--surface-low);
+  border-bottom: 1px solid var(--outline);
+}
+.teamapp:has(.mhead) .calcard .calhead .calwd {
+  padding-bottom: 0;
+}
+.teamapp:has(.mhead) .calcard .calcell {
+  padding: 6px 1px;
+  border-right: 1px solid var(--outline);
+  border-bottom: 1px solid var(--outline);
+}
+.teamapp:has(.mhead) .calcard .calcell:nth-child(7n) {
+  border-right: 0;
+}
+.teamapp:has(.mhead) .calcard .calcell:nth-last-child(-n + 7) {
+  border-bottom: 0;
+}
+.teamapp:has(.mhead) .calcard .calcell.empty {
+  background: var(--surface-low);
+}
+.teamapp:has(.mhead) .calcard .calcell.today {
+  background: var(--accent-tint);
+  border-bottom: 1px solid var(--outline);
+}
+.teamapp:has(.mhead) .calcard .calcell.today:nth-last-child(-n + 7) {
+  border-bottom: 0;
+}
+.teamapp:has(.mhead) .callegend {
+  margin-top: 12px;
+  padding: 12px 16px;
+  row-gap: 8px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: 12px;
+}
+/* レビュー: 外側のカードにすると中の .agdate／.agbar と枠が二重になり予定名が切れるので、
+   モック（bres-report/mocks/m-calendar/list.png）どおり日付の箱と帯をそれぞれ白い面にする */
+.teamapp:has(.mhead) .agrow {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+.teamapp:has(.mhead) .agdate,
+.teamapp:has(.mhead) .agbar {
+  background: var(--surface-lowest);
+  border-color: var(--outline);
 }
 
 /* ---------- Match stats ---------- */
@@ -14723,6 +14816,50 @@ button.st-row:active {
     background: none;
     color: inherit;
   }
+  /* boundary-plan-a §3: スマホの「月の面」（.calcard・曜日の帯・マスの線・空のマス・凡例・リストの日のカード）は
+     700px 以上では使わない。タブレットは上の箱型のまま（変えない） */
+  .teamapp:has(.mhead) .calcard {
+    overflow: visible;
+    background: none;
+    border: 0;
+    border-radius: 0;
+  }
+  .teamapp:has(.mhead) .calcard .calhead {
+    height: auto;
+    background: none;
+    border-bottom: 0;
+  }
+  .teamapp:has(.mhead) .calcard .calhead .calwd {
+    padding-bottom: 4px;
+  }
+  .teamapp:has(.mhead) .calcard .calcell,
+  .teamapp:has(.mhead) .calcard .calcell:nth-child(7n),
+  .teamapp:has(.mhead) .calcard .calcell:nth-last-child(-n + 7),
+  .teamapp:has(.mhead) .calcard .calcell.empty,
+  .teamapp:has(.mhead) .calcard .calcell.today,
+  .teamapp:has(.mhead) .calcard .calcell.today:nth-last-child(-n + 7) {
+    padding: 4px 1px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .teamapp:has(.mhead) .calcard .calcell.today,
+  .teamapp:has(.mhead) .calcard .calcell.today:nth-last-child(-n + 7) {
+    border-color: var(--accent);
+  }
+  .teamapp:has(.mhead) .callegend {
+    margin-top: 12px;
+    padding: 0;
+    row-gap: 6px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+  }
+  .teamapp:has(.mhead) .agrow {
+    padding: 0;
+    background: none;
+    border: 0;
+    border-radius: 0;
+  }
 }
 
 /* ============================================================
@@ -18723,6 +18860,125 @@ textarea.st-input.mt-msg {
   font-size: 18px;
   letter-spacing: 0;
   white-space: nowrap;
+}
+
+/* ============================================================
+   calendar-plan-a §12（2026-10-29）: 絞り込みの入口と色分けの切替。
+   スマホは月送り（.calnav）の下に 1 行 .calfilterrow を常に置く：左に「絞り込み」の文字ボタン
+   （.rosfilterbtn と同じ作り。見た目 36px・::after で押せる範囲 44px）、右に今の絞り込みの文言（.calsel）。
+   効いているときはボタンの右端に青い丸の数字 .n。ヘッダー右の絞り込みアイコンは出さない。
+   色分けの切替 .calcolorseg は CalFilterPanel の一番上（スマホのシート／PC の .calside 共通）。
+   PC の高さ 32px は PCブロック末尾「mobile-redesign PC reset」、指の PC の 44px は (pointer: coarse) に置く
+   ============================================================ */
+.calfilterrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+  min-width: 0;
+  margin: 0 0 8px;
+}
+.calfilterbtn {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+/* 見た目は 36px のまま、指で押せる範囲を上下に 4px ずつ広げて 44px にする */
+.calfilterbtn::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.calfilterbtn svg {
+  width: 16px;
+  height: 16px;
+}
+.calfilterbtn .n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-primary);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+/* 絞り込みの文言は 2 行目（flex-basis 100%）で 1 行に省略（何も絞っていなければ要素ごと出さない） */
+.calfilterrow .calsel {
+  flex: 1 0 100%;
+  min-width: 0;
+  margin: 0;
+}
+/* §12-1: 「色分け グループ ⌄」。絞り込みボタンと同じ作り。押すと絞り込みのシートが開く（切替はシートの一番上） */
+.calcolorbtn {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.calcolorbtn::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.calcolorbtn .lbl {
+  font-size: var(--fs-body-s);
+  font-weight: 400;
+  color: var(--mut);
+}
+.calcolorbtn .chev {
+  font-size: var(--fs-body-s);
+  line-height: 1;
+  color: var(--mut);
+}
+/* 凡例の先頭の「色: グループ／色: 種類」 */
+.callegend .callegend-mode {
+  font-weight: 700;
+}
+/* 色分けの切替（グループ｜種類）。選択中の見た目は .mseg-item.on のまま（accent-tint 地・accent 文字・700） */
+.calcolorsec .calfilterpanel-sech {
+  min-height: 28px; /* 見出しだけ（右に「すべて選択」が無い）区画でも、ほかの見出し行より詰まらない高さ */
+}
+.calcolorseg {
+  display: flex;
+  gap: 4px;
+  padding: 0 0 8px;
+}
+.calcolorseg .mseg-item {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 44px;
+  justify-content: center;
+  font-size: 14px;
 }
 
 /* ============================================================
@@ -26529,6 +26785,112 @@ textarea.st-input.mt-msg {
     min-height: 32px;
     font-size: var(--fs-body);
   }
+  /* calendar-plan-a §12-2: 色分けの切替（PC の左の列 .calside）は他の PC の切替と同じ 32px・13px */
+  .calside .calcolorsec .calfilterpanel-sech {
+    min-height: 20px;
+  }
+  .calcolorseg {
+    padding-bottom: 4px;
+  }
+  .calcolorseg .mseg-item {
+    height: 32px;
+    font-size: 13px;
+  }
+  /* === boundary-plan-a §1: PC の設定は「左の一覧」と「右の内容」の 2 枚の白い面 ===
+     ページ背景の上に直に置かれていた一覧と内容を、白いカード（1px --outline・角丸 12px）に載せる。
+     右のパネルは先頭に題名の行（.st-maint・56px）、内容は .st-mainb（padding 20px）。パネルの中の 1 枚目の枠は外して二重にしない */
+  .st-pc {
+    grid-template-columns: 220px minmax(0, 760px);
+    gap: 16px;
+    padding: 16px 24px 24px;
+  }
+  .st-nav,
+  .st-main {
+    background: var(--surface-lowest);
+    border: 1px solid var(--outline);
+    border-radius: 12px;
+  }
+  .st-nav {
+    padding: 8px;
+    align-self: start;
+  }
+  .st-navitem {
+    height: 36px;
+    padding: 0 12px;
+    font-size: var(--fs-body);
+  }
+  .st-navh {
+    margin-top: 8px;
+    padding: 14px 12px 6px;
+    letter-spacing: 0;
+    color: var(--ink);
+  }
+  .st-navh.first {
+    margin-top: 0;
+  }
+  .st-main {
+    padding: 0;
+    overflow: hidden;
+  }
+  .st-maint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 56px;
+    padding: 0 20px;
+    border-bottom: 1px solid var(--outline);
+    box-sizing: border-box;
+  }
+  /* .screenbody h2（表示用フォント・24px・字間 1.5px・余白 4px 16px 8px）を打ち消す */
+  .st-maint .st-maint-t {
+    display: block;
+    margin: 0;
+    min-width: 0;
+    font-family: var(--font-ui);
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.3;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .st-maint .st-back {
+    flex: none;
+    margin: 0;
+  }
+  .st-mainb {
+    min-width: 0;
+    padding: 20px;
+  }
+  /* パネルの中の 1 枚目の箱は枠と角丸を外し、白い面の中の行として見せる（行は左右の余白を題名の 20px にそろえ、区切り線は端まで） */
+  .st-mainb > .st-top > .st-group:nth-child(1 of .st-group) > .st-card,
+  .st-mainb > .st-form > .st-group:nth-child(1 of .st-group) > .st-card {
+    margin: 0 -20px;
+    border: 0;
+    border-radius: 0;
+  }
+  .st-mainb > .st-top > .st-group:nth-child(1 of .st-group) > .st-card > .st-row,
+  .st-mainb > .st-form > .st-group:nth-child(1 of .st-group) > .st-card > .st-row {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  /* レビュー: ログアウトの区画の上に 1px の線（spec §1・モック） */
+  .st-nav .st-navgroup:last-child {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--outline);
+  }
+  .st-mainb > .st-top > .st-group:last-child {
+    margin-bottom: 0;
+  }
+  .st-mainb > .st-manage {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -26642,6 +27004,10 @@ textarea.st-input.mt-msg {
 @media (pointer: coarse) and (min-width: 1024px) {
   .maplinks a {
     min-height: 44px;
+  }
+  /* calendar-plan-a §12-2: 色分けの切替も指サイズ 44px へ戻す */
+  .calcolorseg .mseg-item {
+    height: 44px;
   }
   .dynrow select,
   .dynrow input,

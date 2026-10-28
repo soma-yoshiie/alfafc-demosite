@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type React from "react";
 import type {
   AttendanceStatus,
+  CalColorMode,
   CalFilter,
   Competition,
   EventCategory,
@@ -36,6 +37,7 @@ import {
   categoryNoteTarget,
   categoryOf,
   diffDays,
+  eventColorOf,
   eventEndDate,
   eventNoteTarget,
   gmapsDirUrl,
@@ -50,6 +52,7 @@ import {
 } from "@/lib/calendarUtils";
 import {
   loadCalFilter,
+  loadCalColorMode,
   loadCalSideOpen,
   loadGroupFilter,
   loadLastEventCategory,
@@ -57,6 +60,7 @@ import {
   loadRecSideOpen,
   loadRosSideOpen,
   saveCalFilter,
+  saveCalColorMode,
   saveCalSideOpen,
   saveGroupFilter,
   saveLastEventCategory,
@@ -381,6 +385,12 @@ function Inner() {
   useEffect(() => {
     saveCalSideOpen(calSideOpen);
   }, [calSideOpen]);
+  // calendar-plan-a §12-2: 色分けの基準（グループ｜種類）。スマホのシートとPCの左の列（CalFilterPanel）が
+  // 共通で切り替え、CalendarTab・SheetHost・画像保存が同じ値を読む。端末ごとに保存（ロール共通）
+  const [calColorMode, setCalColorMode] = useState<CalColorMode>(() => loadCalColorMode());
+  useEffect(() => {
+    saveCalColorMode(calColorMode);
+  }, [calColorMode]);
 
   // PC右ペイン(マスター・ディテール)の選択状態。タブを跨いで保持するためInnerで持つ
   const [recSel, setRecSel] = useState<RecSel>({ kind: "summary" });
@@ -568,17 +578,10 @@ function Inner() {
             : activeTab === "chat"
               ? chatAction
               : null;
-  // カレンダーの絞り込みと色の作り直し（案A §3-2）: カレンダータブのときだけスマホヘッダーに
-  // 「絞り込み」を出す（コーチ・選手/保護者どちらも。プレビュー中の閲覧ロールisCoachで出し分ける）。
-  // コーチは「絞り込み」→「＋予定を追加」の順、選手は「絞り込み」だけになるようheaderActionの前に置く
-  const showCalFilterAction = activeTab === "cal";
+  // calendar-plan-a §12-1: カレンダーの絞り込みの入口は、ヘッダー右のアイコンではなく
+  // 月送り（.calnav）の下の文字ボタン（.calfilterbtn。CalendarTab 内）に移した。ヘッダー右は「＋」だけ
   // p14 §2-2: 試合記録タブのときも「絞り込み」を出す（recVisible のときだけ。絞り込み→＋の順）
   const showRecFilterAction = activeTab === "rec" && recVisible;
-  const calFilterHasHidden = isCoach
-    ? calFilterEff.hiddenGroupIds.length > 0 ||
-      calFilterEff.hideAllTargets ||
-      calFilterEff.hiddenCategoryIds.length > 0
-    : calFilterEff.hiddenCategoryIds.length > 0 || calMine;
 
   // PC専用コンソールシェルの左レール：チーム運営項目の直下にタブ帯と同じ一覧を出す。
   // レールはスクリム(left:208px)の外にあるため、シートを開いたままタブ切替できてしまう。
@@ -826,14 +829,8 @@ function Inner() {
         <MobileHeader
           title={board.auth.role === "coach" ? "チーム運営" : "チーム"}
           actions={
-            (showCalFilterAction || showRecFilterAction || headerAction) && (
+            (showRecFilterAction || headerAction) && (
               <>
-                {showCalFilterAction && (
-                  <MobileHeaderAction label="絞り込み" onClick={() => setSheet({ type: "calfilter" })}>
-                    <IconFilter />
-                    {calFilterHasHidden && <span className="dot" />}
-                  </MobileHeaderAction>
-                )}
                 {showRecFilterAction && (
                   <MobileHeaderAction label="絞り込み" onClick={() => setRecFilterSheet(true)}>
                     <IconFilter />
@@ -952,6 +949,8 @@ function Inner() {
                   setCalFilter={setCalFilter}
                   calMine={calMine}
                   setCalMine={setCalMine}
+                  calColorMode={calColorMode}
+                  setCalColorMode={setCalColorMode}
                   onPlayerDeleted={() => setRosSel(null)}
                   onOpenMatch={openMatchFromEvent}
                   onMatchDirty={setMatchDirty}
@@ -980,6 +979,8 @@ function Inner() {
                       setCalMine={setCalMine}
                       calSideOpen={calSideOpen}
                       setCalSideOpen={setCalSideOpen}
+                      calColorMode={calColorMode}
+                      setCalColorMode={setCalColorMode}
                     />
                   )}
                   {activeTab === "rec" && recFull && (
@@ -1082,6 +1083,8 @@ function Inner() {
                     setCalFilter={setCalFilter}
                     calMine={calMine}
                     setCalMine={setCalMine}
+                    calColorMode={calColorMode}
+                    setCalColorMode={setCalColorMode}
                     onPlayerDeleted={() => setRosSel(null)}
                     onOpenMatch={openMatchFromEvent}
                     onMatchDirty={setMatchDirty}
@@ -1144,6 +1147,8 @@ function Inner() {
           setCalFilter={setCalFilter}
           calMine={calMine}
           setCalMine={setCalMine}
+          calColorMode={calColorMode}
+          setCalColorMode={setCalColorMode}
           onPlayerDeleted={() => setRosSel(null)}
           onOpenMatch={openMatchFromEvent}
           onMatchDirty={setMatchDirty}
@@ -1488,6 +1493,8 @@ function CalendarTab({
   setCalMine,
   calSideOpen,
   setCalSideOpen,
+  calColorMode,
+  setCalColorMode,
 }: {
   isCoach: boolean;
   setSheet: (s: SheetState) => void;
@@ -1504,6 +1511,9 @@ function CalendarTab({
   /** PCの絞り込みパネル(.calside)の開閉（calendar-plan-a §11-1）。スマホには影響しない */
   calSideOpen: boolean;
   setCalSideOpen: (v: boolean) => void;
+  /** 色分けの基準（calendar-plan-a §12-2）。"group"=対象グループの色／"kind"=種類の色 */
+  calColorMode: CalColorMode;
+  setCalColorMode: (v: CalColorMode) => void;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -1578,6 +1588,36 @@ function CalendarTab({
     })
   );
   const monthGroupLegend = Array.from(monthGroupLegendMap.values()).sort((a, b) => a.order - b.order);
+  // calendar-plan-a §12-2: 色分けが「種類」のときの凡例＝その月に出ている種類を categories の順に
+  const monthKindLegendMap = new Map<string, { label: string; color: string; order: number }>();
+  monthDays.forEach(({ evs }) =>
+    evs.forEach((e) => {
+      const cat = categoryOf(e, team.categories);
+      if (!monthKindLegendMap.has(cat.id)) {
+        const idx = team.categories.findIndex((c) => c.id === cat.id);
+        monthKindLegendMap.set(cat.id, { label: cat.label, color: cat.color, order: idx >= 0 ? idx : 1000 });
+      }
+    })
+  );
+  const monthKindLegend = Array.from(monthKindLegendMap.values()).sort((a, b) => a.order - b.order);
+  const monthLegend = calColorMode === "kind" ? monthKindLegend : monthGroupLegend;
+
+  // 凡例（月表示の下。boundary-plan-a §3 でスマホのリスト表示の下にも出す）
+  const legendEl =
+    monthLegend.length > 0 || isCoach ? (
+      <div className="callegend">
+        {/* calendar-plan-a §12-2: 凡例の先頭に、今どちらで色分けしているかを小さく */}
+        <span className="callegend-mode">色: {calColorMode === "kind" ? "種類" : "グループ"}</span>
+        {monthLegend.slice(0, 5).map((g) => (
+          <span key={g.label}>
+            <i className="caldot" style={{ background: g.color }} /> {g.label}
+          </span>
+        ))}
+        {monthLegend.length > 5 && <span>他{monthLegend.length - 5}</span>}
+        {/* レビュー: リスト表示の日付は押せないので、案内は月表示だけ */}
+        {isCoach && view === "month" && <span className="calhint">日付を{pc ? "クリック" : "タップ"}で予定を追加</span>}
+      </div>
+    ) : null;
 
   // 日付ごとの予定行（リスト表示だけで使う。calendar-plan-a §11-2で撤去した
   // 「今日からの予定」（月表示下）とも以前は共用していたが、今はここだけ）。
@@ -1599,7 +1639,8 @@ function CalendarTab({
                   ? "終日"
                   : fmtTimeRange(e);
               const cat = categoryOf(e, team.categories);
-              const color = groupColorOf(e, team.groups);
+              // calendar-plan-a §12-2: 色分けの基準（グループ｜種類）に従う
+              const color = eventColorOf(e, team.groups, team.categories, calColorMode);
               // 選手・保護者の「すべて」表示で、この予定が自分を対象にしていないとき(案A §2)
               const outside = !isCoach && !calMine && !!me && !eventTargetsPlayer(e, me, team.groups);
               return (
@@ -1737,7 +1778,7 @@ function CalendarTab({
           title: e.title,
           timeLabel,
           categoryLabel: cat.label,
-          color: groupColorOf(e, team.groups),
+          color: eventColorOf(e, team.groups, team.categories, calColorMode),
           targetLabel: outside ? "対象外" : targetLabel(e, team.groups),
           isMatch: e.kind === "match",
           outside,
@@ -1776,6 +1817,11 @@ function CalendarTab({
   const calSideHasHidden = isCoach
     ? calFilter.hiddenGroupIds.length > 0 || calFilter.hideAllTargets || calFilter.hiddenCategoryIds.length > 0
     : calFilter.hiddenCategoryIds.length > 0 || calMine;
+  // calendar-plan-a §12-1: .calfilterbtn の右端に出す数字＝隠しているグループの数＋全員向けを隠していれば1＋
+  // 隠している種類の数。選手・保護者は「自分の予定」がONなら1＋種類
+  const calFilterCount = isCoach
+    ? calFilter.hiddenGroupIds.length + (calFilter.hideAllTargets ? 1 : 0) + calFilter.hiddenCategoryIds.length
+    : (calMine ? 1 : 0) + calFilter.hiddenCategoryIds.length;
 
   const calBody = (
     <>
@@ -1806,10 +1852,41 @@ function CalendarTab({
         />
       </div>
 
-      {calSel && <div className="calsel">{calSel}</div>}
+      {/* calendar-plan-a §12-1: スマホは月送りの下に「絞り込み」の文字ボタン（.calfilterbtn。効いている
+          ときは右端に青い丸の数字）と「色分け グループ ⌄」（.calcolorbtn。押すと同じシートが開き、一番上の
+          区画で切り替える）を 1 行目に、今の絞り込みの文言（.calsel）を 2 行目に置く。ボタンは常に出す。
+          PCは今のまま（.calnav直下の.calsel1行。左の常設パネルが入口） */}
+      {!pc ? (
+        <div className="calfilterrow">
+          <button type="button" className="calfilterbtn" onClick={() => setSheet({ type: "calfilter" })}>
+            <IconFilter />
+            絞り込み
+            {calFilterCount > 0 && (
+              <span className="n" aria-label={`${calFilterCount}件の絞り込み`}>
+                {calFilterCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            className="calcolorbtn"
+            onClick={() => setSheet({ type: "calfilter" })}
+            aria-label={`色分けを変える（今は${calColorMode === "kind" ? "種類" : "グループ"}）`}
+          >
+            <span className="lbl">色分け</span>
+            <b>{calColorMode === "kind" ? "種類" : "グループ"}</b>
+            <span className="chev" aria-hidden="true">⌄</span>
+          </button>
+          {calSel && <div className="calsel">{calSel}</div>}
+        </div>
+      ) : (
+        calSel && <div className="calsel">{calSel}</div>
+      )}
 
       {view === "month" ? (
         <>
+          {/* boundary-plan-a §3: 曜日の帯とマスを白いカード 1 枚に包む（スマホだけ。PC・タブレットは素通し） */}
+          <div className="calcard">
           <div className="calgrid calhead">
             {WD.map((w, i) => (
               <div key={w} className={`calwd${i === 0 ? " sun" : i === 6 ? " sat" : ""}`}>
@@ -1848,7 +1925,7 @@ function CalendarTab({
                         <span
                           key={e.id}
                           className={`calev ${corner}`}
-                          style={{ "--gc": groupColorOf(e, team.groups) } as React.CSSProperties}
+                          style={{ "--gc": eventColorOf(e, team.groups, team.categories, calColorMode) } as React.CSSProperties}
                         >
                           {isUnanswered(e) && <i className="calev-dot" aria-label="未回答" />}
                           {rec ? (
@@ -1866,17 +1943,8 @@ function CalendarTab({
               );
             })}
           </div>
-          {(monthGroupLegend.length > 0 || isCoach) && (
-            <div className="callegend">
-              {monthGroupLegend.slice(0, 5).map((g) => (
-                <span key={g.label}>
-                  <i className="caldot" style={{ background: g.color }} /> {g.label}
-                </span>
-              ))}
-              {monthGroupLegend.length > 5 && <span>他{monthGroupLegend.length - 5}</span>}
-              {isCoach && <span className="calhint">日付を{pc ? "クリック" : "タップ"}で予定を追加</span>}
-            </div>
-          )}
+          </div>
+          {legendEl}
           {/* calendar-plan-a §11-2: スマホの月表示下の「今日からの予定」は撤去した
               （マスにピルで予定名が出るようになり、リスト表示でも足りるため） */}
         </>
@@ -1927,6 +1995,8 @@ function CalendarTab({
           )}
         </div>
       )}
+      {/* boundary-plan-a §3: 凡例のカードはスマホのリスト表示でも下に出す（PC のリスト表示は変えない） */}
+      {view !== "month" && !pc && legendEl}
     </>
   );
 
@@ -1952,6 +2022,8 @@ function CalendarTab({
           groups={team.groups}
           categories={team.categories}
           onManageGroups={() => setSheet({ type: "groups" })}
+          colorMode={calColorMode}
+          setColorMode={setCalColorMode}
           compact
         />
       </div>
@@ -1979,6 +2051,8 @@ function CalFilterPanel({
   groups,
   categories,
   onManageGroups,
+  colorMode,
+  setColorMode,
   compact,
   onClose,
 }: {
@@ -1992,6 +2066,9 @@ function CalFilterPanel({
   categories: EventCategory[];
   /** 「絞り込みを編集…」リンク。省略時はリンク自体を出さない */
   onManageGroups?: () => void;
+  /** 色分けの基準（calendar-plan-a §12-2）。渡されたときだけ一番上に「色分け」の切替を出す */
+  colorMode?: CalColorMode;
+  setColorMode?: (v: CalColorMode) => void;
   /** true=PCの常設パネル（見出し行・完了ボタンを出さない） */
   compact?: boolean;
   /** スマホのシートを閉じる（見出し行の「完了」用。compact=trueのときは使わない） */
@@ -2098,12 +2175,33 @@ function CalFilterPanel({
             }}
           >
             <span className={`calchk sq${on ? " on" : ""}`} />
+            {/* calendar-plan-a §12-2: 種類の行にも色の点（EventCategory.color）。色分けの基準に関係なく出す */}
+            <i className="fdot" style={{ background: c.color }} aria-hidden="true" />
             <span>{c.label}</span>
           </div>
         );
       })}
     </div>
   );
+
+  // calendar-plan-a §12-2: 一番上の「色分け」。月のチップ・リストの行・画像保存の色を、
+  // 対象グループの色にするか種類の色にするかを切り替える（絞り込みの意味は変わらない）
+  const colorSection =
+    colorMode && setColorMode ? (
+      <div className="calfilterpanel-sec calcolorsec">
+        <div className="calfilterpanel-sech">
+          <b>色分け</b>
+        </div>
+        <MobileSegments
+          wrapClassName="calcolorseg"
+          ariaLabel="色分けの基準"
+          items={[
+            { key: "group", label: "グループ", on: colorMode === "group", onSelect: () => setColorMode("group") },
+            { key: "kind", label: "種類", on: colorMode === "kind", onSelect: () => setColorMode("kind") },
+          ]}
+        />
+      </div>
+    ) : null;
 
   return (
     <div className={`calfilterpanel${compact ? " compact" : ""}`}>
@@ -2115,6 +2213,7 @@ function CalFilterPanel({
           </button>
         </div>
       )}
+      {colorSection}
       {isCoach ? (
         <>
           {groupSection("学年", groups.filter((g) => g.kind === "grade"))}
@@ -2833,10 +2932,12 @@ function RosterTab({
       ) : (
         <div className="roslist">
         {buckets.map((b) => (
-          <div key={String(b.grade)}>
+          <div key={String(b.grade)} className="rosgrp">
             <div className="sech">
               {b.label}（{b.players.length}）
             </div>
+            {/* boundary-plan-a §2: 学年ごとに白いカード 1 枚（行の間は左 72px からの 1px の線） */}
+            <div className="roscard">
             {b.players.map((p) => {
               const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
               const extraGroups = team.groups.filter(
@@ -2863,6 +2964,7 @@ function RosterTab({
                 </div>
               );
             })}
+            </div>
           </div>
         ))}
         </div>
@@ -4109,6 +4211,8 @@ function SheetHost({
   setCalFilter,
   calMine = true,
   setCalMine,
+  calColorMode = "group",
+  setCalColorMode,
   onPlayerDeleted,
   onOpenMatch,
   onMatchDirty,
@@ -4126,6 +4230,9 @@ function SheetHost({
   /** 選手・保護者向け「自分の予定」絞り込み中か（groups-everywhere §3）。日別シートに適用する */
   calMine?: boolean;
   setCalMine?: (v: boolean) => void;
+  /** 色分けの基準（calendar-plan-a §12-2）。絞り込みシートの一番上の切替に使う */
+  calColorMode?: CalColorMode;
+  setCalColorMode?: (v: CalColorMode) => void;
   /** 選手フォームから選手を削除したとき（名簿の選択を外す） */
   onPlayerDeleted?: () => void;
   /** p15 §6-5: 予定の詳細の「試合記録を開く」。Inner が（シートを閉じて）試合記録タブでその試合の詳細を開く */
@@ -4406,6 +4513,8 @@ function SheetHost({
             groups={team.groups}
             categories={team.categories}
             onManageGroups={() => setSheet({ type: "groups" })}
+            colorMode={calColorMode}
+            setColorMode={setCalColorMode}
             onClose={close}
           />
         </Sheet>
