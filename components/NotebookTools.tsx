@@ -64,7 +64,7 @@ function notifIcon(target: NotifTarget | undefined, notebook: NotebookEntry[]) {
     const note = notebook.find((e) => e.id === target.id);
     return note ? <NoteKindIcon kind={note.kind} /> : <NoteKindIcon kind="practice" />;
   }
-  if (target?.kind === "announcement") return <IconChat />;
+  if (target?.kind === "message") return <IconChat />;
   return <IconSend />;
 }
 
@@ -89,8 +89,10 @@ export function NotificationsView({
       deliverables: board.deliverables,
       players: board.state.players,
       team: loadTeam(),
+      messages: board.messages,
+      chatReads: board.chatReads,
     }),
-    [board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players]
+    [board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, board.messages, board.chatReads]
   );
   const digest = useMemo(() => buildDigest(input), [input]);
   const events = useMemo(() => buildEventNotifications(input).slice(0, 50), [input]);

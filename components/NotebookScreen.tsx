@@ -332,9 +332,11 @@ export default function NotebookScreen() {
       deliverables: board.deliverables,
       players: board.state.players,
       team: loadTeam(),
+      messages: board.messages,
+      chatReads: board.chatReads,
     });
     return evts.filter((n) => n.ts > seenAt).length;
-  }, [board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, seenAt]);
+  }, [board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, board.messages, board.chatReads, seenAt]);
 
   const switchTab = (t: Tab) => {
     if (t === "notifs") {
@@ -354,11 +356,10 @@ export default function NotebookScreen() {
   };
 
   const navTarget = (t: NotifTarget, notifId?: string) => {
-    // chat-plan-a §4: 選手向け「新しいお知らせ」はチャット画面でそのお知らせを開く。
-    // setScreen→openSheet の順（直後の openSheet が sheet を確定させる）。PC は ChatScreen が中のペインへ引き継ぐ
-    if (t.kind === "announcement") {
-      board.setScreen("chat");
-      board.openSheet({ type: "annDetail", annId: t.id });
+    // home-chat-groups-roster §2-5: 選手向け「新しいお知らせ」はそのグループのスレッドのその吹き出しを開く
+    // （setScreen→シートの順は board.openChat の中で行う。PC は ChatScreen が中のペインへ引き継ぐ）
+    if (t.kind === "message") {
+      board.openChat({ key: t.key, messageId: t.id });
       return;
     }
     // notebook-staff-redesign §2: スタッフは配信の作成・閲覧の入口が無いので、配信の通知は何もしない

@@ -20,16 +20,16 @@ import type {
   SetPieceKind,
   TeamEvent,
 } from "@/lib/types";
-import { dmThreadKey, INJURY_STATUS_LABEL, threadGroupId } from "@/lib/types";
+import { dmThreadKey, INJURY_STATUS_LABEL } from "@/lib/types";
 import { byStartAsc, isUpcomingOrOngoing, targetLabel } from "@/lib/calendarUtils";
-import { isOppKey, sendAttachmentToTarget, sendTargetError } from "@/lib/chat";
+import { ALL_THREAD_KEY, groupThreadInfo, isGroupKey, isOppKey, sendAttachmentToTarget, sendTargetError, threadMembers } from "@/lib/chat";
 import { buildEventSquad } from "@/lib/squad";
 import { downloadDataUrl, renderTacticPng } from "@/lib/exportImage";
 import { renderDrillPng } from "@/lib/exportDrill";
 import { canExportWebm, downloadBlob, exportGif, exportWebm } from "@/lib/exportAnim";
 import { openPrintView } from "@/lib/printView";
 import { buildLineUrl, buildShareUrl } from "@/lib/share";
-import { loadDrills, loadTeam, saveChatSeg } from "@/lib/storage";
+import { loadDrills, loadTeam } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
 import {
   aggregateTech,
@@ -56,7 +56,8 @@ import { useTeam } from "./TeamProvider";
 import { useMatchups } from "./matchup/MatchupProvider";
 import { GroupChips, useGroupFilter } from "./GroupChips";
 import ChatThread from "./ChatThread";
-import { AnnouncementCompose, AnnouncementDetail, NewMessagePicker } from "./ChatHome";
+import { MessageReadPanel, NewMessagePicker } from "./ChatHome";
+import { AnnouncementList } from "./HomePanels";
 import { E } from "./Emoji";
 import { MobileHeader } from "./MobileHeader";
 import { SendTargetField, type SendTarget } from "./SendTarget";
@@ -1376,41 +1377,31 @@ function FormationSheet() {
 }
 
 /* ---------------- Save as ---------------- */
-/* ---------------- Chat（スタッフと選手・保護者の 1 対 1。chat-plan-a §3-5） ---------------- */
-function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
+/* ---------------- Chat（スレッド。1 対 1・グループ・相手チーム。chat-plan-a §3-5 / home-chat-groups-roster §2-1） ---------------- */
+function ChatSheet({ to: toRaw, replyTo, messageId }: { to: string; replyTo?: ChatReplyTo; messageId?: string }) {
   const board = useBoard();
   const team = useTeam();
   const { teams: oppTeams } = useMatchups();
-  const pc = usePc();
   const isStaff = team.viewer.role === "coach";
-  // team／grp:* の会話は廃止（お知らせへ移した）。旧いリンクで来たらお知らせを開き直す（chat-plan-a §3-5）
-  const legacy = to === "team" || threadGroupId(to) !== null;
-  useEffect(() => {
-    if (!legacy) return;
-    saveChatSeg("ann");
-    board.closeSheet();
-    if (pc) board.setScreen("chat");
-    else {
-      board.setTeamIntent({ tab: "chat" });
-      board.setScreen("team");
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [legacy]);
-  if (legacy) return null;
+  // 旧形式の "team" は「全員」のグループ
+  const to = toRaw === "team" ? ALL_THREAD_KEY : toRaw;
 
   const memberId = isStaff ? null : team.viewer.memberPlayerId ?? board.auth.playerId ?? null;
   const player = board.state.players.find((p) => dmThreadKey(p.id) === to) ?? null;
-  // 見出しは選手名・副題に「中2・Aチーム」。選手側は相手＝「スタッフ」
+  const groupInfo = isGroupKey(to) ? groupThreadInfo(to, team.groups) : null;
+  // 見出しは選手名・副題に「中2・Aチーム」。選手側は相手＝「スタッフ」。グループは見出しがグループ名・副題が人数
   // 相手チームとの会話（"opp:<teamId>"。練習試合）は見出しがチーム名、副題が「対戦相手・所属リーグ」
   const oppTeam = isStaff && isOppKey(to) ? oppTeams.find((t) => `opp:${t.id}` === to) ?? null : null;
-  const title = oppTeam ? oppTeam.name : isStaff ? player?.name ?? "メッセージ" : "スタッフ";
-  const subtitle = oppTeam
-    ? `対戦相手・${oppTeam.league}`
-    : isStaff && player
-      ? groupsOfPlayer(player, team.groups)
-          .map((g) => g.label)
-          .join("・") || undefined
-      : undefined;
+  const title = groupInfo ? groupInfo.label : oppTeam ? oppTeam.name : isStaff ? player?.name ?? "メッセージ" : "スタッフ";
+  const subtitle = groupInfo
+    ? `${threadMembers(groupInfo.key, board.state.players, team.groups).length}人`
+    : oppTeam
+      ? `対戦相手・${oppTeam.league}`
+      : isStaff && player
+        ? groupsOfPlayer(player, team.groups)
+            .map((g) => g.label)
+            .join("・") || undefined
+        : undefined;
   return (
     <div className="chatsheet">
       {/* mobile-redesign Phase D-2(major §1-6): 「‹ 戻る」バー＋大見出しの2段構成を、
@@ -1448,37 +1439,31 @@ function ChatSheet({ to, replyTo }: { to: string; replyTo?: ChatReplyTo }) {
       />
       <ChatThread
         key={to}
-        to={isStaff ? to : memberId ? dmThreadKey(memberId) : to}
+        to={isStaff || isGroupKey(to) ? to : memberId ? dmThreadKey(memberId) : to}
         as={isStaff ? undefined : { role: "member", playerId: memberId }}
         replyTo={replyTo}
+        focusId={messageId}
       />
     </div>
   );
 }
 
-/* ---------------- お知らせの詳細・作成／新しいメッセージ（chat-plan-a §3-2・§3-3） ---------------- */
-function AnnDetailSheet({ annId, tab }: { annId: string; tab?: "unseen" | "seen" | "acked" }) {
-  const board = useBoard();
+/* ---------------- 既読・了解を見る（お知らせにされたメッセージ。home-chat-groups-roster §2-4）／新しいメッセージ（chat-plan-a §3-3） ---------------- */
+function MsgReadSheet({ messageId, tab }: { messageId: string; tab?: "unseen" | "seen" | "acked" }) {
   return (
-    <div className="annsheet">
-      <MobileHeader title="お知らせ" onBack={board.closeSheet} />
+    <div className="annsheet msgreadsheet">
+      <h2>既読・了解</h2>
       <div className="annsheetbody">
-        <AnnouncementDetail annId={annId} readTab={tab} onClose={board.closeSheet} />
+        <MessageReadPanel messageId={messageId} initialTab={tab} />
       </div>
     </div>
   );
 }
 
-function AnnComposeSheet() {
-  const board = useBoard();
-  return (
-    <div className="annsheet">
-      <MobileHeader title="お知らせを送る" onBack={board.closeSheet} />
-      <div className="annsheetbody">
-        <AnnouncementCompose onDone={board.closeSheet} />
-      </div>
-    </div>
-  );
+/** お知らせ一覧（ホームの「すべて見る（N）›」。スマホはシート、PC はダイアログ。home-chat-groups-roster §2-7） */
+function AnnListSheet() {
+  const team = useTeam();
+  return <AnnouncementList viewer={team.viewer.role === "coach" ? "staff" : "player"} />;
 }
 
 function ChatNewSheet() {
@@ -1510,7 +1495,7 @@ export function SaveBody() {
   const wantsSend = target.mode !== "none";
 
   // 宛先の送り先は lib/chat.ts に共通化（chat-plan-a §2-5）:
-  // チーム全員・グループ → お知らせ 1 件（添付付き）、個人 → その選手との 1 対 1。
+  // チーム全員・グループ → そのグループのスレッドに添付付きのメッセージ、個人 → その選手との 1 対 1。
   // falseを返したとき(バリデーション失敗)は呼び出し側でシートを閉じない
   const sendAttachment = (): boolean => {
     const err = sendTargetError(target);
@@ -2399,13 +2384,13 @@ export default function SheetManager() {
       content = <ImportSheet />;
       break;
     case "chat":
-      content = <ChatSheet to={sheet.chatTo ?? "team"} replyTo={sheet.replyTo} />;
+      content = <ChatSheet to={sheet.chatTo ?? ALL_THREAD_KEY} replyTo={sheet.replyTo} messageId={sheet.messageId} />;
       break;
-    case "annDetail":
-      content = <AnnDetailSheet annId={sheet.annId ?? ""} tab={sheet.annTab} />;
+    case "msgRead":
+      content = <MsgReadSheet messageId={sheet.messageId ?? ""} tab={sheet.readTab} />;
       break;
-    case "annCompose":
-      content = <AnnComposeSheet />;
+    case "annList":
+      content = <AnnListSheet />;
       break;
     case "chatNew":
       content = <ChatNewSheet />;
@@ -2431,13 +2416,11 @@ export default function SheetManager() {
     "articles",
     "article",
     "chat",
-    "annDetail",
-    "annCompose",
     "chatNew",
   ];
   const full = !!sheet.type && FULL.includes(sheet.type);
   // 自前の MobileHeader（戻る＋見出し）を持つ全画面シートは、汎用の「‹ 戻る」バーを出さない
-  const ownHeader = sheet.type === "chat" || sheet.type === "annDetail" || sheet.type === "annCompose" || sheet.type === "chatNew";
+  const ownHeader = sheet.type === "chat" || sheet.type === "chatNew";
 
   const onBack = (): void => {
     switch (sheet.type) {
@@ -2459,15 +2442,24 @@ export default function SheetManager() {
       case "article":
         board.openSheet({ type: "articles" });
         break;
+      case "msgRead":
+        closeMsgRead();
+        break;
       default:
         board.closeSheet();
     }
+  };
+  // レビュー: スマホで既読・了解のパネルを閉じたら、開いていたスレッドへ戻る（PC は右のペインが残るので閉じるだけ）
+  const closeMsgRead = (): void => {
+    const pcWidth = typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches;
+    if (sheet.type === "msgRead" && sheet.chatTo && !pcWidth) board.openSheet({ type: "chat", chatTo: sheet.chatTo });
+    else board.closeSheet();
   };
 
   return (
     <Sheet
       open={open}
-      onClose={board.closeSheet}
+      onClose={sheet.type === "msgRead" ? closeMsgRead : board.closeSheet}
       full={full}
       onBack={full ? onBack : undefined}
       topBar={!ownHeader}

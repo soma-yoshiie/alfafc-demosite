@@ -8302,6 +8302,116 @@ button.annreadrow.pick:active {
 .chatnew .convlist {
   margin: 0;
 }
+/* === home-chat-groups-roster §2-1: 会話の一覧の区画（グループ／選手・保護者／相手チーム） ===
+   区画の見出しは 12px・700・--mut。グループの行の先頭は色の点（グループの色。全員はネイビー）。
+   新規 @media は作らない（基底に置く）。PC だけの調整は PC reset の末尾 */
+.chatsec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chatsech {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--mut);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.chatsec > .empty-msg {
+  padding: 12px 0;
+}
+.convdotbox {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.convdot {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--mut);
+}
+/* === home-chat-groups-roster §2-3・§2-4: お知らせにされた吹き出し ===
+   吹き出しの左上の札「お知らせ」（--accent-tint の地・--accent）。スタッフには下に「既読 N/M ・ 了解 K ›」、
+   選手・保護者には「了解」（.annackbtn。まだ＝青塗り／押した後＝薄い「✓ 了解済み」） */
+.chatannbadges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.chatannbadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--r-sm);
+  background: var(--accent-tint);
+  color: var(--accent);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.chatannbadge.pin {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  color: var(--ink);
+}
+/* 自分の発言の吹き出しは --accent 地なので、--accent-tint（半透明）だと札が溶ける。白地にして読めるようにする */
+.chatrow.mine .chatannbadge:not(.pin) {
+  background: var(--surface-lowest);
+}
+.chatannstat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--mut);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.chatannstat:active {
+  background: var(--surface-low);
+}
+.chatcol > .annackbtn {
+  margin-top: 2px;
+}
+/* ホームのお知らせ・通知から開いた吹き出しを 1.5 秒ほど --accent-tint で光らせる（自分の発言も同じ） */
+.chatrow.flash .chatbubble,
+.chatrow.mine.flash .chatbubble {
+  background: var(--accent-tint);
+  color: var(--ink);
+}
+/* スマホは長押しでメニューを出すので、吹き出しの文字選択・iOS 標準のメニューを出さない
+   （.chatsheet はスマホのシートだけに出る。PC は右クリックなので選択できるまま） */
+.chatapp:has(.mhead) .chatbubble,
+.chatsheet .chatbubble {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* 「既読・了解を見る」のシート／ダイアログ（board シート msgRead） */
+.msgreadsheet > h2 {
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+/* レビュー: パネルの中身（タブ・名前の行）に左右 16px（お知らせ一覧と同じ） */
+.msgreadsheet > .annsheetbody {
+  padding-left: 16px;
+  padding-right: 16px;
+}
 /* 行の右端：時刻の下に未読の赤丸 */
 .convaside {
   flex: none;
@@ -13335,6 +13445,33 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   padding: 12px 2px;
   font-size: 12px;
   color: var(--mut);
+}
+/* home-chat-groups-roster §2-6・§2-7: お知らせの行（本文の行＋選手・保護者の「了解」）。一覧のシート／ダイアログも同じ行 */
+.hp-annitem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--outline);
+}
+.hp-annitem:last-child {
+  border-bottom: 0;
+}
+.hp-annitem > .hp-row {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  border-bottom: 0;
+}
+.hp-annitem > .annackbtn {
+  flex: none;
+}
+.annlistsheet > h2 {
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+.annlistsheet > .annsheetbody {
+  padding-left: 16px;
+  padding-right: 16px;
 }
 .hp-goallist {
   margin: 0;
@@ -26891,6 +27028,34 @@ textarea.st-input.mt-msg {
     border: 0;
     border-radius: 0;
   }
+  /* === home-chat-groups-roster §2-1〜§2-4: チャットの一覧の区画・グループの行・お知らせの吹き出し（PC の密度） === */
+  .chatapp:has(.chatmain) .msglist {
+    gap: 14px;
+    padding: 2px 0 8px;
+  }
+  .chatapp:has(.chatmain) .chatsec {
+    gap: 4px;
+  }
+  .chatapp:has(.chatmain) .convdotbox,
+  .chatapp .chatpanehead .convdotbox {
+    width: 32px;
+    height: 32px;
+  }
+  .chatapp .chatpanehead .convdotbox {
+    width: 24px;
+  }
+  .chatannstat {
+    min-height: 32px;
+  }
+  .chatcol > .annackbtn {
+    min-height: 32px;
+    padding: 0 12px;
+  }
+  /* home-chat-groups-roster §2-6: ホーム・一覧のお知らせの行の「了解」は PC 32px */
+  .hp-annitem > .annackbtn {
+    min-height: 32px;
+    padding: 0 12px;
+  }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
 
@@ -27063,6 +27228,9 @@ textarea.st-input.mt-msg {
   .annackbtn.big,
   .anncard.mini .annackbtn,
   .anncard.mini .annseen,
+  .chatannstat,
+  .chatcol > .annackbtn,
+  .hp-annitem > .annackbtn,
   .chatfilterchip,
   .chatsearch,
   .annreadrow {

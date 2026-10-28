@@ -96,7 +96,8 @@ import {
 } from "@/lib/share";
 import { SAMPLE_PLAYERS, SAMPLE_TEAM_NAME } from "@/lib/sampleTeam";
 import { sampleLibrary } from "@/lib/sampleLibrary";
-import { isOppKey, latestCounterpartTs } from "@/lib/chat";
+import { applyMessagePinned, isGroupKey, isOppKey, latestCounterpartTs } from "@/lib/chat";
+import { sampleGroupChat } from "@/lib/sampleChat";
 import { buildSetPieceState, getSetPiecePreset } from "@/lib/setPiecePresets";
 import {
   buildSetPieceLayout,
@@ -905,9 +906,10 @@ export type SheetType =
   | "article"
   | "importShared"
   | "chat"
-  /** chat-plan-a §3-2: お知らせの詳細（annId）／作成／§3-3: 新しいメッセージの選手選び */
-  | "annDetail"
-  | "annCompose"
+  /** home-chat-groups-roster §2-4: お知らせにされたメッセージの「既読・了解を見る」パネル（messageId）／chat-plan-a §3-3: 新しいメッセージの選手選び */
+  | "msgRead"
+  /** home-chat-groups-roster §2-7: お知らせ一覧（ホームの「すべて見る（N）›」。お知らせにされたメッセージの全件） */
+  | "annList"
   | "chatNew"
   | "oppMenu"
   | "kpi"
@@ -939,14 +941,14 @@ export interface SheetState {
   injuryId?: string;
   /** article: 記事ID */
   articleId?: string;
-  /** chat: 開く会話キー（"p:<playerId>"。旧リンクの "team"／"grp:*" はお知らせを開く） */
+  /** chat: 開く会話キー（"p:<playerId>"／"grp:all"／"grp:<groupId>"／"opp:<teamId>"。旧リンクの "team" は "grp:all"） */
   chatTo?: string;
-  /** chat: 入力欄の上に付ける引用（お知らせの「スタッフに返信」から開くとき。chat-plan-a §3-2） */
+  /** chat: 入力欄の上に付ける引用（chat-plan-a §3-2） */
   replyTo?: ChatReplyTo;
-  /** annDetail: 開くお知らせの id */
-  annId?: string;
-  /** annDetail: スタッフの既読パネルの最初のタブ（一覧の「了解 N/M ›」から開くときは "acked"。省略時は未読） */
-  annTab?: "unseen" | "seen" | "acked";
+  /** chat: そのスレッドで見せる吹き出しの id（ホームのお知らせから開くとき。スクロールして 1.5 秒光らせる）／msgRead: 対象のメッセージ id */
+  messageId?: string;
+  /** msgRead: 既読パネルの最初のタブ（「了解 K ›」から開くときは "acked"。省略時は未読） */
+  readTab?: "unseen" | "seen" | "acked";
   /** kpi: 表示対象の指標 */
   kpiMetric?: KpiMetric;
   /** stat: 表示対象の指標 */
@@ -1185,20 +1187,37 @@ interface BoardContextValue {
   // チャット / メッセージ（戦術・トレーニング・画像・動画の送信）
   messages: ChatMessage[];
   /**
-   * 1 対 1 のメッセージを送る（chat-plan-a §1: 宛先は "p:<playerId>" だけ。"team"／"grp:*" へは送らない）。
+   * メッセージを送る。宛先は "p:<playerId>"（1 対 1）・"grp:all"／"grp:<groupId>"（グループ。選手・保護者も送れる。
+   * home-chat-groups-roster §2-2）・"opp:<teamId>"（相手チーム）。
    * 完了の toast は既定「送信しました」。opts.toast に文字列でその文言、false で出さない
    */
   sendMessage: (msg: Omit<ChatMessage, "id" | "ts">, opts?: { toast?: string | false }) => void;
+  /** メッセージを消す。スタッフは誰の発言でも、選手・保護者（ログイン中）は自分の発言だけ */
   removeMessage: (id: string) => void;
-  /** 複数のメッセージをまとめて消す（team／grp メッセージのお知らせ移行で使う。chat-plan-a §6） */
+  /** 複数のメッセージをまとめて消す */
   removeMessages: (ids: string[]) => void;
-  /** 1 対 1 の既読時刻（キー "p:<playerId>"。chat-plan-a §2-3） */
+  /** 会話の既読時刻（キーは会話キー。グループの選手側は reads[key].members[playerId]。chat-plan-a §2-3） */
   chatReads: ChatReads;
   /**
    * その会話を side（staff／member）として「今読んだ」ことにする。表示中は新着のたびに呼んでよい：
-   * 相手の発言に既読時刻より新しいものが無ければ何も変えない（無駄な再描画と保存を避ける）
+   * 相手の発言に既読時刻より新しいものが無ければ何も変えない（無駄な再描画と保存を避ける）。
+   * グループのスレッドを選手・保護者として読むときは memberId（自分の playerId）が要る
    */
-  markChatRead: (key: string, side: "staff" | "member") => void;
+  markChatRead: (key: string, side: "staff" | "member", memberId?: string) => void;
+  /**
+   * home-chat-groups-roster §2-3：メッセージを「お知らせにする」（on=true。announce={ts: 今, byName}）／解除（on=false。
+   * announce・pinned を外す。acks は残す）。トーストは出さない（呼び出し側で出す）
+   */
+  announceMessage: (id: string, on: boolean, byName?: string) => void;
+  /** お知らせにされたメッセージを固定／解除（最大 2 件。超えたら今固定したもの以外で一番古い固定を外す） */
+  pinMessage: (id: string, pinned: boolean) => void;
+  /** 選手・保護者の「了解」を付ける／外す（acks[playerId] の切替） */
+  ackMessage: (id: string, playerId: string) => void;
+  /**
+   * そのスレッドを開く（ホームのお知らせ・通知から）。画面を「チャット」にし、messageId があればその吹き出しまで
+   * スクロールして光らせる。スマホはシート（ChatSheet）、PC はチャット画面の右のペインが引き継ぐ
+   */
+  openChat: (o: { key: string; messageId?: string }) => void;
   /** 現在のボードを SavedPlay スナップショットにして返す（送信用） */
   snapshotPlay: (title: string) => SavedPlay;
   /** 埋め込みの戦術データを読み込んでボードに表示（ライブラリ非依存） */
@@ -1340,7 +1359,7 @@ function newMsgId(): string {
 
 /**
  * デモの 1 対 1 とその既読（chat-plan-a §6。新規シードのときだけ入る）。
- * team／grp:* 宛ての旧デモはお知らせ側（TeamProvider.sampleAnnouncements）に移した。
+ * グループのスレッドのデモ（お知らせにされたメッセージ）は lib/sampleChat.ts（home-chat-groups-roster §2-8）。
  * - 佐藤 蒼空(p08)「明日の集合は何時ですか？」→ 監督の返信（replyTo 付き）→ 選手のお礼（スタッフ未読）。
  *   統括の最終調整: 以前は質問そのものをスタッフ未読にしていたが、監督が返信済みなのに
  *   「ここから未読」が質問の上に出て不自然だった。返信した時点で質問は読んだものとし、未読はその後のお礼にする
@@ -1423,7 +1442,9 @@ function sampleChat(): { messages: ChatMessage[]; reads: ChatReads } {
     // 結翔：両側とも読み済み（スタッフの返信に「既読」が付く）
     [dmThreadKey("p11")]: { staff: y2, member: y2 + 60_000 },
   };
-  return { messages, reads };
+  // home-chat-groups-roster §2-8: グループのスレッド（お知らせにされたメッセージ＋スタッフの短い発言）
+  const grp = sampleGroupChat(now);
+  return { messages: [...messages, ...grp.messages].sort((a, b) => a.ts - b.ts), reads: { ...reads, ...grp.reads } };
 }
 
 /**
@@ -1435,6 +1456,7 @@ function allReadReads(messages: ChatMessage[]): ChatReads {
   const reads: ChatReads = {};
   messages.forEach((m) => {
     if (m.to.startsWith("p:")) reads[m.to] = { staff: now, member: now };
+    else if (isGroupKey(m.to)) reads[m.to] = { staff: now };
   });
   return reads;
 }
@@ -2102,6 +2124,9 @@ export function BoardProvider({
   // effect で更新すると、子（スレッド）の effect が親より先に走って 1 つ古い配列を見てしまう
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
+  // removeMessage が「ログイン中の選手は自分の発言だけ」を判定できるよう、最新のログイン情報を参照する
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
   // サッカーノート（選手提出）。全画面共通のため Board に保持
   const [notebook, setNotebook] = useState<NotebookEntry[]>(
     () => loadNotebook() ?? sampleNotebook()
@@ -2713,6 +2738,15 @@ export function BoardProvider({
     setSheet({ type: null });
     setScreenState(s);
   }, []);
+  // home-chat-groups-roster §2-6: スレッドを開く。setScreen がシートを閉じるので先に呼び、直後にシートで会話を指す
+  // （PC は ChatScreen がこのシートを中のペインへ引き継ぐ。スマホはそのまま ChatSheet になる）
+  const openChat = useCallback(
+    (o: { key: string; messageId?: string }) => {
+      setScreen("chat");
+      setSheet({ type: "chat", chatTo: o.key, messageId: o.messageId });
+    },
+    [setScreen]
+  );
 
   // ---- library / plan / share actions ----
   const cloneTactic = useCallback(() => {
@@ -2834,8 +2868,10 @@ export function BoardProvider({
     [showToast]
   );
 
+  // スタッフは誰の発言でも消せる。選手・保護者（ログイン中）は自分の発言だけ（home-chat-groups-roster §2-2）
   const removeMessage = useCallback((id: string) => {
-    setMessages((list) => list.filter((m) => m.id !== id));
+    const mine = sessionRef.current.role === "player" ? `p:${sessionRef.current.playerId ?? ""}` : null;
+    setMessages((list) => list.filter((m) => m.id !== id || (mine !== null && m.from !== mine)));
   }, []);
 
   const removeMessages = useCallback((ids: string[]) => {
@@ -2845,13 +2881,54 @@ export function BoardProvider({
   }, []);
 
   // chat-plan-a §2-3: 表示中は新着のたびに呼ばれる。相手の新しい発言が無ければ state を変えない
-  const markChatRead = useCallback((key: string, side: "staff" | "member") => {
-    if (!key.startsWith("p:") && !isOppKey(key)) return;
+  // グループのスレッドの選手側は reads[key].members[自分] に入れる（memberId が無ければ何もしない）
+  const markChatRead = useCallback((key: string, side: "staff" | "member", memberId?: string) => {
+    if (!key.startsWith("p:") && !isOppKey(key) && !isGroupKey(key)) return;
+    if (isGroupKey(key) && side === "member") {
+      if (!memberId) return;
+      setChatReads((prev) => {
+        const cur = prev[key]?.members?.[memberId];
+        if (cur !== undefined && latestCounterpartTs(messagesRef.current, key, side, memberId) <= cur) return prev;
+        return { ...prev, [key]: { ...prev[key], members: { ...prev[key]?.members, [memberId]: Date.now() } } };
+      });
+      return;
+    }
     setChatReads((prev) => {
       const cur = prev[key]?.[side];
       if (cur !== undefined && latestCounterpartTs(messagesRef.current, key, side) <= cur) return prev;
       return { ...prev, [key]: { ...prev[key], [side]: Date.now() } };
     });
+  }, []);
+
+  // ---- home-chat-groups-roster §2-3・§2-4: メッセージを「お知らせにする」・固定・了解 ----
+  const announceMessage = useCallback((id: string, on: boolean, byName?: string) => {
+    setMessages((list) =>
+      list.map((m) => {
+        if (m.id !== id) return m;
+        if (on) return { ...m, announce: { ts: Date.now(), ...(byName ? { byName } : {}) } };
+        const { announce: _a, pinned: _p, ...rest } = m;
+        void _a;
+        void _p;
+        return rest;
+      })
+    );
+  }, []);
+  const pinMessage = useCallback((id: string, pinned: boolean) => {
+    setMessages((list) => applyMessagePinned(list, id, pinned));
+  }, []);
+  const ackMessage = useCallback((id: string, playerId: string) => {
+    if (!playerId) return;
+    setMessages((list) =>
+      list.map((m) => {
+        if (m.id !== id) return m;
+        if (m.acks?.[playerId] !== undefined) {
+          const { [playerId]: _gone, ...rest } = m.acks;
+          void _gone;
+          return { ...m, acks: Object.keys(rest).length > 0 ? rest : undefined };
+        }
+        return { ...m, acks: { ...m.acks, [playerId]: Date.now() } };
+      })
+    );
   }, []);
 
   const loadPlayData = useCallback(
@@ -3845,6 +3922,10 @@ export function BoardProvider({
       removeMessages,
       chatReads,
       markChatRead,
+      announceMessage,
+      pinMessage,
+      ackMessage,
+      openChat,
       snapshotPlay,
       loadPlayData,
       loadSetPieceData,
@@ -3986,6 +4067,10 @@ export function BoardProvider({
       removeMessages,
       chatReads,
       markChatRead,
+      announceMessage,
+      pinMessage,
+      ackMessage,
+      openChat,
       snapshotPlay,
       loadPlayData,
       loadSetPieceData,

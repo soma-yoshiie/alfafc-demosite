@@ -3,22 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChatReplyTo } from "@/lib/types";
 import { dmThreadKey } from "@/lib/types";
-import { isOppKey, sortAnnouncements, visibleAnnouncements } from "@/lib/chat";
+import { ALL_THREAD_KEY, groupThreadInfo, isGroupKey, isOppKey, playerGroupKeys, threadMembers } from "@/lib/chat";
 import { groupsOfPlayer } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
-import ChatHome, { AnnReadPanel, AnnouncementDetail, staffConversationRows, useChatHeaderAction, useChatSeg, type AnnReadTab } from "./ChatHome";
+import ChatHome, { useChatHeaderAction } from "./ChatHome";
 import ChatThread from "./ChatThread";
 import { useMatchups } from "./matchup/MatchupProvider";
 import { IconPlus } from "./icons";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 
 const PC_MQ = "(min-width: 1024px)";
-/**
- * 既読パネルを右の第 3 列に出す幅（chat-plan-a §3-6）。レール 208 + 左 320 + 右 280 を引いても
- * 中の列が 440px 以上残る幅。これより狭い PC 幅では、既読パネルは詳細の下に続けて出す（列は増やさない）
- */
-const READ_COL_MQ = "(min-width: 1280px)";
 
 /** 画面幅の条件を追跡するフック（TeamHub.tsx usePc() と同じ手法） */
 function useMedia(query: string): boolean {
@@ -37,37 +32,30 @@ function useMedia(query: string): boolean {
 }
 
 /**
- * PC の中のペインの選択。お知らせ用（annId）と 1 対 1 用（dmPid）を別々に持ち、どちらを出すかは
- * 左のセグメントで決める。1 つの選択にすると、お知らせを開いたときに開いていた 1 対 1 が上書きされて
- * 「メッセージ」へ戻っても消えている（chat-plan-a §3-6）。
- * viewer は選択した視点。視点（スタッフ／選手・保護者）が変わったら別の視点の選択は使わない。
- * dmPid は選手の id か、相手チームとの会話キー（"opp:<teamId>"。matchup-demo §5。スタッフだけ）
+ * PC の右のペインの選択（開いている会話キー）。viewer は選択した視点。視点（スタッフ／選手・保護者）が
+ * 変わったら別の視点の選択は使わない。会話キーは "p:<playerId>"／"grp:all"・"grp:<groupId>"／"opp:<teamId>"（スタッフだけ）
  */
 interface PaneMemory {
   viewer: string;
-  annId: string | null;
-  dmPid: string | null;
-  /** 既読パネルの最初のタブと、その指示の回数（一覧の「了解 N/M ›」から開いたとき。同じお知らせでも作り直して効かせる）。ux-fix R2-7 */
-  annTab?: AnnReadTab;
-  annTabN?: number;
+  key: string | null;
+  /** 開いたあとスクロールして光らせる吹き出し（ホームのお知らせ・通知から開いたとき）と、その指示の回数 */
+  focusId?: string | null;
+  focusN?: number;
 }
 
 /**
- * 直近に開いていたペイン（画面を離れて戻ったときの復元用）。
- * 添付の戦術/練習を開くと別画面へ遷移するため、モジュールスコープで持たないと
- * 戻るたびに選び直すことになる。
- * 持つのは「どのお知らせ／どの選手」だけ。引用（replyTo）は一度だけ使う値なので入れない
- * （入れると、送信したあと画面を戻ったときに引用バーが復活して関係ない発言に付く）。
+ * 直近に開いていた会話（画面を離れて戻ったときの復元用）。
+ * 添付の戦術/練習を開くと別画面へ遷移するため、モジュールスコープで持たないと戻るたびに選び直すことになる。
+ * 持つのは「どの会話か」だけ。引用（replyTo）・光らせる吹き出しは一度だけ使う値なので入れない。
  * ログアウト・「選手として閲覧」の切替をまたいでも残るので、視点（viewer）が違えば捨てる
  */
 let lastPane: PaneMemory | null = null;
 
 /**
- * チャット画面（board.screen === "chat"）。
- * - スマホ：<ChatHome />（お知らせ｜メッセージ）。ヘッダー右はセグメントに連動（chat-plan-a §3-5）
- * - PC（chat-plan-a §3-6）：左 320px＝セグメント＋一覧｜中＝お知らせの詳細 or 1 対 1｜右 280px＝既読パネル
- *   （スタッフがお知らせを開いたときだけ）。選手・保護者の PC も同じ枠で、メッセージを選んだら中に
- *   スタッフとの 1 対 1 をそのまま出す
+ * チャット画面（board.screen === "chat"）。1 画面（home-chat-groups-roster §2-1）。
+ * - スマホ：<ChatHome />（グループ／選手・保護者／相手チーム）。行を押すとスレッドのシート（SheetManager の ChatSheet）
+ * - PC：左 320px＝一覧｜右＝スレッド（2 列）。何も選んでいなければ先頭のグループ（全員）を開く。
+ *   選手・保護者の PC も同じ枠（自分が入っているグループとスタッフとの 1 対 1）
  */
 export default function ChatScreen() {
   const board = useBoard();
@@ -77,8 +65,6 @@ export default function ChatScreen() {
   const memberId = isStaff ? null : team.viewer.memberPlayerId ?? board.auth.playerId ?? null;
   const me = memberId ? board.state.players.find((p) => p.id === memberId) ?? null : null;
   const pc = useMedia(PC_MQ);
-  const wide = useMedia(READ_COL_MQ);
-  const [seg, setSeg] = useChatSeg();
   const headerAction = useChatHeaderAction(isStaff && board.auth.role === "coach");
 
   // 視点（閲覧者）の同一性。role／memberPlayerId／ログインが変わったら、前の視点で開いていたペインは使わない
@@ -87,97 +73,64 @@ export default function ChatScreen() {
   // ChatScreen はクライアント側の画面遷移でのみマウントされる（プリレンダーはホームのみ）
   const [paneState, setPaneState] = useState<PaneMemory>(() =>
     typeof window !== "undefined" && window.matchMedia(PC_MQ).matches && lastPane && lastPane.viewer === viewerKey
-      ? lastPane
-      : { viewer: viewerKey, annId: null, dmPid: null }
+      ? { viewer: lastPane.viewer, key: lastPane.key }
+      : { viewer: viewerKey, key: null }
   );
-  const pane: PaneMemory = paneState.viewer === viewerKey ? paneState : { viewer: viewerKey, annId: null, dmPid: null };
+  const pane: PaneMemory = paneState.viewer === viewerKey ? paneState : { viewer: viewerKey, key: null };
   const setPane = (patch: Partial<Omit<PaneMemory, "viewer">>) =>
     setPaneState((prev) => ({
-      ...(prev.viewer === viewerKey ? prev : { viewer: viewerKey, annId: null, dmPid: null }),
+      ...(prev.viewer === viewerKey ? prev : { viewer: viewerKey, key: null }),
       ...patch,
       viewer: viewerKey,
     }));
   // PC のときだけ復元用に控える（スマホは選択を持たない）
   useEffect(() => {
-    if (pc) lastPane = { viewer: viewerKey, annId: pane.annId, dmPid: pane.dmPid };
-  }, [pc, viewerKey, pane.annId, pane.dmPid]);
+    if (pc) lastPane = { viewer: viewerKey, key: pane.key };
+  }, [pc, viewerKey, pane.key]);
 
-  // 「スタッフに返信」の引用。1 対 1 に一度だけ付ける値で、送信・取り消し（ChatThread の onReplyConsumed）で外す。
-  // 画面を離れると捨てる（lastPane には入れない）
-  const [pendingReply, setPendingReply] = useState<{ pid: string; replyTo: ChatReplyTo } | null>(null);
+  // 引用（DM に一度だけ付ける値）。送信・取り消し（ChatThread の onReplyConsumed）で外す。画面を離れると捨てる
+  const [pendingReply, setPendingReply] = useState<{ key: string; replyTo: ChatReplyTo } | null>(null);
 
-  // 開いたものに合わせて左のセグメントも切り替える（お知らせの「スタッフに返信」で 1 対 1 が開くとき、
-  // 他画面から 1 対 1 が引き継がれるとき、左の一覧と中のペインが食い違わないように）
-  const openAnn = (id: string, tab?: AnnReadTab) => {
-    // レビュー: タブ指定なし（カード本体）で開いたら、前に「了解 N/M ›」で付けた annTab は消す（既定の未読に戻す）
-    // 同じお知らせを開き直したときも効くよう、annTab が付いていたときは annTabN を進めてパネルを作り直す
-    setPane(
-      tab
-        ? { annId: id, annTab: tab, annTabN: (pane.annTabN ?? 0) + 1 }
-        : { annId: id, annTab: undefined, annTabN: pane.annTab ? (pane.annTabN ?? 0) + 1 : pane.annTabN }
-    );
-    setSeg("ann");
-  };
-  const openDm = (pid: string, replyTo?: ChatReplyTo) => {
-    setPane({ dmPid: pid });
+  const openThread = (key: string, opts?: { replyTo?: ChatReplyTo; messageId?: string }) => {
+    setPane({ key, focusId: opts?.messageId ?? null, focusN: (pane.focusN ?? 0) + (opts?.messageId ? 1 : 0) });
     // 別の会話へ移ったら引用は持ち越さない
-    setPendingReply((cur) => (replyTo ? { pid, replyTo } : cur && cur.pid === pid ? cur : null));
-    setSeg("msg");
+    setPendingReply((cur) => (opts?.replyTo ? { key, replyTo: opts.replyTo } : cur && cur.key === key ? cur : null));
   };
 
-  // PC では、他画面・新しいメッセージのシートから開かれた 1 対 1／お知らせの詳細もペインへ引き継ぐ
+  // PC では、他画面・新しいメッセージのシート・ホームのお知らせから開かれたスレッドも右のペインへ引き継ぐ
   // （放置するとシートとペインが二重表示になる。ブレークポイントを跨いだ場合もここで拾う）
   useEffect(() => {
     if (!pc) return;
     const sh = board.sheet;
-    if (sh.type === "chat" && sh.chatTo?.startsWith("p:")) {
-      openDm(sh.chatTo.slice(2), sh.replyTo);
-      board.closeSheet();
-    } else if (sh.type === "chat" && sh.chatTo && isOppKey(sh.chatTo) && isStaff) {
-      // 相手チームとの会話（練習試合の承諾後など）。選手・保護者には開かない
-      openDm(sh.chatTo);
-      board.closeSheet();
-    } else if (sh.type === "annDetail" && sh.annId) {
-      openAnn(sh.annId, sh.annTab);
+    if (sh.type !== "chat" || !sh.chatTo) return;
+    const to = sh.chatTo === "team" ? ALL_THREAD_KEY : sh.chatTo;
+    if (to.startsWith("p:") || isGroupKey(to) || (isOppKey(to) && isStaff)) {
+      openThread(to, { replyTo: sh.replyTo, messageId: sh.messageId });
       board.closeSheet();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pc, board.sheet]);
 
-  // 実際に中へ出すペイン。左のセグメントが決める（お知らせ＝詳細、メッセージ＝1 対 1）。
-  // 選手・保護者は一覧から選ぶ手間をなくし、メッセージを選んだら 1 対 1 を直接出す。
-  // お知らせは自分宛て（visibleAnnouncements）だけ。前の視点や他の画面で開いた宛先外のものは出さない
-  const visibleAnns = useMemo(
-    () => visibleAnnouncements(team.team.announcements, isStaff, me, team.groups),
-    [team.team.announcements, isStaff, me, team.groups]
-  );
-  // ux-fix R3-3: PC で何も選んでいないときは、先頭のお知らせ（固定があれば固定、無ければ最新＝一覧の先頭）を開く。
-  // 選択として覚えるものではないので pane には入れない（別のものを選べばそちらが優先される）
-  const annId =
-    seg === "ann"
-      ? pane.annId && visibleAnns.some((a) => a.id === pane.annId)
-        ? pane.annId
-        : pc
-          ? sortAnnouncements(visibleAnns)[0]?.id ?? null
-          : null
-      : null;
-  // 相手チームとの会話キーはスタッフだけ（選手・保護者の視点では使わない）
-  const paneDm = pane.dmPid && isOppKey(pane.dmPid) && !isStaff ? null : pane.dmPid;
-  // 会話のタブも同じ：何も選んでいないスタッフは最初の会話（左の一覧の先頭）を開く
-  const staffRows = useMemo(
-    () => (isStaff ? staffConversationRows(board.messages, board.chatReads, board.state.players, oppTeams) : []),
-    [isStaff, board.messages, board.chatReads, board.state.players, oppTeams]
-  );
-  const firstDm = pc && isStaff ? staffRows[0]?.key.replace(/^p:/, "") ?? null : null;
-  const dmPid = seg === "msg" ? memberId ?? paneDm ?? firstDm : null;
-  const oppDm = dmPid && isStaff && isOppKey(dmPid) ? dmPid : null;
-  const oppTeam = oppDm ? oppTeams.find((t) => `opp:${t.id}` === oppDm) ?? null : null;
+  // 実際に右へ出す会話。選んだ会話が今の視点で開けるものでなければ使わず、何も選んでいなければ先頭のグループ（全員）
+  const visibleKeys = useMemo(() => {
+    if (isStaff) return null; // スタッフは何でも（存在確認は下で）
+    return new Set([dmThreadKey(memberId ?? ""), ...playerGroupKeys(me, team.groups)]);
+  }, [isStaff, memberId, me, team.groups]);
+  const valid = (k: string | null): k is string => {
+    if (!k) return false;
+    if (!isStaff) return !!visibleKeys?.has(k);
+    if (isGroupKey(k)) return !!groupThreadInfo(k, team.groups);
+    if (isOppKey(k)) return oppTeams.some((t) => `opp:${t.id}` === k);
+    return k.startsWith("p:") && board.state.players.some((p) => dmThreadKey(p.id) === k);
+  };
+  const threadKey = pc ? (valid(pane.key) ? pane.key : ALL_THREAD_KEY) : null;
 
   const players = board.state.players;
-  const selPlayer = dmPid && !oppDm ? players.find((p) => p.id === dmPid) ?? null : null;
-  const selAnn = annId ? team.team.announcements.find((a) => a.id === annId) ?? null : null;
-  // 既読パネルはスタッフがお知らせを開いたときだけ、右の第 3 列に出す（狭い PC 幅では詳細の下に続ける）
-  const readCol = pc && wide && isStaff && !!selAnn;
+  const groupInfo = threadKey && isGroupKey(threadKey) ? groupThreadInfo(threadKey, team.groups) : null;
+  const oppDm = threadKey && isStaff && isOppKey(threadKey) ? threadKey : null;
+  const oppTeam = oppDm ? oppTeams.find((t) => `opp:${t.id}` === oppDm) ?? null : null;
+  const selPlayer = threadKey && isStaff && threadKey.startsWith("p:") ? players.find((p) => dmThreadKey(p.id) === threadKey) ?? null : null;
+  const memberCount = groupInfo ? threadMembers(groupInfo.key, players, team.groups).length : 0;
 
   return (
     <div className="app chatapp">
@@ -189,7 +142,7 @@ export default function ChatScreen() {
         </header>
       ) : (
         // mobile-redesign §1-6: 下部タブ「チャット」の直下画面のため戻るは出さない。
-        // 右アクションは「お知らせ｜メッセージ」の選択に連動（スタッフだけ。§3-5）
+        // 右アクションはスタッフの「新しいメッセージ」
         <MobileHeader
           title="チャット"
           actions={
@@ -206,101 +159,84 @@ export default function ChatScreen() {
       <div className="scroll">
         <ChatHome
           pc={pc}
-          onOpenAnn={pc ? openAnn : undefined}
-          onOpenDm={pc ? (pid) => openDm(pid) : undefined}
-          selectedAnnId={annId}
-          selectedDm={dmPid}
+          showCompose={pc && isStaff && board.auth.role === "coach"}
+          onOpen={pc ? (k) => openThread(k) : undefined}
+          selectedKey={threadKey}
         />
       </div>
 
       {/* PC専用の第2ペイン。モバイルでは描画しない（隠れた ChatThread の二重マウントと既読の誤更新を防ぐ） */}
-      {pc && (
+      {pc && threadKey && (
         <div className="chatmain">
-          {annId ? (
-            <div className="chatpanescroll">
-              <AnnouncementDetail
-                key={`${annId}:${pane.annTabN ?? 0}`}
-                annId={annId}
-                readPanel={!readCol}
-                readTab={pane.annTab}
-                onClose={() => setPane({ annId: null })}
-                onReply={memberId ? (q) => openDm(memberId, q) : undefined}
-              />
-            </div>
-          ) : dmPid ? (
-            <div className="chattab" style={{ flex: 1 }}>
-              {/* どの会話を開いているかを常に明示する(個人への取り違え送信を防ぐ) */}
-              <div className="chatpanehead">
-                <div className="convavatar">
-                  {oppDm ? "対" : isStaff ? Array.from(selPlayer?.name ?? "?")[0] : "ス"}
-                </div>
-                {/* ux-fix R2-7: スタッフは選手名を押すと個人ページへ（右の「ノート」はその選手の提出一覧へ） */}
-                {isStaff && selPlayer ? (
-                  <button
-                    type="button"
-                    className="chatpanename chatpanelink"
-                    aria-label={`${selPlayer.name}の個人ページを開く`}
-                    onClick={() => {
-                      board.setTeamIntent({ tab: "ros", playerId: selPlayer.id });
-                      board.setScreen("team");
-                    }}
-                  >
-                    {selPlayer.name} <span aria-hidden="true">›</span>
-                  </button>
-                ) : (
-                  <span className="chatpanename">
-                    {oppDm ? oppTeam?.name ?? "相手チーム" : isStaff ? selPlayer?.name ?? "メッセージ" : "スタッフ"}
+          <div className="chattab" style={{ flex: 1 }}>
+            {/* どの会話を開いているかを常に明示する(取り違え送信を防ぐ) */}
+            <div className="chatpanehead">
+              {groupInfo ? (
+                <>
+                  <span className="convdotbox" aria-hidden="true">
+                    <i className="convdot" style={{ background: groupInfo.color }} />
                   </span>
-                )}
-                {oppDm && <span className="chatpaneall">対戦相手</span>}
-                {isStaff && selPlayer && groupsOfPlayer(selPlayer, team.groups).length > 0 && (
-                  <span className="chatpaneall">
-                    {groupsOfPlayer(selPlayer, team.groups)
-                      .map((g) => g.label)
-                      .join("・")}
-                  </span>
-                )}
-                {isStaff && selPlayer && (
-                  <button
-                    type="button"
-                    className="st-btn ghost chatpanenote"
-                    onClick={() => {
-                      board.setNoteIntent({ playerId: selPlayer.id });
-                      board.setScreen("notebook");
-                    }}
-                  >
-                    ノート
-                  </button>
-                )}
-              </div>
-              {/* key は会話（pid）だけ。引用を外したこと（onReplyConsumed）で作り直しが起きないようにする。
-                  開いたままのスレッドへ新しい引用が来たときは ChatThread が prop の変化で取り込む */}
-              <ChatThread
-                key={dmPid}
-                to={oppDm ? oppDm : isStaff ? dmThreadKey(dmPid) : memberId ? dmThreadKey(memberId) : dmThreadKey(dmPid)}
-                as={isStaff ? undefined : { role: "member", playerId: memberId }}
-                replyTo={pendingReply && pendingReply.pid === dmPid ? pendingReply.replyTo : undefined}
-                onReplyConsumed={() => setPendingReply(null)}
-                onOpenAnn={openAnn}
-              />
+                  <span className="chatpanename">{groupInfo.label}</span>
+                  <span className="chatpaneall">{memberCount}人</span>
+                </>
+              ) : (
+                <>
+                  <div className="convavatar">
+                    {oppDm ? "対" : isStaff ? Array.from(selPlayer?.name ?? "?")[0] : "ス"}
+                  </div>
+                  {/* ux-fix R2-7: スタッフは選手名を押すと個人ページへ（右の「ノート」はその選手の提出一覧へ） */}
+                  {isStaff && selPlayer ? (
+                    <button
+                      type="button"
+                      className="chatpanename chatpanelink"
+                      aria-label={`${selPlayer.name}の個人ページを開く`}
+                      onClick={() => {
+                        board.setTeamIntent({ tab: "ros", playerId: selPlayer.id });
+                        board.setScreen("team");
+                      }}
+                    >
+                      {selPlayer.name} <span aria-hidden="true">›</span>
+                    </button>
+                  ) : (
+                    <span className="chatpanename">
+                      {oppDm ? oppTeam?.name ?? "相手チーム" : isStaff ? selPlayer?.name ?? "メッセージ" : "スタッフ"}
+                    </span>
+                  )}
+                  {oppDm && <span className="chatpaneall">対戦相手</span>}
+                  {isStaff && selPlayer && groupsOfPlayer(selPlayer, team.groups).length > 0 && (
+                    <span className="chatpaneall">
+                      {groupsOfPlayer(selPlayer, team.groups)
+                        .map((g) => g.label)
+                        .join("・")}
+                    </span>
+                  )}
+                  {isStaff && selPlayer && (
+                    <button
+                      type="button"
+                      className="st-btn ghost chatpanenote"
+                      onClick={() => {
+                        board.setNoteIntent({ playerId: selPlayer.id });
+                        board.setScreen("notebook");
+                      }}
+                    >
+                      ノート
+                    </button>
+                  )}
+                </>
+              )}
             </div>
-          ) : (
-            <div className="chatempty">
-              {seg === "ann" ? "お知らせを選ぶと、ここに内容が出ます" : "会話を選ぶと、ここに内容が出ます"}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* 右の既読パネル（スタッフがお知らせを開いたときだけ。chat-plan-a §3-6）。
-          key で開くお知らせごとに作り直し、タブを既定の「未読」へ戻す */}
-      {readCol && selAnn && (
-        <aside className="chatreadcol" aria-label="既読の状況">
-          <div className="chatreadhead">既読の状況</div>
-          <div className="chatreadscroll">
-            <AnnReadPanel key={`${selAnn.id}:${pane.annTabN ?? 0}`} a={selAnn} initialTab={pane.annTab} />
+            {/* key は会話だけ。引用を外したこと（onReplyConsumed）で作り直しが起きないようにする。
+                開いたままのスレッドへ新しい引用が来たときは ChatThread が prop の変化で取り込む */}
+            <ChatThread
+              key={`${threadKey}:${pane.focusN ?? 0}`}
+              to={threadKey}
+              as={isStaff ? undefined : { role: "member", playerId: memberId }}
+              replyTo={pendingReply && pendingReply.key === threadKey ? pendingReply.replyTo : undefined}
+              onReplyConsumed={() => setPendingReply(null)}
+              focusId={pane.focusId}
+            />
           </div>
-        </aside>
+        </div>
       )}
     </div>
   );

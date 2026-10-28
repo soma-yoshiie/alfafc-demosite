@@ -178,9 +178,10 @@ function MatchdayBoard({
         />
 
         {/* p18 §4: 指標タイル・グラフ・今月のトピック・最新の動きをやめ、サッカーノートとチャットのタイムライン＋最新のお知らせにした */}
-        <HomeTimeline scopes={timeline} variant="pc" />
-
+        {/* home-chat-groups-roster §1: 最新のお知らせをタイムラインの上に */}
         <HomeAnnouncements viewer="staff" variant="pc" />
+
+        <HomeTimeline scopes={timeline} variant="pc" />
 
         {highlightChips.length > 0 && (
           <div className="mdb-highlights">

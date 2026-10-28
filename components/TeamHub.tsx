@@ -426,12 +426,16 @@ function Inner() {
   const [rosStatus, setRosStatus] = useState<RosStatus>("all");
   const [rosGroupIds, setRosGroupIds] = useGroupFilter("roster");
   // 保存済みIDが削除済みなら「すべて」とみなす（試合記録の matchGroupEff と同じ作法）
-  const rosGroup = resolveFilterGroup(rosGroupIds, team.groups);
-  const rosGroupEff = rosGroup?.id ?? null;
+  // home-chat-groups-roster §3: 学年・グループは複数選択（和集合）。表示は team.groups の並び
+  const rosGroups = resolveFilterGroups(rosGroupIds, team.groups).sort(
+    (a, b) => team.groups.indexOf(a) - team.groups.indexOf(b)
+  );
+  const rosGroupEffIds = rosGroups.map((g) => g.id);
+  const rosGroupStale = rosGroupIds.length !== rosGroupEffIds.length;
   useEffect(() => {
-    if (rosGroupIds.length > 0 && !rosGroupEff) setRosGroupIds([]);
+    if (rosGroupStale) setRosGroupIds(rosGroupEffIds);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rosGroupIds, rosGroupEff]);
+  }, [rosGroupStale, rosGroupEffIds.join(",")]);
   const [rosSection, setRosSection] = useState<HubSection>("overview");
   // PCの絞り込み列(.rosside)の開閉（既定＝開いている）。スマホの絞り込みシートの開閉は rosFilterSheet
   const [rosSideOpen, setRosSideOpen] = useState(() => loadRosSideOpen());
@@ -516,7 +520,7 @@ function Inner() {
   const recDetail = recFull || recPcOpen;
   const recMatch = recOpen ? team.team.matches.find((x) => x.id === recOpen) : undefined;
   const rosPlayer = rosSel ? players.find((p) => p.id === rosSel) : undefined;
-  const rosFilterOn = !!rosGroup || rosPos !== "all" || rosStatus !== "all";
+  const rosFilterOn = rosGroups.length > 0 || rosPos !== "all" || rosStatus !== "all";
   const pickRos = (id: string) => {
     setRosBack(null);
     if (!pc) {
@@ -563,8 +567,7 @@ function Inner() {
   // PCのヘッダーCTA(.teamcta)と同じ対象・同じラベルにする。
   // Phase D-1(C2 major): ログインロール(board.auth.role)だけでなく閲覧ロール(isCoach=
   // team.viewer.role==="coach")も見る。選手プレビュー中はスタッフ操作を出さない
-  // chat-plan-a §3-5: チャットタブのアクションは「お知らせ｜メッセージ」の選択に連動する
-  // （お知らせ＝「お知らせを送る」／メッセージ＝「新しいメッセージ」。どちらも board シートで開く）
+  // home-chat-groups-roster §2-1: チャットタブのアクションは「新しいメッセージ」（1 対 1 の相手選び。board シート）
   const chatAction = useChatHeaderAction(isCoach && board.auth.role === "coach");
   const headerAction: { label: string; onClick: () => void } | null =
     !isCoach || board.auth.role !== "coach"
@@ -672,8 +675,8 @@ function Inner() {
   const rosFilterPanel = (
     <RosterFilterPanel
       groups={team.groups}
-      groupId={rosGroupEff}
-      onGroup={(id) => setRosGroupIds(id ? [id] : [])}
+      groupIds={rosGroupEffIds}
+      onGroupIds={setRosGroupIds}
       pos={rosPos}
       onPos={setRosPos}
       status={rosStatus}
@@ -1052,7 +1055,7 @@ function Inner() {
                         onPick={pickRos}
                         q={rosQ}
                         setQ={setRosQ}
-                        group={rosGroup}
+                        groups={rosGroups}
                         pos={rosPos}
                         status={rosStatus}
                         showFilterBtn={!rosSideOn}
@@ -1060,8 +1063,8 @@ function Inner() {
                         onFilter={() => (pc ? setRosSideOpen(true) : setRosFilterSheet(true))}
                       />
                     ))}
-                  {/* chat-plan-a §3-5: スマホ＝お知らせ｜メッセージ、PC＝お知らせだけ。詳細・作成・スレッドは board シート */}
-                  {activeTab === "chat" && <ChatHome pc={pc} lockSegment={pc ? "ann" : undefined} />}
+                  {/* home-chat-groups-roster §2-1: グループ／選手・保護者／相手チームの 1 画面。スレッド・作成は board シート */}
+                  {activeTab === "chat" && <ChatHome pc={pc} />}
                 </>
               )}
             </div>
@@ -2655,8 +2658,8 @@ function RecFilterPanel({
  */
 function RosterFilterPanel({
   groups,
-  groupId,
-  onGroup,
+  groupIds,
+  onGroupIds,
   pos,
   onPos,
   status,
@@ -2664,9 +2667,9 @@ function RosterFilterPanel({
   onManageGroups,
 }: {
   groups: TeamGroup[];
-  /** 選択中の学年／グループのID。null=すべて */
-  groupId: string | null;
-  onGroup: (id: string | null) => void;
+  /** 選択中の学年／グループのID（複数選択。空=全員） */
+  groupIds: string[];
+  onGroupIds: (ids: string[]) => void;
   pos: RosPos;
   onPos: (v: RosPos) => void;
   status: RosStatus;
@@ -2678,9 +2681,10 @@ function RosterFilterPanel({
   const customs = groups.filter((g) => g.kind === "custom");
   // ux-fix R3-2: 学年・グループ・ポジション・状態はすべて四角のチェック（どれも選んでいない＝すべて。選んでいる行を
   // もう一度押すと外れる）。学年・グループの色はラベルの前の点
-  // ux-fix R3-2 レビュー: 学年／グループ・ポジション・状態は値を 1 つしか持たないので丸のラジオ
-  const row = (key: string, label: string, on: boolean, onClick: () => void, dot?: string) => (
-    <FilterRow key={key} rowCls="rosfrow" nameCls="rosfname" on={on} label={label} onClick={onClick} dot={dot} shape="rd" />
+  // ux-fix R3-2 レビュー: ポジション・状態は値を 1 つしか持たないので丸のラジオ。
+  // home-chat-groups-roster §3: 学年・グループは複数選択なので四角のチェック（shape="sq"）
+  const row = (key: string, label: string, on: boolean, onClick: () => void, dot?: string, shape: "sq" | "rd" = "rd") => (
+    <FilterRow key={key} rowCls="rosfrow" nameCls="rosfname" on={on} label={label} onClick={onClick} dot={dot} shape={shape} />
   );
   const sec = (title: string, active: boolean, onClear: () => void, rows: React.ReactNode) => (
     <div className="rosfsec" key={title}>
@@ -2690,12 +2694,18 @@ function RosterFilterPanel({
       </div>
     </div>
   );
+  const toggle = (id: string) => onGroupIds(groupIds.includes(id) ? groupIds.filter((x) => x !== id) : [...groupIds, id]);
   const groupRows = (list: TeamGroup[]) =>
-    list.map((g) => row(g.id, g.label, groupId === g.id, () => onGroup(groupId === g.id ? null : g.id), g.color ?? "var(--mut)"));
+    list.map((g) => row(g.id, g.label, groupIds.includes(g.id), () => toggle(g.id), g.color ?? "var(--mut)", "sq"));
+  // 「全員」：何も選んでいないとき ON。押すと選択をすべて外す（学年の区画の先頭。学年が無ければグループの先頭）
+  const allRow = row("all", "全員", groupIds.length === 0, () => onGroupIds([]), undefined, "sq");
+  const clearOf = (list: TeamGroup[]) => () => onGroupIds(groupIds.filter((id) => !list.some((g) => g.id === id)));
   return (
     <div className="rosfpanel">
-      {grades.length > 0 && sec("学年", grades.some((g) => g.id === groupId), () => onGroup(null), groupRows(grades))}
-      {customs.length > 0 && sec("グループ", customs.some((g) => g.id === groupId), () => onGroup(null), groupRows(customs))}
+      {grades.length > 0 &&
+        sec("学年", grades.some((g) => groupIds.includes(g.id)), clearOf(grades), [allRow, ...groupRows(grades)])}
+      {customs.length > 0 &&
+        sec("グループ", customs.some((g) => groupIds.includes(g.id)), clearOf(customs), grades.length > 0 ? groupRows(customs) : [allRow, ...groupRows(customs)])}
       {sec(
         "ポジション",
         pos !== "all",
@@ -2753,7 +2763,7 @@ function RosterTab({
   onPick,
   q,
   setQ,
-  group,
+  groups: filterGroups,
   pos,
   status,
   showFilterBtn,
@@ -2766,8 +2776,8 @@ function RosterTab({
   onPick: (id: string) => void;
   q: string;
   setQ: (v: string) => void;
-  /** 絞り込み中の学年／グループ（null=すべて） */
-  group: TeamGroup | null;
+  /** 絞り込み中の学年／グループ（複数。空=全員。いずれかに入っている選手を出す） */
+  groups: TeamGroup[];
   pos: RosPos;
   status: RosStatus;
   /** false=PCで絞り込み列(.rosside)が開いているので「絞り込み」ボタンを出さない */
@@ -2789,7 +2799,7 @@ function RosterTab({
   const list = players.filter(
     (p) =>
       (!kw || p.name.toLowerCase().includes(kw) || p.position.toLowerCase().includes(kw)) &&
-      (!group || playerInGroup(p, group)) &&
+      (filterGroups.length === 0 || filterGroups.some((g) => playerInGroup(p, g))) &&
       (pos === "all" || groupOf(p.position) === pos) &&
       (status === "all" ||
         (status === "injured" ? (p.injuries ?? []).some((x) => x.status !== "ok") : captainId === p.id))
@@ -2816,14 +2826,14 @@ function RosterTab({
   );
   // 一覧の上の「選択中」1行：絞っている条件だけを「・」でつなぐ（学年／グループはその色の点付き）
   const selParts: React.ReactNode[] = [];
-  if (group) {
+  filterGroups.forEach((group) => {
     selParts.push(
-      <span key="g">
+      <span key={`g-${group.id}`}>
         <i className="rosseldot" style={{ background: group.color ?? "var(--mut)" }} />
         {group.label}
       </span>
     );
-  }
+  });
   if (pos !== "all") selParts.push(ROS_POS_OPTIONS.find((o) => o.key === pos)?.label);
   if (status !== "all") selParts.push(ROS_STATUS_OPTIONS.find((o) => o.key === status)?.label);
   return (
@@ -2913,7 +2923,7 @@ function RosterTab({
                               文字 1 行だけ（バッジの積み重ねで 44px／64px／90px に分かれていた） */}
                           <div className="ptable-sub">
                             {team.groups
-                              .filter((g) => g.kind === "custom" && playerInGroup(p, g) && g.id !== group?.id && g.label !== p.position)
+                              .filter((g) => g.kind === "custom" && playerInGroup(p, g) && !filterGroups.some((x) => x.id === g.id) && g.label !== p.position)
                               .map((g) => g.label)
                               .join(" ・ ")}
                           </div>
@@ -2942,7 +2952,7 @@ function RosterTab({
               const inj = (p.injuries ?? []).find((x) => x.status !== "ok");
               const extraGroups = team.groups.filter(
                 // ux-fix R2-4: ポジションと違うグループだけ（左の札と同じ「GK」などは重ねない）。絞り込み中のグループも出さない
-                (g) => g.kind === "custom" && playerInGroup(p, g) && g.id !== group?.id && g.label !== p.position
+                (g) => g.kind === "custom" && playerInGroup(p, g) && !filterGroups.some((x) => x.id === g.id) && g.label !== p.position
               );
               return (
                 <div

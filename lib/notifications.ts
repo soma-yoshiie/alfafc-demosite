@@ -3,6 +3,8 @@
 // 将来フェーズ2では同じ Notification 型をサーバ側から発行し Web Push / LINE 配信へ拡張可能。
 
 import type {
+  ChatMessage,
+  ChatReads,
   CoachDeliverable,
   NotebookEntry,
   Player,
@@ -11,15 +13,16 @@ import type {
 import { NOTE_KIND_LABEL, DELIVER_KIND_LABEL } from "./types";
 import { computePlayerKpi } from "./coaching";
 import { deliverableTargetsPlayer, deliverableVisibleToPlayer } from "./groups";
-import { announcementParts, visibleAnnouncements } from "./chat";
+import { announceSubject, announcedMessages } from "./chat";
 
 export type NotifLevel = "warn" | "info" | "good";
 export type NotifTarget =
   | { kind: "note"; id: string }
   | { kind: "deliver"; id: string }
   | { kind: "player"; id: string }
-  // chat-plan-a §4: 選手向け「新しいお知らせ」。押すとチャット画面でそのお知らせの詳細を開く
-  | { kind: "announcement"; id: string };
+  // home-chat-groups-roster §2-5: 選手向け「新しいお知らせ」（お知らせにされたメッセージ）。
+  // 押すとそのグループのスレッドのその吹き出しを開く
+  | { kind: "message"; key: string; id: string };
 
 export interface Notification {
   id: string;
@@ -36,6 +39,10 @@ export interface NotifInput {
   deliverables: CoachDeliverable[];
   players: Player[];
   team: TeamData | null;
+  /** お知らせにされたメッセージ（選手向け「新しいお知らせ」に使う。省略時は出さない） */
+  messages?: ChatMessage[];
+  /** 会話の既読時刻（グループは reads[key].members[自分]） */
+  chatReads?: ChatReads;
 }
 
 const nameOf = (players: Player[], pid: string) =>
@@ -87,17 +94,17 @@ export function buildEventNotifications(input: NotifInput): Notification[] {
           target: { kind: "deliver", id: d.id },
         });
       });
-    // 新しいお知らせ（chat-plan-a §4）：自分宛てで seenBy に自分がいないもの。
-    // 開けば seenBy に入って消える（スタッフ向けには出さない）。旧データの件名は本文の 1 行目
-    visibleAnnouncements(team?.announcements ?? [], false, me ?? null, groups)
-      .filter((a) => !a.seenBy?.includes(playerId))
-      .forEach((a) => {
+    // 新しいお知らせ（home-chat-groups-roster §2-5）：自分が入っているグループで「お知らせにされた」メッセージのうち、
+    // 自分がまだ読んでいない（reads[key].members[自分] が発言より前）もの。開けば既読になって消える（スタッフ向けには出さない）
+    announcedMessages(input.messages ?? [], groups, { side: "member", playerId, me: me ?? null })
+      .filter((m) => m.from !== `p:${playerId}` && m.acks?.[playerId] === undefined && (input.chatReads?.[m.to]?.members?.[playerId] ?? 0) < m.ts)
+      .forEach((m) => {
         list.push({
-          id: "ann-" + a.id,
-          ts: a.ts,
+          id: "ann-" + m.id,
+          ts: m.announce?.ts ?? m.ts,
           level: "info",
-          text: `新しいお知らせ：${announcementParts(a).subject}`,
-          target: { kind: "announcement", id: a.id },
+          text: `新しいお知らせ：${announceSubject(m)}`,
+          target: { kind: "message", key: m.to, id: m.id },
         });
       });
     // 自分のノートに付いたコメント

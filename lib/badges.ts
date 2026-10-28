@@ -1,10 +1,10 @@
 // 入口（ノート・チャット）の未読の数字。「その入口の先で片付く数」に揃える（specs/ux-fix-2026-10.md R1-4）。
 // ConsoleShell（PC レール・スマホ下部タブ）／TeamHub のセグメント／ChatHome が同じ関数を使う。
 
-import type { Announcement, ChatMessage, ChatReads, CoachDeliverable, NotebookEntry, Player, TeamGroup } from "./types";
+import type { ChatMessage, ChatReads, CoachDeliverable, NotebookEntry, Player, TeamGroup } from "./types";
 import { DELIVER_KIND_LABEL } from "./types";
 import type { NotifPrefs } from "./storage";
-import { announcementUnreadCount, memberUnreadTotal, staffUnreadTotal } from "./chat";
+import { memberUnreadTotal, staffUnreadTotal } from "./chat";
 import { deliverableVisibleToPlayer } from "./groups";
 import { staffUnreadNotes } from "./notebookStats";
 
@@ -68,7 +68,6 @@ export interface ChatBadgeInput {
   players: Player[];
   messages: ChatMessage[];
   reads: ChatReads;
-  announcements: Announcement[];
   groups: TeamGroup[];
   /** 選手・保護者の id（スタッフは null） */
   playerId: string | null;
@@ -76,25 +75,16 @@ export interface ChatBadgeInput {
   oppTeamIds?: string[];
 }
 
-/** セグメント「メッセージ」の数字。スタッフ＝選手・保護者と相手チームの未読、選手・保護者＝スタッフからの未読 */
-export function messageBadge(input: ChatBadgeInput): number {
-  if (input.role === "coach") {
-    return staffUnreadTotal(input.messages, input.reads, input.players, input.oppTeamIds);
-  }
-  return input.playerId ? memberUnreadTotal(input.messages, input.reads, input.playerId) : 0;
-}
-
-/** セグメント「お知らせ」の数字。選手・保護者の未読のお知らせ（スタッフには出さない） */
-export function announcementBadge(input: ChatBadgeInput): number {
-  if (input.role === "coach" || !input.playerId) return 0;
-  const me = input.players.find((p) => p.id === input.playerId);
-  return me ? announcementUnreadCount(input.announcements ?? [], me, input.groups ?? []) : 0;
-}
-
 /**
- * チャットの入口（PC レール・スマホ下部タブ「チーム」・チーム運営のセグメント「チャット」）の数字。
- * スタッフ＝メッセージの未読（お知らせは含めない）。選手・保護者＝未読のお知らせ＋スタッフからの未読メッセージ。
+ * チャットの入口（PC レール・スマホ下部タブ「チーム」・チーム運営のセグメント「チャット」・チャット画面）の数字。
+ * home-chat-groups-roster §2-2：お知らせのタブは廃止したので、1 対 1 の未読＋グループの未読（＋スタッフは相手チーム）に揃える。
+ * スタッフ＝選手・保護者と相手チームと各グループの未読。選手・保護者＝スタッフからの 1 対 1＋自分が入っているグループの未読
  */
 export function chatBadge(input: ChatBadgeInput): number {
-  return messageBadge(input) + announcementBadge(input);
+  if (input.role === "coach") {
+    return staffUnreadTotal(input.messages, input.reads, input.players, input.oppTeamIds, input.groups);
+  }
+  if (!input.playerId) return 0;
+  const me = input.players.find((p) => p.id === input.playerId) ?? null;
+  return memberUnreadTotal(input.messages, input.reads, input.playerId, me, input.groups);
 }

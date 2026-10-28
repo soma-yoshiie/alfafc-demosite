@@ -689,9 +689,10 @@ export interface AttendanceEntry {
 }
 
 /**
- * スタッフからのお知らせ（一斉連絡。全員／学年／グループ宛て）。
- * chat-plan-a §2-1: 選手・保護者は読む・「了解」を押す・スタッフへ 1 対 1 で返信するだけ（投稿しない）。
- * 追加項目はすべて任意（旧データ・旧形式の連絡がそのまま読める）
+ * スタッフからのお知らせ（旧形式。全員／学年／グループ宛て）。
+ * home-chat-groups-roster §2-5: お知らせのタブは廃止し、お知らせは「グループのスレッドのメッセージにつけた印」
+ * （ChatMessage.announce）になった。保存済みの Announcement は lib/storage.ts migrateChatGroupsOnce が一度だけ
+ * メッセージへ移し、TeamData.announcements は空配列のまま型だけ残す（新規には書かない）
  */
 export interface Announcement {
   id: string;
@@ -743,8 +744,10 @@ export interface ChatAttachment {
 /**
  * 会話の宛先キー。
  * "p:<playerId>" = 個人（その選手とスタッフの 1 対 1）。
- * "team"／"grp:<groupId>" は廃止（chat-plan-a §1）。旧データの移行（lib/chat.ts planChatMigration）
- * でお知らせへ移すためだけに残しており、以後どの画面からもこの 2 種へ送らない
+ * "grp:all"／"grp:<groupId>" = グループのスレッド（home-chat-groups-roster §2-1。メンバー＝そのグループの
+ * 選手・保護者＋スタッフ全員。選手・保護者も投稿できる）。
+ * "opp:<teamId>" = 練習試合の相手チームとの会話（スタッフだけ）。
+ * 旧形式の "team" は読み込み時に "grp:all" へ移す（lib/storage.ts migrateChatGroupsOnce）
  */
 export type ChatThreadKey = string;
 
@@ -764,6 +767,15 @@ export interface ChatMessage {
   attachments?: ChatAttachment[];
   /** 引用返信（text は 60 字まで。お知らせを引用するときは source="announcement"） */
   replyTo?: ChatReplyTo;
+  /**
+   * お知らせにされたメッセージの印（home-chat-groups-roster §2-4。グループのスレッドで、スタッフが
+   * 長押し／右クリックから「お知らせにする」を選んだとき）。ホームの「最新のお知らせ」の元データ
+   */
+  announce?: { ts: number; byName?: string };
+  /** ホームのお知らせの先頭に固定する（最大 2 件。3 件目を固定したら一番古い固定を外す） */
+  pinned?: boolean;
+  /** 選手・保護者の「了解」（playerId → 押した時刻） */
+  acks?: Record<string, number>;
 }
 
 /** 引用返信の参照（chat-plan-a §2-2） */
@@ -776,12 +788,14 @@ export interface ChatReplyTo {
 }
 
 /**
- * 1 対 1 の会話の既読時刻（chat-plan-a §2-3）。キーは "p:<playerId>"。
- * staff＝スタッフ側が最後に開いた時刻、member＝選手・保護者側が最後に開いた時刻
+ * 会話の既読時刻（chat-plan-a §2-3）。キーは会話キー（"p:<playerId>"／"grp:<id>"／"opp:<teamId>"）。
+ * staff＝スタッフ側が最後に開いた時刻、member＝1 対 1 で選手・保護者側が最後に開いた時刻。
+ * members＝グループのスレッドで、選手・保護者ごと（playerId → 最後に開いた時刻。home-chat-groups-roster §2-2）
  */
 export interface ChatReadState {
   staff?: number;
   member?: number;
+  members?: Record<string, number>;
 }
 export type ChatReads = Record<string, ChatReadState>;
 

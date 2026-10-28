@@ -54,9 +54,8 @@ const VIEWER_KEY = "soccer_tactics_viewer_v1";
 const MESSAGES_KEY = "soccer_tactics_messages_v1";
 // chat-plan-a §2-3: 1 対 1 の既読時刻。§6: team/grp メッセージ → お知らせの移行済みマーカー
 const CHATREADS_KEY = "soccer_tactics_chatreads_v1";
-const CHATMIG_KEY = "soccer_tactics_chatmig_v1";
+const CHATGROUPS_MIG_KEY = "soccer_tactics_chat_groups_v1";
 // chat-plan-a §3-1: チャット上部のセグメント（お知らせ／メッセージ）の選択。"ann"／"msg"
-const CHATSEG_KEY = "soccer_tactics_chatseg_v1";
 const NOTEBOOK_KEY = "soccer_tactics_notebook_v1";
 const DELIVER_KEY = "soccer_tactics_coachdeliver_v1";
 const NOTIF_SEEN_KEY = "soccer_tactics_notif_seen_v1";
@@ -753,6 +752,7 @@ function normalizeFitnessTests(tests: FitnessTest[], seed: boolean): FitnessTest
 export function loadTeam(): TeamData | null {
   if (typeof window === "undefined") return null;
   migrateOldDemo();
+  migrateChatGroupsOnce();
   try {
     const raw = window.localStorage.getItem(TEAM_KEY);
     if (!raw) return null;
@@ -1198,6 +1198,7 @@ export function saveGroupFilter(key: string, ids: string[]): void {
 /* ---- チャット（戦術・トレーニング・画像・動画の送信） ---- */
 export function loadMessages(): ChatMessage[] | null {
   if (typeof window === "undefined") return null;
+  migrateChatGroupsOnce();
   try {
     const raw = window.localStorage.getItem(MESSAGES_KEY);
     if (!raw) return null;
@@ -1234,10 +1235,19 @@ export function loadChatReads(): ChatReads | null {
     const out: ChatReads = {};
     for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
       if (!v || typeof v !== "object") continue;
-      const r = v as { staff?: unknown; member?: unknown };
+      const r = v as { staff?: unknown; member?: unknown; members?: unknown };
+      // home-chat-groups-roster §2-2: グループのスレッドは選手・保護者ごとの既読時刻（playerId → 時刻）
+      let members: Record<string, number> | undefined;
+      if (r.members && typeof r.members === "object" && !Array.isArray(r.members)) {
+        members = {};
+        for (const [pid, t] of Object.entries(r.members as Record<string, unknown>)) {
+          if (typeof t === "number") members[pid] = t;
+        }
+      }
       out[k] = {
         staff: typeof r.staff === "number" ? r.staff : undefined,
         member: typeof r.member === "number" ? r.member : undefined,
+        ...(members ? { members } : {}),
       };
     }
     return out;
@@ -1255,47 +1265,107 @@ export function saveChatReads(reads: ChatReads): void {
   }
 }
 
-/* ---- チャットのセグメント（お知らせ／メッセージ）の選択（chat-plan-a §3-1） ---- */
-export type ChatSeg = "ann" | "msg";
+/* ---- お知らせ → グループのメッセージへの移行（home-chat-groups-roster §2-8） ---- */
 
-export function loadChatSeg(): ChatSeg {
-  if (typeof window === "undefined") return "ann";
+/**
+ * 一度だけの移行（完了マーカー soccer_tactics_chat_groups_v1）。
+ * - team.announcements[] の各お知らせを ChatMessage にして messages に足す：
+ *   to＝groupIds が空なら "grp:all"、あればそれぞれのグループのスレッド（複数なら複製）。
+ *   from="coach"、fromName／fromRole は元の値、text＝title があれば title + "\n" + text、attachments・ts はそのまま、
+ *   announce={ts}、pinned、acks（元の playerId[] を { playerId: 時刻 } に）。変換後 team.announcements = []。
+ * - 既読（seenBy）は引き継がない（reads.members は空から）。
+ * - 旧形式の to="team" のメッセージは "grp:all" へ付け替える（grp:<id> はそのまま新しいスレッドになる）。
+ * loadMessages／loadTeam のどちらが先に呼ばれても、この関数が messages と team を両方書き換えてからマーカーを立てる。
+ * 書けなかったとき（容量超過など）は messages を元に戻してマーカーも立てない（何も失わず、次回にまわす）
+ */
+let chatGroupsMigrating = false;
+export function migrateChatGroupsOnce(): void {
+  if (typeof window === "undefined" || chatGroupsMigrating) return;
+  chatGroupsMigrating = true;
   try {
-    return window.localStorage.getItem(CHATSEG_KEY) === "msg" ? "msg" : "ann";
+    if (window.localStorage.getItem(CHATGROUPS_MIG_KEY) === "1") return;
+    const teamRaw = window.localStorage.getItem(TEAM_KEY);
+    const msgRaw = window.localStorage.getItem(MESSAGES_KEY);
+    let team: (Record<string, unknown> & { announcements?: unknown; groups?: unknown }) | null = null;
+    try {
+      team = teamRaw ? JSON.parse(teamRaw) : null;
+    } catch {
+      team = null;
+    }
+    let messages: ChatMessage[] = [];
+    try {
+      const parsed = msgRaw ? JSON.parse(msgRaw) : [];
+      messages = Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
+    } catch {
+      messages = [];
+    }
+    const anns = team && Array.isArray(team.announcements) ? (team.announcements as Announcement[]) : [];
+    const legacyTeamMsgs = messages.some((m) => m.to === "team");
+    if (anns.length === 0 && !legacyTeamMsgs) {
+      window.localStorage.setItem(CHATGROUPS_MIG_KEY, "1");
+      return;
+    }
+    const groupIds = new Set(
+      (team && Array.isArray(team.groups) ? (team.groups as Array<{ id?: unknown }>) : [])
+        .map((g) => g.id)
+        .filter((id): id is string => typeof id === "string")
+    );
+    const have = new Set(messages.map((m) => m.id));
+    const added: ChatMessage[] = [];
+    for (const a of anns) {
+      if (!a || typeof a.id !== "string") continue;
+      const ids = Array.isArray(a.groupIds) ? a.groupIds.filter((x) => typeof x === "string" && groupIds.has(x)) : [];
+      const targets = ids.length > 0 ? ids.map((id) => `grp:${id}`) : ["grp:all"];
+      const text = [a.title?.trim(), (a.text ?? "").trim()].filter(Boolean).join("\n");
+      const acks: Record<string, number> = {};
+      if (Array.isArray(a.acks)) a.acks.forEach((pid, i) => typeof pid === "string" && (acks[pid] = a.ts + 1000 * (i + 1)));
+      const attachments = Array.isArray(a.attachments) && a.attachments.length > 0 ? a.attachments : undefined;
+      targets.forEach((to, i) => {
+        const id = targets.length === 1 ? `msg_ann_${a.id}` : `msg_ann_${a.id}_${i}`;
+        if (have.has(id)) return;
+        have.add(id);
+        added.push({
+          id,
+          ts: a.ts,
+          to,
+          from: "coach",
+          fromName: a.fromName,
+          fromRole: a.fromRole,
+          text: text || undefined,
+          attachments,
+          announce: { ts: a.ts, ...(a.fromName ? { byName: a.fromName } : {}) },
+          ...(a.pinned ? { pinned: true } : {}),
+          ...(Object.keys(acks).length > 0 ? { acks } : {}),
+        });
+      });
+    }
+    const nextMessages = [...messages.map((m) => (m.to === "team" ? { ...m, to: "grp:all" } : m)), ...added].sort(
+      (x, y) => x.ts - y.ts
+    );
+    try {
+      window.localStorage.setItem(MESSAGES_KEY, JSON.stringify(nextMessages));
+    } catch {
+      return; // 書けない：何も変えずに次回へ
+    }
+    if (team && anns.length > 0) {
+      try {
+        window.localStorage.setItem(TEAM_KEY, JSON.stringify({ ...team, announcements: [] }));
+      } catch {
+        // team が書けなかったら messages を元に戻す（お知らせを失わない）
+        try {
+          if (msgRaw !== null) window.localStorage.setItem(MESSAGES_KEY, msgRaw);
+          else window.localStorage.removeItem(MESSAGES_KEY);
+        } catch {
+          /* 無視 */
+        }
+        return;
+      }
+    }
+    window.localStorage.setItem(CHATGROUPS_MIG_KEY, "1");
   } catch {
-    return "ann";
-  }
-}
-
-export function saveChatSeg(seg: ChatSeg): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(CHATSEG_KEY, seg);
-    // useGroupFilter と同じ作法: 同じキーを見る部品（チーム運営のヘッダー・チャット本体・PC の画面）が
-    // 揃って読み直せるよう、localStorage 直書きのあとにイベントを発火する
-    window.dispatchEvent(new Event("alfa-chatseg"));
-  } catch {
-    /* 無視 */
-  }
-}
-
-/* ---- team／grp メッセージ → お知らせの移行マーカー（chat-plan-a §6） ---- */
-export function isChatMigrated(): boolean {
-  if (typeof window === "undefined") return true;
-  try {
-    return window.localStorage.getItem(CHATMIG_KEY) === "1";
-  } catch {
-    // 読めない環境では移行しない（毎回走って二重に移すより安全）
-    return true;
-  }
-}
-
-export function markChatMigrated(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(CHATMIG_KEY, "1");
-  } catch {
-    /* 無視 */
+    /* 無視（読めない環境では移行しない） */
+  } finally {
+    chatGroupsMigrating = false;
   }
 }
 

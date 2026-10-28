@@ -1,84 +1,43 @@
 "use client";
 
-import type { CSSProperties } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { Announcement, ChatAttachment, ChatMessage, ChatReads, ChatReplyTo, Player, SavedPlay, SchoolStage } from "@/lib/types";
+import { useMemo, useState } from "react";
+import type { ChatMessage, ChatReads, Player, SchoolStage } from "@/lib/types";
 import { dmThreadKey, gradeLabel } from "@/lib/types";
-import { loadChatSeg, saveChatSeg, type ChatSeg } from "@/lib/storage";
 import {
-  announcementAttachmentLabels,
-  announcementParts,
-  announcementStats,
-  announcementTarget,
   attachmentLabel,
   dmSummaries,
-  fmtDateTime,
   fmtListDate,
-  makeReplyTo,
-  memberUnreadTotal,
+  groupSummaries,
+  messageReadStats,
   oppSummaries,
-  sortAnnouncements,
-  visibleAnnouncements,
-  STAFF_FALLBACK,
+  type GroupSummary,
 } from "@/lib/chat";
-import { announcementTargetsPlayer, groupsOfPlayer, playerInGroup, resolveFilterGroup } from "@/lib/groups";
+import { groupsOfPlayer, playerInGroup, resolveFilterGroup } from "@/lib/groups";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
-import { E } from "./Emoji";
 import { GroupChips, useGroupFilter } from "./GroupChips";
-import { MobileSegments } from "./MobileSegments";
 import { useMatchups } from "./matchup/MatchupProvider";
-import { useChatBadgeInput } from "./useChatBadgeInput";
-import { announcementBadge, messageBadge } from "@/lib/badges";
-import ChatThread, { AttachmentView } from "./ChatThread";
-import { HubMenu } from "./hub/common";
 
 /*
- * チャットの入口（chat-plan-a §3-1〜§3-3）。「お知らせ」と「メッセージ」の 2 つに分ける。
- * - お知らせ＝スタッフからの一斉連絡（カード・了解・スタッフには既読の数）。選手は読む・了解・スタッフに返信だけ
- * - メッセージ＝スタッフと選手・保護者の 1 対 1（スタッフは一覧、選手はスタッフとの会話をそのまま）
- * 詳細・スレッド・作成・選手選びは board シート（annDetail／chat／annCompose／chatNew）で開く。
- * PC の 2 ペイン（ChatScreen）だけ onOpenAnn／onOpenDm を渡して右のペインに出す。
+ * チャットの入口（home-chat-groups-roster §2-1）。「お知らせ｜メッセージ」の切替は廃止し、1 画面にした。
+ * 会話の一覧は 3 つの区画：
+ *   グループ（全員・学年・カスタム。team.groups の順）／選手・保護者（1 対 1）／相手チーム（スタッフだけ）。
+ * 選手・保護者は自分が入っているグループと、スタッフとの 1 対 1 だけ。
+ * スレッドは board シート chat（スマホ）か、PC の 2 ペイン（ChatScreen）の右のペイン（onOpen を渡す）に開く。
+ * 「お知らせにする」はグループのスレッドの吹き出しのメニューから（ChatThread）。ホームの「最新のお知らせ」に出る。
  */
 
-/* ---------------- セグメントの選択（保存＋同期） ---------------- */
-
 /**
- * 「お知らせ｜メッセージ」の選択。localStorage soccer_tactics_chatseg_v1 に保存し、同じキーの部品同士は
- * イベント（alfa-chatseg）で同期する（useGroupFilter と同じ作法。chat-plan-a §3-1）。
- * スマホのヘッダー右アクションもこの値を見て切り替える（§3-5）
- */
-export function useChatSeg(): [ChatSeg, (s: ChatSeg) => void] {
-  const [seg, setSeg] = useState<ChatSeg>(() => loadChatSeg());
-  useEffect(() => {
-    setSeg(loadChatSeg());
-    const on = () => setSeg(loadChatSeg());
-    window.addEventListener("alfa-chatseg", on);
-    return () => window.removeEventListener("alfa-chatseg", on);
-  }, []);
-  return [
-    seg,
-    (s: ChatSeg) => {
-      setSeg(s);
-      saveChatSeg(s);
-    },
-  ];
-}
-
-/**
- * スマホのヘッダー右アクション（chat-plan-a §3-5）。スタッフで「お知らせ」なら「お知らせを送る」、
- * 「メッセージ」なら「新しいメッセージ」。選手・保護者（enabled=false）は無し
+ * スマホのヘッダー右アクション。スタッフは「新しいメッセージ」（1 対 1 の相手を選ぶ）。
+ * 選手・保護者（enabled=false）は無し。グループは作らない（設定の「学年・グループ」で追加・編集する）
  */
 export function useChatHeaderAction(enabled: boolean): { label: string; onClick: () => void } | null {
   const board = useBoard();
-  const [seg] = useChatSeg();
   if (!enabled) return null;
-  return seg === "ann"
-    ? { label: "お知らせを送る", onClick: () => board.openSheet({ type: "annCompose" }) }
-    : { label: "新しいメッセージ", onClick: () => board.openSheet({ type: "chatNew" }) };
+  return { label: "新しいメッセージ", onClick: () => board.openSheet({ type: "chatNew" }) };
 }
 
-/** 視点（chat-plan-a §3-1）。スタッフ＝viewer.role が coach。それ以外は選手・保護者（コーチの選手プレビューも含む） */
+/** 視点。スタッフ＝viewer.role が coach。それ以外は選手・保護者（コーチの選手プレビューも含む） */
 function useChatViewer() {
   const board = useBoard();
   const team = useTeam();
@@ -90,444 +49,311 @@ function useChatViewer() {
   return { board, team, isStaff, memberId, me, real };
 }
 
-/** 送信者の表示「岡本 監督」（旧データは「スタッフ」） */
-function senderLine(a: Announcement): string {
-  const name = a.fromName?.trim() || STAFF_FALLBACK;
-  return a.fromRole && a.fromRole !== name ? `${name} ${a.fromRole}` : name;
-}
-
 function firstChar(name: string): string {
   return Array.from(name.trim())[0] ?? "?";
-}
-
-/** 旧データ（playId のみ）の戦術も詳細で開けるよう添付に直す */
-function detailAttachments(a: Announcement, plays: SavedPlay[]): ChatAttachment[] {
-  const list = [...(a.attachments ?? [])];
-  if (a.playId && !list.some((x) => x.kind === "play")) {
-    const p = plays.find((x) => x.id === a.playId);
-    if (p) list.push({ kind: "play", title: p.title, play: p });
-  }
-  return list;
 }
 
 /* ---------------- ChatHome ---------------- */
 
 export interface ChatHomeProps {
-  /** PC 幅（カードを小さい版にし、スタッフには作成ボタンを一覧の上に出す） */
+  /** PC 幅（行を PC の密度にする） */
   pc?: boolean;
-  /** セグメントを固定して見出しを出さない（チーム運営 PC の「お知らせ」） */
-  lockSegment?: ChatSeg;
-  /** 詳細・スレッドの開き方。省略時は board シート（PC の 2 ペインだけ右のペインへ出す） */
-  onOpenAnn?: (annId: string, tab?: AnnReadTab) => void;
-  /** 引数は選手の id か、相手チームとの会話キー（"opp:<teamId>"） */
-  onOpenDm?: (playerOrKey: string) => void;
-  selectedAnnId?: string | null;
-  selectedDm?: string | null;
-}
-
-export default function ChatHome({ pc, lockSegment, onOpenAnn, onOpenDm, selectedAnnId, selectedDm }: ChatHomeProps) {
-  const { board, team, isStaff, memberId, me } = useChatViewer();
-  const [savedSeg, setSeg] = useChatSeg();
-  const seg = lockSegment ?? savedSeg;
-
-  // 未読の赤丸（chat-plan-a §3-1）。スタッフ：メッセージの未読の合計。選手：自分宛ての未読お知らせ／スタッフからの未読
-  const badgeInput = useChatBadgeInput();
-  const annBadge = announcementBadge(badgeInput);
-  const msgBadge = messageBadge(badgeInput);
-
-  return (
-    <div className={`chathome${pc ? " pc" : ""}`}>
-      {!lockSegment && (
-        <div className="chatsegwrap">
-          <MobileSegments
-            ariaLabel="チャットの表示切替"
-            items={[
-              { key: "ann", label: "お知らせ", badge: annBadge, badgeClass: "chatsegbadge", on: seg === "ann", onSelect: () => setSeg("ann") },
-              { key: "msg", label: "メッセージ", badge: msgBadge, badgeClass: "chatsegbadge", on: seg === "msg", onSelect: () => setSeg("msg") },
-            ]}
-          />
-        </div>
-      )}
-      {seg === "ann" ? (
-        <AnnouncementsView pc={pc} showCompose={!!pc && !lockSegment} selectedId={selectedAnnId} onOpen={onOpenAnn} />
-      ) : (
-        <MessagesView pc={pc} showCompose={!!pc && !lockSegment} selectedDm={selectedDm} onOpenDm={onOpenDm} />
-      )}
-    </div>
-  );
-}
-
-/* ---------------- お知らせ（一覧） ---------------- */
-
-function AnnouncementsView({
-  pc,
-  showCompose,
-  selectedId,
-  onOpen,
-}: {
-  pc?: boolean;
+  /** PC の一覧の上に「＋ 新しいメッセージ」を出す（スタッフ。スマホはヘッダーの右アクション） */
   showCompose?: boolean;
-  selectedId?: string | null;
-  onOpen?: (annId: string, tab?: AnnReadTab) => void;
-}) {
-  const { board, team, isStaff, memberId, me, real } = useChatViewer();
-  const list = useMemo(
-    () => sortAnnouncements(visibleAnnouncements(team.team.announcements, isStaff, me, team.groups)),
-    [team.team.announcements, isStaff, me, team.groups]
-  );
-  const idsKey = list.map((a) => a.id).join(",");
-
-  // 開いた時点で未読だったもの（カードに「新着」の点を出す。開いた直後に既読になるため、最初の描画で控えておく）
-  const freshRef = useRef<Set<string> | null>(null);
-  if (freshRef.current === null) {
-    freshRef.current = new Set(
-      !isStaff && memberId ? list.filter((a) => !a.seenBy?.includes(memberId)).map((a) => a.id) : []
-    );
-  }
-
-  // 選手がお知らせの画面を開いたら、表示された自分宛てのお知らせを既読にする（chat-plan-a §3-2）。
-  // 既に既読なら markAnnouncementsSeen は state を変えないので、何度呼んでもループしない
-  useEffect(() => {
-    if (real && memberId && idsKey) team.markAnnouncementsSeen(idsKey.split(","), memberId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [real, memberId, idsKey]);
-
-  const open = (id: string, tab?: AnnReadTab) =>
-    onOpen ? onOpen(id, tab) : board.openSheet({ type: "annDetail", annId: id, annTab: tab });
-  const compose = () => board.openSheet({ type: "annCompose" });
-
-  return (
-    <div className="annlist">
-      {isStaff && showCompose && (
-        <button type="button" className="annbtn ghost" onClick={compose}>
-          ＋ お知らせを送る
-        </button>
-      )}
-      {list.length === 0 ? (
-        <div className="empty-msg">
-          お知らせはまだありません。
-          {isStaff && !showCompose && (
-            <div style={{ marginTop: 14 }}>
-              <button type="button" className="annbtn" onClick={compose}>
-                ＋ お知らせを送る
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        list.map((a) => (
-          <AnnCard
-            key={a.id}
-            a={a}
-            mini={pc && !!onOpen}
-            selected={selectedId === a.id}
-            fresh={freshRef.current!.has(a.id)}
-            onOpen={(tab) => open(a.id, tab)}
-          />
-        ))
-      )}
-      {/* ux-fix R2-7: 一覧の末尾からも書ける（スタッフだけ。上の作成ボタン・スマホのヘッダーと同じ入口） */}
-      {isStaff && list.length > 0 && (
-        <button type="button" className="st-btn ghost annlistend" onClick={compose}>
-          ＋ お知らせを書く
-        </button>
-      )}
-    </div>
-  );
+  /** スレッドの開き方。引数は会話キー（"p:<id>"／"grp:…"／"opp:<id>"）。省略時は board シート chat（PC の 2 ペインだけ右のペインへ出す） */
+  onOpen?: (key: string) => void;
+  /** PC の 2 ペインで開いている会話キー（行の選択表示に使う） */
+  selectedKey?: string | null;
 }
 
-/** 宛先ラベルの色つきチップ（全員＝ネイビー、グループ＝そのグループの色。色はインライン style で渡す） */
-function TargetChip({ a }: { a: Announcement }) {
-  const team = useTeam();
-  const t = announcementTarget(a, team.groups);
-  return (
-    <span className="anntarget" style={{ "--tc": t.color } as CSSProperties}>
-      {t.label}
-    </span>
-  );
+/** 一覧の最新の発言の 1 行（グループは「岡本：本文」、1 対 1 のスタッフの発言は「あなた：」。添付だけなら添付の名前） */
+function previewOf(m: ChatMessage, group: boolean): string {
+  const body = m.text?.replace(/\s+/g, " ").trim() || (m.attachments?.[0] ? attachmentLabel(m.attachments[0]) : "");
+  if (group) return `${m.fromName?.trim() || (m.from === "coach" ? "スタッフ" : "選手")}：${body}`;
+  return m.from === "coach" ? `あなた：${body}` : body;
 }
-
-/** お知らせ 1 件のカード（chat-plan-a §3-2）。mini は PC の左ペイン用の小さい版 */
-function AnnCard({
-  a,
-  mini,
-  selected,
-  fresh,
-  onOpen,
-}: {
-  a: Announcement;
-  mini?: boolean;
-  selected?: boolean;
-  fresh?: boolean;
-  /** tab＝スタッフが「了解 N/M」「既読 N/M」から開いたときの既読パネルのタブ。カード本体は無指定 */
-  onOpen: (tab?: AnnReadTab) => void;
-}) {
-  const { board, team, isStaff, memberId } = useChatViewer();
-  const { subject, body } = announcementParts(a);
-  const labels = announcementAttachmentLabels(a);
-  const stats = useMemo(
-    () => announcementStats(a, board.state.players, team.groups),
-    [a, board.state.players, team.groups]
-  );
-  const acked = !!memberId && !!a.acks?.includes(memberId);
-
-  // 一覧の「了解 41/70 ›」「既読 52/70 ›」の行（スタッフだけ。ux-fix R2-7）。母数は宛先の人数。
-  // どちらも押すと詳細の既読パネルが開く（了解は「了解」のタブ＝未了解の人が上）。選手の「了解」と同じく
-  // カードを開く button の外に置く（入れ子の操作部品にしない）
-  const staffFoot = (
-    <div className="annfoot">
-      <button
-        type="button"
-        className="annseen"
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen("acked");
-        }}
-      >
-        {`了解 ${stats.acked.length}/${stats.recipients.length}`} ›
-      </button>
-      <button
-        type="button"
-        className="annseen"
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen("unseen");
-        }}
-      >
-        {`既読 ${stats.seen.length}/${stats.recipients.length}`} ›
-      </button>
-    </div>
-  );
-
-  // 詳細を開く button（宛先・件名・日付を含む部分）と、選手の「了解」button は兄弟にする。
-  // カード全体を role=button にして中に「了解」button を入れると入れ子の操作部品になり（nested-interactive）、
-  // カードの名前に「了解 41」まで入って押すと了解が切り替わるように読まれる（chat-plan-a §3-2）。
-  // 開く操作は外枠の div（役割なし）の onClick 1 か所に置く：button の Enter/Space は click として外枠へ届くので
-  // キーボードでも開き、余白（了解の行のまわり）を押しても従来どおり開く。了解は伝えない（stopPropagation）
-  return (
-    <div
-      className={`anncard${a.pinned ? " pinned" : ""}${mini ? " mini" : ""}${selected ? " sel" : ""}`}
-      onClick={() => onOpen()}
-    >
-      <button type="button" className="anncardmain" aria-current={selected ? "true" : undefined}>
-        <div className="annrow1">
-          <TargetChip a={a} />
-          {a.pinned && <span className="annpin">固定</span>}
-          {fresh && <span className="annnew" role="img" aria-label="新着" />}
-          <span className="annfrom">{senderLine(a)}</span>
-          <span className="anndate">{fmtListDate(a.ts)}</span>
-        </div>
-        <div className="annsubject">{subject}</div>
-        {!mini && body && <div className="annbody">{body}</div>}
-        {!mini && labels.length > 0 && (
-          <div className="annatt">
-            <E n="clipboard" /> <span>{labels.join("・")}</span>
-          </div>
-        )}
-      </button>
-      {/* 既読・了解の数はスタッフだけ。選手・保護者には出さない */}
-      {isStaff && staffFoot}
-      {!isStaff && (
-        <div className="annfoot">
-          <button
-            type="button"
-            className={`annackbtn${acked ? " on" : ""}`}
-            aria-pressed={acked}
-            disabled={!memberId}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (memberId) team.toggleAnnouncementAck(a.id, memberId);
-            }}
-          >
-            {acked ? "了解済み" : `了解 ${stats.acked.length}`}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ---------------- お知らせ（詳細） ---------------- */
 
 /**
- * お知らせの詳細（スマホ＝board シート annDetail の中身、PC＝右のペイン）。
- * 件名・送信者（名前＋役割バッジ）・日時・宛先・本文全文・添付・了解。
- * 選手：「スタッフに返信」（1 対 1 を引用付きで開く）。スタッフ：既読／未読、再通知、固定、削除
+ * スタッフの「選手・保護者」「相手チーム」の会話の行（新しい順）。選手との会話と相手チームとの会話を混ぜる。
+ * 名簿から消した選手・一覧に無い相手チームの会話は行にしない（赤丸 staffUnreadTotal も同じ条件で数える）
  */
-export function AnnouncementDetail({
-  annId,
-  readPanel = true,
-  readTab,
-  onClose,
-  onReply,
-}: {
-  annId: string;
-  /**
-   * スタッフの既読パネルを詳細の下に含めるか。PC の 3 列（ChatScreen）は右の列に出すので false
-   * （chat-plan-a §3-6。スマホのシート・チーム運営の PC ダイアログは既定の true で下に続ける）
-   */
-  readPanel?: boolean;
-  /** 既読パネルの最初のタブ（一覧の「了解 N/M ›」から開いたときは acked）。省略時は未読 */
-  readTab?: AnnReadTab;
-  /** 削除したあとに閉じる */
-  onClose?: () => void;
-  /** 「スタッフに返信」の開き方。省略時は board シート chat（引用付き） */
-  onReply?: (replyTo: ChatReplyTo) => void;
-}) {
-  const { board, team, isStaff, memberId, me, real } = useChatViewer();
-  const a = team.team.announcements.find((x) => x.id === annId);
-  // 宛先外は中身を出さない（了解も押させない）。名簿から選手が見つからないときは絞らない（visibleAnnouncements と同じ）
-  const targeted = !!a && (isStaff || !me || announcementTargetsPlayer(a, me, team.groups));
+export function staffConversationRows(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  players: Player[],
+  oppTeams: ReturnType<typeof useMatchups>["teams"]
+) {
+  const dm = dmSummaries(messages, reads)
+    .map((s) => ({ s, p: players.find((x) => x.id === s.playerId) ?? null }))
+    .filter((r): r is { s: (typeof r)["s"]; p: Player } => !!r.p)
+    .map((r) => ({ kind: "dm" as const, key: r.s.key, name: r.p.name, last: r.s.last, unread: r.s.unread, p: r.p }));
+  const opp = oppSummaries(messages, reads)
+    .map((s) => ({ s, t: oppTeams.find((x) => x.id === s.teamId) ?? null }))
+    .filter((r): r is { s: (typeof r)["s"]; t: (typeof oppTeams)[number] } => !!r.t)
+    .map((r) => ({ kind: "opp" as const, key: r.s.key, name: r.t.name, last: r.s.last, unread: r.s.unread, t: r.t }));
+  return [...dm, ...opp].sort((a, b) => b.last.ts - a.last.ts);
+}
 
-  // 詳細を開いた時点で既読にする（chat-plan-a §3-2・§8-6）。既読にしているのが一覧（AnnouncementsView）の
-  // effect だけだと、通知から詳細だけを開く経路（スマホでセグメントが「メッセージ」のまま annDetail シートが開く）で
-  // 一覧がマウントされず既読が付かない。詳細側でも付ければ、通知・シート・PC のペイン・引用からの移動のどれでも付く。
-  // 選手本人（real）だけ。既読済みなら needSeen が false になるのでループしない
-  const needSeen = real && !!memberId && !!a && targeted && !a.seenBy?.includes(memberId);
-  useEffect(() => {
-    if (needSeen && memberId) team.markAnnouncementsSeen([annId], memberId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needSeen, memberId, annId]);
+export default function ChatHome({ pc, showCompose, onOpen, selectedKey }: ChatHomeProps) {
+  const { board, team, isStaff, memberId, me } = useChatViewer();
+  const { teams: oppTeams } = useMatchups();
+  const [q, setQ] = useState("");
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const players = board.state.players;
 
-  if (!a) return <div className="empty-msg">このお知らせは削除されました。</div>;
-  if (!targeted) return <div className="empty-msg">このお知らせは表示できません。</div>;
+  const open = (key: string) => (onOpen ? onOpen(key) : board.openSheet({ type: "chat", chatTo: key }));
 
-  const { subject, body } = announcementParts(a);
-  const plays = board.library.plays;
-  const atts = detailAttachments(a, plays);
-  const acked = !!memberId && !!a.acks?.includes(memberId);
-  const ackCount = announcementStats(a, board.state.players, team.groups).acked.length;
-  const name = a.fromName?.trim() || STAFF_FALLBACK;
+  /* ---- グループの区画（スタッフは全グループ、選手・保護者は自分が入っているグループだけ） ---- */
+  const groupRows = useMemo(
+    () =>
+      groupSummaries(
+        board.messages,
+        board.chatReads,
+        team.groups,
+        isStaff ? { side: "staff" } : { side: "member", playerId: memberId ?? "", me }
+      ),
+    [board.messages, board.chatReads, team.groups, isStaff, memberId, me]
+  );
 
-  const reply = () => {
-    if (!memberId) return;
-    const q = makeReplyTo("announcement", a.id, name, body ? `${subject} ${body}` : subject);
-    if (onReply) onReply(q);
-    else board.openSheet({ type: "chat", chatTo: dmThreadKey(memberId), replyTo: q });
+  /* ---- 選手・保護者／相手チームの区画（スタッフ） ---- */
+  const staffRows = useMemo(
+    () => (isStaff ? staffConversationRows(board.messages, board.chatReads, players, oppTeams) : []),
+    [isStaff, board.messages, board.chatReads, players, oppTeams]
+  );
+
+  const kw = q.trim().toLowerCase();
+  const hit = (key: string, name: string, unread: number) => {
+    if (unreadOnly && unread <= 0) return false;
+    if (!kw) return true;
+    if (name.toLowerCase().includes(kw)) return true;
+    return board.messages.some((m) => m.to === key && (m.text ?? "").toLowerCase().includes(kw));
   };
+  const groups = groupRows.filter((g) => hit(g.key, g.label, g.unread));
+  const dmRows = staffRows.filter((r) => r.kind === "dm").filter((r) => hit(r.key, r.name, r.unread));
+  const oppRows = staffRows.filter((r) => r.kind === "opp").filter((r) => hit(r.key, r.name, r.unread));
+  const filtering = unreadOnly || !!kw;
 
-  return (
-    <div className="anndetail">
-      <div className="anndhead">
-        <div className="anndtags">
-          <TargetChip a={a} />
-          {a.pinned && <span className="annpin">固定</span>}
-          {/* ux-fix R3-5：スタッフの「削除」は「…」メニューへ（確認は必ず出す） */}
-          {isStaff && (
-            <span className="anndmore">
-              <HubMenu
-                label="お知らせのメニュー"
-                items={[
-                  {
-                    label: "削除",
-                    onClick: () => {
-                      if (window.confirm("このお知らせを削除しますか？")) {
-                        team.removeAnnouncement(a.id);
-                        onClose?.();
-                      }
-                    },
-                  },
-                ]}
-              />
+  if (!isStaff && !memberId) return <div className="empty-msg">選手が選択されていません。</div>;
+
+  const compose = () => board.openSheet({ type: "chatNew" });
+
+  const groupRow = (g: GroupSummary) => {
+    const sel = selectedKey === g.key;
+    return (
+      <button
+        key={g.key}
+        type="button"
+        className={`convrow${sel ? " sel" : ""}`}
+        aria-current={sel ? "true" : undefined}
+        data-thread={g.key}
+        onClick={() => open(g.key)}
+      >
+        <span className="convdotbox" aria-hidden="true">
+          <i className="convdot" style={{ background: g.color }} />
+        </span>
+        <div className="convmain">
+          <div className="convtop">
+            <span className="convname">{g.label}</span>
+          </div>
+          <div className={`convprev${g.unread > 0 ? " unread" : ""}`}>
+            {g.last ? previewOf(g.last, true) : "メッセージはまだありません"}
+          </div>
+        </div>
+        <div className="convaside">
+          {g.last && <span className="convdate">{fmtListDate(g.last.ts)}</span>}
+          {g.unread > 0 && (
+            <span className="chatunreadbadge" aria-label={`未読 ${g.unread}件`}>
+              {g.unread}
             </span>
           )}
         </div>
-        <div className="anndtitle">{subject}</div>
-        <div className="anndfrom">
-          <span className="chatavatar sm" aria-hidden="true">
-            {firstChar(name)}
-          </span>
-          <span className="anndname">{name}</span>
-          {a.fromRole && a.fromRole !== name && <span className="chatrole">{a.fromRole}</span>}
-          <span className="anndtime">{fmtDateTime(a.ts)}</span>
+      </button>
+    );
+  };
+
+  /* ---- 選手・保護者：自分が入っているグループと、スタッフとの 1 対 1（見出し「スタッフ」） ---- */
+  if (!isStaff) {
+    const key = dmThreadKey(memberId as string);
+    const last = board.messages.filter((m) => m.to === key).sort((a, b) => b.ts - a.ts)[0];
+    const unread = board.messages.filter(
+      (m) => m.to === key && m.from === "coach" && m.ts > (board.chatReads[key]?.member ?? 0)
+    ).length;
+    const sel = selectedKey === key;
+    return (
+      <div className={`chathome${pc ? " pc" : ""}`}>
+        <div className="msglist">
+          <section className="chatsec" aria-label="グループ">
+            <h3 className="chatsech">グループ</h3>
+            <div className="convlist">{groupRows.map(groupRow)}</div>
+          </section>
+          <section className="chatsec" aria-label="スタッフ">
+            <h3 className="chatsech">スタッフ</h3>
+            <div className="convlist">
+              <button
+                type="button"
+                className={`convrow${sel ? " sel" : ""}`}
+                aria-current={sel ? "true" : undefined}
+                data-thread={key}
+                onClick={() => open(key)}
+              >
+                <div className="convavatar">ス</div>
+                <div className="convmain">
+                  <div className="convtop">
+                    <span className="convname">スタッフ</span>
+                  </div>
+                  <div className={`convprev${unread > 0 ? " unread" : ""}`}>
+                    {last ? previewOf(last, false).replace(/^あなた：/, "") : "メッセージはまだありません"}
+                  </div>
+                </div>
+                <div className="convaside">
+                  {last && <span className="convdate">{fmtListDate(last.ts)}</span>}
+                  {unread > 0 && (
+                    <span className="chatunreadbadge" aria-label={`未読 ${unread}件`}>
+                      {unread}
+                    </span>
+                  )}
+                </div>
+              </button>
+            </div>
+          </section>
         </div>
       </div>
-      {body && <div className="anndbody">{body}</div>}
-      {atts.length > 0 && (
-        <div className="anndatts">
-          {atts.map((att, i) => (
-            <AttachmentView key={i} att={att} />
-          ))}
-        </div>
-      )}
+    );
+  }
 
-      {/* ux-fix R3-3: 本文の下に「既読 52/70・了解 41」の 1 行と、学年ごとの未読数（スタッフだけ）。
-          一覧の「了解 N/M ›」「既読 N/M ›」と同じ数 */}
-      {isStaff && <AnnReadSummary a={a} />}
-
-      {!isStaff && (
-        <div className="anndactions">
-          <button
-            type="button"
-            className={`annackbtn big${acked ? " on" : ""}`}
-            aria-pressed={acked}
-            disabled={!memberId}
-            onClick={() => memberId && team.toggleAnnouncementAck(a.id, memberId)}
-          >
-            {acked ? "了解済み" : `了解 ${ackCount}`}
-          </button>
-          <button type="button" className="annbtn" disabled={!memberId} onClick={reply}>
-            スタッフに返信
-          </button>
-          <div className="anndnote">お知らせへの返事はスタッフだけに届きます</div>
-        </div>
-      )}
-
-      {isStaff && (
-        <>
-          {readPanel && <AnnReadPanel a={a} initialTab={readTab} />}
-          <div className="anndactions row">
-            <button
-              type="button"
-              className="annbtn ghost"
-              onClick={() => team.setAnnouncementPinned(a.id, !a.pinned)}
-            >
-              {a.pinned ? "固定を外す" : "上部に固定する"}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** 詳細の本文の下の 1 行（ux-fix R3-3）。「既読 52/70・了解 41」と、未読が残る学年ごとの人数 */
-function AnnReadSummary({ a }: { a: Announcement }) {
-  const { board, team } = useChatViewer();
-  const stats = announcementStats(a, board.state.players, team.groups);
-  const stage = team.team.schoolStage ?? "junior";
-  const byGrade = new Map<number | null, number>();
-  stats.unseen.forEach((p) => byGrade.set(p.grade ?? null, (byGrade.get(p.grade ?? null) ?? 0) + 1));
-  const rows = [...byGrade.entries()].sort((x, y) => (x[0] ?? 99) - (y[0] ?? 99));
+  /* ---- スタッフ：グループ／選手・保護者／相手チーム ---- */
   return (
-    <div className="annsum" aria-label="既読の状況">
-      <div className="annsumline">
-        <span>
-          既読 <b>{stats.seen.length}/{stats.recipients.length}</b>
-        </span>
-        <span>
-          了解 <b>{stats.acked.length}</b>
-        </span>
-      </div>
-      {stats.recipients.length > 0 && (
-        <div className="annsumgrades">
-          {rows.length === 0 ? (
-            <span className="annsumdone">全員が読みました</span>
-          ) : (
-            <>
-              <span className="annsumlabel">未読</span>
-              {rows.map(([g, n]) => (
-                <span key={String(g)} className="annsumgrade">
-                  {g == null ? "学年未設定" : gradeLabel(stage, g)} <b>{n}</b>
-                </span>
-              ))}
-            </>
-          )}
+    <div className={`chathome${pc ? " pc" : ""}`}>
+      <div className="msglist">
+        {showCompose && (
+          <button type="button" className="annbtn ghost chatnewbtn" onClick={compose}>
+            ＋ 新しいメッセージ
+          </button>
+        )}
+        <input
+          type="search"
+          className="chatsearch"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="名前・本文で検索"
+          aria-label="メッセージを検索"
+        />
+        <div className="chatfilterchips" role="group" aria-label="表示の絞り込み">
+          <button type="button" className={`chatfilterchip${!unreadOnly ? " on" : ""}`} aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>
+            すべて
+          </button>
+          <button type="button" className={`chatfilterchip${unreadOnly ? " on" : ""}`} aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>
+            未読
+          </button>
         </div>
-      )}
+
+        {groups.length > 0 && (
+          <section className="chatsec" aria-label="グループ">
+            <h3 className="chatsech">グループ</h3>
+            <div className="convlist">{groups.map(groupRow)}</div>
+          </section>
+        )}
+
+        {(dmRows.length > 0 || !filtering) && (
+          <section className="chatsec" aria-label="選手・保護者">
+            <h3 className="chatsech">選手・保護者</h3>
+            {dmRows.length === 0 ? (
+              <div className="empty-msg">まだメッセージはありません</div>
+            ) : (
+              <div className="convlist">
+                {dmRows.map((r) => {
+                  if (r.kind !== "dm") return null;
+                  const sel = selectedKey === r.key;
+                  const gl = groupsOfPlayer(r.p, team.groups)
+                    .map((g) => g.label)
+                    .join("・");
+                  return (
+                    <button
+                      key={r.key}
+                      type="button"
+                      className={`convrow${sel ? " sel" : ""}`}
+                      aria-current={sel ? "true" : undefined}
+                      data-thread={r.key}
+                      onClick={() => open(r.key)}
+                    >
+                      <div className="convavatar">{firstChar(r.name)}</div>
+                      <div className="convmain">
+                        <div className="convtop">
+                          <span className="convname">{r.name}</span>
+                          {gl && <span className="convcount">{gl}</span>}
+                        </div>
+                        <div className={`convprev${r.unread > 0 ? " unread" : ""}`}>{previewOf(r.last, false)}</div>
+                      </div>
+                      <div className="convaside">
+                        <span className="convdate">{fmtListDate(r.last.ts)}</span>
+                        {r.unread > 0 && (
+                          <span className="chatunreadbadge" aria-label={`未読 ${r.unread}件`}>
+                            {r.unread}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        )}
+
+        {oppRows.length > 0 && (
+          <section className="chatsec" aria-label="相手チーム">
+            <h3 className="chatsech">相手チーム</h3>
+            <div className="convlist">
+              {oppRows.map((r) => {
+                if (r.kind !== "opp") return null;
+                const sel = selectedKey === r.key;
+                return (
+                  <button
+                    key={r.key}
+                    type="button"
+                    className={`convrow${sel ? " sel" : ""}`}
+                    aria-current={sel ? "true" : undefined}
+                    data-thread={r.key}
+                    onClick={() => open(r.key)}
+                  >
+                    <div className="convavatar">対</div>
+                    <div className="convmain">
+                      <div className="convtop">
+                        <span className="convname">{r.name}</span>
+                        <span className="convtag">対戦相手</span>
+                      </div>
+                      <div className={`convprev${r.unread > 0 ? " unread" : ""}`}>{previewOf(r.last, false)}</div>
+                    </div>
+                    <div className="convaside">
+                      <span className="convdate">{fmtListDate(r.last.ts)}</span>
+                      {r.unread > 0 && (
+                        <span className="chatunreadbadge" aria-label={`未読 ${r.unread}件`}>
+                          {r.unread}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {filtering && groups.length === 0 && dmRows.length === 0 && oppRows.length === 0 && (
+          <div className="empty-msg">{unreadOnly && !kw ? "未読のメッセージはありません。" : "該当する会話がありません。"}</div>
+        )}
+        {/* 一覧の末尾からも書ける（PC の一覧の上のボタン・スマホのヘッダーと同じ入口） */}
+        {!filtering && (
+          <button type="button" className="st-btn ghost annlistend chatnewbtn" onClick={compose}>
+            ＋ 新しいメッセージ
+          </button>
+        )}
+      </div>
     </div>
   );
 }
+
+/* ---------------- 学年見出し＋背番号順の選手一覧（既読パネルと「新しいメッセージ」の選手選びで共用） ---------------- */
 
 /**
  * 学年見出し＋背番号順の選手一覧（既読パネルと「新しいメッセージ」の選手選びで共用。ux-fix R3-5）。
@@ -582,28 +408,36 @@ export function PlayersByGrade({
   );
 }
 
+/* ---------------- 既読・了解を見る（お知らせにされたメッセージ。§2-4） ---------------- */
+
+export type MessageReadTab = "unseen" | "seen" | "acked";
+
 /**
- * スタッフ用の既読パネル（chat-plan-a §3-2）。「未読 18｜既読 52｜了解 41」のタブ（未読が既定）で
- * 学年ごとの小見出し付きの名前一覧、「未読の N 人に再通知」と最後の再通知の時刻。PC の右の既読パネルでも使う
+ * スタッフ用の既読パネル。「未読 18｜既読 52｜了解 41」のタブ（未読が既定）で、中身は学年見出し＋背番号順（PlayersByGrade）。
+ * 「了解」のタブは未了解を上、了解を下（ux-fix R2-7）。PC はダイアログ、スマホはシート（board シート msgRead）に入れる
  */
-export type AnnReadTab = "unseen" | "seen" | "acked";
-
-export function AnnReadPanel({ a, initialTab = "unseen" }: { a: Announcement; initialTab?: AnnReadTab }) {
+export function MessageReadPanel({ messageId, initialTab = "unseen" }: { messageId: string; initialTab?: MessageReadTab }) {
   const { board, team } = useChatViewer();
-  const [tab, setTab] = useState<AnnReadTab>(initialTab);
-  const stats = announcementStats(a, board.state.players, team.groups);
+  const [tab, setTab] = useState<MessageReadTab>(initialTab);
+  const m = board.messages.find((x) => x.id === messageId);
+  const stats = useMemo(
+    () => (m ? messageReadStats(m, board.state.players, team.groups, board.chatReads) : null),
+    [m, board.state.players, team.groups, board.chatReads]
+  );
   const stage = team.team.schoolStage ?? "junior";
-  const shown = tab === "unseen" ? stats.unseen : tab === "seen" ? stats.seen : stats.acked;
 
-  // ux-fix R2-7: 「了解」のタブは 未了解（宛先のうち了解していない人）を上、了解した人を下に 2 つの区画で出す
+  // 「了解」のタブは 未了解（メンバーのうち了解していない人）を上、了解した人を下に 2 つの区画で出す
   const notAcked = useMemo(() => {
+    if (!stats) return [];
     const ackSet = new Set(stats.acked.map((p) => p.id));
     return stats.recipients.filter((p) => !ackSet.has(p.id));
   }, [stats]);
 
+  if (!m || !stats) return <div className="empty-msg">このメッセージは削除されました。</div>;
+  const shown = tab === "unseen" ? stats.unseen : tab === "seen" ? stats.seen : stats.acked;
   const renderGrades = (list: Player[]) => <PlayersByGrade players={list} stage={stage} />;
 
-  const tabs: { key: AnnReadTab; label: string; n: number }[] = [
+  const tabs: { key: MessageReadTab; label: string; n: number }[] = [
     { key: "unseen", label: "未読", n: stats.unseen.length },
     { key: "seen", label: "既読", n: stats.seen.length },
     { key: "acked", label: "了解", n: stats.acked.length },
@@ -626,15 +460,9 @@ export function AnnReadPanel({ a, initialTab = "unseen" }: { a: Announcement; in
           </button>
         ))}
       </div>
-      {stats.unseen.length > 0 && (
-        <button type="button" className="annbtn" onClick={() => team.remindAnnouncement(a.id)}>
-          {`未読の${stats.unseen.length}人に再通知`}
-        </button>
-      )}
-      {a.remindedAt && <div className="annremind">最後の再通知 {fmtDateTime(a.remindedAt)}</div>}
       {tab === "acked" ? (
         stats.recipients.length === 0 ? (
-          <div className="annreadempty">宛先の人がいません</div>
+          <div className="annreadempty">メンバーがいません</div>
         ) : (
           <>
             {notAcked.length > 0 && (
@@ -657,296 +485,6 @@ export function AnnReadPanel({ a, initialTab = "unseen" }: { a: Announcement; in
         <div className="annreadempty">{tab === "unseen" ? "未読の人はいません" : "まだ読んだ人はいません"}</div>
       ) : (
         renderGrades(shown)
-      )}
-    </div>
-  );
-}
-
-/* ---------------- お知らせ（作成） ---------------- */
-
-/**
- * お知らせの作成（board シート annCompose の中身。chat-plan-a §3-2）。
- * 件名（任意）・本文・宛先（複数選択、未選択＝全員）・戦術を添付・上部に固定する。送信者は addAnnouncement が埋める
- */
-export function AnnouncementCompose({ onDone }: { onDone: () => void }) {
-  const { board, team } = useChatViewer();
-  const [title, setTitle] = useState("");
-  const [text, setText] = useState("");
-  const [groupIds, setGroupIds] = useState<string[]>([]);
-  const [playId, setPlayId] = useState("");
-  const [pinned, setPinned] = useState(false);
-
-  const submit = () => {
-    const play = playId ? board.library.plays.find((p) => p.id === playId) : undefined;
-    if (!title.trim() && !text.trim() && !play) {
-      board.toast("本文を入力してください");
-      return;
-    }
-    team.addAnnouncement({
-      title,
-      text,
-      groupIds,
-      attachments: play ? [{ kind: "play", title: play.title, play }] : undefined,
-      pinned,
-    });
-    onDone();
-  };
-
-  return (
-    <div className="anncompose">
-      <div className="formfield">
-        <label>件名（任意）</label>
-        <input
-          type="text"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="例）今週末は練習試合です"
-          maxLength={60}
-        />
-      </div>
-      <div className="formfield">
-        <label>本文</label>
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          rows={5}
-          placeholder="例）明日の練習は雨天中止の場合あり。朝7時に判断します。"
-        />
-      </div>
-      {team.groups.length > 0 && (
-        <div className="formfield">
-          <label>宛先（選ばなければ全員）</label>
-          <GroupChips groups={team.groups} value={groupIds} onChange={setGroupIds} allowAll allLabel="全員" multi />
-        </div>
-      )}
-      {board.library.plays.length > 0 && (
-        <div className="formfield">
-          <label>戦術を添付（任意・選手が閲覧できます）</label>
-          <select value={playId} onChange={(e) => setPlayId(e.target.value)}>
-            <option value="">添付しない</option>
-            {board.library.plays.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </select>
-        </div>
-      )}
-      <label className="annpincheck">
-        <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} />
-        <span>上部に固定する</span>
-      </label>
-      <div className="annpinhint">固定は最大 2 件です。3 件目を固定すると、いちばん古い固定が外れます。</div>
-      <button type="button" className="annbtn wide" onClick={submit}>
-        送信する
-      </button>
-    </div>
-  );
-}
-
-/* ---------------- メッセージ（一覧） ---------------- */
-
-/** 一覧の最新の発言の 1 行（スタッフの発言なら「あなた：」、選手は本文のみ。添付だけなら添付の名前） */
-function previewOf(m: ChatMessage): string {
-  const body = m.text?.replace(/\s+/g, " ").trim() || (m.attachments?.[0] ? attachmentLabel(m.attachments[0]) : "");
-  return m.from === "coach" ? `あなた：${body}` : body;
-}
-
-/**
- * スタッフの「メッセージ」の会話の行（新しい順）。選手との会話と相手チームとの会話を混ぜる。
- * 名簿から消した選手・一覧に無い相手チームの会話は行にしない（赤丸 staffUnreadTotal も同じ条件で数える）。
- * PC で何も選んでいないときに最初の会話を開く（ChatScreen）のにも同じ並びを使う
- */
-export function staffConversationRows(
-  messages: ChatMessage[],
-  reads: ChatReads,
-  players: Player[],
-  oppTeams: ReturnType<typeof useMatchups>["teams"]
-) {
-  const dm = dmSummaries(messages, reads)
-    .map((s) => ({ s, p: players.find((x) => x.id === s.playerId) ?? null }))
-    .filter((r): r is { s: (typeof r)["s"]; p: Player } => !!r.p)
-    .map((r) => ({ kind: "dm" as const, key: r.s.key, name: r.p.name, last: r.s.last, unread: r.s.unread, p: r.p }));
-  const opp = oppSummaries(messages, reads)
-    .map((s) => ({ s, t: oppTeams.find((x) => x.id === s.teamId) ?? null }))
-    .filter((r): r is { s: (typeof r)["s"]; t: (typeof oppTeams)[number] } => !!r.t)
-    .map((r) => ({ kind: "opp" as const, key: r.s.key, name: r.t.name, last: r.s.last, unread: r.s.unread, t: r.t }));
-  return [...dm, ...opp].sort((a, b) => b.last.ts - a.last.ts);
-}
-
-function MessagesView({
-  pc,
-  showCompose,
-  selectedDm,
-  onOpenDm,
-}: {
-  pc?: boolean;
-  /** PC の一覧の上に作成ボタンを出す（お知らせの一覧と同じ位置。ux-fix R3-5） */
-  showCompose?: boolean;
-  selectedDm?: string | null;
-  onOpenDm?: (playerOrKey: string) => void;
-}) {
-  const { board, team, isStaff, memberId } = useChatViewer();
-  const { teams: oppTeams } = useMatchups();
-  const [q, setQ] = useState("");
-  const [unreadOnly, setUnreadOnly] = useState(false);
-  const players = board.state.players;
-
-  const openDm = (pid: string) =>
-    onOpenDm ? onOpenDm(pid) : board.openSheet({ type: "chat", chatTo: dmThreadKey(pid) });
-  // 相手チームの会話は会話キー（"opp:<teamId>"）をそのまま渡す（PC は左の一覧の選択に、スマホはシートに）
-  const openOpp = (key: string) => (onOpenDm ? onOpenDm(key) : board.openSheet({ type: "chat", chatTo: key }));
-
-  // 選手との会話と相手チームとの会話を、最新の発言の新しい順に混ぜる。
-  // 名簿から消した選手・一覧に無い相手チームの会話は行にしない（赤丸 staffUnreadTotal も同じ条件で数える）
-  const allRows = useMemo(
-    () => (isStaff ? staffConversationRows(board.messages, board.chatReads, players, oppTeams) : []),
-    [isStaff, board.messages, board.chatReads, players, oppTeams]
-  );
-  const rows = useMemo(() => {
-    const kw = q.trim().toLowerCase();
-    return allRows
-      .filter((r) => !unreadOnly || r.unread > 0)
-      .filter((r) => {
-        if (!kw) return true;
-        if (r.name.toLowerCase().includes(kw)) return true;
-        return board.messages.some((m) => m.to === r.key && (m.text ?? "").toLowerCase().includes(kw));
-      });
-  }, [allRows, board.messages, q, unreadOnly]);
-
-  /* ---- 選手・保護者：スタッフとの 1 対 1 をそのまま出す（見出し「スタッフ」） ---- */
-  if (!isStaff) {
-    if (!memberId) return <div className="empty-msg">選手が選択されていません。</div>;
-    const key = dmThreadKey(memberId);
-    if (pc && onOpenDm) {
-      // PC の 2 ペイン：左には「スタッフ」の 1 行だけ出し、スレッドは中のペインに開く
-      const last = board.messages.filter((m) => m.to === key).sort((a, b) => b.ts - a.ts)[0];
-      const unread = memberUnreadTotal(board.messages, board.chatReads, memberId);
-      return (
-        <div className="convlist">
-          <button
-            type="button"
-            className={`convrow${selectedDm === memberId ? " sel" : ""}`}
-            aria-current={selectedDm === memberId ? "true" : undefined}
-            onClick={() => onOpenDm(memberId)}
-          >
-            <div className="convavatar">ス</div>
-            <div className="convmain">
-              <div className="convtop">
-                <span className="convname">スタッフ</span>
-              </div>
-              <div className="convprev">{last ? previewOf(last).replace(/^あなた：/, "") : "メッセージはまだありません"}</div>
-            </div>
-            <div className="convaside">
-              {last && <span className="convdate">{fmtListDate(last.ts)}</span>}
-              {unread > 0 && <span className="chatunreadbadge">{unread}</span>}
-            </div>
-          </button>
-        </div>
-      );
-    }
-    return (
-      <div className="chatmember">
-        <div className="chatmemhead">スタッフ</div>
-        <div className="chatmemthread">
-          <ChatThread to={key} as={{ role: "member", playerId: memberId }} />
-        </div>
-      </div>
-    );
-  }
-
-  /* ---- スタッフ：やり取りのある 1 対 1 だけ（新しい順） ---- */
-  // ux-fix R3-5：作成ボタンはお知らせの一覧と同じ位置（PC＝一覧の上、一覧の末尾、空のときは案内の下）
-  const compose = () => board.openSheet({ type: "chatNew" });
-  const hasAny = allRows.length > 0;
-
-  return (
-    <div className="msglist">
-      {showCompose && (
-        <button type="button" className="annbtn ghost chatnewbtn" onClick={compose}>
-          ＋ 新しいメッセージ
-        </button>
-      )}
-      {hasAny && (
-        <>
-          <input
-            type="search"
-            className="chatsearch"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="名前・本文で検索"
-            aria-label="メッセージを検索"
-          />
-          <div className="chatfilterchips" role="group" aria-label="表示の絞り込み">
-            <button type="button" className={`chatfilterchip${!unreadOnly ? " on" : ""}`} aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>
-              すべて
-            </button>
-            <button type="button" className={`chatfilterchip${unreadOnly ? " on" : ""}`} aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>
-              未読
-            </button>
-          </div>
-        </>
-      )}
-      {!hasAny ? (
-        <div className="empty-msg">
-          まだメッセージはありません
-          {!showCompose && (
-            <div style={{ marginTop: 14 }}>
-              <button type="button" className="annbtn chatnewbtn" onClick={compose}>
-                ＋ 新しいメッセージ
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          {rows.length === 0 ? (
-            <div className="empty-msg">{unreadOnly && !q.trim() ? "未読のメッセージはありません。" : "該当する会話がありません。"}</div>
-          ) : (
-            <div className="convlist">
-              {rows.map((r) => {
-                const opp = r.kind === "opp";
-                const sel = selectedDm === (opp ? r.key : r.p.id);
-                const gl = opp
-                  ? ""
-                  : groupsOfPlayer(r.p, team.groups)
-                      .map((g) => g.label)
-                      .join("・");
-                return (
-                  <button
-                    key={r.key}
-                    type="button"
-                    className={`convrow${sel ? " sel" : ""}`}
-                    aria-current={sel ? "true" : undefined}
-                    onClick={() => (opp ? openOpp(r.key) : openDm(r.p.id))}
-                  >
-                    <div className="convavatar">{opp ? "対" : firstChar(r.name)}</div>
-                    <div className="convmain">
-                      <div className="convtop">
-                        <span className="convname">{r.name}</span>
-                        {opp && <span className="convtag">対戦相手</span>}
-                        {gl && <span className="convcount">{gl}</span>}
-                      </div>
-                      <div className={`convprev${r.unread > 0 ? " unread" : ""}`}>{previewOf(r.last)}</div>
-                    </div>
-                    <div className="convaside">
-                      <span className="convdate">{fmtListDate(r.last.ts)}</span>
-                      {r.unread > 0 && (
-                        <span className="chatunreadbadge" aria-label={`未読 ${r.unread}件`}>
-                          {r.unread}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          {/* お知らせの一覧の末尾（＋ お知らせを書く）と同じ作り */}
-          <button type="button" className="st-btn ghost annlistend chatnewbtn" onClick={compose}>
-            ＋ 新しいメッセージ
-          </button>
-        </>
       )}
     </div>
   );

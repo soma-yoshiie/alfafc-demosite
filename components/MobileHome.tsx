@@ -291,9 +291,10 @@ function MobileStaffHome({
         </div>
 
         {/* p18 §4: 指標 2×2・グラフ・今月のトピック・最新の動きをやめ、ノートとチャットのタイムライン＋最新のお知らせにした */}
-        <HomeTimeline scopes={timeline} variant="mobile" />
-
+        {/* home-chat-groups-roster §1: 最新のお知らせをタイムラインの上に */}
         <HomeAnnouncements viewer="staff" variant="mobile" />
+
+        <HomeTimeline scopes={timeline} variant="mobile" />
 
         {d.highlightChips.length > 0 && (
           <div className="mh-section mdb-highlights">

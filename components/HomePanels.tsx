@@ -9,11 +9,11 @@
  */
 
 import { useMemo, useState, type CSSProperties } from "react";
-import { announcementParts, announcementStats, announcementTarget, fmtListDate, sortAnnouncements, visibleAnnouncements } from "@/lib/chat";
-import { loadNotifSeen, saveChatSeg } from "@/lib/storage";
+import { announceSubject, announcedMessages, fmtListDate, messageReadStats, threadLabel } from "@/lib/chat";
+import { loadNotifSeen } from "@/lib/storage";
 import { unreadStaffComments } from "@/lib/badges";
 import { dmThreadKey, gradeLabel } from "@/lib/types";
-import type { PracticeNote } from "@/lib/types";
+import type { ChatMessage, PracticeNote } from "@/lib/types";
 import { termLabel } from "@/lib/profile";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
@@ -27,7 +27,7 @@ export type HomeVariant = "pc" | "mobile";
 /** スマホの一覧は先頭これだけ。残りは「すべて表示」で出す */
 const MOBILE_FIRST = 8;
 /** 最新のお知らせの件数 */
-const ANN_MAX = 5;
+const ANN_MAX = 3;
 
 /* ===================== 3-1 タイムライン（スタッフ） ===================== */
 
@@ -91,10 +91,9 @@ export function HomeTimeline({ scopes, variant }: { scopes: HomeTimelineScope[];
                 board.setNoteIntent({ noteId: it.noteId });
                 board.setScreen("notebook");
               } else {
-                // setScreen がシートを閉じるので、必ず先に呼ぶ（NotebookScreen の既存の遷移と同じ順）
-                saveChatSeg("msg");
-                board.setScreen("chat");
-                board.openSheet({ type: "chat", chatTo: dmThreadKey(it.playerId) });
+                // setScreen がシートを閉じるので、必ず先に呼ぶ（board.openChat の中で同じ順に行う）。
+                // グループへの投稿はそのグループのスレッドのその吹き出しへ（レビュー）
+                board.openChat({ key: it.threadKey ?? dmThreadKey(it.playerId), messageId: it.messageId });
               }
             }}
           >
@@ -139,73 +138,98 @@ export function HomeTimeline({ scopes, variant }: { scopes: HomeTimelineScope[];
 
 /* ===================== 3-2 最新のお知らせ（スタッフ・選手共通） ===================== */
 
-export function HomeAnnouncements({ viewer, variant }: { viewer: "staff" | "player"; variant: HomeVariant }) {
+/**
+ * home-chat-groups-roster §2-6・§2-7: お知らせにされたメッセージの行の元データ。ホームの「最新のお知らせ」（3 件）と
+ * お知らせ一覧のシート（全件）が同じ行を使う。スタッフは全グループ、選手・保護者は自分が入っているグループのもの
+ */
+function useAnnouncedRows(viewer: "staff" | "player") {
   const board = useBoard();
   const team = useTeam();
   const isStaff = viewer === "staff";
   // 選手側の「自分」は ChatHome（useChatViewer）と同じ取り方
   const memberId = isStaff ? null : team.viewer.memberPlayerId ?? board.auth.playerId ?? null;
   const me = memberId ? board.state.players.find((p) => p.id === memberId) ?? null : null;
-
-  const rows = useMemo(
+  const all = useMemo(
     () =>
-      sortAnnouncements(visibleAnnouncements(team.team.announcements, isStaff, me, team.groups))
-        .slice(0, ANN_MAX)
-        .map((a) => {
-          const target = announcementTarget(a, team.groups).label;
-          let sub = target;
-          if (isStaff) {
-            const st = announcementStats(a, board.state.players, team.groups);
-            sub = `${target}・既読 ${st.seen.length}/${st.recipients.length}`;
-          }
-          return { a, subject: announcementParts(a).subject, sub, unread: !isStaff && !!me && !a.seenBy?.includes(me.id) };
-        }),
-    [team.team.announcements, team.groups, isStaff, me, board.state.players]
+      announcedMessages(board.messages, team.groups, isStaff ? { side: "staff" } : { side: "member", playerId: memberId ?? "", me }),
+    [board.messages, team.groups, isStaff, memberId, me]
   );
+  const toRow = (m: ChatMessage) => {
+    const d = new Date(m.announce?.ts ?? m.ts);
+    let sub = `${threadLabel(m.to, team.groups)} ・ ${d.getMonth() + 1}/${d.getDate()}`;
+    if (isStaff) {
+      const st = messageReadStats(m, board.state.players, team.groups, board.chatReads);
+      sub += ` ・ 既読 ${st.seen.length}/${st.recipients.length} ・ 了解 ${st.acked.length}`;
+    }
+    return { m, subject: Array.from(announceSubject(m)).slice(0, 40).join(""), sub };
+  };
+  return { all, toRow, memberId, isStaff };
+}
+
+/** お知らせの 1 行。押すとそのグループのスレッドをその吹き出しまで開く。選手・保護者には未了解のときだけ「了解」 */
+function AnnouncementRow({
+  m,
+  subject,
+  sub,
+  memberId,
+}: {
+  m: ChatMessage;
+  subject: string;
+  sub: string;
+  memberId: string | null;
+}) {
+  const board = useBoard();
+  const needAck = !!memberId && m.acks?.[memberId] === undefined;
+  return (
+    <div className="hp-annitem">
+      <button
+        type="button"
+        className="hp-row"
+        data-ann-id={m.id}
+        onClick={() => board.openChat({ key: m.to, messageId: m.id })}
+      >
+        <span className="hp-row-main">
+          <b>
+            {m.pinned && <span className="hp-tag">固定</span>}
+            {subject}
+          </b>
+          <span>{sub}</span>
+        </span>
+        <span className="hp-row-time">{fmtListDate(m.announce?.ts ?? m.ts)}</span>
+      </button>
+      {needAck && (
+        <button
+          type="button"
+          className="annackbtn"
+          aria-pressed={false}
+          onClick={() => memberId && board.ackMessage(m.id, memberId)}
+        >
+          了解
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function HomeAnnouncements({ viewer, variant }: { viewer: "staff" | "player"; variant: HomeVariant }) {
+  const board = useBoard();
+  const { all, toRow, memberId } = useAnnouncedRows(viewer);
+  const rows = all.slice(0, ANN_MAX).map(toRow);
 
   const body = (
     <>
       <div className="hp-h">
         <span>最新のお知らせ</span>
-        <button
-          type="button"
-          className="hp-link"
-          onClick={() => {
-            // 「お知らせ｜メッセージ」の選択（soccer_tactics_chatseg_v1）が「メッセージ」のままだと
-            // メッセージ一覧が開くので、先に「お知らせ」へ切り替えてから移る
-            saveChatSeg("ann");
-            board.setScreen("chat");
-          }}
-        >
-          すべて見る ›
-        </button>
+        {all.length > 0 && (
+          <button type="button" className="hp-link" onClick={() => board.openSheet({ type: "annList" })}>
+            すべて見る（{all.length}）›
+          </button>
+        )}
       </div>
       {rows.length === 0 ? (
         <div className="hp-empty">お知らせはまだありません。</div>
       ) : (
-        rows.map(({ a, subject, sub, unread }) => (
-          <button
-            key={a.id}
-            type="button"
-            className={`hp-row${unread ? " unread" : ""}`}
-            onClick={() => {
-              // スマホは詳細のシートを閉じたときにチャット画面の「お知らせ」側へ戻るよう、選択を先に切り替える
-              saveChatSeg("ann");
-              board.setScreen("chat");
-              board.openSheet({ type: "annDetail", annId: a.id });
-            }}
-          >
-            <span className="hp-row-main">
-              <b>
-                {unread && <span className="hp-dot" aria-label="未読" />}
-                {a.pinned && <span className="hp-tag">固定</span>}
-                {subject}
-              </b>
-              <span>{sub}</span>
-            </span>
-            <span className="hp-row-time">{fmtListDate(a.ts)}</span>
-          </button>
-        ))
+        rows.map((r) => <AnnouncementRow key={r.m.id} {...r} memberId={memberId} />)
       )}
     </>
   );
@@ -214,6 +238,23 @@ export function HomeAnnouncements({ viewer, variant }: { viewer: "staff" | "play
     <div className="mdb-panel hp-ann">{body}</div>
   ) : (
     <div className="mh-section mh-panel hp-ann">{body}</div>
+  );
+}
+
+/** お知らせ一覧（board シート annList の中身。スマホはシート、PC はダイアログ。home-chat-groups-roster §2-7） */
+export function AnnouncementList({ viewer }: { viewer: "staff" | "player" }) {
+  const { all, toRow, memberId } = useAnnouncedRows(viewer);
+  return (
+    <div className="annsheet annlistsheet">
+      <h2>お知らせ</h2>
+      <div className="annsheetbody hp-ann">
+        {all.length === 0 ? (
+          <div className="hp-empty">お知らせはまだありません。</div>
+        ) : (
+          all.map((m) => <AnnouncementRow key={m.id} {...toRow(m)} memberId={memberId} />)
+        )}
+      </div>
+    </div>
   );
 }
 

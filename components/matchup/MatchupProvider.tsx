@@ -14,7 +14,6 @@ import {
   upcomingDates,
 } from "@/lib/matchup";
 import { localDateStr } from "@/lib/dates";
-import { saveChatSeg } from "@/lib/storage";
 import { useBoard } from "../BoardProvider";
 import { useTeam } from "../TeamProvider";
 
@@ -223,10 +222,8 @@ export function MatchupProvider({ children }: { children: React.ReactNode }) {
 
   const openThread = useCallback((key: string) => {
     const b = boardRef.current;
-    // setScreen がシートを閉じるので、必ず先に呼ぶ（HomePanels のメッセージの行と同じ順）
-    saveChatSeg("msg");
-    b.setScreen("chat");
-    b.openSheet({ type: "chat", chatTo: key });
+    // setScreen がシートを閉じるので、必ず先に呼ぶ（board.openChat の中で同じ順に行う）
+    b.openChat({ key });
   }, []);
 
   const myRequestFor = useCallback(

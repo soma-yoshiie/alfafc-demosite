@@ -281,7 +281,7 @@ function Inner() {
   const isItem = tool !== null && (ITEM_TOOLS as string[]).includes(tool);
 
   /* ---- 送信 ---- */
-  // chat-plan-a §2-5: チーム全員・グループ → お知らせ 1 件（練習メニュー添付）、個人 → その選手との 1 対 1。
+  // home-chat-groups-roster §2-2: チーム全員・グループ → そのグループのスレッド（練習メニュー添付）、個人 → その選手との 1 対 1。
   // 送り先の振り分けと完了 toast は lib/chat.ts の sendAttachmentToTarget に共通化した
   const drillTargetError = sendTargetError(drillTarget);
   const sendDrill = () => {

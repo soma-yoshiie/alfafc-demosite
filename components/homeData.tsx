@@ -16,7 +16,7 @@ import { localDateStr } from "@/lib/dates";
 import { NOTE_KIND_LABEL } from "@/lib/types";
 import type { EventCategory, NoteKind, TeamEvent } from "@/lib/types";
 import { eventTargetsPlayer, playerInGroup } from "@/lib/groups";
-import { attachmentLabel, isMemberFrom } from "@/lib/chat";
+import { attachmentLabel, groupThreadInfo, isGroupKey, isMemberFrom, threadLabel } from "@/lib/chat";
 import { linkedEventIds } from "@/lib/matchEvents";
 import { eventPhase } from "@/lib/calendarUtils";
 import { loadNotifPrefs } from "@/lib/storage";
@@ -257,6 +257,9 @@ export type HomeTimelineItem = {
   unread: boolean;
   noteKind?: NoteKind;
   noteId?: string;
+  /** メッセージ＝会話キー（"p:<id>" か "grp:<id>"）と発言の id。押すとそのスレッドのその吹き出しへ（レビュー: グループ投稿を 1 対 1 で開かない） */
+  threadKey?: string;
+  messageId?: string;
 };
 export type HomeTimelineScope = {
   key: string;
@@ -300,6 +303,9 @@ export function useHomeTimeline(board: BoardCtx, team: TeamCtx): HomeTimelineSco
       if (!isMemberFrom(m.from)) return;
       const pl = byId.get(m.from.slice(2));
       if (!pl) return;
+      // 削除済みグループのスレッドへの発言は出さない（一覧・未読の数と同じ条件）
+      const grp = isGroupKey(m.to);
+      if (grp && !groupThreadInfo(m.to, team.groups)) return;
       const body = m.text?.replace(/\s+/g, " ").trim() || (m.attachments?.[0] ? attachmentLabel(m.attachments[0]) : "");
       all.push({
         id: "msg-" + m.id,
@@ -307,8 +313,10 @@ export function useHomeTimeline(board: BoardCtx, team: TeamCtx): HomeTimelineSco
         ts: m.ts,
         playerId: pl.id,
         name: pl.name,
-        text: body,
+        text: grp ? `${threadLabel(m.to, team.groups)}：${body}` : body,
         unread: m.ts > (board.chatReads[m.to]?.staff ?? 0),
+        threadKey: m.to,
+        messageId: m.id,
       });
     });
     all.sort((a, b) => b.ts - a.ts);

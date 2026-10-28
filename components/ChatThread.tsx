@@ -8,11 +8,17 @@ import {
   attachmentLabel,
   fmtClock,
   fmtDayDivider,
+  groupThreadInfo,
+  isCounterpartMsg,
+  isGroupKey,
   isSameDay,
   isOppKey,
   isSeenByOther,
   latestCounterpartTs,
   makeReplyTo,
+  messageReadStats,
+  playerGroupKeys,
+  readSince,
   staffIdentity,
   STAFF_FALLBACK,
   type ChatSide,
@@ -62,20 +68,22 @@ function quoteTextOf(m: ChatMessage): string {
 }
 
 /**
- * スタッフと選手・保護者の 1 対 1 のスレッド（chat-plan-a §3-4。会話キーは "p:<playerId>" だけ）。
+ * 会話のスレッド（chat-plan-a §3-4 を home-chat-groups-roster §2-2・§2-3 で広げたもの）。
+ * 会話キーは "p:<playerId>"（スタッフと選手・保護者の 1 対 1）／"grp:all"・"grp:<groupId>"（グループ。メンバー全員が投稿できる）／
+ * "opp:<teamId>"（練習試合の相手チームのスタッフとのやり取り。スタッフだけ。matchup-demo §5）。
  * - 上部に「保護者も見られます」の帯／自分＝右・accent、相手＝左・灰／連続まとめ・日付区切り
- * - 開いた時点の未読の手前に「ここから未読」、表示中は markChatRead を呼び続ける、自分の最後の発言に「既読」
- * - 引用返信（押すと元の発言へ。お知らせの引用なら詳細を開く）
- * - 長押し（PC は右クリック／ホバーの「…」）で 返信・コピー・削除
- * team／grp:* の会話は廃止したので、お知らせは ChatHome 側（ここでは扱わない）。
- * 会話キーが "opp:<teamId>" のときは練習試合の相手チームのスタッフとのやり取り（スタッフだけ。matchup-demo §5）
+ * - グループでは相手側の吹き出しに送信者の名前（スタッフは名前＋役割、選手は名前）
+ * - 開いた時点の未読の手前に「ここから未読」、表示中は markChatRead を呼び続ける、1 対 1 は自分の最後の発言に「既読」
+ * - 引用返信（押すと元の発言へ）
+ * - 長押し（PC は右クリック／ホバーの「…」）で 返信・コピー・削除。スタッフがグループで開くと
+ *   「お知らせにする」「固定する」「既読・了解を見る」も出る（お知らせにされた吹き出しには札と「既読 N/M ・ 了解 K ›」／選手の「了解」）
  */
 export default function ChatThread({
   to,
   as,
   replyTo: initialReplyTo,
   onReplyConsumed,
-  onOpenAnn,
+  focusId,
 }: {
   to: string;
   /** ロール切替プレビュー用に送受信者を上書き（コーチの「選手として閲覧」・選手本人の画面） */
@@ -87,8 +95,8 @@ export default function ChatThread({
    * ここで外す。外さないと、画面の出入りで ChatThread が作り直されるたびに引用が復活して、関係ない発言に付いてしまう
    */
   onReplyConsumed?: () => void;
-  /** お知らせの引用を押したときの開き方。省略時は board シート annDetail */
-  onOpenAnn?: (annId: string) => void;
+  /** 開いた直後にスクロールして 1.5 秒光らせる吹き出しの id（ホームのお知らせ・通知から開くとき） */
+  focusId?: string | null;
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -96,8 +104,14 @@ export default function ChatThread({
   const side: ChatSide = isCoach ? "staff" : "member";
   const myPlayerId = as ? as.playerId : board.auth.playerId ?? null;
   const myDm = myPlayerId ? dmThreadKey(myPlayerId) : null;
-  // 選手側は常に自分とスタッフの会話（渡された to が別でも取り違えて表示・送信しない）
-  const key = isCoach ? to : myDm ?? to;
+  const myPlayer = myPlayerId ? board.state.players.find((p) => p.id === myPlayerId) ?? null : null;
+  // 選手側は自分とスタッフの 1 対 1 か、自分が入っているグループのスレッドだけ
+  // （渡された to が別でも取り違えて表示・送信しない）
+  const memberKey = isGroupKey(to) && playerGroupKeys(myPlayer, team.groups).includes(to) ? to : myDm ?? to;
+  const key = isCoach ? to : memberKey;
+  const isGroup = isGroupKey(key);
+  // スタッフの送信者表示（グループでは他のスタッフの発言と見分けるのに使う）
+  const who = isCoach ? staffIdentity(board.auth.name, team.team.coaches) : null;
   const counterpartId = key.startsWith("p:") ? key.slice(2) : null;
   const counterpart = counterpartId ? board.state.players.find((p) => p.id === counterpartId) ?? null : null;
   // 相手チームとの会話（スタッフだけ）。相手は OpponentTeam.staff（名前・役割）
@@ -142,25 +156,32 @@ export default function ChatThread({
   // 開いた時点の既読時刻。「ここから未読」は現在値でなくこれで決める（現在値だと開いた直後に消える。chat-plan-a §3-4）
   const openedRef = useRef<{ key: string; at: number } | null>(null);
   if (!openedRef.current || openedRef.current.key !== key) {
-    openedRef.current = { key, at: board.chatReads[key]?.[side] ?? 0 };
+    openedRef.current = { key, at: readSince(board.chatReads, key, side, myPlayerId ?? undefined) };
   }
   const openedAt = openedRef.current.at;
 
   // 既読にするのは本人の画面だけ（コーチが「選手として閲覧」しているだけで選手の既読を付けない）
   const canMarkRead = isCoach ? board.auth.role === "coach" : board.auth.role === "player";
-  const incomingTs = latestCounterpartTs(board.messages, key, side);
+  const incomingTs = latestCounterpartTs(board.messages, key, side, myPlayerId ?? undefined);
   useEffect(() => {
-    if (canMarkRead) board.markChatRead(key, side);
+    if (canMarkRead) board.markChatRead(key, side, myPlayerId ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, side, canMarkRead, incomingTs]);
+  }, [key, side, canMarkRead, incomingTs, myPlayerId]);
 
-  const isMine = (m: ChatMessage) => (isCoach ? m.from === "coach" : m.from === myDm);
+  // 自分の発言か。1 対 1 はスタッフ全員を「自分側」とみなす（従来どおり）。グループでは他のスタッフの発言は
+  // 相手側に出して名前を付ける（fromName が自分と違うスタッフの発言）
+  const isMine = (m: ChatMessage) => {
+    if (!isCoach) return m.from === myDm;
+    if (m.from !== "coach") return false;
+    return !(isGroup && m.fromName && who && m.fromName !== who.name);
+  };
 
-  /** 相手の発言の名前・役割（スタッフ視点＝選手名、選手視点＝スタッフの名前＋役割バッジ） */
+  /** 相手の発言の名前・役割（スタッフ視点＝選手名、選手視点＝スタッフの名前＋役割バッジ、グループは両方） */
   const senderOf = (m: ChatMessage): Sender => {
     if (m.from === "coach") return { name: m.fromName ?? STAFF_FALLBACK, role: m.fromRole };
     if (isOpp) return { name: m.fromName ?? oppStaff?.name ?? "相手チーム", role: m.fromRole ?? oppStaff?.role };
-    return { name: m.fromName ?? counterpart?.name ?? "選手" };
+    const sp = m.from.startsWith("p:") ? players.find((p) => p.id === m.from.slice(2)) : undefined;
+    return { name: m.fromName ?? sp?.name ?? counterpart?.name ?? "選手" };
   };
 
   // 表示用に、日付区切り・未読線・連続まとめ・時刻の出し方を先に決める。
@@ -168,7 +189,7 @@ export default function ChatThread({
   // 直前の行は endOfRun=true（まとめの最後として時刻を出す）。そうしないと、まとめの途中に線が入って
   // 前の発言の時刻が消え、次の吹き出しが線に 2px で貼り付く
   const items = useMemo(() => {
-    const unreadIdx = msgs.findIndex((m) => !isMine(m) && m.ts > openedAt);
+    const unreadIdx = msgs.findIndex((m) => isCounterpartMsg(m, side, key, myPlayerId ?? undefined) && m.ts > openedAt);
     return msgs.map((m, i) => {
       const prev = msgs[i - 1];
       const next = msgs[i + 1];
@@ -180,7 +201,7 @@ export default function ChatThread({
       return { m, mine, day: newDay ? fmtDayDivider(m.ts) : null, cont, endOfRun, unreadLine };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [msgs, openedAt, isCoach, myDm]);
+  }, [msgs, openedAt, isCoach, myDm, key, side, myPlayerId]);
 
   const lastMineId = useMemo(() => {
     for (let i = items.length - 1; i >= 0; i--) if (items[i].mine) return items[i].m.id;
@@ -201,6 +222,29 @@ export default function ChatThread({
     }
     el.scrollTop = el.scrollHeight;
   }, [key, msgs.length]);
+
+  // ホームのお知らせ・通知から開いたとき：その吹き出しまでスクロールして 1.5 秒光らせる（home-chat-groups-roster §2-6）。
+  // 光る期限（until）を ref に持ち、effect が作り直されても（再描画・開発時の StrictMode の 2 回目）残り時間で付け直す
+  const focusRef = useRef<{ k: string; until: number } | null>(null);
+  useEffect(() => {
+    const box = scrollRef.current;
+    if (!focusId || !box) return;
+    const k = `${key}|${focusId}`;
+    if (!focusRef.current || focusRef.current.k !== k) {
+      const el = box.querySelector<HTMLElement>(`[data-mid="${focusId}"]`);
+      if (!el) return;
+      box.scrollTop = Math.max(0, el.offsetTop - box.clientHeight / 3);
+      focusRef.current = { k, until: Date.now() + 1500 };
+    }
+    const remain = focusRef.current.until - Date.now();
+    if (remain <= 0) {
+      setFlashId((cur) => (cur === focusId ? null : cur));
+      return;
+    }
+    setFlashId(focusId);
+    const t = setTimeout(() => setFlashId((cur) => (cur === focusId ? null : cur)), remain);
+    return () => clearTimeout(t);
+  }, [focusId, key, msgs.length]);
 
   function closeMenu(restoreFocus = true) {
     restoreFocusRef.current = restoreFocus;
@@ -284,12 +328,11 @@ export default function ChatThread({
   function send() {
     if (!text.trim() && pending.length === 0) return;
     const from = isCoach ? "coach" : myDm ?? "";
-    const sendTo = isCoach ? to : myDm ?? "";
-    // chat-plan-a §1: 1 対 1（選手・保護者、スタッフには相手チームも）以外へは送らない
-    if (!sendTo || !(sendTo.startsWith("p:") || (isCoach && isOppKey(sendTo)))) return;
+    const sendTo = isCoach ? to : key;
+    // 送れるのは 1 対 1・グループ（選手・保護者も）・スタッフには相手チーム
+    if (!sendTo || !(sendTo.startsWith("p:") || isGroupKey(sendTo) || (isCoach && isOppKey(sendTo)))) return;
     const memberName = players.find((p) => p.id === myPlayerId)?.name ?? board.auth.name;
     // §2-4: スタッフの発言は fromName／fromRole を staffIdentity で埋める（選手は役割なし）
-    const who = isCoach ? staffIdentity(board.auth.name, team.team.coaches) : null;
     board.sendMessage({
       to: sendTo,
       from,
@@ -317,7 +360,7 @@ export default function ChatThread({
     const box = scrollRef.current;
     if (!wrap || !box) return;
     const wr = wrap.getBoundingClientRect();
-    const rows = 2 + (canDelete(id) ? 1 : 0);
+    const rows = 2 + (canDelete(id) ? 1 : 0) + announceItemCount(id);
     const menuH = rows * MENU_ROW_H + MENU_PAD;
     const clampX = (v: number) => Math.min(Math.max(v, 8), Math.max(8, wr.width - MENU_W - 8));
     const fallbackY = () => Math.min(Math.max(clientY - wr.top, 8), Math.max(8, wr.height - menuH - 6));
@@ -336,6 +379,11 @@ export default function ChatThread({
       else if (top - MENU_GAP - menuH >= sr.top) y = top - MENU_GAP - menuH - wr.top;
     }
     setMenu({ id, x, y, at: Date.now() });
+  }
+  /** お知らせまわりのメニュー項目の数（スタッフ・グループのスレッドだけ。お知らせにされていれば 固定／既読・了解 も） */
+  function announceItemCount(id: string): number {
+    if (!(isCoach && isGroup)) return 0;
+    return msgs.find((x) => x.id === id)?.announce ? 3 : 1;
   }
   function canDelete(id: string): boolean {
     const m = msgs.find((x) => x.id === id);
@@ -390,6 +438,26 @@ export default function ChatThread({
       board.toast("コピーできませんでした");
     }
   }
+  /* ---- お知らせにする／固定する／既読・了解を見る（スタッフ・グループのスレッド。§2-3） ---- */
+  function toggleAnnounce(m: ChatMessage) {
+    closeMenu();
+    if (m.announce) {
+      board.announceMessage(m.id, false);
+      board.toast("お知らせを解除しました");
+    } else {
+      board.announceMessage(m.id, true, who?.name);
+      board.toast("お知らせにしました（ホームに出ます）");
+    }
+  }
+  function togglePin(m: ChatMessage) {
+    closeMenu();
+    board.pinMessage(m.id, !m.pinned);
+  }
+  function openReadPanel(m: ChatMessage, tab?: "unseen" | "seen" | "acked") {
+    closeMenu(false);
+    // 戻り先（スマホはシートが 1 枚なので、閉じたら元のスレッドを開き直す。SheetManager 側で使う）
+    board.openSheet({ type: "msgRead", messageId: m.id, readTab: tab, chatTo: key });
+  }
   function deleteMsg(m: ChatMessage) {
     closeMenu();
     // どの発言かが分かるよう、本文の冒頭（引用と同じ 60 字まで）を確認文に入れる
@@ -399,9 +467,11 @@ export default function ChatThread({
   }
 
   function jumpToQuote(q: ChatReplyTo) {
+    // 移行前の「お知らせの引用」は、移行後のグループのメッセージ（msg_ann_<元 id>）へ（レビュー）
     if (q.source === "announcement") {
-      if (onOpenAnn) onOpenAnn(q.id);
-      else board.openSheet({ type: "annDetail", annId: q.id });
+      const target = board.messages.find((x) => x.id === `msg_ann_${q.id}` || x.id.startsWith(`msg_ann_${q.id}_`));
+      if (target) board.openChat({ key: target.to, messageId: target.id });
+      else board.toast("このお知らせは削除されました");
       return;
     }
     const el = scrollRef.current?.querySelector<HTMLElement>(`[data-mid="${q.id}"]`);
@@ -438,7 +508,11 @@ export default function ChatThread({
     <div className="chatwrap" ref={wrapRef}>
       {/* 保護者も見られることを常に明示する（スタッフ側・選手側の両方。chat-plan-a §3-4） */}
       <div className="chatguard">
-        {isOpp ? "相手チームのスタッフとのやり取りです。選手・保護者には見えません" : "このやりとりは保護者も見られます"}
+        {isOpp
+          ? "相手チームのスタッフとのやり取りです。選手・保護者には見えません"
+          : isGroup
+            ? `${groupThreadInfo(key, team.groups)?.label ?? "グループ"}のメンバー全員が見られます`
+            : "このやりとりは保護者も見られます"}
       </div>
       <div className="chatscroll" ref={scrollRef}>
         {msgs.length === 0 ? (
@@ -446,7 +520,10 @@ export default function ChatThread({
         ) : (
           items.map(({ m, mine, day, cont, endOfRun, unreadLine }) => {
             const s = mine ? null : senderOf(m);
-            const seen = mine && m.id === lastMineId && isSeenByOther(board.chatReads, key, side, m.ts);
+            // 1 対 1 の「既読」。グループの吹き出しには出さない（お知らせの行だけ「既読 N/M」）
+            const seen = !isGroup && mine && m.id === lastMineId && isSeenByOther(board.chatReads, key, side, m.ts);
+            const stats = isGroup && m.announce ? messageReadStats(m, players, team.groups, board.chatReads) : null;
+            const acked = !!myPlayerId && m.acks?.[myPlayerId] !== undefined;
             return (
               <div key={m.id} className="chatgroup">
                 {day && <div className="chatday">{day}</div>}
@@ -484,11 +561,34 @@ export default function ChatThread({
                       </button>
                     )}
                     <div className="chatbubble">
+                      {m.announce && (
+                        <div className="chatannbadges">
+                          <span className="chatannbadge">お知らせ</span>
+                          {m.pinned && <span className="chatannbadge pin">固定</span>}
+                        </div>
+                      )}
                       {m.text && <div className="chattext">{m.text}</div>}
                       {m.attachments?.map((a, i) => (
                         <AttachmentView key={i} att={a} />
                       ))}
                     </div>
+                    {/* お知らせの行：スタッフには「既読 N/M ・ 了解 K ›」（押すと既読・了解のパネル）、選手・保護者には「了解」 */}
+                    {stats && isCoach && (
+                      <button type="button" className="chatannstat" onClick={() => openReadPanel(m)}>
+                        {`既読 ${stats.seen.length}/${stats.recipients.length} ・ 了解 ${stats.acked.length}`} ›
+                      </button>
+                    )}
+                    {stats && !isCoach && (
+                      <button
+                        type="button"
+                        className={`annackbtn${acked ? " on" : ""}`}
+                        aria-pressed={acked}
+                        disabled={!myPlayerId}
+                        onClick={() => myPlayerId && board.ackMessage(m.id, myPlayerId)}
+                      >
+                        {acked ? "了解済み" : "了解"}
+                      </button>
+                    )}
                     {(endOfRun || seen) && (
                       <div className="chatsub">
                         {seen && <span className="chatread">既読</span>} <span>{fmtClock(m.ts)}</span>
@@ -514,7 +614,7 @@ export default function ChatThread({
         )}
       </div>
 
-      {/* 長押し・右クリック・「…」のメニュー（返信／コピー／削除） */}
+      {/* 長押し・右クリック・「…」のメニュー（返信／コピー／削除。スタッフ・グループではお知らせの項目も） */}
       {menu && menuMsg && (
         <>
           <div
@@ -541,6 +641,21 @@ export default function ChatThread({
             <button type="button" role="menuitem" onClick={() => copyText(menuMsg)}>
               コピー
             </button>
+            {isCoach && isGroup && (
+              <button type="button" role="menuitem" onClick={() => toggleAnnounce(menuMsg)}>
+                {menuMsg.announce ? "お知らせを解除" : "お知らせにする"}
+              </button>
+            )}
+            {isCoach && isGroup && menuMsg.announce && (
+              <>
+                <button type="button" role="menuitem" onClick={() => togglePin(menuMsg)}>
+                  {menuMsg.pinned ? "固定を外す" : "固定する"}
+                </button>
+                <button type="button" role="menuitem" onClick={() => openReadPanel(menuMsg)}>
+                  既読・了解を見る
+                </button>
+              </>
+            )}
             {canDelete(menuMsg.id) && (
               <button type="button" role="menuitem" className="danger" onClick={() => deleteMsg(menuMsg)}>
                 削除
@@ -710,7 +825,7 @@ export default function ChatThread({
           value={text}
           onChange={(e) => setText(e.target.value)}
           rows={1}
-          placeholder="メッセージを入力"
+          placeholder={isGroup ? "グループにメッセージを送る" : "メッセージを入力"}
         />
         <button className="chatsend" onClick={send} aria-label="送信">
           <IconSend />

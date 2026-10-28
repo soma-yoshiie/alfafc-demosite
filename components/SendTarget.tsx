@@ -6,13 +6,14 @@ import { GroupChips } from "./GroupChips";
 
 /**
  * 送信先の選択。中身の送り先は lib/chat.ts の sendAttachmentToTarget（chat-plan-a §2-5）:
- * チーム全員・グループ → お知らせ 1 件、個人 → その選手との 1 対 1。
+ * チーム全員 → 「全員」のグループのスレッド、グループ → 選んだグループのスレッド、個人 → その選手との 1 対 1
+ * （home-chat-groups-roster §2-2）。
  * （旧 targetThreadKeys は会話キー "team"／"grp:*" を作っていたため廃止）
  */
 export interface SendTarget {
   mode: "none" | "team" | "player" | "group";
   playerId?: string;
-  /** mode==="group" のときの宛先グループ（複数可。お知らせ 1 件の groupIds になる） */
+  /** mode==="group" のときの宛先グループ（複数可。選んだグループそれぞれのスレッドへ送る） */
   groupIds?: string[];
 }
 

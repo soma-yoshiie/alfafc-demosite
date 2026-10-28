@@ -1,12 +1,12 @@
-// チャットの作り直し（案A・specs/chat-plan-a.md）の共通ヘルパー。
+// チャットの共通ヘルパー（specs/chat-plan-a.md を home-chat-groups-roster §2 で置き換えたもの）。
 // 画面に依存しない純粋関数だけを置く（BoardProvider/TeamProvider/各画面から使う）。
 // - §2-4 送信者の名前と役割（staffIdentity）
-// - §3 表示用の日付・時刻、未読数、既読、お知らせの件名・宛先・既読集計
-// - §2-5 送信の共通化（宛先＋添付 → お知らせ or 1 対 1）
-// - §6 team／grp メッセージ → お知らせの移行計画（planChatMigration）
+// - 表示用の日付・時刻、未読数、既読（1 対 1・グループ）
+// - home-chat-groups-roster §2: グループのスレッド（grp:all／grp:<id>）、メッセージを「お知らせにする」ときの
+//   ヘルパー（お知らせにされたメッセージの一覧・既読と了解の集計・固定）
+// - §2-5 送信の共通化（宛先＋添付 → グループのスレッド or 1 対 1）
 
 import type {
-  Announcement,
   ChatAttachment,
   ChatMessage,
   ChatReads,
@@ -14,8 +14,8 @@ import type {
   Player,
   TeamGroup,
 } from "./types";
-import { dmThreadKey, threadGroupId } from "./types";
-import { ALL_TARGETS_COLOR, announcementTargetsPlayer } from "./groups";
+import { dmThreadKey, groupThreadKey } from "./types";
+import { ALL_TARGETS_COLOR, playerInGroup } from "./groups";
 
 /* ===== §2-4 送信者の名前と役割 ===== */
 
@@ -92,7 +92,67 @@ export function fmtDayDivider(ts: number, now: number = Date.now()): string {
   return `${y}${d.getMonth() + 1}月${d.getDate()}日（${WEEKDAYS[d.getDay()]}）`;
 }
 
-/* ===== §2-3 1 対 1 の未読・既読 ===== */
+/* ===== グループのスレッド（home-chat-groups-roster §2-1） ===== */
+
+/** 「全員」のグループのスレッドの groupId 部分（キーは "grp:all"） */
+export const ALL_GROUP_ID = "all";
+/** 「全員」のスレッドの会話キー */
+export const ALL_THREAD_KEY = groupThreadKey(ALL_GROUP_ID);
+
+/** 会話キーがグループのスレッドか（"grp:all"／"grp:<groupId>"） */
+export function isGroupKey(key: string): boolean {
+  return key.startsWith("grp:");
+}
+
+/** グループのスレッド 1 本分の情報（一覧の行・見出しに使う） */
+export interface GroupThreadInfo {
+  key: string;
+  /** "all" か TeamGroup.id */
+  id: string;
+  label: string;
+  /** 色の点（全員はネイビー） */
+  color: string;
+  /** 全員のとき null */
+  group: TeamGroup | null;
+}
+
+/** 一覧に並べるグループのスレッド。「全員」を先頭に、team.groups の順 */
+export function groupThreads(groups: TeamGroup[]): GroupThreadInfo[] {
+  return [
+    { key: ALL_THREAD_KEY, id: ALL_GROUP_ID, label: "全員", color: ALL_TARGETS_COLOR, group: null },
+    ...groups.map((g) => ({
+      key: groupThreadKey(g.id),
+      id: g.id,
+      label: g.label,
+      color: g.color ?? ALL_TARGETS_COLOR,
+      group: g,
+    })),
+  ];
+}
+
+/** 会話キーからグループのスレッドの情報を引く（グループが削除済みなら null） */
+export function groupThreadInfo(key: string, groups: TeamGroup[]): GroupThreadInfo | null {
+  return groupThreads(groups).find((t) => t.key === key) ?? null;
+}
+
+/** グループのスレッドのメンバー（選手・保護者）。全員＝名簿全員、それ以外＝そのグループの所属選手 */
+export function threadMembers(key: string, players: Player[], groups: TeamGroup[]): Player[] {
+  if (key === ALL_THREAD_KEY) return players;
+  const info = groupThreadInfo(key, groups);
+  return info?.group ? players.filter((p) => playerInGroup(p, info.group!)) : [];
+}
+
+/** 選手 me が入っているグループのスレッドのキー（全員＋学年＋カスタム）。me が無ければ全員だけ */
+export function playerGroupKeys(me: Player | null | undefined, groups: TeamGroup[]): string[] {
+  const keys = [ALL_THREAD_KEY];
+  if (me) groups.forEach((g) => playerInGroup(me, g) && keys.push(groupThreadKey(g.id)));
+  return keys;
+}
+
+/** 誰の目線で未読・一覧を作るか（スタッフ／選手・保護者） */
+export type ChatViewAs = { side: "staff" } | { side: "member"; playerId: string; me: Player | null };
+
+/* ===== §2-3 未読・既読（1 対 1 とグループ） ===== */
 
 export type ChatSide = "staff" | "member";
 
@@ -111,49 +171,77 @@ export function isOppKey(key: string): boolean {
   return key.startsWith("opp:");
 }
 
-/** side から見て「相手の発言」か（スタッフ側＝選手・相手チームの発言、選手側＝スタッフの発言） */
-function isCounterpart(m: ChatMessage, side: ChatSide): boolean {
+/**
+ * side から見て「相手の発言」か。
+ * 1 対 1：スタッフ側＝選手・相手チームの発言、選手側＝スタッフの発言。
+ * グループ：スタッフ側＝選手・保護者の発言、選手側＝自分以外のすべて（スタッフと他の選手・保護者。memberId 必須）
+ */
+export function isCounterpartMsg(m: ChatMessage, side: ChatSide, key: string, memberId?: string): boolean {
+  if (isGroupKey(key)) {
+    return side === "staff" ? isMemberFrom(m.from) : m.from !== dmThreadKey(memberId ?? "");
+  }
   return side === "staff" ? isMemberFrom(m.from) || isOppFrom(m.from) : m.from === "coach";
 }
 
+/** その会話の side の既読時刻。グループの選手側は members[自分]、それ以外は staff／member */
+export function readSince(reads: ChatReads, key: string, side: ChatSide, memberId?: string): number {
+  if (isGroupKey(key) && side === "member") return memberId ? reads[key]?.members?.[memberId] ?? 0 : 0;
+  return reads[key]?.[side] ?? 0;
+}
+
 /**
- * その会話（"p:<playerId>"）の未読数。スタッフ側＝from が選手で ts > reads[key].staff、
- * 選手側＝from が "coach" で ts > reads[key].member（chat-plan-a §2-3）
+ * その会話（"p:<playerId>"／"grp:…"）の未読数。スタッフ側＝選手の発言で ts > reads[key].staff、
+ * 選手側（1 対 1）＝スタッフの発言で ts > reads[key].member、
+ * 選手側（グループ）＝自分以外の発言で ts > reads[key].members[自分]（memberId を渡す）
  */
-export function unreadCount(messages: ChatMessage[], reads: ChatReads, key: string, side: ChatSide): number {
-  const since = reads[key]?.[side] ?? 0;
+export function unreadCount(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  key: string,
+  side: ChatSide,
+  memberId?: string
+): number {
+  const since = readSince(reads, key, side, memberId);
   let n = 0;
   for (const m of messages) {
-    if (m.to === key && m.ts > since && isCounterpart(m, side)) n++;
+    if (m.to === key && m.ts > since && isCounterpartMsg(m, side, key, memberId)) n++;
   }
   return n;
 }
 
 /** その会話で、side から見た相手の発言のうち最新の ts（無ければ 0）。markChatRead の要否判定に使う */
-export function latestCounterpartTs(messages: ChatMessage[], key: string, side: ChatSide): number {
+export function latestCounterpartTs(messages: ChatMessage[], key: string, side: ChatSide, memberId?: string): number {
   let t = 0;
   for (const m of messages) {
-    if (m.to === key && isCounterpart(m, side) && m.ts > t) t = m.ts;
+    if (m.to === key && isCounterpartMsg(m, side, key, memberId) && m.ts > t) t = m.ts;
   }
   return t;
 }
 
 /**
- * スタッフ側の未読の合計（全 1 対 1＋相手チームとの会話）。セグメント「メッセージ」の赤丸に使う。
- * 名簿にいない選手（名簿から消した選手）の会話は数えない。一覧（MessagesView）はその会話の行を出さないため、
+ * スタッフ側の未読の合計（全 1 対 1＋グループ＋相手チームとの会話）。入口の赤丸に使う。
+ * 名簿にいない選手（名簿から消した選手）の会話は数えない。一覧はその会話の行を出さないため、
  * 数えると赤丸と一覧の未読がずれ、開けない会話なので既読にもできない（chat-plan-a §3-1・§3-3）。
- * 相手チームの会話（opp:）も同じ理由で、oppTeamIds を渡したときはそこにあるチームだけ数える（省略時は全部）
+ * 相手チームの会話（opp:）も同じ理由で、oppTeamIds を渡したときはそこにあるチームだけ数える（省略時は全部）。
+ * グループも同じ理由で、groups を渡したときは「全員」と今あるグループのスレッドだけ数える（省略時は全部）
  */
 export function staffUnreadTotal(
   messages: ChatMessage[],
   reads: ChatReads,
   players: Player[],
-  oppTeamIds?: string[]
+  oppTeamIds?: string[],
+  groups?: TeamGroup[]
 ): number {
   const alive = new Set(players.map((p) => dmThreadKey(p.id)));
   const oppAlive = oppTeamIds ? new Set(oppTeamIds.map((id) => `opp:${id}`)) : null;
+  const grpAlive = groups ? new Set(groupThreads(groups).map((t) => t.key)) : null;
   let n = 0;
   for (const m of messages) {
+    if (isGroupKey(m.to)) {
+      if (grpAlive && !grpAlive.has(m.to)) continue;
+      if (isMemberFrom(m.from) && m.ts > (reads[m.to]?.staff ?? 0)) n++;
+      continue;
+    }
     const opp = isOppKey(m.to) && isOppFrom(m.from) && (!oppAlive || oppAlive.has(m.to));
     if (!opp && (!alive.has(m.to) || !isMemberFrom(m.from))) continue;
     if (m.ts > (reads[m.to]?.staff ?? 0)) n++;
@@ -161,14 +249,33 @@ export function staffUnreadTotal(
   return n;
 }
 
-/** 選手側の未読（スタッフからの発言のうち自分の既読より新しいもの） */
-export function memberUnreadTotal(messages: ChatMessage[], reads: ChatReads, playerId: string): number {
-  return unreadCount(messages, reads, dmThreadKey(playerId), "member");
+/**
+ * 選手側の未読（スタッフとの 1 対 1 のスタッフの発言＋自分が入っているグループの自分以外の発言のうち、
+ * 自分の既読より新しいもの）。me が名簿に見つからないときは「全員」のスレッドだけ数える
+ */
+export function memberUnreadTotal(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  playerId: string,
+  me?: Player | null,
+  groups: TeamGroup[] = []
+): number {
+  const dm = dmThreadKey(playerId);
+  const grp = new Set(playerGroupKeys(me, groups));
+  let n = 0;
+  for (const m of messages) {
+    if (m.to === dm) {
+      if (m.from === "coach" && m.ts > (reads[dm]?.member ?? 0)) n++;
+    } else if (grp.has(m.to)) {
+      if (m.from !== dm && m.ts > (reads[m.to]?.members?.[playerId] ?? 0)) n++;
+    }
+  }
+  return n;
 }
 
 /**
  * 自分（side）の発言を相手が読んだか。相手側の既読時刻が発言の ts 以上なら true
- * （「既読」の表示に使う。時刻は付けない。chat-plan-a §2-3）
+ * （1 対 1 の「既読」の表示に使う。時刻は付けない。chat-plan-a §2-3。グループの吹き出しには出さない）
  */
 export function isSeenByOther(reads: ChatReads, key: string, mySide: ChatSide, ts: number): boolean {
   const other: ChatSide = mySide === "staff" ? "member" : "staff";
@@ -201,6 +308,34 @@ export function dmSummaries(messages: ChatMessage[], reads: ChatReads): DmSummar
     if (isMemberFrom(m.from) && m.ts > (reads[m.to]?.staff ?? 0)) s.unread++;
   }
   return [...map.values()].sort((a, b) => b.last.ts - a.last.ts);
+}
+
+/** グループのスレッドの一覧 1 行分（発言が無くても行は出す） */
+export interface GroupSummary extends GroupThreadInfo {
+  last: ChatMessage | null;
+  unread: number;
+}
+
+/**
+ * 一覧の「グループ」の区画。「全員」を先頭に team.groups の順（並びは最新順にしない）。
+ * スタッフは全グループ、選手・保護者は自分が入っているグループだけ。
+ * 未読は unreadCount と同じ数え方（一覧・レール・下部タブで一致させる）
+ */
+export function groupSummaries(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  groups: TeamGroup[],
+  view: ChatViewAs
+): GroupSummary[] {
+  const visible = view.side === "staff" ? null : new Set(playerGroupKeys(view.me, groups));
+  const memberId = view.side === "member" ? view.playerId : undefined;
+  return groupThreads(groups)
+    .filter((t) => !visible || visible.has(t.key))
+    .map((t) => {
+      let last: ChatMessage | null = null;
+      for (const m of messages) if (m.to === t.key && (!last || m.ts >= last.ts)) last = m;
+      return { ...t, last, unread: unreadCount(messages, reads, t.key, view.side, memberId) };
+    });
 }
 
 /** 相手チームとの会話の 1 行分（matchup-demo §5。DmSummary と同じ形で、選手の代わりにチームの id を持つ） */
@@ -246,9 +381,9 @@ export function makeReplyTo(
   return { id, source, fromName, text: Array.from(flat).slice(0, REPLY_QUOTE_MAX).join("") };
 }
 
-/* ===== お知らせの表示用ヘルパー ===== */
+/* ===== お知らせにされたメッセージ（home-chat-groups-roster §2-4・§2-6） ===== */
 
-/** 固定できる上限（chat-plan-a §2-1） */
+/** 固定できる上限（最大 2 件。3 件目を固定したら一番古い固定を外す） */
 export const MAX_PINNED = 2;
 
 /** 添付 1 件の表示名「戦術「〇〇」」「練習メニュー「〇〇」」「セットプレー「〇〇」」「画像」「動画」 */
@@ -268,75 +403,53 @@ export function attachmentLabel(att: ChatAttachment): string {
   }
 }
 
-/** お知らせの添付の表示名（旧データの playTitle も含める） */
-export function announcementAttachmentLabels(a: Announcement): string[] {
-  const labels = (a.attachments ?? []).map(attachmentLabel);
-  if (a.playTitle && !(a.attachments ?? []).some((x) => x.kind === "play")) labels.push(`戦術「${a.playTitle}」`);
-  return labels;
+/** お知らせとしての見出し（本文の 1 行目。本文が無ければ添付の名前、それも無ければ「お知らせ」） */
+export function announceSubject(m: ChatMessage): string {
+  const text = (m.text ?? "").trim();
+  if (text) return text.split(/\r?\n/)[0].trim();
+  const a = m.attachments?.[0];
+  return a ? attachmentLabel(a) : "お知らせ";
+}
+
+/** その会話のグループ名（ホームの 2 行目「グループ名 ・ M/D」に使う）。グループが無ければ空 */
+export function threadLabel(key: string, groups: TeamGroup[]): string {
+  return groupThreadInfo(key, groups)?.label ?? "";
 }
 
 /**
- * 件名と本文（chat-plan-a §2-1・§3-2）。件名があれば件名＋本文全文。無ければ本文の 1 行目を件名にし、
- * 本文はその残り（1 行だけなら本文は空＝件名だけ表示）。本文も件名も無ければ添付の名前、それも無ければ「お知らせ」
+ * お知らせにされたメッセージ（announce あり）の一覧。固定を先に、その中は announce.ts の新しい順。
+ * 見せる範囲：スタッフ＝今あるグループのスレッドすべて、選手・保護者＝自分が入っているグループのもの。
+ * 削除したグループのスレッドのメッセージは出さない
  */
-export function announcementParts(a: Announcement): { subject: string; body: string } {
-  const text = (a.text ?? "").trim();
-  const title = a.title?.trim();
-  if (title) return { subject: title, body: text };
-  if (text) {
-    const lines = text.split(/\r?\n/);
-    return { subject: lines[0].trim(), body: lines.slice(1).join("\n").trim() };
-  }
-  const labels = announcementAttachmentLabels(a);
-  return { subject: labels[0] ?? "お知らせ", body: "" };
-}
-
-/** 宛先の表示（全員＝ネイビー、グループ＝最初のグループの色。複数なら「中2・Aチーム」。削除済みは無視） */
-export function announcementTarget(
-  a: Announcement,
-  groups: TeamGroup[]
-): { label: string; color: string; all: boolean } {
-  const resolved = (a.groupIds ?? [])
-    .map((id) => groups.find((g) => g.id === id))
-    .filter((g): g is TeamGroup => !!g);
-  if (resolved.length === 0) return { label: "全員", color: ALL_TARGETS_COLOR, all: true };
-  return {
-    label: resolved.map((g) => g.label).join("・"),
-    color: resolved[0].color ?? ALL_TARGETS_COLOR,
-    all: false,
-  };
-}
-
-/** 固定を上、その下に残りを、それぞれ新しい順に並べる（元の配列は変えない） */
-export function sortAnnouncements(list: Announcement[]): Announcement[] {
-  return [...list].sort((a, b) => {
-    const pa = a.pinned ? 1 : 0;
-    const pb = b.pinned ? 1 : 0;
-    return pb - pa || b.ts - a.ts;
-  });
+export function announcedMessages(messages: ChatMessage[], groups: TeamGroup[], view: ChatViewAs): ChatMessage[] {
+  const keys = new Set(
+    view.side === "staff" ? groupThreads(groups).map((t) => t.key) : playerGroupKeys(view.me, groups)
+  );
+  return messages
+    .filter((m) => !!m.announce && keys.has(m.to))
+    .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.announce!.ts - a.announce!.ts);
 }
 
 /**
- * 表示できるお知らせ。スタッフは全件、選手・保護者は自分宛て（announcementTargetsPlayer）だけ。
- * 選手が名簿から見つからないとき（me が null）は絞らない（従来の連絡タブと同じ）
+ * id を固定／解除した結果のメッセージ配列。固定は最大 MAX_PINNED 件で、超えたら（今固定したものを除く）
+ * 一番古い固定（announce.ts の古い順）を外す
  */
-export function visibleAnnouncements(
-  list: Announcement[],
-  isStaff: boolean,
-  me: Player | null,
-  groups: TeamGroup[]
-): Announcement[] {
-  return list.filter((a) => isStaff || !me || announcementTargetsPlayer(a, me, groups));
+export function applyMessagePinned(list: ChatMessage[], id: string, pinned: boolean): ChatMessage[] {
+  const next = list.map((m) => (m.id === id ? { ...m, pinned: pinned ? true : undefined } : m));
+  if (!pinned) return next;
+  const pins = next.filter((m) => m.pinned);
+  if (pins.length <= MAX_PINNED) return next;
+  const evict = pins
+    .filter((m) => m.id !== id)
+    .sort((a, b) => (a.announce?.ts ?? a.ts) - (b.announce?.ts ?? b.ts))
+    .slice(0, pins.length - MAX_PINNED)
+    .map((m) => m.id);
+  return next.map((m) => (evict.includes(m.id) ? { ...m, pinned: undefined } : m));
 }
 
-/** 選手 me が未読（seenBy に自分がいない）のお知らせの数。セグメント「お知らせ」の赤丸・通知に使う */
-export function announcementUnreadCount(list: Announcement[], me: Player, groups: TeamGroup[]): number {
-  return list.filter((a) => announcementTargetsPlayer(a, me, groups) && !a.seenBy?.includes(me.id)).length;
-}
-
-/** お知らせの既読・未読・了解の集計（スタッフのカード「既読 52/70」・既読パネル用） */
-export interface AnnouncementStats {
-  /** 宛先に含まれる選手（名簿の並び順） */
+/** お知らせにされたメッセージの既読・未読・了解の集計（スタッフの「既読 N/M ・ 了解 K」・既読パネル用） */
+export interface MessageReadStats {
+  /** そのスレッドのメンバー（選手・保護者。名簿の並び順。発言者本人は除く） */
   recipients: Player[];
   seen: Player[];
   unseen: Player[];
@@ -344,36 +457,27 @@ export interface AnnouncementStats {
 }
 
 /**
- * 集計は「今の宛先に含まれる選手」だけを数える（グループから外れた選手の seenBy は分子にも分母にも入れない）。
- * 了解した選手は既読にも含める（了解は必ず開いた後のため）
+ * N＝メンバーのうち reads[key].members[id] >= m.ts の人数、M＝メンバー数、K＝acks の人数。
+ * 了解した人は読んだはずなので既読にも含める（ホームから開かずに了解しても既読の数がずれない）。
+ * 集計は今のメンバーだけを数える（グループから外れた選手の既読・了解は分子にも分母にも入れない）
  */
-export function announcementStats(a: Announcement, players: Player[], groups: TeamGroup[]): AnnouncementStats {
-  const recipients = players.filter((p) => announcementTargetsPlayer(a, p, groups));
-  const acks = new Set(a.acks ?? []);
-  const seenSet = new Set([...(a.seenBy ?? []), ...acks]);
+export function messageReadStats(
+  m: ChatMessage,
+  players: Player[],
+  groups: TeamGroup[],
+  reads: ChatReads
+): MessageReadStats {
+  const members = reads[m.to]?.members ?? {};
+  const recipients = threadMembers(m.to, players, groups).filter((p) => m.from !== dmThreadKey(p.id));
+  const acks = m.acks ?? {};
+  const isAcked = (id: string) => acks[id] !== undefined;
+  const isSeen = (id: string) => isAcked(id) || (members[id] ?? 0) >= m.ts;
   return {
     recipients,
-    seen: recipients.filter((p) => seenSet.has(p.id)),
-    unseen: recipients.filter((p) => !seenSet.has(p.id)),
-    acked: recipients.filter((p) => acks.has(p.id)),
+    seen: recipients.filter((p) => isSeen(p.id)),
+    unseen: recipients.filter((p) => !isSeen(p.id)),
+    acked: recipients.filter((p) => isAcked(p.id)),
   };
-}
-
-/**
- * id を固定／解除した結果のお知らせ配列。固定は最大 MAX_PINNED 件で、超えたら（今固定したものを除く）
- * 一番古い固定を外す（chat-plan-a §2-1）。addAnnouncement の pinned:true も同じ規則で通す
- */
-export function applyPinned(list: Announcement[], id: string, pinned: boolean): Announcement[] {
-  const next = list.map((a) => (a.id === id ? { ...a, pinned: pinned ? true : undefined } : a));
-  if (!pinned) return next;
-  const pins = next.filter((a) => a.pinned);
-  if (pins.length <= MAX_PINNED) return next;
-  const evict = pins
-    .filter((a) => a.id !== id)
-    .sort((a, b) => a.ts - b.ts)
-    .slice(0, pins.length - MAX_PINNED)
-    .map((a) => a.id);
-  return next.map((a) => (evict.includes(a.id) ? { ...a, pinned: undefined } : a));
 }
 
 /* ===== §2-5 送信の共通化 ===== */
@@ -383,17 +487,6 @@ export interface SendTargetLike {
   mode: "none" | "team" | "player" | "group";
   playerId?: string;
   groupIds?: string[];
-}
-
-/** お知らせを作るときの入力（TeamProvider.addAnnouncement の引数） */
-export interface NewAnnouncementInput {
-  title?: string;
-  text: string;
-  groupIds?: string[];
-  attachments?: ChatAttachment[];
-  pinned?: boolean;
-  fromName?: string;
-  fromRole?: string;
 }
 
 /** BoardProvider のうち送信に使う部分（useBoard() の値をそのまま渡せる） */
@@ -406,8 +499,8 @@ export interface ChatBoardApi {
 
 /** TeamProvider のうち送信に使う部分（useTeam() の値をそのまま渡せる） */
 export interface ChatTeamApi {
-  addAnnouncement: (a: NewAnnouncementInput) => void;
   team: { coaches: string[] };
+  groups?: TeamGroup[];
 }
 
 /** 宛先が送れる状態でなければ理由（toast 用）、送れるなら null。「送信しない」は null（送らないだけ） */
@@ -417,18 +510,13 @@ export function sendTargetError(t: SendTargetLike): string | null {
   return null;
 }
 
-/** 送る添付の件名「戦術「〇〇」」…（チーム全員・グループ宛てのお知らせの件名になる） */
-export function attachmentSubject(att: ChatAttachment): string {
-  return attachmentLabel(att);
-}
-
 /**
- * 宛先（SendTarget）と添付から送る（chat-plan-a §2-5）。
- * - チーム全員 → お知らせ（groupIds 無し）。件名＝添付の名前、本文は空
- * - グループ → お知らせ 1 件（groupIds に選んだ全グループ。グループごとに複数件にしない）
+ * 宛先（SendTarget）と添付から送る（chat-plan-a §2-5 を home-chat-groups-roster §2-2 で置き換え）。
+ * - チーム全員 → 「全員」のグループのスレッド（grp:all）に添付つきのメッセージ。本文は空
+ * - グループ → 選んだグループそれぞれのスレッド（grp:<id>）に 1 通ずつ
  * - 個人 → その選手との 1 対 1 に ChatMessage
  * 送信者（fromName／fromRole）は staffIdentity で埋める。完了の toast は
- * 「お知らせを送りました」（addAnnouncement 内）／「〇〇さんに送りました」。
+ * 「全員に送りました」「〇〇に送りました」「〇〇さんに送りました」。
  * 送らなかったとき（送信しない・宛先未確定）は false（呼び出し側で先に sendTargetError を見て toast する）
  */
 export function sendAttachmentToTarget({
@@ -444,95 +532,18 @@ export function sendAttachmentToTarget({
 }): boolean {
   if (target.mode === "none" || sendTargetError(target)) return false;
   const who = staffIdentity(board.auth.name, team.team.coaches);
+  const base = { from: "coach", fromName: who.name, fromRole: who.role, attachments: [attachment] };
   if (target.mode === "player") {
     const pid = target.playerId as string;
     const name = board.state.players.find((p) => p.id === pid)?.name ?? "選手";
-    board.sendMessage(
-      {
-        to: dmThreadKey(pid),
-        from: "coach",
-        fromName: who.name,
-        fromRole: who.role,
-        attachments: [attachment],
-      },
-      { toast: `${name}さんに送りました` }
-    );
+    board.sendMessage({ to: dmThreadKey(pid), ...base }, { toast: `${name}さんに送りました` });
     return true;
   }
-  team.addAnnouncement({
-    title: attachmentSubject(attachment),
-    text: "",
-    groupIds: target.mode === "group" ? target.groupIds : undefined,
-    attachments: [attachment],
-    fromName: who.name,
-    fromRole: who.role,
-  });
+  const keys = target.mode === "group" ? (target.groupIds ?? []).map((id) => groupThreadKey(id)) : [ALL_THREAD_KEY];
+  keys.forEach((to) => board.sendMessage({ to, ...base }, { toast: false }));
+  const labels = keys.map((k) => groupThreadInfo(k, team.groups ?? [])?.label ?? "全員");
+  board.toast(
+    target.mode === "team" ? "全員に送りました" : labels.length === 1 ? `${labels[0]}に送りました` : `${labels.length}つのグループに送りました`
+  );
   return true;
-}
-
-/* ===== §6 team／grp メッセージ → お知らせの移行 ===== */
-
-const MIGRATE_DEDUP_MS = 24 * 3600_000;
-
-/** 添付の内容が同じかを見る簡易な署名（本文が空のもの同士の重複判定用） */
-function attachmentSig(atts?: ChatAttachment[]): string {
-  return (atts ?? []).map((a) => `${a.kind}:${a.title ?? ""}`).join("|");
-}
-
-/** 本文が同じか、一方が他方の先頭と一致するか（片方でも空なら、両方空で添付の署名が同じときだけ同じ） */
-function sameContent(
-  aText: string,
-  aAtts: ChatAttachment[] | undefined,
-  bText: string,
-  bAtts: ChatAttachment[] | undefined
-): boolean {
-  const a = aText.trim();
-  const b = bText.trim();
-  if (!a || !b) {
-    if (a || b) return false;
-    const sig = attachmentSig(aAtts);
-    return sig !== "" && sig === attachmentSig(bAtts);
-  }
-  return a.startsWith(b) || b.startsWith(a);
-}
-
-/**
- * 旧形式のメッセージのうち to が "team"／"grp:*" のものをお知らせへ移す計画を立てる（chat-plan-a §6）。
- * - 移す：id＝ann_from_<msgid>、ts・本文・添付をそのまま、groupIds＝grp:* ならその id、fromName は元の値、title 無し
- * - 移さない：同じ宛先で、本文が同じか一方が他方の先頭と一致し、時刻の差が 24 時間以内のお知らせが既にある
- *   （デモの「今週末は練習試合です…」の二重を 1 件にする）／削除済みグループ宛て（捨てる）
- * removeIds には、移した・スキップした・捨てたメッセージの id をすべて入れる（呼び出し側が messages から消す）。
- * 同じ宛先の判定：team＝groupIds が無い／空、grp:X＝groupIds に X を含む（より広い宛先で送済みなら重複）
- */
-export function planChatMigration(
-  messages: ChatMessage[],
-  announcements: Announcement[],
-  groups: TeamGroup[]
-): { add: Announcement[]; removeIds: string[] } {
-  const add: Announcement[] = [];
-  const removeIds: string[] = [];
-  for (const m of messages) {
-    const isTeam = m.to === "team";
-    const gid = threadGroupId(m.to);
-    if (!isTeam && gid === null) continue; // 1 対 1 は対象外
-    removeIds.push(m.id);
-    if (gid !== null && !groups.some((g) => g.id === gid)) continue; // 削除済みグループ宛ては捨てる
-    const dup = announcements.some(
-      (a) =>
-        (gid === null ? !a.groupIds || a.groupIds.length === 0 : !!a.groupIds?.includes(gid)) &&
-        Math.abs(a.ts - m.ts) <= MIGRATE_DEDUP_MS &&
-        sameContent(a.text ?? "", a.attachments, m.text ?? "", m.attachments)
-    );
-    if (dup) continue;
-    add.push({
-      id: `ann_from_${m.id}`,
-      ts: m.ts,
-      text: m.text ?? "",
-      groupIds: gid !== null ? [gid] : undefined,
-      fromName: m.fromName,
-      fromRole: m.fromRole,
-      attachments: m.attachments && m.attachments.length > 0 ? m.attachments : undefined,
-    });
-  }
-  return { add, removeIds };
 }
