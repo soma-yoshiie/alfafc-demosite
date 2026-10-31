@@ -11682,6 +11682,29 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   font-size: var(--fs-body);
   font-weight: 700;
 }
+/* hub-tiles §3: スマホの選手のホーム。「今日のノート」カードの曜日の帯の下の 1 行
+   （今週 2 件 ・ 連続 2 週 ・ 達成度 72%（直近 8 週）。旧 .pnum のカードをここへ移した。PC は .pnum のまま）。
+   12px・--mut。390px 幅では 1 行に収まるが、狭い幅では折り返して全部読めるようにする（省略しない） */
+.noteapp .homecta-nums {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mut);
+}
+/* hub-tiles §3: 目次のカード（MenuGroup）。.mrowgroup の下 24px は他の画面向けなので、ここでは 12px
+   （上の「今日のノート」と同じ間隔。続く見出し .homesec-h の上 16px と相殺されて 16px になる） */
+.noteapp .notehome .mrowgroup {
+  margin: 0 0 12px;
+}
+/* hub-tiles §3: 上のセグメントをやめたので、ヘッダーのすぐ下に来る画面の上を ux-fix R1-6（12px あける）にそろえる。
+   ノート一覧の帯（.nbplbar）の 1 段目、通知・レポートの内容（.scroll）。ホームは .notehome／.homedate の余白で 12px になっている。
+   .mhead が .app の直下にあるのはスマホだけ（スタッフの .scroll には .nbnobar を付けない） */
+.mhead + .nbplbar .nbplscope {
+  padding-top: 12px;
+}
+.noteapp .scroll.nbnobar {
+  padding-top: 12px;
+}
 /* ux-fix R2-1: 作成シートの見出し「どのノートを書く？」（16px・本文の色） */
 .noteapp .wsheet-h.kindsheet-h {
   font-size: 16px;
@@ -11727,6 +11750,10 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   flex: 1 1 auto;
   min-width: 0;
   padding: 0;
+  /* hub-tiles §3: スマホは 3 個（試合／練習／自主練）で横にあふれないので、.fbar の右端 28px のフェードは掛けない
+     （320px 前後の幅で最後のチップの文字が薄くなり、まだ先があるように見えるのを防ぐ。PC は PC ブロックで元からフェード無し） */
+  mask-image: none;
+  -webkit-mask-image: none;
 }
 .noteapp .nbplchips .chip {
   display: inline-flex;
@@ -12475,6 +12502,212 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   font-size: var(--fs-body-s);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* ---- スマホ「チーム」の目次＝タイル 2 列（hub-tiles §1-2。TeamHub の activeTab==="menu"。スマホだけで、PC では描かれないので PC reset は不要） ----
+   目次のときだけ .scroll に hubmenu が付く。内容（.hubtiles-wrap）を margin-block:auto で縦の中央に置く
+   （min-height の calc は使わない。はみ出したときは上が切れず普通にスクロールし、safe-area もずれない）。
+   下部タブ（.mtab は fixed）の裏に .scroll が伸びるので、上と同じ 12px を下（タブの高さの上）にも足して、
+   見える領域（ヘッダーの線〜タブの上端）で中央にする。足さないと塊が 12px 下にずれ、はみ出す画面ではタイルの下端がタブに付く */
+.teamapp .scroll.hubmenu {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px calc(56px + 12px + env(safe-area-inset-bottom));
+}
+/* hub-tiles §1-1: 帯（MobileSegments）をやめたので、先の画面（カレンダー／試合記録／名簿／チャットの一覧）の内容が
+   ヘッダーの線に付く。ux-fix R1-6「ヘッダーのすぐ下は 12px あける」と同じ値（目次は上の規則の padding を使う）。
+   個人ページ・試合の詳細（hubfull）は .phub が上に 12px 持っていて帯は元からなかったので足さない（二重にしない） */
+.teamapp:has(.mhead) .scroll:not(.hubmenu):not(.hubfull) {
+  padding-top: 12px;
+}
+/* カレンダーは .cal 自身が上に 12px を持つので足さない（二重の 24px にしない） */
+.teamapp:has(.mhead) .scroll:not(.hubmenu):not(.hubfull) > .cal {
+  padding-top: 0;
+}
+.hubtiles-wrap {
+  margin-block: auto;
+}
+.hubtiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.hubtile.full {
+  grid-column: 1 / -1;
+}
+/* タイル＝白いカード。押せる範囲は全体。› の置き場のぶん、半幅は下に、全幅は右に余白を持つ。
+   button は中身を縦の中央に置くので、行の高さがそろうよう列の flex にして上から積む（2 列の高さは長いほうにそろう） */
+.hubtile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  font-family: var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+}
+.hubtile.half {
+  padding: 16px 12px 22px;
+}
+.hubtile.full {
+  padding: 16px 36px 16px 12px;
+}
+.hubtile:active {
+  background: var(--surface-low);
+}
+/* 名前の行：アイコン 24px（icons.tsx の線画）＋名前 17px・700。チャットは名前の右に赤い数字（.mrow-badge） */
+.hubtile-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+}
+.hubtile-ic {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--ink);
+}
+.hubtile-ic svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+.hubtile-n {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  line-height: 28px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.hubtile-h .mrow-badge {
+  flex: none;
+}
+/* 状態：12px・--mut。行は項目ごとに固定し、各行は高さ 19px・1 行・はみ出しは省略（札など縮めない要素は flex:none）。
+   青（--accent・700）は未回答の数字だけ */
+.hubtile-st {
+  display: block;
+  margin-top: 8px;
+  font-size: var(--fs-body-s);
+  line-height: 19px;
+  color: var(--mut);
+}
+.hubtile-ln {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 19px;
+  overflow: hidden;
+}
+.hubtile-ln .ell {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hubtile-ln .keep,
+.hubtile-ln .evresult {
+  flex: none;
+  white-space: nowrap;
+}
+/* hub-tiles §1-3-2: 結果の札（.evresult は line-height を持たず .hubtile-st の 19px を継ぐ＝padding 込み 21px で
+   行の 19px から上下 1px ずつ切れる）。17px＋上下 padding 1px で 19px にして行に収める */
+.hubtile-ln .evresult {
+  line-height: 17px;
+}
+.hubtile-acc {
+  font-weight: 700;
+  color: var(--accent);
+}
+.hubtile-ink {
+  color: var(--ink);
+}
+/* › は .mrow-chev と同じ（文字 18px・--mut）。半幅は右下、全幅は右端の縦の中央 */
+.hubtile-chev {
+  position: absolute;
+  color: var(--mut);
+  font-size: 18px;
+  line-height: 1;
+}
+.hubtile.half .hubtile-chev {
+  right: 8px;
+  bottom: 6px;
+}
+.hubtile.full .hubtile-chev {
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+/* 「これから 7 日」の帯（カレンダーのタイルだけ。名前と状態の下に縦に積む。右の余白は › のぶん＝全幅タイルの右 padding）。
+   日の箱に地は付けない（押せるマスに見せない）。今日だけ --accent の丸い地に白い数字。点は 1 日に最大 3 個 */
+.hubwk {
+  display: block;
+  margin-top: 10px;
+}
+.hubwk-lab {
+  display: block;
+  margin-bottom: 4px;
+  font-size: var(--fs-body-s);
+  line-height: 16px;
+  color: var(--mut);
+}
+.hubwk-days {
+  display: flex;
+  justify-content: space-between;
+}
+.hubwk-d {
+  flex: 0 1 38px;
+  min-width: 0;
+  height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.hubwk-w {
+  font-size: var(--fs-body-s);
+  line-height: 14px;
+  color: var(--mut);
+}
+.hubwk-w.sun {
+  color: var(--danger);
+}
+.hubwk-n {
+  margin-top: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 24px;
+  text-align: center;
+  color: var(--ink);
+}
+.hubwk-n.today {
+  background: var(--accent);
+  color: var(--on-primary);
+  font-weight: 700;
+}
+.hubwk-dots {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  margin-top: 3px;
+}
+.hubwk-dots i {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
 }
 
 /* ---- コーチングハブ（新設・スマホ専用。§1-3） ---- */
@@ -16693,6 +16926,18 @@ body:has(.mhead) .grouppick-item {
    右端から 28px 内側に貼り付く）。スクロールし切ると ::after は最後のチップの後ろの空きに乗り、チップに掛からない */
 .phubtabs.more button:last-of-type {
   margin-right: 28px;
+}
+/* hub-tiles §2（案 B）: スマホだけチップ列を折り返して 9 個すべてを見せる（390px 幅で 5＋4 の 2 段：
+   基本・怪我・成長・成績表・体力測定／定期テスト・進路・活動・レポート）。.mhead が .app の直下にあるのはスマホだけなので
+   PC（広い＝縦メニュー、狭い＝チップ列）には掛からない。試合の詳細（MatchHub。ルートに .mhub）も同じ .phubtabs を
+   使うが、3 個で 1 段に収まり対象外なので :not(.mhub) で外す。sticky・高さ 44px・gap 8px・色は上のまま。折り返すと
+   useTabRowMore が false（scrollWidth＝clientWidth）になり、.more のフェードと最後のチップの余白は出ない */
+.app:has(> .mhead) .phub:not(.mhub) .phubtabs {
+  flex-wrap: wrap;
+  overflow-x: visible;
+}
+.app:has(> .mhead) .phub:not(.mhub) .phubtabs button {
+  padding: 0 10px;
 }
 /* PC の縦メニューはスマホでは出さない（PlayerHub が pc のときだけ描く。念のため） */
 .phubnav {

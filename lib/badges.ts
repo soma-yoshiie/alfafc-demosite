@@ -4,7 +4,14 @@
 import type { ChatMessage, ChatReads, CoachDeliverable, NotebookEntry, Player, TeamGroup } from "./types";
 import { DELIVER_KIND_LABEL } from "./types";
 import type { NotifPrefs } from "./storage";
-import { memberUnreadTotal, staffUnreadTotal } from "./chat";
+import {
+  memberScopeMessages,
+  memberUnreadMessages,
+  memberUnreadTotal,
+  staffScopeMessages,
+  staffUnreadMessages,
+  staffUnreadTotal,
+} from "./chat";
 import { deliverableVisibleToPlayer } from "./groups";
 import { staffUnreadNotes } from "./notebookStats";
 
@@ -87,4 +94,32 @@ export function chatBadge(input: ChatBadgeInput): number {
   if (!input.playerId) return 0;
   const me = input.players.find((p) => p.id === input.playerId) ?? null;
   return memberUnreadTotal(input.messages, input.reads, input.playerId, me, input.groups);
+}
+
+/**
+ * スマホ「チーム」の目次のチャットのタイルに出すメッセージ（hub-tiles §1-3-4）。
+ * chatBadge と同じ範囲・同じ数え方で、未読を新しい順に limit 件。未読が 0 なら同じ範囲の最新 1 件。何も無ければ []。
+ * 範囲の判定は staffUnreadTotal／memberUnreadTotal と同じ関数（lib/chat.ts の *UnreadMessages／*ScopeMessages）を通すので、
+ * 赤い数字（chatBadge）と件数の基準が食い違わない。同じ ts のメッセージは配列の後ろを新しいとみなす。
+ */
+export function hubChatPreview(input: ChatBadgeInput, limit: number): ChatMessage[] {
+  if (limit <= 0) return [];
+  const newestFirst = (list: ChatMessage[]) =>
+    list
+      .map((m, i) => ({ m, i }))
+      .sort((a, b) => b.m.ts - a.m.ts || b.i - a.i)
+      .map((x) => x.m);
+  let unread: ChatMessage[];
+  let scope: ChatMessage[];
+  if (input.role === "coach") {
+    unread = staffUnreadMessages(input.messages, input.reads, input.players, input.oppTeamIds, input.groups);
+    scope = unread.length > 0 ? [] : staffScopeMessages(input.messages, input.players, input.oppTeamIds, input.groups);
+  } else {
+    if (!input.playerId) return [];
+    const me = input.players.find((p) => p.id === input.playerId) ?? null;
+    unread = memberUnreadMessages(input.messages, input.reads, input.playerId, me, input.groups);
+    scope = unread.length > 0 ? [] : memberScopeMessages(input.messages, input.playerId, me, input.groups);
+  }
+  if (unread.length > 0) return newestFirst(unread).slice(0, limit);
+  return newestFirst(scope).slice(0, 1);
 }

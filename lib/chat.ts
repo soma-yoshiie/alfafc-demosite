@@ -232,21 +232,56 @@ export function staffUnreadTotal(
   oppTeamIds?: string[],
   groups?: TeamGroup[]
 ): number {
+  return staffUnreadMessages(messages, reads, players, oppTeamIds, groups).length;
+}
+
+/**
+ * staffUnreadTotal が数える未読のメッセージそのもの（messages の並びのまま）。合計はこの length。
+ * hub-tiles §1-3-4: スマホ「チーム」の目次のチャットのタイルが「最新の未読 2 件」を出すために切り出した
+ * （赤い数字と食い違わないよう、数える条件はここ 1 か所）
+ */
+export function staffUnreadMessages(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  players: Player[],
+  oppTeamIds?: string[],
+  groups?: TeamGroup[]
+): ChatMessage[] {
   const alive = new Set(players.map((p) => dmThreadKey(p.id)));
   const oppAlive = oppTeamIds ? new Set(oppTeamIds.map((id) => `opp:${id}`)) : null;
   const grpAlive = groups ? new Set(groupThreads(groups).map((t) => t.key)) : null;
-  let n = 0;
+  const out: ChatMessage[] = [];
   for (const m of messages) {
     if (isGroupKey(m.to)) {
       if (grpAlive && !grpAlive.has(m.to)) continue;
-      if (isMemberFrom(m.from) && m.ts > (reads[m.to]?.staff ?? 0)) n++;
+      if (isMemberFrom(m.from) && m.ts > (reads[m.to]?.staff ?? 0)) out.push(m);
       continue;
     }
     const opp = isOppKey(m.to) && isOppFrom(m.from) && (!oppAlive || oppAlive.has(m.to));
     if (!opp && (!alive.has(m.to) || !isMemberFrom(m.from))) continue;
-    if (m.ts > (reads[m.to]?.staff ?? 0)) n++;
+    if (m.ts > (reads[m.to]?.staff ?? 0)) out.push(m);
   }
-  return n;
+  return out;
+}
+
+/**
+ * staffUnreadTotal が数える範囲（名簿にいる選手の 1 対 1・今ある相手チーム・今あるグループのスレッド）に
+ * 入るメッセージ。送り主・既読は問わない（未読が無いとき「最新の 1 件」を選ぶための母集団。hub-tiles §1-3-4）
+ */
+export function staffScopeMessages(
+  messages: ChatMessage[],
+  players: Player[],
+  oppTeamIds?: string[],
+  groups?: TeamGroup[]
+): ChatMessage[] {
+  const alive = new Set(players.map((p) => dmThreadKey(p.id)));
+  const oppAlive = oppTeamIds ? new Set(oppTeamIds.map((id) => `opp:${id}`)) : null;
+  const grpAlive = groups ? new Set(groupThreads(groups).map((t) => t.key)) : null;
+  return messages.filter((m) => {
+    if (isGroupKey(m.to)) return !grpAlive || grpAlive.has(m.to);
+    if (isOppKey(m.to)) return !oppAlive || oppAlive.has(m.to);
+    return alive.has(m.to);
+  });
 }
 
 /**
@@ -260,17 +295,43 @@ export function memberUnreadTotal(
   me?: Player | null,
   groups: TeamGroup[] = []
 ): number {
+  return memberUnreadMessages(messages, reads, playerId, me, groups).length;
+}
+
+/** memberUnreadTotal が数える未読のメッセージそのもの（messages の並びのまま。hub-tiles §1-3-4） */
+export function memberUnreadMessages(
+  messages: ChatMessage[],
+  reads: ChatReads,
+  playerId: string,
+  me?: Player | null,
+  groups: TeamGroup[] = []
+): ChatMessage[] {
   const dm = dmThreadKey(playerId);
   const grp = new Set(playerGroupKeys(me, groups));
-  let n = 0;
+  const out: ChatMessage[] = [];
   for (const m of messages) {
     if (m.to === dm) {
-      if (m.from === "coach" && m.ts > (reads[dm]?.member ?? 0)) n++;
+      if (m.from === "coach" && m.ts > (reads[dm]?.member ?? 0)) out.push(m);
     } else if (grp.has(m.to)) {
-      if (m.from !== dm && m.ts > (reads[m.to]?.members?.[playerId] ?? 0)) n++;
+      if (m.from !== dm && m.ts > (reads[m.to]?.members?.[playerId] ?? 0)) out.push(m);
     }
   }
-  return n;
+  return out;
+}
+
+/**
+ * memberUnreadTotal が数える範囲（スタッフとの 1 対 1＋自分が入っているグループのスレッド）に入るメッセージ。
+ * 送り主・既読は問わない（hub-tiles §1-3-4）
+ */
+export function memberScopeMessages(
+  messages: ChatMessage[],
+  playerId: string,
+  me?: Player | null,
+  groups: TeamGroup[] = []
+): ChatMessage[] {
+  const dm = dmThreadKey(playerId);
+  const grp = new Set(playerGroupKeys(me, groups));
+  return messages.filter((m) => m.to === dm || grp.has(m.to));
 }
 
 /**
@@ -401,6 +462,11 @@ export function attachmentLabel(att: ChatAttachment): string {
     default:
       return "動画";
   }
+}
+
+/** 一覧・タイルの 1 行に出す本文（空白を畳む。本文が無ければ添付の名前）。ChatHome の previewOf の本文と同じ整形 */
+export function messageBodyText(m: ChatMessage): string {
+  return m.text?.replace(/\s+/g, " ").trim() || (m.attachments?.[0] ? attachmentLabel(m.attachments[0]) : "");
 }
 
 /** お知らせとしての見出し（本文の 1 行目。本文が無ければ添付の名前、それも無ければ「お知らせ」） */

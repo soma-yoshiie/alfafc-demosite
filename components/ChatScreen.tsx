@@ -141,10 +141,12 @@ export default function ChatScreen() {
           </div>
         </header>
       ) : (
-        // mobile-redesign §1-6: 下部タブ「チャット」の直下画面のため戻るは出さない。
+        // hub-tiles §0-5: お知らせ・通知・ノートなどの深いリンク（openChat）でスレッドを開いて閉じると、ここ（screen==="chat"）に残る。
+        // 目次から入ったチームのチャットが「‹ チャット」なのと同じに、‹ はチームの目次へ（TeamHub は teamIntent が無ければ目次で始まる）。
         // 右アクションはスタッフの「新しいメッセージ」
         <MobileHeader
           title="チャット"
+          onBack={() => board.setScreen("team")}
           actions={
             headerAction && (
               <MobileHeaderAction primary label={headerAction.label} onClick={headerAction.onClick}>

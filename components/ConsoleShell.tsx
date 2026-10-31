@@ -403,7 +403,10 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
                 // アクティブ表示になるため、再タップ判定は遷移先そのもの(=キー)と
                 // board.screen の厳密一致で行う（下位画面からタブを押したときは
                 // その集約画面へ遷移させ、既にその画面にいるときだけ先頭へ戻す）
+                // hub-tiles §0-3: 同じタブの再タップは受け手（TeamHub／NotebookScreen）へも知らせる。
+                // 先の画面・詳細にいれば目次へ戻り、目次にいれば何もしない（先頭へのスクロールはここ）
                 if (board.screen === it.key) {
+                  window.dispatchEvent(new CustomEvent("alfa-tabreselect", { detail: { key: it.key } }));
                   scrollActiveScreenToTop();
                   return;
                 }

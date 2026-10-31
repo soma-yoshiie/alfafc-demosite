@@ -57,6 +57,7 @@ import { staffUnreadNotes } from "@/lib/notebookStats";
 import { staffIdentity } from "@/lib/chat";
 import { isUnreadStaffComment } from "@/lib/badges";
 import { eventSubmitStats, noteBelongsToEvent } from "@/lib/eventNotes";
+import { buildSeasonReport } from "@/lib/seasonReport";
 import { DeliverBlock, DeliverDetail } from "./DeliverViews";
 import { AnalyticsPanel, NoteSearch, NotificationsView, notifIdentity } from "./NotebookTools";
 import { useGroupFilter } from "./GroupChips";
@@ -65,7 +66,8 @@ import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
-import { IconBell, IconFilter, IconShare, NoteKindIcon } from "./icons";
+import { MenuGroup, MenuRow } from "./MobileRows";
+import { IconBell, IconClipboard, IconFilter, IconNote, IconShare, NoteKindIcon } from "./icons";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const PLAY_KINDS: PlayKind[] = ["receive", "shot", "miss"];
@@ -156,6 +158,15 @@ const NOTE_STATUS_LABEL: Record<NoteStatus, string> = {
   unread: "未読",
   nocomment: "未コメント",
   commented: "コメント済",
+};
+
+/** hub-tiles §3: スマホの選手のヘッダーの題名（root の画面ごと）。deliver は旧コーチ配信タブで選手には到達しない */
+const PLAYER_TAB_TITLE: Record<Tab, string> = {
+  home: "サッカーノート",
+  notes: "ノート一覧",
+  deliver: "サッカーノート",
+  notifs: "通知",
+  report: "レポート",
 };
 
 /** PCのマスター・ディテール分岐に使うブレークポイント（ChatScreen.tsxのRowクリック分岐と同じ基準） */
@@ -324,7 +335,9 @@ export default function NotebookScreen() {
   const [seenAt, setSeenAt] = useState<number>(() => loadNotifSeen()[identity] ?? 0);
   // 通知画面で「今回の新着」をハイライトするため、開いた時点の既読時刻を保持
   const [viewSeenAt, setViewSeenAt] = useState<number>(seenAt);
-  const unread = useMemo(() => {
+  // 新着の通知（ts の新しい順）。unread（ベル・タブの赤い数字）はこの件数。hub-tiles §3: 選手のホームの目次「通知」の行が
+  // 同じ数と、新着の最新 1 件の text を使うので、件数だけでなく一覧も持つ
+  const newNotifs = useMemo(() => {
     const evts = buildEventNotifications({
       role: board.auth.role,
       playerId: board.auth.playerId,
@@ -335,8 +348,9 @@ export default function NotebookScreen() {
       messages: board.messages,
       chatReads: board.chatReads,
     });
-    return evts.filter((n) => n.ts > seenAt).length;
+    return evts.filter((n) => n.ts > seenAt);
   }, [board.auth.role, board.auth.playerId, board.notebook, board.deliverables, board.state.players, board.messages, board.chatReads, seenAt]);
+  const unread = newNotifs.length;
 
   const switchTab = (t: Tab) => {
     if (t === "notifs") {
@@ -354,6 +368,36 @@ export default function NotebookScreen() {
     setSelNote(null);
     setSelNotif(null);
   };
+
+  // hub-tiles §0-3: 下部タブ「ノート」の再タップ（ConsoleShell が alfa-tabreselect を発火する）。スマホだけ。
+  // 先の画面・詳細にいれば目次（選手＝ホーム、スタッフ＝提出）へ戻す。目次にいれば何もしない（先頭へのスクロールは
+  // ConsoleShell 側）。最新の state は ref 越しに読む。
+  // 新規ノートの書きかけは useNoteDraft が下書きに残すので確認は出さない。残らないもの（既存ノートの編集フォーム、
+  // スタッフの送っていないコメント・図）は戻す前に「保存せずに終了しますか？」を出し、キャンセルなら何もしない
+  // （TeamHub の confirmLeaveMatch と同じ文言）。詳細の「送っていない」は NoteDetail が detailDirtyRef に書く
+  const detailDirtyRef = useRef(false);
+  const tabReselectRef = useRef<() => void>(() => {});
+  tabReselectRef.current = () => {
+    if (pc) return;
+    const unsaved = (view.mode === "form" && !!view.edit) || (view.mode === "detail" && detailDirtyRef.current);
+    if (unsaved && !window.confirm("保存せずに終了しますか？")) return;
+    switchTab(isCoach ? "notes" : "home");
+  };
+  useEffect(() => {
+    const onReselect = (e: Event) => {
+      if ((e as CustomEvent<{ key?: string }>).detail?.key !== "notebook") return;
+      tabReselectRef.current();
+    };
+    window.addEventListener("alfa-tabreselect", onReselect);
+    return () => window.removeEventListener("alfa-tabreselect", onReselect);
+  }, []);
+  // hub-tiles §3: スマホの選手はホーム（目次）とその先の画面（一覧・通知・レポート）が同じ .scroll を使い回すので、
+  // タブを替えたら先頭から（目次の行を押した先がスクロールの途中から始まらない／‹ で戻ったホームに位置が残らない）。
+  // スタッフと PC は触らない
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pc && !isCoach && scrollRef.current) scrollRef.current.scrollTop = 0;
+  }, [pc, isCoach, tab]);
 
   const navTarget = (t: NotifTarget, notifId?: string) => {
     // home-chat-groups-roster §2-5: 選手向け「新しいお知らせ」はそのグループのスレッドのその吹き出しを開く
@@ -524,19 +568,29 @@ export default function NotebookScreen() {
         </header>
       ) : (
         <>
-          {/* mobile-redesign §1-6/§1-7: 共通ヘッダー＋ヘッダー直下セグメント。
+          {/* mobile-redesign §1-6/§1-7: 共通ヘッダー。
               「‹ メニュー」(=アプリホームへ戻る)は下部タブの「ホーム」で代替できるため、
               モバイルの戻るはisRoot=falseの詳細/フォーム画面でのみ出す */}
           {/* notebook-staff-redesign §2: スタッフは下のセグメント行を出さず、通知は右のベルで開く
               （未読数は赤丸の件数バッジ。PCの .hdrbellbadge と同じ出し方）。
-              通知画面からの戻るは「‹ 戻る」で提出へ（通知画面ではベルを出さない） */}
+              通知画面からの戻るは「‹ 戻る」で提出へ（通知画面ではベルを出さない）。
+              hub-tiles §3: 選手も上のセグメント（ホーム／ノート／通知／レポート）をやめ、ホームを目次にした。
+              題名は今いる画面の名前（ホーム＝サッカーノート／ノート一覧／通知／レポート。詳細・フォーム・検索は「サッカーノート」のまま）、
+              ホーム以外の root は「‹」でホームへ、右はスタッフと同じベル（ホーム・一覧・レポートに。通知の画面には出さない） */}
           <MobileHeader
-            title="サッカーノート"
-            onBack={!isRoot ? () => setView({ mode: "root" }) : staffNotifs ? () => switchTab("notes") : undefined}
+            title={isCoach || !isRoot ? "サッカーノート" : PLAYER_TAB_TITLE[tab]}
+            onBack={
+              !isRoot
+                ? () => setView({ mode: "root" })
+                : staffNotifs
+                  ? () => switchTab("notes")
+                  : !isCoach && tab !== "home"
+                    ? () => switchTab("home")
+                    : undefined
+            }
             actions={
-              isCoach &&
               isRoot &&
-              tab === "notes" && (
+              (isCoach ? tab === "notes" : tab === "home" || tab === "notes" || tab === "report") && (
                 <MobileHeaderAction
                   label={unread > 0 ? `通知（未読${unread}件）` : "通知"}
                   onClick={() => switchTab("notifs")}
@@ -547,20 +601,6 @@ export default function NotebookScreen() {
               )
             }
           />
-          {isRoot && !isCoach && (
-            <div className="mseg-wrap">
-              <MobileSegments
-                ariaLabel="サッカーノートの表示切替"
-                items={navItems.map((it) => ({
-                  key: it.t,
-                  label: it.label,
-                  badge: it.badge,
-                  on: tab === it.t,
-                  onSelect: () => switchTab(it.t),
-                }))}
-              />
-            </div>
-          )}
         </>
       )}
 
@@ -584,12 +624,14 @@ export default function NotebookScreen() {
             </button>
             {noteScope === "mine" && (
               <div className="fbar nbplchips">
-                {(["all", "match", "practice", "solo"] as (NoteKind | "all")[]).map((k) => (
+                {/* hub-tiles §3: スマホは「試合／練習／自主練」の 3 個だけ（「すべて」のチップは外す＝どれも選んでいない状態がすべて。
+                    選んだチップをもう一度押すと外れる。横スクロールが無くなる）。PC は今のまま「すべて」を含む 4 個 */}
+                {((pc ? ["all", "match", "practice", "solo"] : ["match", "practice", "solo"]) as (NoteKind | "all")[]).map((k) => (
                   <div
                     key={k}
                     className={`chip${noteKind === k ? " on" : ""}`}
                     onClick={() => {
-                      setNoteKind(k);
+                      setNoteKind(!pc && noteKind === k ? "all" : k);
                       setSelNote(null); // 絞り込みで一覧から消えたノートを右ペインに残さない
                     }}
                   >
@@ -613,11 +655,18 @@ export default function NotebookScreen() {
         </aside>
       )}
 
-      <div className="scroll">
+      <div
+        className={"scroll" + (!pc && !isCoach && isRoot && (tab === "notifs" || tab === "report") ? " nbnobar" : "")}
+        ref={scrollRef}
+      >
         {/* notebook-staff-redesign §2: ホームは選手だけ（スタッフのダッシュボード・KPI内訳は撤去） */}
         {isRoot && tab === "home" && !isCoach && (
           <PlayerHome
             seenAt={seenAt}
+            pc={pc}
+            notifUnread={unread}
+            latestNotif={newNotifs[0]?.text}
+            onOpenTab={switchTab}
             onOpenNote={(id) => setView({ mode: "detail", id })}
             onOpenDeliver={(id) => setView({ mode: "deliverDetail", id })}
             onWrite={() => setSheetOpen(true)}
@@ -679,6 +728,7 @@ export default function NotebookScreen() {
             onEdit={(e) => setView({ mode: "form", kind: e.kind, edit: e })}
             onDeleted={() => setView({ mode: "root" })}
             nextUnread={isCoach ? nextUnreadFor(view.id, (nid) => setView({ mode: "detail", id: nid })) : undefined}
+            dirtyRef={detailDirtyRef}
           />
         )}
         {view.mode === "deliverDetail" && !isCoach && (
@@ -825,15 +875,29 @@ export default function NotebookScreen() {
 /**
  * ux-fix R2-1: 上から 今日の状況 → スタッフからのコメント → コーチから → 今週の数字（1 行）。
  * マイ分析・コンディション・各種の集計はレポートタブ（PlayerAnalysis）へ移した。
+ * hub-tiles §3（スマホだけ。pc のときは上の並びのまま）: 日付 → 今日のノート（曜日の帯の下に今週の数字の 1 行。
+ * 末尾の .pnum は出さない）→ 目次のカード（ノート一覧・通知・レポートの 3 行）→ スタッフからのコメント（未読だけ）→ コーチから
  */
 function PlayerHome({
   seenAt,
+  pc,
+  notifUnread,
+  latestNotif,
+  onOpenTab,
   onOpenNote,
   onOpenDeliver,
   onWrite,
 }: {
   /** コメントの既読時刻（loadNotifSeen の自分の値。通知タブを開くと更新される） */
   seenAt: number;
+  /** PC のときは今の並び（.pnum・未読＋既読で 3 枚）のまま。目次のカードも出さない */
+  pc: boolean;
+  /** 新着の通知の件数（ヘッダーのベルと同じ数）。目次の「通知」の行の説明に使う（赤い数字は付けない） */
+  notifUnread: number;
+  /** 新着の最新 1 件の text（新着が無ければ undefined） */
+  latestNotif?: string;
+  /** 目次の行を押したとき（NotebookScreen の switchTab） */
+  onOpenTab: (t: Tab) => void;
   onOpenNote: (id: string) => void;
   onOpenDeliver: (id: string) => void;
   onWrite: () => void;
@@ -876,7 +940,9 @@ function PlayerHome({
   }, [myNotes, today]);
 
   // スタッフからのコメント：未読（lib/badges の isUnreadStaffComment。通知の既読時刻より後で、本人が詳細で見ていない。noteBadge と同じ判定）をすべて、
-  // 足りなければ既読の新しいものを足して 3 件に
+  // 足りなければ既読の新しいものを足して 3 件に（PC）。
+  // hub-tiles §3: スマホは目次のカードがコメントの上に入るので未読だけ（未読が 0 なら最新の既読 1 枚）。
+  // 未回答の課題（コーチから）が 1 画面目から押し出されないようにする
   const comments = useMemo(() => {
     const all = myNotes
       .filter((n) => !!n.staffComment)
@@ -884,8 +950,41 @@ function PlayerHome({
     const isUnread = (n: NotebookEntry) => isUnreadStaffComment(n, seenAt);
     const unread = all.filter(isUnread);
     const read = all.filter((n) => !isUnread(n));
-    return { unreadCount: unread.length, rows: [...unread, ...read].slice(0, Math.max(3, unread.length)), isUnread };
-  }, [myNotes, seenAt]);
+    const rows = pc
+      ? [...unread, ...read].slice(0, Math.max(3, unread.length))
+      : unread.length > 0
+        ? unread
+        : read.slice(0, 1);
+    return { unreadCount: unread.length, rows, isUnread };
+  }, [myNotes, seenAt, pc]);
+
+  // hub-tiles §3: 目次の 3 行の説明（スマホだけ。PC は目次を出さないので組み立てない）
+  // ノート一覧：自分のノートの件数と最新の 1 件の日付・種類
+  const listDesc = useMemo(() => {
+    if (pc) return "";
+    if (myNotes.length === 0) return "まだノートがありません";
+    const latest = [...myNotes].sort((a, b) => b.date.localeCompare(a.date) || b.ts - a.ts)[0];
+    const [, m, d] = latest.date.split("-").map(Number);
+    return `${myNotes.length} 件 ・ 最新 ${m}/${d} ${NOTE_KIND_LABEL[latest.kind]}`;
+  }, [pc, myNotes]);
+  // 通知：新着（ベルと同じ数）と新着の最新 1 件。赤い数字は付けない（ヘッダーのベルに付く）
+  const notifDesc = notifUnread > 0 ? `新着 ${notifUnread}${latestNotif ? ` ・ ${latestNotif}` : ""}` : "新しい通知はありません";
+  // レポート：SeasonReport の既定の期間（今年 1/1〜今日）の ノート件数と出席率。出席の母数が無ければ出席率は省く
+  const reportDesc = useMemo(() => {
+    if (pc) return "";
+    const player = board.state.players.find((p) => p.id === me);
+    if (!player) return "まだ記録がありません";
+    const r = buildSeasonReport(
+      player,
+      board.notebook,
+      board.deliverables,
+      loadTeam(),
+      { from: `${today.slice(0, 4)}-01-01`, to: today },
+      board.state.teamName ?? "マイチーム"
+    );
+    if (r.noteCounts.total === 0) return "まだ記録がありません";
+    return `今季 ノート ${r.noteCounts.total} 件${r.attendancePct != null ? ` ・ 出席率 ${r.attendancePct}%` : ""}`;
+  }, [pc, board.state.players, board.notebook, board.deliverables, board.state.teamName, me, today]);
 
   // 曜日タップの展開状態（モーダルではなくインラインで開閉する）
   const [openDay, setOpenDay] = useState<string | null>(null);
@@ -893,6 +992,9 @@ function PlayerHome({
   const numbers = [`今週 ${thisWeekCount} 件`];
   if (achieveAvg8 != null) numbers.push(`達成度 ${achieveAvg8}%`);
   numbers.push(`連続 ${wStreak} 週`);
+  // hub-tiles §3: スマホの「今日のノート」カードの中の 1 行（.homecta-nums。今週・連続・達成度の順。達成度は直近 8 週の平均）
+  const cardNumbers = [`今週 ${thisWeekCount} 件`, `連続 ${wStreak} 週`];
+  if (achieveAvg8 != null) cardNumbers.push(`達成度 ${achieveAvg8}%（直近 8 週）`);
 
   return (
     <div className="notehome">
@@ -921,6 +1023,11 @@ function PlayerHome({
             </button>
           ))}
         </div>
+        {!pc && (
+          <div className="homecta-nums" aria-label="今週の数字">
+            {cardNumbers.join(" ・ ")}
+          </div>
+        )}
 
         {openDay && (
           <div className="daypanel">
@@ -956,6 +1063,14 @@ function PlayerHome({
           </div>
         )}
       </div>
+
+      {!pc && (
+        <MenuGroup>
+          <MenuRow icon={<IconNote />} label="ノート一覧" desc={listDesc} onClick={() => onOpenTab("notes")} />
+          <MenuRow icon={<IconBell />} label="通知" desc={notifDesc} onClick={() => onOpenTab("notifs")} />
+          <MenuRow icon={<IconClipboard />} label="レポート" desc={reportDesc} onClick={() => onOpenTab("report")} />
+        </MenuGroup>
+      )}
 
       {comments.rows.length > 0 && (
         <>
@@ -994,9 +1109,11 @@ function PlayerHome({
         onCreate={() => {}}
       />
 
-      <div className="pnum" aria-label="今週の数字">
-        {numbers.join(" ・ ")}
-      </div>
+      {pc && (
+        <div className="pnum" aria-label="今週の数字">
+          {numbers.join(" ・ ")}
+        </div>
+      )}
     </div>
   );
 }
@@ -2999,6 +3116,7 @@ function NoteDetail({
   onEdit,
   onDeleted,
   nextUnread,
+  dirtyRef,
 }: {
   id: string;
   isCoach: boolean;
@@ -3006,6 +3124,8 @@ function NoteDetail({
   onDeleted: () => void;
   /** ux-fix R2-7: スタッフ。今の絞り込みの中の、この提出以外の未読の数と、いちばん新しい未読を開く関数 */
   nextUnread?: { count: number; onOpen: () => void };
+  /** hub-tiles §0-3: スマホの下部タブ再タップが「送っていないコメント・図があるか」を読む先。外れる（アンマウント）ときは false に戻す */
+  dirtyRef?: { current: boolean };
 }) {
   const board = useBoard();
   const team = useTeam();
@@ -3032,15 +3152,24 @@ function NoteDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entry?.id]);
 
+  // ux-fix R2-7: 送った内容から変わるまで「コメントを更新」は押せない（文字と図の両方を見る）。
+  // hub-tiles §0-3: 下部タブ再タップの確認でも使うので、フックの規則上 entry が無い場合の早期 return より前に置く
+  const savedDrawing = JSON.stringify({ plays: entry?.staffDrawing?.plays ?? [], playLines: entry?.staffDrawing?.playLines ?? [] });
+  const dirty =
+    !!entry &&
+    (comment.trim() !== (entry.staffComment ?? "") ||
+      JSON.stringify({ plays: drawPlays, playLines: drawLines }) !== savedDrawing);
+  useEffect(() => {
+    if (!dirtyRef) return;
+    dirtyRef.current = isCoach && dirty;
+    return () => {
+      dirtyRef.current = false;
+    };
+  }, [dirtyRef, isCoach, dirty]);
+
   if (!entry) return <div className="empty-msg">ノートが見つかりません。</div>;
   const who = board.state.players.find((p) => p.id === entry.playerId)?.name ?? "選手";
   const mine = !isCoach && entry.playerId === board.auth.playerId;
-
-  // ux-fix R2-7: 送った内容から変わるまで「コメントを更新」は押せない（文字と図の両方を見る）
-  const savedDrawing = JSON.stringify({ plays: entry.staffDrawing?.plays ?? [], playLines: entry.staffDrawing?.playLines ?? [] });
-  const dirty =
-    comment.trim() !== (entry.staffComment ?? "") ||
-    JSON.stringify({ plays: drawPlays, playLines: drawLines }) !== savedDrawing;
   // ux-fix R3-5: コメントを書いた人（「岡本監督」）。送ったときの本人を覚える。古いコメントは代表のスタッフに寄せる
   const ident = staffIdentity(board.auth.name, team.team.coaches);
   const ownName = `${ident.name}${ident.role}`;

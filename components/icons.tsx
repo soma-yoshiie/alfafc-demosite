@@ -452,7 +452,7 @@ export function IconFilm(p: SVGProps<SVGSVGElement>) {
   );
 }
 
-/** クリップボード（p17 §4: 戦術ボードの入口は IconPitch に替えた。今は使う所が無い） */
+/** クリップボード（p17 §4: 戦術ボードの入口は IconPitch に替えた。hub-tiles §3: 選手のノートのホームの目次「レポート」の行で使う） */
 export function IconClipboard(p: SVGProps<SVGSVGElement>) {
   return (
     <Svg {...p}>

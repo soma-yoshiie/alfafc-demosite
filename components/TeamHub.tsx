@@ -92,6 +92,7 @@ import {
   resolveFilterGroup,
   resolveFilterGroups,
 } from "@/lib/groups";
+import { matchResultOf } from "@/lib/hubTiles";
 import { renderCalendarListPng } from "@/lib/exportCalendar";
 import { downloadDataUrl } from "@/lib/exportImage";
 import { LineChart } from "./Charts";
@@ -119,6 +120,7 @@ import { CompetitionsManage } from "./team/manage/CompetitionsManage";
 import { LeagueEdit } from "./team/manage/LeagueEdit";
 import { FitnessTestsManage } from "./team/manage/FitnessTestsManage";
 import { Sheet } from "./team/Sheet";
+import { HubTiles, type HubTileTab } from "./team/HubTiles";
 import { FilterRow, FilterSecHead } from "./FilterRow";
 
 /** PC(マスター・ディテール発火幅)判定のブレークポイント。ChatScreen.tsx / ConsoleScreens.tsx と同じ値 */
@@ -280,10 +282,13 @@ function matchMonthlyTrend(
 
 // mobile-redesign-v2 §3-1: 「ホーム」タブは廃止（チームを開いたら常にカレンダー）。
 // 「att」(出欠)はタブとしては到達不能だが、AttendanceTab自体はPCの都合で残すためTab型にも残す
-type Tab = "att" | "cal" | "rec" | "ros" | "chat";
+// hub-tiles §1-1: スマホは「チーム」を開くと最初に目次（"menu"。タイル 2 列）が出る。目次はスマホだけの状態で、
+// PC では tabs に無いので activeTab が必ず "cal" に丸まる（PC の構成は変えない）
+type Tab = "menu" | "att" | "cal" | "rec" | "ros" | "chat";
 
 // PC専用コンソールシェルの左レール：タブ帯と同じ項目をサブメニューとしても出すためのアイコン対応
 const ICON: Record<Tab, Parameters<typeof E>[0]["n"]> = {
+  menu: "calendar", // 目次はスマホだけ（PC のサブナビには出ない）。Record を満たすための値
   att: "check",
   cal: "calendar",
   rec: "trophy",
@@ -336,9 +341,15 @@ function Inner() {
   // PC(min-width:1024px)ではシートをモーダルでなく.teammain内のペインとして描画するため、
   // SheetHostの出し分け・.teammainの描画条件で使う
   const pc = usePc();
-  // 初期タブ=カレンダー（PC/モバイル共通。mobile-redesign-v2 §3-1: チームを開いたら
-  // カレンダーが表示される＝チームの中の「ホーム」は無い）
-  const [tab, setTab] = useState<Tab>(() => "cal");
+  // 初期タブ: PC=カレンダー（mobile-redesign-v2 §3-1: チームを開いたらカレンダーが表示される＝チームの中の
+  // 「ホーム」は無い）。スマホは hub-tiles §1-1 で目次（"menu"。毎回目次から。最後に開いた画面は覚えない）。
+  // pc は usePc の初期値＝matchMedia の初期判定。他画面からの遷移指示（teamIntent。下の effect が消費する）が
+  // 来ているときは、目次を一瞬も通らず最初からその画面を描く（§0-5・§1-1）
+  const [tab, setTab] = useState<Tab>(() => {
+    if (pc) return "cal";
+    const it = board.teamIntent;
+    return it ? (it.tab === "att" || it.tab === "home" ? "cal" : it.tab) : "menu";
+  });
   const [sheet, setSheet] = useState<SheetState>(null);
   // p15 §7: 試合記録フォームに未保存の変更があるか（SheetHost の onMatchDirty が通知する）。
   // フォームを開いたままシートを閉じる・差し替える経路は confirmLeaveMatch を通して「保存せずに終了しますか？」を出す
@@ -493,7 +504,8 @@ function Inner() {
     if (showRos) tabs.push(["ros", "名簿"]);
     tabs.push(["chat", "チャット"]);
   }
-  const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : "cal";
+  // hub-tiles §1-1: tabs に無い値の丸め先。PC は今のまま "cal"（"menu" も "cal"）、スマホは目次（"menu"・"att"・"home" など）
+  const activeTab: Tab = tabs.some(([t]) => t === tab) ? tab : pc ? "cal" : "menu";
   // player-hub §2-1: スマホは名簿で選手を選ぶと個人ページを全画面で開く（rosSel）。チーム運営のヘッダーと
   // セグメントは出さず、ハブ自身のヘッダー（選手名＋戻る）だけにする。PCは絞り込み列(.rosside)を
   // 名簿・試合記録タブのときに左に足す（p14 §2-2。開いているとき。畳んでいる間は一覧の「絞り込み」ボタンで戻す）
@@ -638,6 +650,34 @@ function Inner() {
     mql.addEventListener("change", sync);
     return () => mql.removeEventListener("change", sync);
   }, [isCoach, sheet, activeTab]);
+
+  // hub-tiles §0-3: 下部タブ「チーム」の再タップ（ConsoleShell が alfa-tabreselect を発火する）。スマホだけ。
+  // 先の画面・詳細・シートにいれば目次へ戻す。目次にいれば何もしない（先頭へのスクロールは ConsoleShell 側）。
+  // 書きかけの下書きは残るので確認は出さない。試合記録フォームの未保存だけは今の confirmLeaveMatch を通す。
+  // 最新の state は ref 越しに読む（confirmLeaveRef と同じ作法）
+  const tabReselectRef = useRef<() => void>(() => {});
+  tabReselectRef.current = () => {
+    if (pc) return;
+    if (!confirmLeaveMatch()) return;
+    setSheet(null);
+    setRecOpen(null);
+    setRosSel(null);
+    setRosBack(null);
+    setTab("menu");
+  };
+  useEffect(() => {
+    const onReselect = (e: Event) => {
+      if ((e as CustomEvent<{ key?: string }>).detail?.key !== "team") return;
+      tabReselectRef.current();
+    };
+    window.addEventListener("alfa-tabreselect", onReselect);
+    return () => window.removeEventListener("alfa-tabreselect", onReselect);
+  }, []);
+  // hub-tiles §1-1: スマホは目次と先の画面が同じ .scroll を使い回すので、画面を替えたら先頭から
+  // （目次へ戻ったとき先の画面の位置が残らない）。PC は触らない
+  useEffect(() => {
+    if (!pc && rosScrollRef.current) rosScrollRef.current.scrollTop = 0;
+  }, [pc, activeTab]);
 
   // teamIntent消費: 他画面からの「チームHubのこのタブ・選手を開く」という遷移指示を反映する。
   // コーチが選手プレビュー中(team.viewer.role!=="coach")にros/attを指すintentが来た場合、
@@ -824,13 +864,18 @@ function Inner() {
       ) : recFull ? (
         // p14 §5-2: 試合の詳細の全画面。絞り込み・＋のアクションは出さない
         <MobileHeader title={recMatch ? recMatch.opponent : "試合記録"} onBack={() => setRecOpen(null)} />
+      ) : activeTab === "menu" ? (
+        // hub-tiles §1-1: 目次の題名は「チーム」（スタッフも「チーム運営」ではなく「チーム」。PC の題名はそのまま）。
+        // 右は空・戻る無し（下部タブ「チーム」の直下画面）
+        <MobileHeader title="チーム" />
       ) : (
-        // mobile-redesign-v2 §3-3: タイトルは変更なし。右のアクションはタブ連動で
-        // headerAction(スタッフのみ)1つだけだったが、案A §3-2でカレンダータブのときだけ
-        // 「絞り込み」を先頭に足す（コーチは絞り込み→＋の順、選手は絞り込みだけ）。
-        // 下部タブ「チーム」の直下画面のため戻るは出さない
+        // mobile-redesign-v2 §3-3: 右のアクションはタブ連動で headerAction(スタッフのみ)1つだけだったが、
+        // 案A §3-2でカレンダータブのときだけ「絞り込み」を先頭に足す（コーチは絞り込み→＋の順、選手は絞り込みだけ）。
+        // hub-tiles §1-1: 目次から入る先の画面なので、題名は画面名（カレンダー／試合記録／名簿／チャット）、
+        // 「‹」で目次へ。右のアクションは今のまま
         <MobileHeader
-          title={board.auth.role === "coach" ? "チーム運営" : "チーム"}
+          title={tabs.find(([t]) => t === activeTab)?.[1] ?? "チーム"}
+          onBack={() => setTab("menu")}
           actions={
             (showRecFilterAction || headerAction) && (
               <>
@@ -894,8 +939,9 @@ function Inner() {
         )
       )}
 
-      {/* mobile-redesign §1-7: 既存の上部タブ帯を.mseg様式に統一（PCでは従来どおり.fbar自体が非表示） */}
-      {!rosFull && !recFull && (
+      {/* mobile-redesign §1-7: 既存の上部タブ帯を.mseg様式に統一（PCでは従来どおり.fbar自体が非表示）。
+          hub-tiles §1-1: スマホはこの帯をやめて目次（タイル）に替えたので描くのは PC だけ（PC の DOM は変えない） */}
+      {pc && !rosFull && !recFull && (
         <MobileSegments
           wrapClassName="fbar"
           ariaLabel="チーム運営の表示切替"
@@ -939,7 +985,12 @@ function Inner() {
                 {recFilterPanel}
               </aside>
             )}
-            <div className="scroll" ref={rosScrollRef}>
+            {/* hub-tiles §1-1: 目次は hubmenu（縦の中央）。個人ページ・試合の詳細（スマホの全画面）は hubfull：
+                .phub が自分で上に 12px 持つので、帯をやめたぶんの上の余白（.scroll の padding-top 12px）は足さない */}
+            <div
+              className={`scroll${activeTab === "menu" ? " hubmenu" : ""}${rosFull || recFull ? " hubfull" : ""}`}
+              ref={rosScrollRef}
+            >
               {sheetInline ? (
                 <SheetHost
                   key={sheetKey(sheet)}
@@ -960,6 +1011,21 @@ function Inner() {
                 />
               ) : (
                 <>
+                  {/* hub-tiles §1-2: スマホの目次（タイル 2 列）。タイルを押すとその画面へ（試合の詳細は閉じる） */}
+                  {activeTab === "menu" && (
+                    <HubTiles
+                      isCoach={isCoach}
+                      me={me}
+                      showRos={showRos}
+                      calFilter={calFilterEff}
+                      calMine={calMine}
+                      calColorMode={calColorMode}
+                      onOpen={(t: HubTileTab) => {
+                        setRecOpen(null);
+                        setTab(t);
+                      }}
+                    />
+                  )}
                   {activeTab === "att" && (
                     <AttendanceTab
                       isCoach={isCoach}
@@ -1292,12 +1358,8 @@ function eventResultOf(
   return matchOfEvent(e.id, matches);
 }
 
-/** p15 §6-5: 試合の結果（勝・分・敗とスコア。クラスは .evresult の w / d / l） */
-function matchResultOf(m: MatchRecord): { cls: "w" | "d" | "l"; label: string; score: string } {
-  const win = m.ourScore > m.theirScore;
-  const draw = m.ourScore === m.theirScore;
-  return { cls: win ? "w" : draw ? "d" : "l", label: win ? "勝" : draw ? "分" : "敗", score: `${m.ourScore}-${m.theirScore}` };
-}
+/* p15 §6-5: 試合の結果（勝・分・敗とスコア。クラスは .evresult の w / d / l）は lib/hubTiles.ts の matchResultOf
+   （スマホ「チーム」の目次のタイルと共用） */
 
 /** 題名の後ろに付ける結果のタグ（リスト表示・日別シート・出欠のカード）。結果が出せない予定は何も出さない */
 function EvResultTag({ r }: { r: MatchRecord | undefined }) {
