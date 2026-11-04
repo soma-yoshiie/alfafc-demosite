@@ -14991,6 +14991,104 @@ button.st-row:active {
   background: #ffd166;
 }
 
+/* ===== drill-tap-targets §2: 練習メニュー（スマホ）の押し場所を 44px に広げる（見た目は変えない） =====
+   mobile-redesign §8（タップ対象 44px 以上）。CLAUDE.md §5「作業画面の密度は変えない」を守るため、
+   部品の大きさ・余白・並びは変えず、透明の ::before を部品の外へ広げて押せる範囲だけを広げる。
+   隣の部品との間隔より広げると後ろの部品に取られるので、間隔の中で分け合う（届かないものと、
+   ピッチ上の配置物を広げない理由は specs/drill-tap-targets.md §3）。
+   ::before の inset は枠線の内側（padding box）から測るので、1px の枠を持つ部品は 1px 多く広げる。
+   .mhead はスマホ分岐（MobileHeader）でしか描かれないので PC（32px のまま）には効かない */
+.drillapp:has(.mhead) .dxstep,
+.drillapp:has(.mhead) .dxstep .dxstepx,
+.drillapp:has(.mhead) .dxstepadd,
+.drillapp:has(.mhead) .dxundo button,
+.drillapp:has(.mhead) .dxseg button,
+.drillapp:has(.mhead) .dxpal button,
+.drillapp:has(.mhead) .dxlock,
+.drillapp:has(.mhead) .dxclear,
+.drillapp:has(.mhead) .dxctx button,
+.drillapp:has(.mhead) .drillcard .dcdel,
+.drillapp:has(.mhead) .grabzone,
+.drillapp:has(.mhead) .sendtgt label {
+  position: relative;
+}
+.drillapp:has(.mhead) .dxstep::before,
+.drillapp:has(.mhead) .dxstep .dxstepx::before,
+.drillapp:has(.mhead) .dxstepadd::before,
+.drillapp:has(.mhead) .dxundo button::before,
+.drillapp:has(.mhead) .dxseg button::before,
+.drillapp:has(.mhead) .dxpal button::before,
+.drillapp:has(.mhead) .dxlock::before,
+.drillapp:has(.mhead) .dxclear::before,
+.drillapp:has(.mhead) .dxctx button::before,
+.drillapp:has(.mhead) .drillcard .dcdel::before,
+.drillapp:has(.mhead) .grabzone::before,
+.drillapp:has(.mhead) .sendtgt label::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+/* 場面のチップ・「＋ 場面」（高さ 30・枠 1px）：上 6px・下 8px。上は .dxbody と .dxsteps の余白（8px）、下は .dxsteps の余白（8px）の中。
+   場面が多くて 2 段に折り返したときは、下の段の上 6px が段の間（6px）にちょうど収まり、上の段のチップには重ならない
+   （上の段は段の間を下の段に譲るので 36px） */
+.drillapp:has(.mhead) .dxstep::before,
+.drillapp:has(.mhead) .dxstepadd::before {
+  inset: -7px 0 -9px;
+}
+/* 場面の ×（15×15。チップの中で上下中央）：チップと同じ上 6px〜下 8px の帯に。左へは広げない（チップ本体の幅 44px を残す）、
+   右はチップの余白・枠（10px）と次のチップまでの間隔（6px）の手前まで。幅は 30px が上限 */
+.drillapp:has(.mhead) .dxstep .dxstepx::before {
+  inset: -13.5px -15px -15.5px 0;
+}
+/* 元に戻す・やり直す（38×38・枠 1px、2 つの間は 8px）：四方に 3px */
+.drillapp:has(.mhead) .dxundo button::before {
+  inset: -4px;
+}
+/* ピッチ・丸の大きさの切り替え（高さ 34。選択中だけ枠 1px）：上下 5〜6px。外枠の余白 3px＋枠 1px を越えて 2px 外まで */
+.drillapp:has(.mhead) .dxseg button::before {
+  inset: -6px 0;
+}
+/* アイテム・動線のパレット（高さ 36・枠 1px、行の間は 7px）：上下 4px。間の 7px を上下の行で分け合うため、
+   次の行がある行は 43px（36＋7）が上限（specs/drill-tap-targets.md §3） */
+.drillapp:has(.mhead) .dxpal button::before {
+  inset: -5px 0;
+}
+/* 連続して配置する（高さ 26。上の「ライン」・下の「全消去」との間は 10px ずつ）：両隣の 44px を残して上 6px・下 8px */
+.drillapp:has(.mhead) .dxlock::before {
+  inset: -6px 0 -8px;
+}
+/* 全消去（高さ 40・枠 1px）：上下 2px */
+.drillapp:has(.mhead) .dxclear::before {
+  inset: -3px 0;
+}
+/* 選んだ物の上（.below は下）に出る道具（36×32、間は 2px、外枠の余白 4px）：縦は選んだ物と反対の側へだけ
+   外枠の外 4px まで（選んだ物の側は外枠の内側まで。外へ出すと、選んだ物を押したつもりで削除などに当たる）。
+   横は間の半分の 1px ずつ、両端のボタンだけ外側へ 7px（真ん中のボタンは 38px が上限） */
+.drillapp:has(.mhead) .dxctx button::before {
+  inset: -8px -1px -4px;
+}
+.drillapp:has(.mhead) .dxctx.below button::before {
+  inset: -4px -1px -8px;
+}
+.drillapp:has(.mhead) .dxctx button:first-child::before {
+  left: -7px;
+}
+.drillapp:has(.mhead) .dxctx button:last-child::before {
+  right: -7px;
+}
+/* ライブラリのシートの削除（34×34・枠 1px、カードの余白 9px）：四方に 5px */
+.drillapp:has(.mhead) .drillcard .dcdel::before {
+  inset: -6px;
+}
+/* シートのつまみ（高さ 30）：上へ 14px。シートの外（暗い面）も押すと同じく閉じるので、動きは変わらない */
+.drillapp:has(.mhead) .grabzone::before {
+  top: -14px;
+}
+/* 送信先（高さ 39・枠 1px、行の間は 8px）：上下 3px */
+.drillapp:has(.mhead) .sendtgt label::before {
+  inset: -4px 0;
+}
+
 /* ============================================================
    チーム運営 改修：ホームタブ / 出欠グルーピング / カレンダー強化
    ============================================================ */
