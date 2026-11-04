@@ -1224,7 +1224,7 @@ export interface TeamData {
   fitnessStdSeeded?: true;
   /** 学校区分（学年グループの範囲・ラベルを決める）。旧データは未定義＝"elementary"（groups-everywhere §1） */
   schoolStage?: SchoolStage;
-  /** リーグ順位表（p14 §3）。未定義＝デモの既定値（lib/sampleLeague.ts の DEFAULT_LEAGUE） */
+  /** リーグ順位表（p14 §3）。未定義＝デモの既定値（lib/sampleLeague.ts の defaultLeague()） */
   league?: LeagueTable;
   /** p15 §6: 既存の試合記録とカレンダーの予定の紐づけ（一括処理）を済ませた印 */
   matchEventsLinked?: true;

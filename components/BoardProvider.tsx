@@ -1360,9 +1360,11 @@ function newMsgId(): string {
 /**
  * デモの 1 対 1 とその既読（chat-plan-a §6。新規シードのときだけ入る）。
  * グループのスレッドのデモ（お知らせにされたメッセージ）は lib/sampleChat.ts（home-chat-groups-roster §2-8）。
- * - 佐藤 蒼空(p08)「明日の集合は何時ですか？」→ 監督の返信（replyTo 付き）→ 選手のお礼（スタッフ未読）。
+ * - 佐藤 蒼空(p08)「練習試合の集合は何時ですか？」→ 監督の返信（replyTo 付き）→ 選手のお礼（スタッフ未読）。
  *   統括の最終調整: 以前は質問そのものをスタッフ未読にしていたが、監督が返信済みなのに
  *   「ここから未読」が質問の上に出て不自然だった。返信した時点で質問は読んだものとし、未読はその後のお礼にする
+ *   demo-data-consistency §1: 以前は「明日の集合」→「8:45 に市民グラウンド」で、翌日の予定（中2 練習 18:30）とも
+ *   練習試合（ev_match_next：集合 8:30・青空G。lib/sampleChat.ts の Aチームのお知らせ）とも合わなかった。練習試合の話にそろえた
  * - 中村 大翔(p02)「ノート出しました」（スタッフ未読）
  * - 吉田 結翔(p11) 昨日の 1 往復（両側とも既読済み）
  */
@@ -1378,7 +1380,7 @@ function sampleChat(): { messages: ChatMessage[]; reads: ChatReads } {
   const y1 = y.getTime();
   const y2 = y1 + 12 * 60_000;
 
-  const qText = "明日の集合は何時ですか？";
+  const qText = "練習試合の集合は何時ですか？";
   const messages: ChatMessage[] = [
     {
       id: "msg_demo_p11_q",
@@ -1414,7 +1416,7 @@ function sampleChat(): { messages: ChatMessage[]; reads: ChatReads } {
       ts: min(40),
       to: dmThreadKey("p08"),
       ...staff,
-      text: "8:45 に市民グラウンドです。",
+      text: "8:30 に青空Gです。",
       replyTo: { id: "msg_demo_p08_q", source: "message", fromName: nm("p08"), text: qText },
     },
     {

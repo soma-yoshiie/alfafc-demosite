@@ -2,6 +2,9 @@
 // かつての sampleAnnouncements（お知らせ 3 件）を「グループのメッセージ（announce あり）」にして入れ、
 // あわせて 全員 と 中1 のスレッドにスタッフの短い発言を入れる（グループが空に見えないように）。
 // 既読（reads[key].members）と了解（acks）は対象の選手から決め打ちで選ぶ（実行のたびに同じ結果）。
+// demo-data-consistency §1: 予定の日付は今日からの相対なので、本文に曜日・「今週末」「今週」を書かない
+// （開く曜日によって予定と食い違う）。どの予定の話かは題名・時刻・場所で示し、カレンダーの予定と同じ値にする
+// （全体練習のビブス＝ev_practice_today のメモ、練習試合＝ev_match_next の 9:15・青空G、中1の練習＝ev_practice_g1 の 17:00）。
 
 import type { ChatMessage, ChatReads, Player } from "./types";
 import { groupThreadKey } from "./types";
@@ -67,7 +70,7 @@ export function sampleGroupChat(now: number, players: Player[] = SAMPLE_PLAYERS)
       ts: tAnn1,
       to: ALL_THREAD_KEY,
       ...okaStaff,
-      text: "今週末は練習試合です\n集合 8:45・スパイクの手入れも忘れずに。",
+      text: "全体練習はビブスを持参\n全体練習ではビブスを使います。スパイクの手入れとあわせて、忘れずに準備してください。",
       announce: { ts: tAnn1, byName: "岡本" },
       pinned: true,
       acks: acksOf(pickSpread(seen1, 41, ["p08"]), tAnn1),
@@ -86,7 +89,7 @@ export function sampleGroupChat(now: number, players: Player[] = SAMPLE_PLAYERS)
       ts: tAnn2,
       to: groupThreadKey("grp_grade_3"),
       ...fujita,
-      text: "木曜はセットプレーの確認\n土曜の公式戦に向けて、木曜の練習はセットプレーの確認をします。",
+      text: "次の練習はセットプレーの確認\n次の中3の練習では、コーナーキックとフリーキックの確認をします。",
       announce: { ts: tAnn2, byName: "藤田" },
       acks: acksOf(pickSpread(seen2, 15), tAnn2),
     },
@@ -96,7 +99,7 @@ export function sampleGroupChat(now: number, players: Player[] = SAMPLE_PLAYERS)
       ts: tAnn3,
       to: groupThreadKey(SAMPLE_GROUP_A_ID),
       ...okaStaff,
-      text: "金曜 9:15 キックオフ\n金曜の練習試合は 9:15 キックオフ。集合は 8:30 です。",
+      text: "練習試合は 9:15 キックオフ\n青空FCとの練習試合は 9:15 キックオフ。集合は 8:30、場所は青空Gです。",
       announce: { ts: tAnn3, byName: "岡本" },
       acks: acksOf(pickSpread(seen3, 12), tAnn3),
     },
@@ -113,7 +116,7 @@ export function sampleGroupChat(now: number, players: Player[] = SAMPLE_PLAYERS)
       ts: tG1b,
       to: groupThreadKey("grp_grade_1"),
       ...okaStaff,
-      text: "今週の練習は 17:00 からです。わからないことはここで聞いてね。",
+      text: "中1の練習は 17:00 からです。わからないことはここで聞いてね。",
     },
   ];
 

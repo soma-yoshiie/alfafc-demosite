@@ -31,7 +31,8 @@ import type {
 import { gradeLabel, STAGE_GRADES } from "@/lib/types";
 import { loadTeam, loadViewer, saveTeam, saveViewer } from "@/lib/storage";
 import { addDaysStr, localDateStr } from "@/lib/dates";
-import { DEFAULT_LEAGUE } from "@/lib/sampleLeague";
+import { defaultLeague, sampleLeague } from "@/lib/sampleLeague";
+import { SAMPLE_COMPETITIONS, sampleMatches } from "@/lib/sampleMatches";
 import {
   DEFAULT_FITNESS_TESTS,
   SAMPLE_CUSTOM_GROUPS,
@@ -94,6 +95,7 @@ function sampleTeam(): TeamData {
   const sampleGroups: TeamGroup[] = [...gradeGroupsFor("junior", []), ...SAMPLE_CUSTOM_GROUPS];
   const allPlayerIds = SAMPLE_PLAYERS.map((p) => p.id);
   const teamAIds = membersOf(SAMPLE_GROUP_A_ID, SAMPLE_PLAYERS, sampleGroups).map((p) => p.id);
+  const matches = sampleMatches(today);
   return {
     events: [
       {
@@ -180,7 +182,8 @@ function sampleTeam(): TeamData {
         id: "ev_practice_camp",
         kind: "practice",
         categoryId: "cat_camp",
-        title: "夏合宿（河口湖）",
+        // demo-data-consistency §1: 日付は今日から 20 日後の相対日付なので、季節の入った題名（旧「夏合宿」）にしない
+        title: "強化合宿（河口湖）",
         date: addDaysStr(today, 20),
         endDate: addDaysStr(today, 22),
         allDay: true,
@@ -251,159 +254,14 @@ function sampleTeam(): TeamData {
     // （sampleGroupsは冒頭で組み立て済みの「学年グループ＋カスタムグループ」）
     groups: sampleGroups,
     schoolStage: "junior",
-    competitions: [
-      { id: "cmp1", name: "春季リーグ U-12", note: "4〜6月・市内リーグ" },
-      { id: "cmp2", name: "練習試合", note: "" },
-    ],
+    competitions: SAMPLE_COMPETITIONS.map((c) => ({ ...c })),
     fitnessTests: DEFAULT_FITNESS_TESTS,
     // 標準種目は全部そろっているので補完済み（player-hub §1-4。立てないと、全部削除した直後の再読み込みで復活する）
     fitnessStdSeeded: true,
-    matches: [
-      {
-        id: "m1",
-        date: addDaysStr(today, -116),
-        opponent: "みどり台SC",
-        competitionId: "cmp1",
-        ourScore: 3,
-        theirScore: 1,
-        formation: "3-3-1",
-        lineup: [
-          { pos: "GK", playerId: "p01" },
-          { pos: "DF1", playerId: "p02" },
-          { pos: "DF2", playerId: "p04" },
-          { pos: "DF3", playerId: "p16" },
-          { pos: "MF1", playerId: "p06" },
-          { pos: "MF2", playerId: "p08" },
-          { pos: "MF3", playerId: "p09" },
-          { pos: "FW1", playerId: "p10" },
-        ],
-        periods: 2,
-        halfMinutes: 20,
-        goals: [
-          { playerId: "p10", minute: 12, origin: "open" },
-          { playerId: "p09", minute: 27, assistPlayerId: "p08", origin: "counter" },
-          { playerId: "p10", minute: 39, origin: "open" },
-        ],
-        subs: [{ outPlayerId: "p09", inPlayerId: "p15", minute: 33 }],
-        conceded: [{ minute: 19, origin: "set" }],
-        note: "序盤から主導権を握れた。左右のワイドが起点になった。",
-      },
-      {
-        id: "m2",
-        date: addDaysStr(today, -95),
-        opponent: "白鷺FC",
-        competitionId: "cmp1",
-        ourScore: 1,
-        theirScore: 2,
-        formation: "3-2-2",
-        lineup: [
-          { pos: "GK", playerId: "p01" },
-          { pos: "DF1", playerId: "p02" },
-          { pos: "DF2", playerId: "p04" },
-          { pos: "DF3", playerId: "p05" },
-          { pos: "MF1", playerId: "p06" },
-          { pos: "MF2", playerId: "p07" },
-          { pos: "FW1", playerId: "p08" },
-          { pos: "FW2", playerId: "p11" },
-        ],
-        periods: 2,
-        halfMinutes: 20,
-        goals: [{ playerId: "p08", minute: 41, assistPlayerId: "p06", origin: "set" }],
-        subs: [{ outPlayerId: "p07", inPlayerId: "p14", minute: 30 }],
-        conceded: [
-          { minute: 15, origin: "open" },
-          { minute: 44, origin: "counter" },
-        ],
-        note: "後半に運動量が落ち、終盤の失点が響いた。",
-      },
-      {
-        id: "m3",
-        date: addDaysStr(today, -67),
-        opponent: "東ヶ丘少年団",
-        competitionId: "cmp1",
-        ourScore: 2,
-        theirScore: 0,
-        formation: "3-3-1",
-        lineup: [
-          { pos: "GK", playerId: "p01" },
-          { pos: "DF1", playerId: "p02" },
-          { pos: "DF2", playerId: "p04" },
-          { pos: "DF3", playerId: "p16" },
-          { pos: "MF1", playerId: "p06" },
-          { pos: "MF2", playerId: "p09" },
-          { pos: "MF3", playerId: "p11" },
-          { pos: "FW1", playerId: "p10" },
-        ],
-        periods: 2,
-        halfMinutes: 20,
-        goals: [
-          { playerId: "p11", minute: 8, origin: "open" },
-          { playerId: "p10", minute: 35, assistPlayerId: "p09", origin: "counter" },
-        ],
-        subs: [],
-        note: "早い時間の先制が効いた。守備の連携も安定していた。",
-      },
-      {
-        id: "m4",
-        date: addDaysStr(today, -53),
-        opponent: "コスモスJFC",
-        competitionId: "cmp1",
-        ourScore: 2,
-        theirScore: 2,
-        formation: "2-4-1",
-        lineup: [
-          { pos: "GK", playerId: "p01" },
-          { pos: "DF1", playerId: "p02" },
-          { pos: "DF2", playerId: "p16" },
-          { pos: "MF1", playerId: "p06" },
-          { pos: "MF2", playerId: "p07" },
-          { pos: "MF3", playerId: "p09" },
-          { pos: "MF4", playerId: "p11" },
-          { pos: "FW1", playerId: "p08" },
-        ],
-        periods: 2,
-        halfMinutes: 20,
-        goals: [
-          { playerId: "p09", minute: 15, origin: "open" },
-          { playerId: "p06", minute: 44, origin: "set" },
-        ],
-        subs: [{ outPlayerId: "p11", inPlayerId: "p15", minute: 30 }],
-        conceded: [
-          { minute: 25, origin: "counter" },
-          { minute: 41, origin: "set" },
-        ],
-        note: "終盤に追いつかれたが、粘って追いつき返した。",
-      },
-      {
-        id: "m5",
-        date: addDaysStr(today, -32),
-        opponent: "青葉SC",
-        competitionId: "cmp2",
-        ourScore: 0,
-        theirScore: 3,
-        goals: [],
-        subs: [{ outPlayerId: "p07", inPlayerId: "p14", minute: 25 }],
-        note: "相手の運動量に終始押し込まれた。次への課題が見えた試合。",
-      },
-      {
-        id: "m6",
-        date: addDaysStr(today, -11),
-        opponent: "高砂フットボールクラブ",
-        competitionId: "cmp2",
-        // groups-phase2 §3-1: サンプル試合のうち1件（練習試合）をAチーム対象にする
-        groupIds: [SAMPLE_GROUP_A_ID],
-        ourScore: 4,
-        theirScore: 2,
-        goals: [
-          { playerId: "p10", minute: 5 },
-          { playerId: "p08", minute: 22, assistPlayerId: "p11" },
-          { playerId: "p09", minute: 30 },
-          { playerId: "p10", minute: 38 },
-        ],
-        subs: [{ outPlayerId: "p10", inPlayerId: "p15", minute: 42 }],
-        note: "終始主導権を握り、複数得点で快勝。",
-      },
-    ],
+    // demo-data-consistency §2: 試合記録は lib/sampleMatches.ts。順位表はその試合記録（リーグ戦）から作って一緒に保存する
+    // （順位表の自チームの行と試合記録の勝敗・得失点が、どの画面でも同じ数字になるように）
+    matches,
+    league: sampleLeague(matches),
   };
 }
 
@@ -658,8 +516,8 @@ export function TeamProvider({ children }: { children: React.ReactNode }) {
   // groups-editing-and-place-history §3: 既定を"junior"に変更（実際にはstate初期化で
   // 常に埋まっているため、ここは万一未設定のときの保険）
   const schoolStage: SchoolStage = team.schoolStage ?? "junior";
-  /** p14 §3: リーグ順位表の実効値（未保存はデモの既定値） */
-  const league = useMemo<LeagueTable>(() => team.league ?? DEFAULT_LEAGUE, [team.league]);
+  /** p14 §3: リーグ順位表の実効値（未保存はデモの既定値。demo-data-consistency §2: 新しいシードは sampleTeam で保存済み） */
+  const league = useMemo<LeagueTable>(() => team.league ?? defaultLeague(), [team.league]);
 
   /**
    * 学校区分を変更する。学年グループをensureGradeGroupsで整え直す（改名は保持・範囲外は削除）。
