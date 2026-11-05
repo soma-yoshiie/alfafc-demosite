@@ -1720,6 +1720,39 @@ header {
 .libempty {
   display: none;
 }
+/* ===== ライブラリ（スマホ）：PC 用のプレビューのペイン（.libmain）を 1 列に収める =====
+   スマホでも .libmain（プレビュー・情報・「ボードで開く」などの操作）を一覧の下に出すが、
+   プレビューの画像（書き出し用の PNG。幅 1500px）に幅の上限が無く .libmain の中で横にはみ出し、
+   その高さで .libpane（一覧）が 100px ほどに押しつぶされて一覧がほぼ見えなかった。
+   ・画像は列の幅に収め、高さの上限は PC（.libapp .libprev img）と同じ min(48vh, 460px)
+   ・一覧と詳細を 2 つの独立スクロールに分けず、画面（.libapp）1 本でスクロールする。見出しは上に残す
+   ・.libpane の下の余白は下部タブの分（56px）ではなく区画間の 24px（下部タブの分は最後の .libmain が持つ）
+   .mhead はスマホ分岐（MobileHeader）でしか描かれないので、PC には効かない（PC reset は不要） */
+.libapp:has(.mhead) {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.libapp:has(.mhead) > .mhead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.libapp:has(.mhead) .libpane,
+.libapp:has(.mhead) .libmain {
+  flex: none;
+  overflow: visible;
+}
+.libapp:has(.mhead) .libpane {
+  padding-bottom: 24px;
+}
+.libapp:has(.mhead) .libprev img {
+  display: block;
+  max-width: 100%;
+  max-height: min(48vh, 460px);
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+}
 /* 記事のマスター・ディテールも同じ保険(モバイル幅で描画されてもクリップされない最低限) */
 .artpane, .artmain {
   min-height: 0;
