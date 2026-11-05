@@ -8432,9 +8432,9 @@ button.annreadrow.pick:active {
 .chatcol > .annackbtn {
   margin-top: 2px;
 }
-/* ホームのお知らせ・通知から開いた吹き出しを 1.5 秒ほど --accent-tint で光らせる（自分の発言も同じ） */
-.chatrow.flash .chatbubble,
-.chatrow.mine.flash .chatbubble {
+/* ホームのお知らせ・通知から開いた相手の吹き出しを 1.5 秒ほど --accent-tint で光らせる
+   （自分の発言は青のまま、輪郭だけ。ui-fix-2026-11-06 §1） */
+.chatrow.flash:not(.mine) .chatbubble {
   background: var(--accent-tint);
   color: var(--ink);
 }
@@ -16934,84 +16934,6 @@ body:has(.mhead) .grouppick-item {
   opacity: 0.35;
   cursor: default;
 }
-/* 4 マス（押すと該当セクションへ。スマホは 2×2） */
-.phubkpi {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  margin-top: 12px;
-}
-.phubkpi-item {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  min-width: 0;
-  min-height: 56px;
-  padding: 8px 12px;
-  text-align: left;
-  color: var(--ink);
-  background: var(--surface-low);
-  border: 1px solid var(--outline);
-  border-radius: var(--r-md);
-  cursor: pointer;
-}
-.phubkpi-item .v {
-  font-size: var(--fs-title);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.phubkpi-item .v small {
-  margin: 0 2px;
-  font-size: var(--fs-body-s);
-  font-weight: 400;
-  color: var(--mut);
-}
-.phubkpi-item .l {
-  font-size: var(--fs-body-s);
-  color: var(--mut);
-}
-
-/* ux-fix R2-4：要約（4 マス）は「基本」だけ。ほかのセクションは名前・背番号・ポジションの 1 行（56px） */
-.phubhead.compact {
-  display: flex;
-  align-items: center;
-  min-height: 56px;
-  padding: 0 14px;
-}
-.phubhead.compact .phubhead-top {
-  flex: 1;
-  min-width: 0;
-  align-items: center;
-}
-.phubhead.compact .phubid {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.phubhead.compact .phubpos {
-  min-width: 0;
-  padding: 2px 8px;
-  font-size: var(--fs-body);
-}
-.phubhead.compact .phubno {
-  font-size: var(--fs-title-s);
-}
-.phubhead.compact .phubname {
-  font-size: var(--fs-title);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.phubhead.compact .phubsub {
-  display: none;
-}
-.phubhead.compact .phubedit {
-  margin: 0;
-}
-
 /* メニュー：スマホ＝ヘッダーカードの下の横スクロールのチップ列（44px。スクロールしても上に貼り付く） */
 .phubtabs {
   position: sticky;
@@ -25934,15 +25856,6 @@ textarea.st-input.mt-msg {
     margin: 0;
     border: 1px solid var(--outline);
   }
-  .phubkpi {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .phubkpi-item {
-    min-height: 0;
-  }
-  .phubkpi-item:hover {
-    background: var(--surface-container);
-  }
   .phubbody.withnav {
     display: grid;
     grid-template-columns: 160px minmax(0, 1fr);
@@ -26110,7 +26023,6 @@ textarea.st-input.mt-msg {
   /* player-hub §3（狭いハブ）：名簿の 3 列（220｜300｜個人ページ）では 1024〜1300px 台で個人ページが 250〜500px になる。
      PlayerHub が自分の幅を測って 560px 未満のとき .narrow を付け（縦メニュー・.withnav は描かずチップ列 .phubtabs にする）、
      ここで 4 列のマスは 2 列に、2 列のカードは 1 列に、横に並べていた行は折り返して本文の幅を確保する */
-  .phub.narrow .phubkpi,
   .phub.narrow .phubnums,
   .phub.narrow .phubstats.four {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -27515,6 +27427,46 @@ textarea.st-input.mt-msg {
     display: none !important;
   }
 }
+/* ===== ui-fix-2026-11-06 §2: 予定を追加（スマホ）は縦にしか動かない ===== */
+.teamapp:has(.mhead) .sheetBody {
+  overflow-x: hidden;
+}
+.teamapp:has(.mhead) .catpick {
+  flex-wrap: wrap;
+  overflow: visible;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+/* 種類の管理・グループ管理・日別の一覧（.sheetBody 直下の .list）はシートの中で縮めず、シート全体を縦にスクロールさせる。出欠の記録・メンバー編集（.attrow の一覧）は従来どおり一覧だけがスクロールする */
+.teamapp:has(.mhead) .sheetBody > .list:not(:has(.attrow)) {
+  flex: 0 0 auto;
+  min-height: auto;
+  overflow-y: visible;
+}
+
+
+/* ===== ui-fix-2026-11-06 §5: 戦術ボード（スマホ）の道具列は 1 段に収める ===== */
+.boardapp:has(.mhead) .fbar {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+/* 残すのはフォーメーション・ペン・図形（アニメ中はペン・図形）。ほかはヘッダーの「…」へ */
+.boardapp:has(.mhead) .fbar > .fmini:not(.pen):not(.shapes) { display: none; }
+/* フォーメーションは「4-3-3 ▾」だけ（文言は消してよい：オーナー） */
+.boardapp:has(.mhead) .formbtn .fb-label { display: none; }
+.boardapp:has(.mhead) .formbtn { gap: 6px; padding: 0 12px; }
+/* ヘッダー「…」のチェック項目と相手の丸 */
+.mhead-more-item .colorchoice-check { margin-left: auto; margin-right: 6px; }
+.mhead-more-item .oppdot {
+  flex: none;
+  margin: 0 4px; /* svg の 20px 幅にそろえ、文字の左端を揃える */
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #c73246;
+  border: 2px solid #ff8b96;
+}
+
 
 /* =========================================================
    さらに広い画面(1600px以上)向けの追随調整。

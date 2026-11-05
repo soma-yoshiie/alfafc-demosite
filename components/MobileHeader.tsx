@@ -93,7 +93,7 @@ export function MobileHeaderMore({
   items,
 }: {
   label?: string;
-  items: { label: string; icon?: React.ReactNode; onClick: () => void }[];
+  items: { label: string; icon?: React.ReactNode; onClick: () => void; checked?: boolean }[];
 }) {
   const [open, setOpen] = useState(false);
   return (
@@ -117,7 +117,8 @@ export function MobileHeaderMore({
               <button
                 key={i}
                 type="button"
-                role="menuitem"
+                role={it.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+                aria-checked={it.checked !== undefined ? it.checked : undefined}
                 className="mhead-more-item"
                 onClick={() => {
                   setOpen(false);
@@ -126,6 +127,7 @@ export function MobileHeaderMore({
               >
                 {it.icon}
                 <span>{it.label}</span>
+                {it.checked ? <span className="colorchoice-check" /> : null}
               </button>
             ))}
           </div>

@@ -5,8 +5,6 @@ import { STAGE_GRADES, gradeLabel } from "@/lib/types";
 import type { DominantFoot } from "@/lib/types";
 import { ageFromGrade, ageOnApril1 } from "@/lib/profile";
 import { groupOf } from "@/lib/formations";
-import { playerSeasonStats } from "@/lib/playerStats";
-import { perPlayerAttendance } from "@/lib/attendanceStats";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { useProfiles } from "./ProfileProvider";
@@ -171,14 +169,6 @@ export default function PlayerHub({
   const isCaptain = board.state.captain === p.id;
   const groups = customGroupsOf(p, team.groups);
 
-  // 4 マスの KPI（§3-1）：身長・体重（最新の成長記録。無ければ Player の値）／今季 出場・得点／出席率／ノート提出
-  const ms = [...profile.measurements].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.updatedAt - b.updatedAt));
-  const curH = [...ms].reverse().find((m) => m.height != null)?.height ?? p.height ?? null;
-  const curW = [...ms].reverse().find((m) => m.weight != null)?.weight ?? p.weight ?? null;
-  const stats = playerSeasonStats(p.id, team.team.matches, board.notebook);
-  const att = perPlayerAttendance(team.team, [p], "all")[0];
-  const noteCount = board.notebook.filter((n) => n.playerId === p.id).length;
-
   const View = SECTION_VIEWS[sec];
   const sectionProps: HubSectionProps = { p, profile, viewer, stage, age, go, onManageFitnessTests };
 
@@ -199,8 +189,8 @@ export default function PlayerHub({
     <div className={`phub${narrow ? " narrow" : ""}`} ref={rootRef}>
       {/* §3-1 ヘッダーカード */}
       {/* <header> 要素は画面全体のヘッダー用の指定（header{display:flex…}）が掛かるので div にする */}
-      {/* 4 マスの要約は「基本」だけ。ほかのセクションでは名前・背番号・ポジションの 1 行（56px。ux-fix R2-4） */}
-      <div className={`phubhead${sec !== "overview" ? " compact" : ""}`} ref={headRef}>
+      {/* 2026-11-06：どの区画でも同じヘッダー（4 マスは廃止。ui-fix-2026-11-06 §4） */}
+      <div className="phubhead" ref={headRef}>
         <div className="phubhead-top">
           <div className="phubid">
             <span className={`phubpos ${groupOf(p.position)}`}>{p.position}</span>
@@ -236,37 +226,6 @@ export default function PlayerHub({
             <IconEdit />
           </button>
         </div>
-        {sec === "overview" && (
-        <div className="phubkpi">
-          <button type="button" className="phubkpi-item" onClick={() => go("growth")}>
-            <span className="v">
-              {curH ?? "—"}
-              <small>cm</small> / {curW ?? "—"}
-              <small>kg</small>
-            </span>
-            <span className="l">身長・体重</span>
-          </button>
-          <button type="button" className="phubkpi-item" onClick={() => go("activity")}>
-            <span className="v">
-              {stats.apps}
-              <small>試合</small> / {stats.goals}
-              <small>点</small>
-            </span>
-            <span className="l">今季 出場・得点</span>
-          </button>
-          <button type="button" className="phubkpi-item" onClick={() => go("activity")}>
-            <span className="v">{att && att.recorded > 0 ? `${att.pct}%` : "—"}</span>
-            <span className="l">出席率</span>
-          </button>
-          <button type="button" className="phubkpi-item" onClick={() => go("activity")}>
-            <span className="v">
-              {noteCount}
-              <small>件</small>
-            </span>
-            <span className="l">ノート提出</span>
-          </button>
-        </div>
-        )}
       </div>
 
       {/* スマホ・狭い PC：ヘッダーカードの下の横スクロールのチップ列（44px） */}

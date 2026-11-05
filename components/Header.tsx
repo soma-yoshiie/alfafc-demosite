@@ -3,7 +3,19 @@
 import { useEffect, useState } from "react";
 import { useBoard } from "./BoardProvider";
 import { MobileHeader, MobileHeaderAction, MobileHeaderMore } from "./MobileHeader";
-import { IconFilm, IconFolder, IconPlusSquare, IconSave, IconShare } from "./icons";
+import {
+  IconFilm,
+  IconFolder,
+  IconGhost,
+  IconHalfPitch,
+  IconPlusSquare,
+  IconRotate,
+  IconRoute,
+  IconSave,
+  IconShapes,
+  IconShare,
+} from "./icons";
+import { useBoardTools } from "./FormationBar";
 import { toLayoutKind, type PlacingRequest } from "@/lib/setPieceLayouts";
 
 /** PC(min-width:1024px)判定のブレークポイント。TeamHub.tsx usePc() と同じ値・同じ手法 */
@@ -43,6 +55,8 @@ export default function Header({
   // PCでは他画面(ライブラリ/チーム運営等)と同様に画面名をロゴに出す。
   // モバイルは従来どおりブランド名(ALFA FOOTBALL)のまま変更しない
   const pc = usePc();
+  const tools = useBoardTools();
+  const isAnim = board.mode === "anim";
 
   // セットプレーデザインの画面だけ「新規作成」を右上へ出す（戦術ボードの「新規」は
   // 操作列のまま変えない＝setpiece-redesign §7）。いまの種別・攻守・人数を引き継いで
@@ -100,7 +114,34 @@ export default function Header({
                   ...(isSp
                     ? [{ label: "新規作成", icon: <IconPlusSquare />, onClick: handleNewSetPiece }]
                     : []),
-                  { label: "戦術アニメ", icon: <IconFilm />, onClick: board.openStudio },
+                  // ui-fix-2026-11-06 §5-2: 戦術ボードは道具列から外した操作をモード別にここへ出す
+                  ...(!isSp && !isAnim
+                    ? [
+                        { label: "新規作成", icon: <IconPlusSquare />, onClick: tools.newPlay },
+                        { label: "整列", icon: <IconRotate />, onClick: tools.align },
+                        { label: "相手を配置", icon: <span className="oppdot" />, onClick: tools.addOpponent },
+                      ]
+                    : []),
+                  ...(!isSp
+                    ? [
+                        {
+                          label: "ハーフコート",
+                          icon: <IconHalfPitch />,
+                          onClick: tools.toggleHalf,
+                          checked: board.state.pitchView === "half",
+                        },
+                      ]
+                    : []),
+                  ...(!isSp && isAnim
+                    ? [
+                        { label: "ルート表示", icon: <IconRoute />, onClick: tools.toggleRoute, checked: !!board.showPaths },
+                        { label: "描き込み", icon: <IconShapes />, onClick: tools.toggleDrawings, checked: !!board.showDrawings },
+                        { label: "残像", icon: <IconGhost />, onClick: tools.toggleGhost, checked: !!board.showGhost },
+                      ]
+                    : []),
+                  ...(isSp || !isAnim
+                    ? [{ label: "戦術アニメ", icon: <IconFilm />, onClick: board.openStudio }]
+                    : []),
                   { label: "ライブラリ", icon: <IconFolder />, onClick: () => board.setScreen("library") },
                 ]}
               />

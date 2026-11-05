@@ -128,6 +128,7 @@ export function emptyProfile(playerId): PlayerProfile
 
 - 左：ポジションのバッジ（`.pos.gk/df/mf/fw` 既存）＋背番号。中：氏名（(C) はキャプテン）、学年 ・ 所属グループのバッジ（`PlayerGroupBadges` 既存）・利き足。右上：`IconEdit` の小ボタン（§2-1）。
 - 下に 4 マス `.phubkpi`：身長／体重（最新の成長記録。無ければ `Player.height/weight`）、今季 出場・得点（`playerSeasonStats`）、出席率（`perPlayerAttendance`）、ノート提出（件数）。マスを押すと該当セクションへ。
+- 2026-11-06：4 マスを廃止しヘッダーを 1 種類に → `ui-fix-2026-11-06.md` §4
 
 ### 3-2. セクション「基本」（`overview`）
 

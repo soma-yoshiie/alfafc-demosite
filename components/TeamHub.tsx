@@ -4596,7 +4596,7 @@ function SheetHost({
         <h2>{ev ? "予定を編集" : "予定を追加"}</h2>
         <div className="formfield">
           <label>種類</label>
-          {/* p16 §2: 種類の選択に色は出さない（選択中は CSS の --accent） */}
+          {/* 色は点で出す（ui-fix-2026-11-06 §3）。選択中は青のまま（CSS の --accent） */}
           <div className="catpick">
             {team.categories.map((c) => (
               <button
@@ -4606,6 +4606,7 @@ function SheetHost({
                 aria-pressed={categoryId === c.id}
                 onClick={() => pickCategory(c.id)}
               >
+                {c.color && <i className="grouppick-dot" style={{ background: c.color }} />}
                 {c.label}
               </button>
             ))}

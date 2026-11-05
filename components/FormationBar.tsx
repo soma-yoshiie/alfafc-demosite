@@ -14,11 +14,51 @@ import {
   IconShapes,
 } from "./icons";
 
+type BoardCtx = ReturnType<typeof useBoard>;
+
+/** 道具列（PC）とヘッダーの「…」（スマホ）が同じ処理を呼ぶための共通関数（ui-fix-2026-11-06 §5-2） */
+export function boardToolActions(board: BoardCtx) {
+  return {
+    newPlay: () => board.newPlay(),
+    align: () => {
+      board.resetPositions();
+      board.toast("フォーメーション位置を整列しました");
+    },
+    addOpponent: () => {
+      const count = (board.state.opponents ?? []).length;
+      board.addOpponent();
+      if (count === 0)
+        board.toast("相手トークンを配置しました（ドラッグで移動・押して編集）");
+    },
+    toggleHalf: () => {
+      const next = board.state.pitchView === "half" ? "full" : "half";
+      board.setPitchView(next);
+      board.toast(next === "half" ? "ハーフコート表示" : "フルコート表示");
+    },
+    toggleRoute: () => board.setShowPaths(!board.showPaths),
+    toggleDrawings: () => {
+      const next = !board.showDrawings;
+      board.setShowDrawings(next);
+      if (!next) {
+        // 非表示にした描き込みが選択状態のまま残らないようにする
+        board.setSelShape(null);
+        board.setSelStroke(null);
+      }
+    },
+    toggleGhost: () => board.setShowGhost(!board.showGhost),
+  };
+}
+
+export function useBoardTools() {
+  const board = useBoard();
+  return boardToolActions(board);
+}
+
 export default function FormationBar() {
   const board = useBoard();
+  const act = boardToolActions(board);
   // 編集系コントロールはスタッフのみ（選手は共有戦術の閲覧のみ）
   if (board.auth.role !== "coach") return null;
-  const oppCount = (board.state.opponents ?? []).length;
   const isAnim = board.mode === "anim";
 
   // ペン・図形・ハーフは編集/アニメ両モードで共通のボタン
@@ -46,11 +86,7 @@ export default function FormationBar() {
     <button
       className={`fmini half${board.state.pitchView === "half" ? " on" : ""}`}
       title="敵陣ハーフを拡大表示"
-      onClick={() => {
-        const next = board.state.pitchView === "half" ? "full" : "half";
-        board.setPitchView(next);
-        board.toast(next === "half" ? "ハーフコート表示" : "フルコート表示");
-      }}
+      onClick={act.toggleHalf}
     >
       <IconHalfPitch />
       <span>ハーフ</span>
@@ -68,7 +104,7 @@ export default function FormationBar() {
             <button
               className={`fmini${board.showPaths ? " on" : ""}`}
               title="ルート矢印の表示/非表示"
-              onClick={() => board.setShowPaths(!board.showPaths)}
+              onClick={act.toggleRoute}
             >
               <IconRoute />
               <span>ルート表示</span>
@@ -76,15 +112,7 @@ export default function FormationBar() {
             <button
               className={`fmini${board.showDrawings ? " on" : ""}`}
               title="ペン・図形の描き込みの表示/非表示"
-              onClick={() => {
-                const next = !board.showDrawings;
-                board.setShowDrawings(next);
-                if (!next) {
-                  // 非表示にした描き込みが選択状態のまま残らないようにする
-                  board.setSelShape(null);
-                  board.setSelStroke(null);
-                }
-              }}
+              onClick={act.toggleDrawings}
             >
               <IconShapes />
               <span>描き込み</span>
@@ -92,7 +120,7 @@ export default function FormationBar() {
             <button
               className={`fmini${board.showGhost ? " on" : ""}`}
               title="残像（前の場面の開始位置）の表示/非表示"
-              onClick={() => board.setShowGhost(!board.showGhost)}
+              onClick={act.toggleGhost}
             >
               <IconGhost />
               <span>残像</span>
@@ -102,6 +130,7 @@ export default function FormationBar() {
           <>
             <button
               className="formbtn"
+              aria-label="フォーメーション変更"
               onClick={() => board.openSheet({ type: "formation" })}
             >
               <span className="fb-label">フォーメーション変更</span>
@@ -111,7 +140,7 @@ export default function FormationBar() {
             <button
               className="fmini"
               title="新しい戦術を作成"
-              onClick={board.newPlay}
+              onClick={act.newPlay}
             >
               <IconPlusSquare />
               <span>新規</span>
@@ -119,10 +148,7 @@ export default function FormationBar() {
             <button
               className="fmini"
               title="フォーメーション位置を整列"
-              onClick={() => {
-                board.resetPositions();
-                board.toast("フォーメーション位置を整列しました");
-              }}
+              onClick={act.align}
             >
               <IconRotate />
               <span>整列</span>
@@ -130,11 +156,7 @@ export default function FormationBar() {
             <button
               className="fmini opp"
               title="相手チームのトークンを配置"
-              onClick={() => {
-                board.addOpponent();
-                if (oppCount === 0)
-                  board.toast("相手トークンを配置しました（ドラッグで移動・押して編集）");
-              }}
+              onClick={act.addOpponent}
             >
               <span className="oppdot" />
               <span>＋相手</span>
