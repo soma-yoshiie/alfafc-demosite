@@ -67,7 +67,8 @@ npx tsc --noEmit   # コミット前に必ず通す
 
 | 場所 | 中身 |
 |---|---|
-| `app/page.tsx` → `components/AppRoot.tsx` → `AppFlow.tsx` | 起動（スプラッシュ `SplashScreen.tsx`・`BrandMark.tsx`）→ ログイン `LoginScreen.tsx` → 本体 `ConsoleShell.tsx` |
+| `app/page.tsx` → `components/AppRoot.tsx` → `AppFlow.tsx` | 起動（スプラッシュ `SplashScreen.tsx`・`BrandMark.tsx`）→ ログイン `LoginScreen.tsx`（ロゴも `BrandMark`）→ 本体 `ConsoleShell.tsx` |
+| `app/icon0.svg`・`app/icon1.png`・`app/apple-icon.png` | アプリのアイコン（favicon・iOS のホーム画面）。`BrandMark` と同じ幾何で文字なし。名前を変えたら `scripts/relativize-export.cjs` も直す（`login-brand-icon.md` §2） |
 | `components/ConsoleShell.tsx` | 画面の切り替え・下部タブ（`STAFF_MTAB` / `PLAYER_MTAB`）・PC の左レール。同じタブの再タップは `alfa-tabreselect` イベント |
 | `components/BoardProvider.tsx` | 戦術ボードの状態（`useReducer`）。`ScreenName` の型もここ |
 | `components/TeamProvider.tsx` | チーム（名簿・予定・出欠・試合記録・グループ・チャット・お知らせ）。`lib/sampleTeam.ts` がデモデータ |
@@ -132,10 +133,11 @@ npx tsc --noEmit   # コミット前に必ず通す
 
 | 仕様 | 何が決まっているか |
 |---|---|
+| `login-brand-icon.md` | ログインのロゴ＝起動画面と同じ `BrandMark`（題字は 1 色）、アプリのアイコン 3 ファイル（地 #f4f5f9・文字なし）。Next は `icon.*` を 1 つしか拾わないので番号付き。PC の変更 2 か所は §3、PC レールの旧ロゴは未置換 |
 | `coaching-hub-s1.md` | コーチングの最初の画面（スマホ）＝「作る」の正方形 3 つ＋最近の保存 6 件＋ライブラリの行（種類ごとの件数）。分析 PDF「スマホ版の骨組みと雰囲気の UI 案」の骨組み S1。PC は変えない。`mobile-redesign.md` #14 の例外 2 と、実装時の判断は §3・§6 |
 | `ui-fix-2026-11-06.md` | UI 修正 5 件：チャットの自分の吹き出しは輪郭だけ、予定を追加（スマホ）は縦スクロールだけ、種類の選択肢に色の点、個人ページのヘッダーは 1 種類（4 マス廃止）、スマホの戦術ボードの道具列は 3 つ＋ヘッダー「…」。直さなかった指摘は §9 |
 | `drill-tap-targets.md` | 練習メニュー（スマホ）の押し場所を、見た目を変えずに透明の当たりで 44px へ。届かなかったものと理由は §3 |
-| `splash-brand.md` | 起動画面のロゴ（`BrandMark.tsx`、描く順番）。ログイン・PC レールの旧ロゴは未置換 |
+| `splash-brand.md` | 起動画面のロゴ（`BrandMark.tsx`、描く順番）。ログインとアイコンは `login-brand-icon.md` で置換済み、PC レールの旧ロゴは未置換 |
 | `hub-tiles.md` | スマホ「チーム」＝タイルの目次、個人ページ＝チップ 2 段、選手のノート＝目次＋ベル、同じタブの再タップ |
 | `home-chat-groups-roster.md` | お知らせ＝グループのメッセージの印、ホームの並び、名簿の複数選択 |
 | `boundary-plan-a.md`・`calendar-plan-a.md` | 境目（カード・パネル）の決まり、カレンダーの絞り込みと色分け |

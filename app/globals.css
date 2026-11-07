@@ -2407,7 +2407,7 @@ body:has(.mhead) .chatcompose textarea {
   color: rgba(234, 255, 240, 0.85);
 }
 /* mobile-redesign B-2: 全画面再生オーバーレイのタグ文字=青(PC既存の.fptag bと同じ値。
-   ログイン/スプラッシュのロゴ(.login-logo b等)は別途「据え置き」対象のため対象外) */
+   ログイン/スプラッシュのロゴは BrandMark（splash-brand.md・login-brand-icon.md）に置き換え済みで緑の b は無い) */
 .fptag b {
   color: var(--accent);
 }
@@ -4378,22 +4378,26 @@ body:has(.mhead) .teamapp .dynrow select {
   margin-bottom: 18px;
   animation: sp-up 0.5s ease both;
 }
+/* ===== login-brand-icon §1: ログインのロゴを起動画面と同じ BrandMark に。箱の比率は .splash-mark と同じ 510/400、
+   題字は .splash-title と同じ 1 色・700・字間 0.1em（マーク幅 160 に対して 30px ＝ 起動画面と同じ 0.19 倍） ===== */
 .login-mark {
-  width: 92px;
-  height: 92px;
-  margin: 0 auto 8px;
+  width: 160px;
+  aspect-ratio: 510 / 400;
+  margin: 0 auto 20px;
 }
-.login-mark svg { width: 100%; height: 100%; }
+.login-mark svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .login-logo {
   font-family: var(--font-display);
   font-size: 30px;
-  letter-spacing: 2px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
 }
-.login-logo b { color: var(--lime); }
 .login-tag {
   color: var(--mut);
   font-size: 13px;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 .login-card {
   width: min(92vw, 380px);
@@ -20903,7 +20907,7 @@ textarea.st-input.mt-msg {
   /* =========================================================
      ログイン・スプラッシュ トークン整合（PCのみ・最小対応）
      ※ レイアウト変更なし。背景・ボタン・角丸のトークン整合のみ。
-        ブランドロゴの緑(.login-logo b)は据え置き
+        ブランドロゴは login-brand-icon.md で BrandMark に置換済み（緑の b は無い）
      ========================================================= */
   /* 背景: 暖色系の生値グラデ→コンソールの地（白→--surface）へ。焦点は元の値を維持 */
   .splash {
@@ -23389,7 +23393,6 @@ textarea.st-input.mt-msg {
   .calnav b,
   .mscore,
   .mvscore,
-  .login-logo,
   .fcell,
   .profcell .pv,
   .agdate b {

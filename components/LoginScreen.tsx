@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { Session } from "@/lib/types";
 import { DEFAULT_PLAYER_PASSWORD, loadCoachAccount, saveCoachAccount } from "@/lib/auth";
 import { loadSettings, loadState } from "@/lib/storage";
-import LogoMark from "./Logo";
+import BrandMark from "./BrandMark";
 import { IconEye, IconEyeOff } from "./icons";
 
 /** 表示トグル付きパスワード入力 */
@@ -98,11 +98,9 @@ export default function LoginScreen({ onLogin }: { onLogin: (s: Session) => void
     <div className="login">
       <div className="login-head">
         <div className="login-mark">
-          <LogoMark uid="lg" />
+          <BrandMark uid="lg" />
         </div>
-        <div className="login-logo">
-          ALFA<b> FOOTBALL</b>
-        </div>
+        <div className="login-logo">ALFA FOOTBALL</div>
         <div className="login-tag">チームの戦術とノートを、ひとつの場所で。</div>
       </div>
 

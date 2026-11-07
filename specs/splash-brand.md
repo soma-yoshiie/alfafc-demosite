@@ -150,7 +150,7 @@ viewBox は `-85 0 510 400`（参考座標から (300,565) を引いた値。弧
 
 ## 5. 触らないこと
 
-- components/Logo.tsx（LogoMark）と、それを使うログイン画面（.login-mark/.login-logo）・左レール（.rail-mark）。ロゴの差し替えは別の依頼。
+- components/Logo.tsx（LogoMark）と、それを使うログイン画面（.login-mark/.login-logo）・左レール（.rail-mark）。ロゴの差し替えは別の依頼。（追記 2026-11-08：ログイン画面とアプリのアイコンは `login-brand-icon.md` で BrandMark に置き換えた。左レールは旧ロゴのまま）
 - `.splash` の背景（--surface／PC の radial-gradient）、z-index、タップで閉じる動き、AppFlow の分岐。
 - `@keyframes sp-up`・`sp-fadein`（ログイン画面が使う）。
 - 3D のブート画面 `.sp3dboot`。

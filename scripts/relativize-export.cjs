@@ -1,6 +1,6 @@
 /*
  * 静的書き出し（out/）を「どこに置いても動く」ように加工するスクリプト。
- * - HTML 内の絶対パス（/_next/ ・ /icon.svg）を、ファイルの深さに応じた相対パスへ書き換え
+ * - HTML 内の絶対パス（/_next/ と app/ のアイコン /icon0.svg・/icon1.png・/apple-icon.png）を、ファイルの深さに応じた相対パスへ書き換え
  *   → ルート配信 / GitHub Pages のサブパス（/リポジトリ名/）/ file:// のどこでも動く
  * - GitHub Pages の Jekyll が "_next" を無視しないよう .nojekyll を作成
  * - 仕上げに out/ を docs/ へミラー（GitHub Pages「/docs」公開用。out/ は .gitignore 対象）
@@ -30,11 +30,12 @@ for (const f of htmls) {
   const prefix = depth === 0 ? "" : "../".repeat(depth);
   const before = fs.readFileSync(f, "utf8");
   // href/src 属性だけでなく、RSCフライトデータ（インラインJSON）内の絶対パスも一括で相対化する。
-  const after = before
-    .split("/_next/")
-    .join(`${prefix}_next/`)
-    .split("/icon.svg")
-    .join(`${prefix}icon.svg`);
+  // アイコンは app/ の metadata ファイル（icon0.svg・icon1.png・apple-icon.png。specs/login-brand-icon.md §2）。
+  // 名前を変えたらここも直す（相対化し忘れると GitHub Pages のサブパスで 404 になる）
+  let after = before.split("/_next/").join(`${prefix}_next/`);
+  for (const icon of ["icon0.svg", "icon1.png", "apple-icon.png"]) {
+    after = after.split(`"/${icon}`).join(`"${prefix}${icon}`);
+  }
   if (after !== before) {
     fs.writeFileSync(f, after);
     rewritten++;
