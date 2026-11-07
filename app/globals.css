@@ -12761,6 +12761,80 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   padding-right: 16px;
 }
 
+/* ===== coaching-hub-s1 §2: コーチングの「作る」3 つとライブラリの件数（スマホ専用画面。PC では描かれないので PC reset は不要） ===== */
+.chub-make {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 0 0 24px;
+}
+.chub-sq {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 104px;
+  padding: 16px 4px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  font-family: var(--font-ui);
+  color: var(--ink);
+  cursor: pointer;
+}
+.chub-sq:active {
+  background: var(--surface-low);
+}
+/* アイコンは線画 24px を青（--accent）で置くだけ。色付きの丸の地（アイコンチップ）は mobile-redesign §8 #15 で禁止（レビュー A-1/B-1） */
+.chub-sq-ic {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+}
+.chub-sq-ic svg {
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+.chub-sq-n {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+/* ライブラリの行の下に件数の帯。帯の border-top と行の border-bottom が重なって 2px にならないよう行の下線を消す */
+.mrowcard:has(.chub-cnt) .mrow {
+  border-bottom: 0;
+}
+.chub-cnt {
+  display: flex;
+  border-top: 1px solid var(--outline);
+}
+.chub-cnt-c {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 0;
+  text-align: center;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.chub-cnt-c + .chub-cnt-c {
+  border-left: 1px solid var(--outline);
+}
+.chub-cnt-v {
+  display: block;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
 /* ---- 「その他」ハブ（新設・スマホ専用。mobile-redesign-v2 §2） ---- */
 .otherapp .scroll {
   padding-top: 16px;

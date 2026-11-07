@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * コーチングハブ（新設・スマホ専用画面。mobile-redesign §1-3）。
- * 下部タブ「コーチング」の遷移先。戦術ボード／練習メニュー／セットプレーデザイン／
- * ライブラリへの入口をまとめ、直近の保存（戦術・練習・セットプレー）から再開できる。
+ * コーチングハブ（スマホ専用画面。mobile-redesign §1-3、specs/coaching-hub-s1.md）。
+ * 下部タブ「コーチング」の遷移先。「作る」の正方形 3 つ（戦術ボード／練習メニュー／セットプレー）→
+ * 最近の保存（戦術・練習・セットプレーの更新順 6 件）→ ライブラリ（種類ごとの件数つき）の 3 段。
+ * チームの目次（タイル）と同じ型の目次に見えないよう「作る物」の性格を出す（coaching-hub-s1 §1）。
  * PCのレール（ConsoleShell の .conrail）には出さない（BoardProvider.ScreenName にのみ追加）。
  */
 
@@ -56,6 +57,9 @@ const RECENT_KIND_LABEL: Record<RecentKind, string> = {
   setpiece: "セットプレー",
 };
 
+/** 「最近の保存」の件数（coaching-hub-s1 §1-4。5 → 6） */
+const RECENT_MAX = 6;
+
 export default function CoachingHub() {
   const board = useBoard();
   const pc = usePc();
@@ -67,15 +71,16 @@ export default function CoachingHub() {
     if (pc) board.setScreen("home");
   }, [pc, board]);
 
-  // 「最近の保存」: ライブラリ(戦術・セットプレー)とローカル保存の練習を統合し、更新順で5件
+  // 「最近の保存」と「ライブラリ」の件数: ライブラリ(戦術・セットプレー)とローカル保存の練習を
+  // 同じ 1 か所で読み、更新順で RECENT_MAX 件と種類ごとの数を出す（数字は 1 か所から計算する）。
   // mobile-redesign Phase D-1(C2-minor 観点3): BoardProviderのcontext値が更新されるたびに
   // レンダーごとloadDrills()(localStorage読み+JSON.parse)と結合・sort・sliceが走っていたため
   // useMemoで包む（board.library.plays/setPieces/screenの変化時のみ再計算）
-  const recent: RecentItem[] = useMemo(() => {
+  const { recent, counts } = useMemo(() => {
     const plays: SavedPlay[] = board.library.plays;
     const setPieces: SavedSetPiece[] = board.library.setPieces ?? [];
     const drills: SavedDrill[] = loadDrills();
-    return [
+    const items: RecentItem[] = [
       ...plays.map((p) => ({
         id: "play-" + p.id,
         kind: "play" as const,
@@ -102,10 +107,16 @@ export default function CoachingHub() {
       })),
     ]
       .sort((a, b) => b.updatedAt - a.updatedAt)
-      .slice(0, 5);
+      .slice(0, RECENT_MAX);
+    return {
+      recent: items,
+      counts: { plays: plays.length, drills: drills.length, setPieces: setPieces.length },
+    };
     // board.screenを依存に加え、ドリル編集から戻ってきた際にlocalStorageの最新内容へ追随させる
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [board.library.plays, board.library.setPieces, board.screen]);
+
+  const total = counts.plays + counts.drills + counts.setPieces;
 
   const recentIcon: Record<RecentKind, React.ReactNode> = {
     play: <IconPitch />,
@@ -113,37 +124,36 @@ export default function CoachingHub() {
     setpiece: <IconSetPiece />,
   };
 
+  // 「作る」の正方形 3 つ（coaching-hub-s1 §1-3）。名前は正方形に入る長さにする
+  // （「セットプレーデザイン」は 10 文字で幅に入らないので「セットプレー」。画面名は変えない）
+  const make: { screen: "board" | "drill" | "setpiece"; label: string; icon: React.ReactNode }[] = [
+    { screen: "board", label: "戦術ボード", icon: <IconPitch /> },
+    { screen: "drill", label: "練習メニュー", icon: <IconCone /> },
+    { screen: "setpiece", label: "セットプレー", icon: <IconSetPiece /> },
+  ];
+
   return (
     <div className="app chubapp">
       {/* 下部タブ「コーチング」の直下画面のため戻るは出さない（mobile-redesign §1-6） */}
       <MobileHeader title="コーチング" />
       <div className="scroll">
-        <MenuGroup>
-          <MenuRow
-            icon={<IconPitch />}
-            label="戦術ボード"
-            desc="スタメンを並べて動きをアニメで確認"
-            onClick={() => board.setScreen("board")}
-          />
-          <MenuRow
-            icon={<IconCone />}
-            label="練習メニュー"
-            desc="コーンを並べて動線を描き、練習図を作る"
-            onClick={() => board.setScreen("drill")}
-          />
-          <MenuRow
-            icon={<IconSetPiece />}
-            label="セットプレーデザイン"
-            desc="CK・FK・スローインの動きを設計して共有する"
-            onClick={() => board.setScreen("setpiece")}
-          />
-          <MenuRow
-            icon={<IconFolder />}
-            label="ライブラリ"
-            desc="保存した戦術・練習・セットプレー"
-            onClick={() => board.setScreen("library")}
-          />
-        </MenuGroup>
+        <div className="mrowgroup-h">作る</div>
+        <div className="chub-make">
+          {make.map((m) => (
+            <button
+              key={m.screen}
+              type="button"
+              className="chub-sq"
+              onClick={() => board.setScreen(m.screen)}
+            >
+              {/* ボタンの中身は span だけ（HubTiles.tsx と同じ作法）。.chub-sq-n の textContent は名前だけに保つ */}
+              <span className="chub-sq-ic" aria-hidden="true">
+                {m.icon}
+              </span>
+              <span className="chub-sq-n">{m.label}</span>
+            </button>
+          ))}
+        </div>
 
         <div className="mrowgroup-h">最近の保存</div>
         {recent.length === 0 ? (
@@ -165,6 +175,38 @@ export default function CoachingHub() {
             ))}
           </MenuGroup>
         )}
+
+        {/* ライブラリの行＋種類ごとの件数の帯（coaching-hub-s1 §1-5）。帯は表示だけ。0 件のときは件数も帯も出さない */}
+        <div className="mrowgroup">
+          <div className="mrowcard">
+            <MenuRow
+              icon={<IconFolder />}
+              label="ライブラリ"
+              desc={
+                total > 0
+                  ? `保存した戦術・練習・セットプレー ${total} 件`
+                  : "保存した戦術・練習・セットプレー"
+              }
+              onClick={() => board.setScreen("library")}
+            />
+            {total > 0 && (
+              <div className="chub-cnt">
+                <div className="chub-cnt-c">
+                  <span className="chub-cnt-v">{counts.plays}</span>
+                  戦術
+                </div>
+                <div className="chub-cnt-c">
+                  <span className="chub-cnt-v">{counts.drills}</span>
+                  練習
+                </div>
+                <div className="chub-cnt-c">
+                  <span className="chub-cnt-v">{counts.setPieces}</span>
+                  セットプレー
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

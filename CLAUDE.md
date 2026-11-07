@@ -75,6 +75,7 @@ npx tsc --noEmit   # コミット前に必ず通す
 | `components/DrillProvider.tsx` | 練習メニュー（ドリル図） |
 | `components/TeamHub.tsx`・`team/` | 「チーム」タブ（スマホはタイルの目次、PC は 2 ペイン）。カレンダー・試合記録 `MatchHub.tsx`・名簿・チャット `ChatHome.tsx` / `ChatThread.tsx`。管理シートの部品は `team/manage` |
 | `components/PlayerHub.tsx`・`hub/` | 選手の個人ページ（基本・成長・体力・テスト・成績表・進路・怪我・活動・レポートの区画。各区画は `hub/*Section.tsx`）。共通部品は `hub/common.tsx`（`HubEditBtn` / `HubMenu`） |
+| `components/CoachingHub.tsx`・`OtherHub.tsx` | 「コーチング」「その他」タブの最初の画面（スマホだけ。PC は左レールで、`CoachingHub` は PC 幅ではホームへ戻す）。コーチングは「作る」の正方形 3 つ＋最近の保存＋ライブラリ（`coaching-hub-s1.md`）。CSS は `.chubapp` / `.chub-*` |
 | `components/NotebookScreen.tsx`・`NotebookTools.tsx` | サッカーノート（選手が書く／スタッフがコメント） |
 | `components/MobileHome.tsx`・`HomePanels.tsx`・`homeData.tsx` | ホーム（スタッフ＝お知らせ→学年別タイムライン、選手＝目標＋お知らせ。集計は `useMatchdayData`） |
 | `components/SettingsScreen.tsx`・`settings/` | 設定（グループ化リスト＋下層。管理シートは `team/manage`） |
@@ -131,6 +132,7 @@ npx tsc --noEmit   # コミット前に必ず通す
 
 | 仕様 | 何が決まっているか |
 |---|---|
+| `coaching-hub-s1.md` | コーチングの最初の画面（スマホ）＝「作る」の正方形 3 つ＋最近の保存 6 件＋ライブラリの行（種類ごとの件数）。分析 PDF「スマホ版の骨組みと雰囲気の UI 案」の骨組み S1。PC は変えない。`mobile-redesign.md` #14 の例外 2 と、実装時の判断は §3・§6 |
 | `ui-fix-2026-11-06.md` | UI 修正 5 件：チャットの自分の吹き出しは輪郭だけ、予定を追加（スマホ）は縦スクロールだけ、種類の選択肢に色の点、個人ページのヘッダーは 1 種類（4 マス廃止）、スマホの戦術ボードの道具列は 3 つ＋ヘッダー「…」。直さなかった指摘は §9 |
 | `drill-tap-targets.md` | 練習メニュー（スマホ）の押し場所を、見た目を変えずに透明の当たりで 44px へ。届かなかったものと理由は §3 |
 | `splash-brand.md` | 起動画面のロゴ（`BrandMark.tsx`、描く順番）。ログイン・PC レールの旧ロゴは未置換 |
@@ -179,9 +181,10 @@ PR の説明に書くこと：目的／触った画面（スマホ・PC のス�
 
 ---
 
-## 9. いまの状態（2026-11-05 時点）
+## 9. いまの状態（2026-11-07 時点）
 
 - `main` は安定。GitHub Pages は `main` の `docs/`。
+- スマホ版の骨組みは **S1（コーチングの性格づけ）で止める**（オーナー決定 2026-11-07。`specs/coaching-hub-s1.md`、実装済み）。雰囲気（色・書体）は今の青のまま、設定の「外観」は作らない。分析 PDF「スマホ版の骨組みと雰囲気の UI 案」（2026-11-07）の S2〜S6・V2〜V7 は案だけで未実装。練習メニューの PDF（2026-11-06）の「案 D コーチング目次のタイル化」は取り下げ（S1 に置き換え）。
 - スマホ版 UI の分析（空きスペース・部品の揺れ・ブランドの不一致）の**提案 A〜G は未実装**。要点：チーム目次の下に「今週の予定／最新のお知らせ」、その他＋設定を 1 画面に、未入力を畳む、部品の統一、ログインを新ロゴに、選手ホームに「今日のノート」「了解がまだ」。広告や協賛の枠は仕様に無いので足さない（検討中）。着手するときはオーナーに順番を確認する（§2 の Draft PR で宣言する）。
 - 保留中：起動直後の「今日の予定」画面（ブランチ `feature/today-gate`、タグ `shelf/today-gate-v1`）。勝手に取り込まない。
 - 既知の不具合：デモデータの日付・勝点の食い違い（11 月に「夏合宿」など）。
