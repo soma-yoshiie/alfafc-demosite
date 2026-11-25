@@ -3,17 +3,13 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   MatchNote,
-  MatchPhase,
   MatchPhaseLineup,
   NoteCondition,
   NoteKind,
   NotebookEntry,
-  PlayKind,
   PlayLine,
-  PlayLineKind,
   PlayPoint,
   Player,
-  Point,
   PracticeMenuDeliver,
   PracticeNote,
   SoloItem,
@@ -24,19 +20,20 @@ import type {
   TeamGroup,
 } from "@/lib/types";
 import {
-  MATCH_PHASE_LABEL,
   NOTE_CONDITION_LABEL,
   NOTE_KIND_LABEL,
-  PLAY_KIND_LABEL,
-  PLAY_LINE_LABEL,
   SOLO_KIND_LABEL,
   STAFF_REACTION_LABEL,
 } from "@/lib/types";
-import { FORMATION_KEYS, buildSlots } from "@/lib/formations";
+import { buildSlots } from "@/lib/formations";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { E, ConditionIcon, type EmojiName } from "./Emoji";
-import { FormationPitch, GoalCourseView, isInGoalFrame, PlayAreaPitch, type PlayTool } from "./MiniPitch";
+import { PlayAreaPitch } from "./MiniPitch";
+import { PLAY_PHASES, markCanvas, markPhase } from "@/lib/plays";
+import { LineupPicker, emptyLineup } from "./notebook/LineupPicker";
+import { MatchDetail } from "./notebook/MatchDetail";
+import { PlayRecorder } from "./notebook/PlayRecorder";
 import { LineChart } from "./Charts";
 import { addDaysStr, countByDay, daysAgoStr, localDateStr, longestWeeklyStreak, weekStart, weeklyCounts, weeklyStreak } from "@/lib/dates";
 import {
@@ -70,66 +67,6 @@ import { MenuGroup, MenuRow } from "./MobileRows";
 import { IconBell, IconClipboard, IconFilter, IconNote, IconShare, NoteKindIcon } from "./icons";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
-const PLAY_KINDS: PlayKind[] = ["receive", "shot", "miss"];
-const PLAY_LINE_KINDS: PlayLineKind[] = ["dribble", "pass"];
-const PLAY_PHASES: MatchPhase[] = ["1st", "2nd", "et"];
-/** フェーズ未設定は前半として扱う（後方互換） */
-const markPhase = (p?: MatchPhase): MatchPhase => p ?? "1st";
-/** ピッチ番号未設定は0番目として扱う（後方互換） */
-const markCanvas = (c?: number): number => c ?? 0;
-/** 対象配列から現フェーズ×現ピッチの最後の1件だけを取り除く */
-function popPhaseCanvas<T extends { phase?: MatchPhase; canvas?: number }>(arr: T[], phase: MatchPhase, canvas: number): T[] {
-  const idx = arr.map((x) => markPhase(x.phase) === phase && markCanvas(x.canvas) === canvas).lastIndexOf(true);
-  return idx === -1 ? arr : arr.filter((_, i) => i !== idx);
-}
-/** 試合のプレースタッツ。パス/ドリブルの success 未設定(旧データ)は成功として数える */
-function playStats(plays: PlayPoint[], lines: PlayLine[]) {
-  const shots = plays.filter((p) => p.kind === "shot");
-  const goals = shots.filter((p) => p.scored === true).length;
-  const pass = lines.filter((l) => l.kind === "pass");
-  const passOk = pass.filter((l) => l.success !== false).length;
-  const dribble = lines.filter((l) => l.kind === "dribble");
-  const dribbleOk = dribble.filter((l) => l.success !== false).length;
-  const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : null);
-  return {
-    shots: shots.length,
-    goals,
-    shotPct: pct(goals, shots.length),
-    pass: pass.length,
-    passPct: pct(passOk, pass.length),
-    dribble: dribble.length,
-    dribblePct: pct(dribbleOk, dribble.length),
-    receive: plays.filter((p) => p.kind === "receive").length,
-    trapMiss: plays.filter((p) => p.kind === "miss").length,
-  };
-}
-/** シュート/パス/ドリブル等のライブスタッツ表示（記入フォーム・詳細画面で共用） */
-function PlayStatsRow({ stats }: { stats: ReturnType<typeof playStats> }) {
-  return (
-    <div className="aistats">
-      <div className="aistat">
-        <div className="aisv">{stats.shotPct != null ? `${stats.shotPct}%` : `${stats.shots}`}</div>
-        <div className="aisl">シュート {stats.goals}G/{stats.shots}本</div>
-      </div>
-      <div className="aistat">
-        <div className="aisv">{stats.passPct != null ? `${stats.passPct}%` : `${stats.pass}`}</div>
-        <div className="aisl">パス {stats.pass}本</div>
-      </div>
-      <div className="aistat">
-        <div className="aisv">{stats.dribblePct != null ? `${stats.dribblePct}%` : `${stats.dribble}`}</div>
-        <div className="aisl">ドリブル {stats.dribble}本</div>
-      </div>
-      <div className="aistat">
-        <div className="aisv">{stats.receive}</div>
-        <div className="aisl">受けた</div>
-      </div>
-      <div className="aistat">
-        <div className="aisv">{stats.trapMiss}</div>
-        <div className="aisl">トラップミス</div>
-      </div>
-    </div>
-  );
-}
 const SOLO_KINDS: SoloKind[] = ["lifting", "running", "strength", "other"];
 const WEEKDAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"];
 const STAFF_REACTIONS: StaffReaction[] = ["ok", "nice", "fire"];
@@ -2464,10 +2401,6 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
 }
 
 /* --- 試合ノート（①陣形・②プレーエリア＋AI） --- */
-function emptyLineup(phase: MatchPhase): MatchPhaseLineup {
-  return { phase, ownFormation: "4-3-3", ownPositionIndex: null, oppFormation: "4-4-2" };
-}
-
 type MatchDraft = {
   date: string;
   opponent: string;
@@ -2485,157 +2418,6 @@ type MatchDraft = {
   videoUrl: string;
   detailed: boolean;
 };
-
-/** シュートコース編集シート（ゴール正面図でコース・結果・状況メモを記録） */
-function ShotCourseSheet({
-  shot,
-  onPick,
-  onSetScored,
-  onSetNote,
-  onClose,
-  onDelete,
-}: {
-  shot: PlayPoint;
-  onPick: (x: number, y: number) => void;
-  onSetScored: (v: boolean) => void;
-  onSetNote: (v: string) => void;
-  onClose: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="wsheetback" onClick={onClose}>
-      <div className="wsheet" onClick={(e) => e.stopPropagation()}>
-        <div className="wsheet-h">シュートコース ・ ゴールのどこに飛んだかをタップ</div>
-        <div className="formpitch">
-          <GoalCourseView shots={shot.course ? [{ course: shot.course, scored: shot.scored }] : []} onPick={onPick} />
-        </div>
-        <div className="goalres">
-          <button
-            type="button"
-            className={`goalresbtn${shot.scored === true ? " on goal" : ""}`}
-            onClick={() => onSetScored(true)}
-          >
-            ゴール
-          </button>
-          <button
-            type="button"
-            className={`goalresbtn${shot.scored === false ? " on nogoal" : ""}`}
-            onClick={() => onSetScored(false)}
-          >
-            ノーゴール
-          </button>
-        </div>
-        <div className="formfield" style={{ margin: 0 }}>
-          <input
-            value={shot.shotNote ?? ""}
-            onChange={(e) => onSetNote(e.target.value)}
-            placeholder="例）トラップして浮いた球をボレー / 右足でカーブシュート"
-          />
-        </div>
-        <button className="bigbtn" style={{ marginTop: 12 }} onClick={onClose}>
-          OK
-        </button>
-        <button type="button" className="linkdanger" onClick={onDelete}>
-          このシュートを削除
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** シュート位置のモーダル（試合ノートの詳細・閲覧専用）。notebook-staff-redesign §4:
- *  ピッチのシュートの点／一覧の行を押すと、ゴール正面図にそのシュートだけを出して
- *  「ゴールのどこに打ったか」と結果・状況メモを見せる。文法は ShotCourseSheet(.wsheetback/.wsheet)と同じ */
-function ShotViewSheet({
-  shot,
-  onClose,
-}: {
-  shot: PlayPoint & { num: number };
-  onClose: () => void;
-}) {
-  // コース未記録でも結果(scored)だけ入っていれば結果ラベルは出す。どちらも無ければ出さない
-  const hasResult = shot.course != null || shot.scored != null;
-  return (
-    <div className="wsheetback" onClick={onClose}>
-      <div className="wsheet shotsheet" onClick={(e) => e.stopPropagation()}>
-        <div className="wsheet-h">
-          #{shot.num} シュート ・ {MATCH_PHASE_LABEL[markPhase(shot.phase)]}
-        </div>
-        {shot.course ? (
-          <div className="formpitch">
-            <GoalCourseView shots={[{ course: shot.course, scored: shot.scored, label: shot.num }]} />
-          </div>
-        ) : (
-          <div className="evnote">コースは記録されていません</div>
-        )}
-        {hasResult && (
-          <div className={"shotresult" + (shot.scored ? "" : " nogoal")}>
-            <span className={"shotmark" + (shot.scored ? "" : " nogoal")} />
-            {shot.scored ? "ゴール" : "ノーゴール"}
-          </div>
-        )}
-        {shot.shotNote && <div className="notesec-b">{shot.shotNote}</div>}
-        <button type="button" className="wsheetcancel" onClick={onClose}>
-          閉じる
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** パス／ドリブルの結果編集シート（成否・状況メモを記録） */
-function LineResultSheet({
-  line,
-  onSetSuccess,
-  onSetNote,
-  onClose,
-  onDelete,
-}: {
-  line: PlayLine;
-  onSetSuccess: (v: boolean) => void;
-  onSetNote: (v: string) => void;
-  onClose: () => void;
-  onDelete: () => void;
-}) {
-  const label = PLAY_LINE_LABEL[line.kind];
-  const success = line.success !== false;
-  return (
-    <div className="wsheetback" onClick={onClose}>
-      <div className="wsheet" onClick={(e) => e.stopPropagation()}>
-        <div className="wsheet-h">{label}の結果</div>
-        <div className="goalres">
-          <button
-            type="button"
-            className={`goalresbtn${success ? " on goal" : ""}`}
-            onClick={() => onSetSuccess(true)}
-          >
-            成功
-          </button>
-          <button
-            type="button"
-            className={`goalresbtn${!success ? " on nogoal" : ""}`}
-            onClick={() => onSetSuccess(false)}
-          >
-            ミス
-          </button>
-        </div>
-        <div className="formfield" style={{ margin: 0 }}>
-          <input
-            value={line.note ?? ""}
-            onChange={(e) => onSetNote(e.target.value)}
-            placeholder="例）縦パスがカットされた / 切り返しで抜いた"
-          />
-        </div>
-        <button className="bigbtn" style={{ marginTop: 12 }} onClick={onClose}>
-          OK
-        </button>
-        <button type="button" className="linkdanger" onClick={onDelete}>
-          この{label}を削除
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   const board = useBoard();
@@ -2655,15 +2437,6 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   const [lineups, setLineups] = useState<MatchPhaseLineup[]>(edit?.lineups ?? []);
   const [plays, setPlays] = useState<PlayPoint[]>(edit?.plays ?? []);
   const [playLines, setPlayLines] = useState<PlayLine[]>(edit?.playLines ?? []);
-  const [tool, setTool] = useState<PlayTool>({ mode: "point", kind: "receive" });
-  // プレーエリアの記録・表示フェーズ（前半/後半/延長）
-  const [playPhase, setPlayPhase] = useState<MatchPhase>("1st");
-  // 現フェーズ内で表示・記録中のピッチ番号（複数ピッチ記録用）
-  const [activeCanvas, setActiveCanvas] = useState(0);
-  // シュートコース編集シートの対象（plays配列のindex。nullなら非表示）
-  const [shotEditIndex, setShotEditIndex] = useState<number | null>(null);
-  // パス/ドリブル結果編集シートの対象（playLines配列のindex。nullなら非表示）
-  const [lineEditIndex, setLineEditIndex] = useState<number | null>(null);
   const [reflectPlay, setReflectPlay] = useState(edit?.reflectPlay ?? "");
   const [videoUrl, setVideoUrl] = useState(edit?.videoUrl ?? "");
 
@@ -2729,60 +2502,12 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     return prev?.reportImprove || prev?.reflectPlay || undefined;
   }, [board.notebook, me, edit]);
 
-  const phasesPresent = lineups.map((l) => l.phase);
-  const addPhase = (p: MatchPhase) => setLineups([...lineups, emptyLineup(p)]);
-  const setLineup = (i: number, patch: Partial<MatchPhaseLineup>) =>
-    setLineups(lineups.map((l, j) => (j === i ? { ...l, ...patch } : l)));
-
-  // 延長は陣形・プレー記録のいずれかに存在する場合のみチップを表示
+  // 延長は陣形・プレー記録のいずれかに存在する場合のみチップを表示（PlayRecorder へ渡す）
   const etPresent =
     lineups.some((l) => l.phase === "et") ||
     plays.some((p) => p.phase === "et") ||
     playLines.some((l) => l.phase === "et");
   const playPhases = PLAY_PHASES.filter((p) => p !== "et" || etPresent);
-  // 延長のマークを全消去して延長チップが消えたら前半へフォールバック
-  useEffect(() => {
-    if (playPhase === "et" && !etPresent) setPlayPhase("1st");
-  }, [playPhase, etPresent]);
-  // フェーズを切り替えたらピッチ選択を1枚目に戻す
-  useEffect(() => {
-    setActiveCanvas(0);
-  }, [playPhase]);
-  const phaseMarkCount = (p: MatchPhase) =>
-    plays.filter((pt) => markPhase(pt.phase) === p).length + playLines.filter((l) => markPhase(l.phase) === p).length;
-  // 現フェーズで使われているピッチ枚数（未使用でも選択中のピッチまでは表示。最低1・最大4枚）
-  const canvasMaxUsed = Math.max(
-    0,
-    ...plays.filter((p) => markPhase(p.phase) === playPhase).map((p) => markCanvas(p.canvas)),
-    ...playLines.filter((l) => markPhase(l.phase) === playPhase).map((l) => markCanvas(l.canvas))
-  );
-  const canvasCount = Math.min(4, Math.max(1, canvasMaxUsed + 1, activeCanvas + 1));
-  const scopedPlays = plays.filter((p) => markPhase(p.phase) === playPhase && markCanvas(p.canvas) === activeCanvas);
-  const scopedPlayLines = playLines.filter((l) => markPhase(l.phase) === playPhase && markCanvas(l.canvas) === activeCanvas);
-  // 現フェーズのシュート点（元のplays配列index付き。編集シートを開くのに使う）
-  const phaseShots = plays
-    .map((p, idx) => ({ p, idx }))
-    .filter(({ p }) => p.kind === "shot" && markPhase(p.phase) === playPhase);
-
-  // ピッチタップで点を追加。シュートは追加直後にコース編集シートを開く
-  const addPoint = (x: number, y: number) => {
-    const kind = tool.mode === "point" ? tool.kind : "receive";
-    setPlays((prev) => {
-      const next = [...prev, { x, y, kind, phase: playPhase, canvas: activeCanvas }];
-      if (kind === "shot") setShotEditIndex(next.length - 1);
-      return next;
-    });
-  };
-
-  // なぞって軌道を追加。パス/ドリブルは追加直後に結果編集シートを開く
-  const addLine = (path: Point[]) => {
-    const kind = tool.mode === "line" ? tool.kind : "dribble";
-    setPlayLines((prev) => {
-      const next = [...prev, { kind, path, phase: playPhase, canvas: activeCanvas }];
-      if (kind === "pass" || kind === "dribble") setLineEditIndex(next.length - 1);
-      return next;
-    });
-  };
 
   const submit = () => {
     if (!opponent.trim()) {
@@ -2884,168 +2609,18 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
             <button className="detailhide" type="button" onClick={() => setDetailed(false)}>簡易表示に戻す</button>
           </div>
 
-          {/* フォーメーション・ポジション記録 */}
-          <div className="notesec-h">スタメン・フォーメーション</div>
-          {lineups.map((lu, i) => {
-            const role =
-              lu.ownPositionIndex != null ? buildSlots(lu.ownFormation)[lu.ownPositionIndex]?.role : null;
-            return (
-              <div key={i} className="phasecard">
-                <div className="phasehd">
-                  <span>{MATCH_PHASE_LABEL[lu.phase]}</span>
-                  {lineups.length > 1 && (
-                    <button className="dynx" onClick={() => setLineups(lineups.filter((_, j) => j !== i))}>
-                      ×
-                    </button>
-                  )}
-                </div>
-                <div className="formgrid">
-                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
-                    <label>自チーム</label>
-                    <select value={lu.ownFormation} onChange={(e) => setLineup(i, { ownFormation: e.target.value, ownPositionIndex: null })}>
-                      {FORMATION_KEYS.map((k) => (
-                        <option key={k} value={k}>{k}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="formfield" style={{ flex: 1, margin: 0 }}>
-                    <label>相手</label>
-                    <select value={lu.oppFormation} onChange={(e) => setLineup(i, { oppFormation: e.target.value })}>
-                      {FORMATION_KEYS.map((k) => (
-                        <option key={k} value={k}>{k}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="phasehint">自分のポジションをタップ{role ? `：${role}` : ""}</div>
-                <div className="formpitch">
-                  <FormationPitch
-                    ownFormation={lu.ownFormation}
-                    ownPositionIndex={lu.ownPositionIndex}
-                    onPickPosition={(idx) => setLineup(i, { ownPositionIndex: idx })}
-                    oppFormation={lu.oppFormation}
-                  />
-                </div>
-              </div>
-            );
-          })}
-          <div className="phaseadd">
-            {(["2nd", "et"] as MatchPhase[]).map(
-              (p) =>
-                !phasesPresent.includes(p) && (
-                  <button key={p} className="dynadd" style={{ width: "auto", flex: 1 }} onClick={() => addPhase(p)}>
-                    ＋ {MATCH_PHASE_LABEL[p]}を追加
-                  </button>
-                )
-            )}
-          </div>
+          {/* 出場した位置 */}
+          <LineupPicker lineups={lineups} onChange={setLineups} />
 
-          {/* プレーエリア記録 */}
-          <div className="notesec-h" style={{ marginTop: 14 }}>自分のプレーエリア</div>
-          <div className="phasebar">
-            {playPhases.map((p) => {
-              const cnt = phaseMarkCount(p);
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  className={`phasechip${playPhase === p ? " on" : ""}`}
-                  onClick={() => setPlayPhase(p)}
-                >
-                  {MATCH_PHASE_LABEL[p]}{cnt > 0 ? ` ${cnt}` : ""}
-                </button>
-              );
-            })}
-          </div>
-          <div className="canvasbar">
-            {Array.from({ length: canvasCount }, (_, i) => (
-              <button
-                key={i}
-                type="button"
-                className={`canvaschip${activeCanvas === i ? " on" : ""}`}
-                onClick={() => setActiveCanvas(i)}
-              >
-                ピッチ{i + 1}
-              </button>
-            ))}
-            {canvasCount < 4 && (
-              <button type="button" className="canvaschip add" onClick={() => setActiveCanvas(canvasCount)}>
-                ＋ ピッチを追加
-              </button>
-            )}
-          </div>
-          <div className="playtools">
-            <div className="playtoolrow">
-              {PLAY_KINDS.map((k) => {
-                const on = tool.mode === "point" && tool.kind === k;
-                return (
-                  <button key={k} type="button" className={`playkind ${k}${on ? " on" : ""}`} onClick={() => setTool({ mode: "point", kind: k })}>
-                    {PLAY_KIND_LABEL[k]}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="playtoolrow">
-              {PLAY_LINE_KINDS.map((k) => {
-                const on = tool.mode === "line" && tool.kind === k;
-                return (
-                  <button key={k} type="button" className={`playline ${k}${on ? " on" : ""}`} onClick={() => setTool({ mode: "line", kind: k })}>
-                    {PLAY_LINE_LABEL[k]}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div className="phasehint">
-            {tool.mode === "point"
-              ? `コートをタップして「${PLAY_KIND_LABEL[tool.kind]}」を記録（${MATCH_PHASE_LABEL[playPhase]}: 点 ${scopedPlays.length} ／ 軌道 ${scopedPlayLines.length}）（ピッチ${activeCanvas + 1}）`
-              : `コートをなぞって「${PLAY_LINE_LABEL[tool.kind]}」の軌道を記録（${MATCH_PHASE_LABEL[playPhase]}: 点 ${scopedPlays.length} ／ 軌道 ${scopedPlayLines.length}）（ピッチ${activeCanvas + 1}）`}
-          </div>
-          <div className="formpitch">
-            <PlayAreaPitch
-              points={scopedPlays}
-              lines={scopedPlayLines}
-              tool={tool}
-              onAddPoint={addPoint}
-              onAddLine={addLine}
-            />
-          </div>
-          {(plays.length > 0 || playLines.length > 0) && (
-            <div className="playacts">
-              <button
-                className="dynadd"
-                onClick={() =>
-                  tool.mode === "line"
-                    ? setPlayLines((p) => popPhaseCanvas(p, playPhase, activeCanvas))
-                    : setPlays((p) => popPhaseCanvas(p, playPhase, activeCanvas))
-                }
-              >
-                1つ戻す
-              </button>
-              <button
-                className="dynadd"
-                onClick={() => {
-                  setPlays((prev) => prev.filter((p) => !(markPhase(p.phase) === playPhase && markCanvas(p.canvas) === activeCanvas)));
-                  setPlayLines((prev) => prev.filter((l) => !(markPhase(l.phase) === playPhase && markCanvas(l.canvas) === activeCanvas)));
-                }}
-              >
-                このピッチを消去
-              </button>
-            </div>
-          )}
-          {(plays.length > 0 || playLines.length > 0) && <PlayStatsRow stats={playStats(plays, playLines)} />}
-
-          {phaseShots.length > 0 && (
-            <div className="shotlist">
-              {phaseShots.map(({ p, idx }, i) => (
-                <button key={idx} type="button" className="shotrow" onClick={() => setShotEditIndex(idx)}>
-                  <span className={`shotmark${p.course ? (p.scored ? "" : " nogoal") : " none"}`} />
-                  <span>シュート{i + 1} ・ {p.course ? (p.scored ? "ゴール" : "ノーゴール") : "コース未記録"}</span>
-                  {p.shotNote && <small>{p.shotNote.slice(0, 20)}</small>}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* 自分のプレー */}
+          <PlayRecorder
+            mode="player"
+            plays={plays}
+            playLines={playLines}
+            onPlays={setPlays}
+            onLines={setPlayLines}
+            phases={playPhases}
+          />
 
           {/* 反省・動画 */}
           <div className="notesec-h" style={{ marginTop: 14 }}>反省・動画</div>
@@ -3063,36 +2638,6 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       <button className="bigbtn" style={{ marginTop: 14 }} onClick={submit}>
         {edit ? "更新する" : "提出する"}
       </button>
-
-      {shotEditIndex != null && plays[shotEditIndex] && (
-        <ShotCourseSheet
-          shot={plays[shotEditIndex]}
-          onPick={(x, y) => {
-            const scored = isInGoalFrame(x, y);
-            setPlays((prev) => prev.map((p, i) => (i === shotEditIndex ? { ...p, course: { x, y }, scored } : p)));
-          }}
-          onSetScored={(v) => setPlays((prev) => prev.map((p, i) => (i === shotEditIndex ? { ...p, scored: v } : p)))}
-          onSetNote={(v) => setPlays((prev) => prev.map((p, i) => (i === shotEditIndex ? { ...p, shotNote: v } : p)))}
-          onClose={() => setShotEditIndex(null)}
-          onDelete={() => {
-            setPlays((prev) => prev.filter((_, i) => i !== shotEditIndex));
-            setShotEditIndex(null);
-          }}
-        />
-      )}
-
-      {lineEditIndex != null && playLines[lineEditIndex] && (
-        <LineResultSheet
-          line={playLines[lineEditIndex]}
-          onSetSuccess={(v) => setPlayLines((prev) => prev.map((l, i) => (i === lineEditIndex ? { ...l, success: v } : l)))}
-          onSetNote={(v) => setPlayLines((prev) => prev.map((l, i) => (i === lineEditIndex ? { ...l, note: v } : l)))}
-          onClose={() => setLineEditIndex(null)}
-          onDelete={() => {
-            setPlayLines((prev) => prev.filter((_, i) => i !== lineEditIndex));
-            setLineEditIndex(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -3135,7 +2680,6 @@ function NoteDetail({
   const [sentHere, setSentHere] = useState(false);
   // 図付きコメント（コーチ）。折りたたみ・編集中の点/線はローカル state
   const [drawOpen, setDrawOpen] = useState(!!entry?.staffDrawing);
-  const [drawTool, setDrawTool] = useState<PlayTool>({ mode: "line", kind: "pass" });
   const [drawPlays, setDrawPlays] = useState<PlayPoint[]>(entry?.staffDrawing?.plays ?? []);
   const [drawLines, setDrawLines] = useState<PlayLine[]>(entry?.staffDrawing?.playLines ?? []);
 
@@ -3276,50 +2820,7 @@ function NoteDetail({
                 </button>
               </div>
               <div className="detailwrap">
-                <div className="playtools">
-                  <div className="playtoolrow">
-                    {PLAY_KINDS.map((k) => {
-                      const on = drawTool.mode === "point" && drawTool.kind === k;
-                      return (
-                        <button key={k} type="button" className={`playkind ${k}${on ? " on" : ""}`} onClick={() => setDrawTool({ mode: "point", kind: k })}>
-                          {PLAY_KIND_LABEL[k]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="playtoolrow">
-                    {PLAY_LINE_KINDS.map((k) => {
-                      const on = drawTool.mode === "line" && drawTool.kind === k;
-                      return (
-                        <button key={k} type="button" className={`playline ${k}${on ? " on" : ""}`} onClick={() => setDrawTool({ mode: "line", kind: k })}>
-                          {PLAY_LINE_LABEL[k]}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="formpitch">
-                  <PlayAreaPitch
-                    points={drawPlays}
-                    lines={drawLines}
-                    tool={drawTool}
-                    onAddPoint={(x, y) => setDrawPlays((prev) => [...prev, { x, y, kind: drawTool.mode === "point" ? drawTool.kind : "receive" }])}
-                    onAddLine={(path) => setDrawLines((prev) => [...prev, { kind: drawTool.mode === "line" ? drawTool.kind : "pass", path }])}
-                  />
-                </div>
-                {(drawPlays.length > 0 || drawLines.length > 0) && (
-                  <div className="playacts">
-                    <button
-                      className="dynadd"
-                      onClick={() => (drawTool.mode === "line" ? setDrawLines((p) => p.slice(0, -1)) : setDrawPlays((p) => p.slice(0, -1)))}
-                    >
-                      1つ戻す
-                    </button>
-                    <button className="dynadd" onClick={() => { setDrawPlays([]); setDrawLines([]); }}>
-                      全消去
-                    </button>
-                  </div>
-                )}
+                <PlayRecorder mode="staff" plays={drawPlays} playLines={drawLines} onPlays={setDrawPlays} onLines={setDrawLines} />
               </div>
             </>
           )}
@@ -3351,8 +2852,8 @@ function NoteDetail({
           {entry.staffDrawing && (
             <>
               <div className="notesec-h" style={{ marginTop: 12 }}>コーチの図</div>
-              <div className="formpitch">
-                <PlayAreaPitch points={entry.staffDrawing.plays} lines={entry.staffDrawing.playLines} />
+              <div className="npwrap">
+                <PlayAreaPitch tone="staff" points={entry.staffDrawing.plays} lines={entry.staffDrawing.playLines} />
               </div>
             </>
           )}
@@ -3382,120 +2883,6 @@ function NoteDetail({
         </div>
       )}
     </div>
-  );
-}
-
-function MatchDetail({ note }: { note: MatchNote }) {
-  const allPlays = note.plays ?? [];
-  const allPlayLines = note.playLines ?? [];
-  const stats = playStats(allPlays, allPlayLines);
-  // マークが存在するフェーズだけ（前半→後半→延長の順）でセクション分割
-  const notePhases = PLAY_PHASES.filter(
-    (p) => allPlays.some((pt) => markPhase(pt.phase) === p) || allPlayLines.some((l) => markPhase(l.phase) === p)
-  );
-  // シュート（plays配列順に1,2,3…を採番。ゴール正面図の打点ラベルと一覧の#Nを揃える）。
-  // src は元の点への参照（プレーエリアの点を押したとき、同じ参照で shots を引くため）
-  const shots = allPlays.filter((p) => p.kind === "shot").map((p, i) => ({ ...p, num: i + 1, src: p }));
-  // notebook-staff-redesign §4: シュートの位置モーダル。開いているシュートの採番（未選択は null）
-  const [shotView, setShotView] = useState<number | null>(null);
-  const shotSel = shotView != null ? shots.find((s) => s.num === shotView) ?? null : null;
-  return (
-    <>
-      <div className="notesec">
-        <div className="notesec-h"><E n="vs" /> {note.opponent || "対戦相手"}</div>
-        {(() => {
-          if (note.halfMinutes == null && note.fullMatch == null) return null;
-          const time = [
-            note.halfMinutes != null ? `${note.halfMinutes}分ハーフ` : null,
-            note.fullMatch === false
-              ? note.playFrom != null && note.playTo != null
-                ? `${note.playFrom}分〜${note.playTo}分に出場`
-                : "途中出場"
-              : "フル出場",
-          ]
-            .filter(Boolean)
-            .join(" ・ ");
-          return time ? <div className="notesec-b">{time}</div> : null;
-        })()}
-      </div>
-      {(note.lineups ?? []).map((lu, i) => {
-        const role = lu.ownPositionIndex != null ? buildSlots(lu.ownFormation)[lu.ownPositionIndex]?.role : null;
-        return (
-          <div key={i} className="notesec">
-            <div className="notesec-h">
-              {MATCH_PHASE_LABEL[lu.phase]} ・ 自{lu.ownFormation} / 相手{lu.oppFormation}
-              {role ? ` ・ ${role}` : ""}
-            </div>
-            <FormationPitch ownFormation={lu.ownFormation} ownPositionIndex={lu.ownPositionIndex} oppFormation={lu.oppFormation} />
-          </div>
-        );
-      })}
-      {notePhases.map((p) => {
-        const phasePts = allPlays.filter((pt) => markPhase(pt.phase) === p);
-        const phaseLns = allPlayLines.filter((l) => markPhase(l.phase) === p);
-        // そのフェーズでマークがあるピッチ番号ごとにセクションを分ける（旧データはcanvas未設定＝0番扱い）
-        const canvases = Array.from(
-          new Set([...phasePts.map((pt) => markCanvas(pt.canvas)), ...phaseLns.map((l) => markCanvas(l.canvas))])
-        ).sort((a, b) => a - b);
-        const multiCanvas = canvases.length > 1;
-        return canvases.map((c) => {
-          const pts = phasePts.filter((pt) => markCanvas(pt.canvas) === c);
-          const lns = phaseLns.filter((l) => markCanvas(l.canvas) === c);
-          return (
-            <div key={`${p}-${c}`} className="notesec">
-              <div className="notesec-h">
-                プレーエリア（{MATCH_PHASE_LABEL[p]} ・ 点 {pts.length} ／ 軌道 {lns.length}）{multiCanvas ? `・ピッチ${c + 1}` : ""}
-              </div>
-              <PlayAreaPitch
-                points={pts}
-                lines={lns}
-                onPointClick={(_, pt) => {
-                  const hit = shots.find((s) => s.src === pt);
-                  if (hit) setShotView(hit.num);
-                }}
-                selectedIndex={shotSel ? pts.indexOf(shotSel.src) : null}
-              />
-            </div>
-          );
-        });
-      })}
-      {shots.length > 0 && (
-        <div className="notesec">
-          <div className="notesec-h">シュート（{shots.length}本 ・ ゴール {stats.goals}）</div>
-          <GoalCourseView shots={shots.filter((s) => s.course).map((s) => ({ course: s.course!, scored: s.scored, label: s.num }))} />
-          <div className="shotlist">
-            {shots.map((s) => (
-              <button key={s.num} type="button" className="shotrow" onClick={() => setShotView(s.num)}>
-                <span className={`shotmark${s.course ? (s.scored ? "" : " nogoal") : " none"}`} />
-                <span>
-                  #{s.num} {MATCH_PHASE_LABEL[markPhase(s.phase)]} ・ {s.course ? (s.scored ? "ゴール" : "ノーゴール") : "コース未記録"}
-                </span>
-                {s.shotNote && <small>{s.shotNote}</small>}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      {(allPlays.length > 0 || allPlayLines.length > 0) && (
-        <div className="notesec">
-          <div className="notesec-h">プレースタッツ（全フェーズ合算）</div>
-          <PlayStatsRow stats={stats} />
-        </div>
-      )}
-
-      {(note.bestPlay || note.reflectPlay || note.videoUrl) && (
-        <div className="notesec">
-          <div className="notesec-h">ベストプレー・反省</div>
-          {note.bestPlay && <div className="notesec-b"><E n="star" /> ベスト：{note.bestPlay}</div>}
-          {note.reflectPlay && <div className="notesec-b"><E n="repeat" /> 反省：{note.reflectPlay}</div>}
-          {note.videoUrl && (
-            <a className="videolink" href={note.videoUrl} target="_blank" rel="noreferrer"><E n="video" /> 動画を見る</a>
-          )}
-        </div>
-      )}
-
-      {shotSel && <ShotViewSheet shot={shotSel} onClose={() => setShotView(null)} />}
-    </>
   );
 }
 

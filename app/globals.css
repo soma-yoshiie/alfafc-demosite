@@ -10226,7 +10226,6 @@ body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
   color: var(--accent);
   background: var(--accent-tint);
 }
-.noteapp .canvasbar { display: flex; gap: 6px; margin: 0 0 8px; flex-wrap: wrap; }
 .noteapp .canvaschip { padding: 6px 12px; border-radius: var(--r-sm); border: 1px solid transparent; background: var(--surface-low); color: var(--mut); font-size: var(--fs-label); font-weight: 700; cursor: pointer; font-family: var(--font-ui); }
 .noteapp .canvaschip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-tint); }
 .noteapp .canvaschip.add { border: 1px dashed var(--outline-strong); background: transparent; }
@@ -10282,178 +10281,244 @@ body:has(.mhead) .noteapp .wsheet.shotsheet .wsheetcancel {
   accent-color: var(--accent);
 }
 
-/* =========================================================
-   ミニピッチ（フォーメーション・プレーエリア）
-   ========================================================= */
-.noteapp .mpitch {
+/* ===== note-pitch-v2 §1: ノートのピッチ（実寸の比・緑のベタ・白線）。基底＝スマホと PC の両方 ===== */
+.noteapp .npwrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  background: linear-gradient(180deg, var(--grass-a), var(--grass-b));
-  border: 0;
-  margin-top: 6px;
-  user-select: none;
-  -webkit-user-select: none;
+  max-width: 358px;
+  margin: 6px auto 2px;
 }
-/* フォーム内のピッチはコンパクトに（縦に占有しない） */
+.noteapp .detailwrap .npwrap {
+  width: calc(100% + 24px);
+  left: 50%;
+  transform: translateX(-50%);
+  margin-left: 0;
+  margin-right: 0;
+}
+.noteapp .notedetail .notesec > .npwrap {
+  margin-left: 0;
+}
+/* スマホの詳細：.notedetail の左右 2px を越えて、ページの左右 16px にそろえる（幅 358px） */
+body:has(.mhead) .noteapp .notedetail .notesec > .npwrap {
+  width: calc(100% + 4px);
+  margin-left: -2px;
+}
+/* フォーム内のゴール正面図はコンパクトに（縦に占有しない） */
 .noteapp .formpitch {
   max-width: 240px;
   margin: 6px auto 2px;
 }
-.noteapp .formpitch .mpitch {
-  margin-top: 0;
+.noteapp .npitch {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 74 / 111;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--grass-b);
+  user-select: none;
+  -webkit-user-select: none;
 }
-.noteapp .mpitch.play.editable {
+.noteapp .npitch.half {
+  aspect-ratio: 74 / 57;
+}
+.noteapp .npitch.editable {
   cursor: crosshair;
+}
+.noteapp .npitch.editable.tline {
   touch-action: none;
 }
-/* プレー軌道のSVG */
-.noteapp .mplines {
+.noteapp .npitch.editable.tpoint {
+  touch-action: pan-y;
+}
+.noteapp .npsvg {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  display: block;
   pointer-events: none;
-  /* 矢印(marker)の色。軌道は種別ごとに芝に映える明色を使う */
-  color: #ffffff;
-  z-index: 2;
 }
-.noteapp .mpline-path {
+.noteapp .npmk {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.78);
+  stroke-width: 0.31;
+}
+.noteapp .npmk .spot {
+  fill: rgba(255, 255, 255, 0.78);
+  stroke: none;
+}
+.noteapp .npl {
   fill: none;
   stroke: #ffffff;
-  stroke-width: 2;
+  stroke-width: 0.45;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.35));
 }
-.noteapp .mpline-path.pass {
+.noteapp .npline.pass .npl {
+  stroke-dasharray: 1.45 1.05;
+  stroke-linecap: butt;
+}
+.noteapp .npline.shot .npl {
+  stroke-width: 0.66;
+}
+.noteapp .nparrow {
+  fill: #ffffff;
+  stroke: none;
+}
+.noteapp .npmiss {
+  fill: none;
+  stroke: #ff5b6e;
+  stroke-width: 0.42;
+}
+/* スタッフの図：青に白いフチ */
+.noteapp .npitch.staff .npl {
+  stroke: var(--accent);
+}
+.noteapp .npitch.staff .npl.under {
   stroke: #ffffff;
-  stroke-dasharray: 5 3;
+  stroke-width: 0.95;
 }
-.noteapp .mpline-path.dribble {
-  stroke: #4fc3f7;
-  stroke-dasharray: 1.6 2.6;
+/* パスの破線：白の下敷きは青のダッシュより前後に 0.2 ずつ長く取り、白と青の 2 本の縞に見せない */
+.noteapp .npitch.staff .npline.pass .npl.under {
+  stroke-dasharray: 1.85 0.65;
+  stroke-dashoffset: 0.2;
 }
-.noteapp .mpline-path.shot {
-  stroke: #ffd166;
-  stroke-width: 2.7;
+.noteapp .npitch.staff .npline.shot .npl.under {
+  stroke-width: 1.2;
 }
-.noteapp .mpmk {
+.noteapp .npitch.staff .nparrow {
+  fill: var(--accent);
+}
+.noteapp .npitch.staff .nparrow.under {
+  fill: #ffffff;
+  stroke: #ffffff;
+  stroke-width: 0.5;
+  stroke-linejoin: round;
+}
+/* 外枠（ピッチの端から 3m ≒ 14.5px）とコーナーアークの内側に置き、線に触れさせない */
+.noteapp .nphint {
   position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.noteapp .mpline {
-  position: absolute;
-  top: 50%;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: rgba(255, 255, 255, 0.22);
-}
-.noteapp .mpcircle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 26%;
-  aspect-ratio: 1;
-  transform: translate(-50%, -50%);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 50%;
-}
-.noteapp .mpbox {
-  position: absolute;
-  left: 25%;
-  width: 50%;
-  height: 14%;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-}
-.noteapp .mpbox.top {
-  top: 0;
-  border-top: none;
-}
-.noteapp .mpbox.bot {
-  bottom: 0;
-  border-bottom: none;
-}
-.noteapp .mpgoalhint {
-  position: absolute;
-  top: 4px;
-  left: 6px;
+  top: 19px;
+  left: 22px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.7);
   pointer-events: none;
 }
-.noteapp .mtok {
+/* 陣形の札 */
+.noteapp .nptok {
   position: absolute;
   transform: translate(-50%, -50%);
-  min-width: 26px;
-  padding: 2px 5px;
-  border-radius: var(--r-sm);
-  font-size: 9.5px;
+  box-sizing: border-box;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
   text-align: center;
-  line-height: 1.1;
-  border: 1.5px solid;
 }
-/* 芝の上でも読めるよう不透明の白地にする */
-.noteapp .mtok.own {
+.noteapp .nptok.own {
   background: #ffffff;
-  border-color: var(--primary);
   color: var(--ink);
+}
+.noteapp button.nptok.own {
   cursor: pointer;
 }
-.noteapp .mtok.own.sel {
-  background: var(--primary);
+.noteapp .nptok.own.sel {
+  background: var(--accent);
   color: #ffffff;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 0 2.5px #ffffff;
 }
-.noteapp .mtok.opp {
-  background: rgba(255, 255, 255, 0.88);
-  border-color: var(--danger);
-  color: var(--danger);
+.noteapp .nptok.opp {
+  background: var(--grass-b);
+  border: 1.5px solid #ffffff;
+  color: #ffffff;
+  pointer-events: none;
 }
-/* プレー記録の点：芝に映える明色＋白フチ */
-.noteapp .mdot {
+.noteapp .nptok.own::before {
+  content: "";
   position: absolute;
+  inset: 0;
+}
+body:has(.mhead) .noteapp .nptok.own::before {
+  inset: -7px;
+}
+/* プレー記録の印 */
+.noteapp .npdot {
+  position: absolute;
+  box-sizing: border-box;
   width: 14px;
   height: 14px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
   border: 2px solid #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
 }
-.noteapp .mdot.receive {
-  background: #35c072;
+.noteapp .npdot.receive {
+  box-sizing: border-box;
+  width: 15px;
+  height: 15px;
+  border-width: 2.5px;
+  background: rgba(0, 0, 0, 0.18);
 }
-.noteapp .mdot.shot {
+.noteapp .npdot.shot {
   background: #ffd166;
 }
-.noteapp .mdot.miss {
-  background: #ff5b6e;
+.noteapp .npdot.miss {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--danger);
+  background: #ffffff;
+}
+.noteapp .npdot.miss::before,
+.noteapp .npdot.miss::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 1.5px;
+  margin: -0.75px 0 0 -4.5px;
+  background: var(--danger);
+  transform: rotate(45deg);
+}
+.noteapp .npdot.miss::after {
+  transform: rotate(-45deg);
+}
+.noteapp .npitch.staff .npdot.receive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px #ffffff;
+}
+.noteapp .npitch.staff .npdot.shot {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px #ffffff;
 }
 /* notebook-staff-redesign §4: 閲覧モードのシュートの点は押せる button。見た目(14px＋白フチ＋黄)は
-   .mdot.shot のまま変えず、::before の透明な当たり判定だけ広げる（padding box 10px＋両側7px＝24px。
+   .npdot.shot のまま変えず、::before の透明な当たり判定だけ広げる（padding box 10px＋両側7px＝24px。
    スマホは下の body:has(.mhead) で両側17px＝44px。他の点(span)には付けない） */
-.noteapp .mdot.tappable {
+.noteapp .npdot.tappable {
   padding: 0;
   margin: 0;
   appearance: none;
   cursor: pointer;
 }
-.noteapp .mdot.tappable::before {
+.noteapp .npdot.tappable::before {
   content: "";
   position: absolute;
   inset: -7px;
 }
-body:has(.mhead) .noteapp .mdot.tappable::before {
+body:has(.mhead) .noteapp .npdot.tappable::before {
   inset: -17px;
 }
-/* モーダルが開いている間、そのシュートの点を --accent の輪で強調する（§4） */
-.noteapp .mdot.sel {
-  box-shadow: 0 0 0 3px var(--accent);
+/* モーダルが開いている間、そのシュートの点を --accent の輪で強調する（青の輪＋白の輪。緑の上でも見える） */
+.noteapp .npdot.sel {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px #ffffff;
   z-index: 1;
 }
 
@@ -10482,21 +10547,6 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .shotresult.nogoal { color: var(--danger); }
 
 /* 試合ノートのフェーズ */
-.noteapp .phasecard {
-  border: 1px solid var(--outline);
-  border-radius: var(--r-md);
-  padding: 12px;
-  margin-bottom: 10px;
-  background: var(--surface-lowest);
-}
-.noteapp .phasehd {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-weight: 700;
-  color: var(--ink);
-  margin-bottom: 8px;
-}
 .noteapp .phasehint {
   font-size: var(--fs-body-s);
   color: var(--mut);
@@ -10572,82 +10622,46 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   margin-bottom: 2px;
 }
 
-/* プレー種別ツール */
+/* ===== note-pitch-v2 §2: プレー種別ツール（1 列 5 つ・44px）・ピッチの行・畳む行。基底＝スマホと PC の両方 ===== */
 .noteapp .playtools {
   display: flex;
-  flex-direction: column;
   gap: 6px;
   margin: 6px 0 2px;
 }
-.noteapp .playtoolrow {
+.noteapp .playtools .playkind,
+.noteapp .playtools .playline {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 44px;
+  padding: 4px 2px;
   display: flex;
-  gap: 8px;
-}
-.noteapp .playline {
-  flex: 1;
-  padding: 9px 8px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  box-sizing: border-box;
   border-radius: var(--r-sm);
   border: 1px solid var(--outline);
   background: var(--surface-lowest);
   color: var(--ink);
-  font-size: 12.5px;
+  font-family: var(--font-ui);
+  font-size: 12px;
   font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
   cursor: pointer;
 }
-.noteapp .playkind {
-  flex: 1;
-  padding: 9px 8px;
-  border-radius: var(--r-sm);
-  border: 1px solid var(--outline);
-  background: var(--surface-lowest);
-  color: var(--ink);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
+.noteapp .playtools svg {
+  display: block;
+  flex: none;
 }
 /* 選択中は濃紺ベタ＋白文字ではっきり区別する */
-.noteapp .playkind.on,
-.noteapp .playline.on {
+.noteapp .playtools .playkind.on,
+.noteapp .playtools .playline.on {
   background: var(--ink);
   border-color: var(--ink);
   color: #ffffff;
-}
-/* ピッチ上のマークと同じ色の凡例をボタンに付ける */
-.noteapp .playkind::before,
-.noteapp .playline::before {
-  content: "";
-  display: inline-block;
-  vertical-align: -1px;
-  margin-right: 6px;
-  border: 1px solid rgba(21, 35, 60, 0.25);
-}
-.noteapp .playkind::before {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
-.noteapp .playkind.receive::before {
-  background: #35c072;
-}
-.noteapp .playkind.shot::before {
-  background: #ffd166;
-}
-.noteapp .playkind.miss::before {
-  background: #ff5b6e;
-}
-.noteapp .playline::before {
-  width: 15px;
-  height: 3px;
-  border-radius: 2px;
-}
-.noteapp .playline.dribble::before {
-  background: #4fc3f7;
-}
-.noteapp .playline.pass::before {
-  background: #ffffff;
-}
-.noteapp .playline.shot::before {
-  background: #ffd166;
+  font-weight: 700;
 }
 .noteapp .playacts {
   display: flex;
@@ -10656,6 +10670,83 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 }
 .noteapp .playacts .dynadd {
   flex: 1;
+}
+.noteapp .playacts .dynadd.danger {
+  color: var(--danger);
+}
+/* ピッチの行：左に「ピッチ」と番号のチップ、右に「全面｜ハーフ」 */
+.noteapp .npbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  margin: 0 0 2px;
+}
+.noteapp .npbar-l,
+.noteapp .npbar-r {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* ピッチが 3 枚以上で 1 行に収まらず折れたときも、「全面｜ハーフ」は右に寄せる */
+.noteapp .npbar-r {
+  margin-left: auto;
+}
+.noteapp .npbar-t {
+  margin-right: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--mut);
+}
+.noteapp .canvaschip {
+  text-align: center;
+}
+/* スマホだけ、チップを押せる大きさ（44px）に */
+body:has(.mhead) .noteapp .phasechip,
+body:has(.mhead) .noteapp .canvaschip {
+  min-height: 44px;
+}
+body:has(.mhead) .noteapp .canvaschip {
+  min-width: 44px;
+}
+/* 出場した位置の欄と「相手も表示」：既定の左右 16px・2px の字下げをやめ、見出し・案内・ピッチの外側の左端（.detailwrap の内側）にそろえる */
+.noteapp .detailwrap .formgrid.lu {
+  margin: 0 0 12px;
+}
+.noteapp .detailwrap .sharetoggle.lu {
+  margin: 4px 0 12px;
+}
+.noteapp .detailwrap .sharetoggle.lu input {
+  margin: 0;
+}
+/* 詳細の「出場した位置」を畳んだ 1 行 */
+.noteapp .npfold {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 4px 0;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+.noteapp .npfold-chev {
+  flex: none;
+  color: var(--mut);
+}
+.noteapp .npfold[aria-expanded="true"] .npfold-chev {
+  transform: rotate(180deg);
 }
 
 /* AI出力 */
@@ -11873,7 +11964,7 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
 .noteapp .searchbar,
 .noteapp .detailtoggle,
 .noteapp .sendtgt label,
-.noteapp .mtok.own,
+.noteapp .nptok.own,
 .noteapp .formfield input,
 .noteapp .formfield select,
 .noteapp .formfield textarea,

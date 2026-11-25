@@ -6,6 +6,7 @@ import type { PlayLine, PlayLineKind, PlayPoint, Point } from "@/lib/types";
 import { PLAY_KIND_LABEL } from "@/lib/types";
 import { buildSlots } from "@/lib/formations";
 import { simplify } from "@/lib/animation";
+import { wavy } from "@/lib/drillDraw";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
@@ -14,21 +15,145 @@ export type PlayTool =
   | { mode: "point"; kind: PlayPoint["kind"] }
   | { mode: "line"; kind: PlayLineKind };
 
-/** ピッチの装飾（センターライン・サークル・両PA） */
+/* ===== note-pitch-v2 §1-1: 幾何（単位は m。ピッチ 68×105、まわりの余白 3） ===== */
+export type PitchView = "full" | "half";
+const PW = 68;
+const PH = 105;
+const VW = 74;
+const VH_OF: Record<PitchView, number> = { full: 111, half: 57 };
+const viewBoxOf = (v: PitchView) => `-3 -3 ${VW} ${VH_OF[v]}`;
+
+/** 保存の座標（x 0〜100 左→右、y 0 自陣〜100 敵陣）→ 入れ物の中の % */
+export function fieldPct(x: number, y: number, view: PitchView = "full"): { left: number; top: number } {
+  return {
+    left: ((3 + 0.68 * x) / VW) * 100,
+    top: ((3 + 1.05 * (100 - y)) / VH_OF[view]) * 100,
+  };
+}
+
+/** 指の位置 → 保存の座標（2〜98 に丸める） */
+export function pointerToField(
+  e: { clientX: number; clientY: number },
+  rect: { left: number; top: number; width: number; height: number },
+  view: PitchView = "full",
+): Point {
+  const xm = ((e.clientX - rect.left) / rect.width) * VW - 3;
+  const ym = ((e.clientY - rect.top) / rect.height) * VH_OF[view] - 3;
+  return { x: clamp(xm / 0.68, 2, 98), y: clamp(100 - ym / 1.05, 2, 98) };
+}
+
+/** 保存の座標 → m */
+const toM = (p: Point): Point => ({ x: p.x * 0.68, y: (100 - p.y) * 1.05 });
+
+/* ===== §1-2: 線（マーキング） ===== */
+const GX = PW / 2;
 function Markings() {
+  // 敵陣側（y=0 のゴールライン）を基準に書き、自陣側は上下反転して同じ式で作る
+  const side = (flip: boolean) => {
+    const fy = (y: number) => (flip ? PH - y : y);
+    const rectD = (x: number, y: number, w: number, h: number) => {
+      const y0 = fy(y);
+      const y1 = fy(y + h);
+      return `M${x} ${y0}H${x + w}V${y1}H${x}Z`;
+    };
+    const dx = Math.sqrt(9.15 * 9.15 - 5.5 * 5.5);
+    return (
+      <g key={flip ? "bot" : "top"}>
+        <path d={rectD(GX - 20.16, 0, 40.32, 16.5)} />
+        <path d={rectD(GX - 9.16, 0, 18.32, 5.5)} />
+        <path d={rectD(GX - 3.66, -2, 7.32, 2)} />
+        <path d={`M${GX - dx} ${fy(16.5)}A9.15 9.15 0 0 ${flip ? 1 : 0} ${GX + dx} ${fy(16.5)}`} />
+        <circle className="spot" cx={GX} cy={fy(11)} r={0.35} />
+      </g>
+    );
+  };
   return (
-    <div className="mpmk">
-      <div className="mpline" />
-      <div className="mpcircle" />
-      <div className="mpbox top" />
-      <div className="mpbox bot" />
-    </div>
+    <g className="npmk">
+      <rect x={0} y={0} width={PW} height={PH} />
+      <path d={`M0 ${PH / 2}H${PW}`} />
+      <circle cx={GX} cy={PH / 2} r={9.15} />
+      <circle className="spot" cx={GX} cy={PH / 2} r={0.35} />
+      {side(false)}
+      {side(true)}
+      <path d="M1 0A1 1 0 0 1 0 1" />
+      <path d={`M${PW - 1} 0A1 1 0 0 0 ${PW} 1`} />
+      <path d={`M0 ${PH - 1}A1 1 0 0 1 1 ${PH}`} />
+      <path d={`M${PW} ${PH - 1}A1 1 0 0 0 ${PW - 1} ${PH}`} />
+    </g>
   );
 }
 
+/* ===== §1-3: 軌道（線） ===== */
+const ptsD = (pts: Point[]) => pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join("");
+
+type LineLike = { kind: PlayLineKind; path: Point[]; success?: boolean };
+
+function arrowPoints(mPath: Point[]): string | null {
+  if (mPath.length < 2) return null;
+  const end = mPath[mPath.length - 1];
+  let from = mPath[mPath.length - 2];
+  for (let i = mPath.length - 2; i >= 0; i--) {
+    from = mPath[i];
+    if (Math.hypot(end.x - from.x, end.y - from.y) > 0.01) break;
+  }
+  const dx = end.x - from.x;
+  const dy = end.y - from.y;
+  const d = Math.hypot(dx, dy) || 1;
+  const ux = dx / d;
+  const uy = dy / d;
+  const bx = end.x - ux * 2.3;
+  const by = end.y - uy * 2.3;
+  const hx = -uy * 1.15;
+  const hy = ux * 1.15;
+  return `${end.x.toFixed(2)},${end.y.toFixed(2)} ${(bx + hx).toFixed(2)},${(by + hy).toFixed(2)} ${(bx - hx).toFixed(2)},${(by - hy).toFixed(2)}`;
+}
+
+const WAVE_K = 4;
+
+function OneLine({ l, staff }: { l: LineLike; staff: boolean }) {
+  const mPath = l.path.map(toM);
+  // wavy は約 1.2 単位ごとに点を取るので、波長 3.3m では 1 周期に 3 点弱しか無くぎざぎざになる。
+  // WAVE_K 倍に拡大して掛け（振れ幅・波長も同じ倍率）、元の大きさに戻して点の密度だけ上げる（値は仕様のまま）
+  const drawn =
+    l.kind === "dribble"
+      ? wavy(mPath.map((p) => ({ x: p.x * WAVE_K, y: p.y * WAVE_K })), 0.85 * WAVE_K, 3.3 * WAVE_K).map((p) => ({
+          x: p.x / WAVE_K,
+          y: p.y / WAVE_K,
+        }))
+      : mPath;
+  const d = ptsD(drawn);
+  const arrow = arrowPoints(mPath);
+  const missed = l.success === false;
+  const end = mPath[mPath.length - 1];
+  return (
+    <g>
+      <g className={`npline ${l.kind}${missed ? " missed" : ""}`} opacity={missed ? 0.6 : undefined}>
+        {staff && <path className="npl under" d={d} />}
+        {staff && arrow && <polygon className="nparrow under" points={arrow} />}
+        <path className="npl" d={d} />
+        {arrow && <polygon className="nparrow" points={arrow} />}
+      </g>
+      {/* 失敗の赤い輪は薄くするグループの外に描く（緑の上で沈まないように） */}
+      {missed && end && <circle className="npmiss" cx={end.x} cy={end.y} r={1.45} />}
+    </g>
+  );
+}
+
+function PlayLinesSvg({ lines, temp, staff }: { lines: PlayLine[]; temp: LineLike | null; staff: boolean }) {
+  const all: LineLike[] = temp && temp.path.length > 1 ? [...lines, temp] : lines;
+  return (
+    <g className="nplines">
+      {all.map((l, i) => (
+        <OneLine key={i} l={l} staff={staff} />
+      ))}
+    </g>
+  );
+}
+
+/* ===== §1-5: 陣形 ===== */
 /**
  * ① フォーメーション記録用ピッチ。
- * 自チームは下半分、相手は上半分（左右反転）に表示。自分のポジションはタップで選択。
+ * 既定は自分のチームだけを全面に。showOpp のときは両チームを縮めて置く。自分のポジションはタップで選択。
  * BoardProvider に依存しない表示専用コンポーネント。
  */
 export function FormationPitch({
@@ -36,37 +161,49 @@ export function FormationPitch({
   ownPositionIndex,
   onPickPosition,
   oppFormation,
+  showOpp = false,
 }: {
   ownFormation: string;
   ownPositionIndex: number | null;
   onPickPosition?: (index: number) => void;
   oppFormation?: string;
+  showOpp?: boolean;
 }) {
   const own = buildSlots(ownFormation);
-  const opp = oppFormation ? buildSlots(oppFormation) : [];
+  const opp = showOpp && oppFormation ? buildSlots(oppFormation) : [];
   return (
-    <div className="mpitch">
-      <Markings />
-      {/* 相手（上・左右反転） */}
-      {opp.map((s, i) => (
-        <div
-          key={"o" + i}
-          className="mtok opp"
-          style={{ left: 100 - s.x + "%", top: s.y * 0.46 + "%" }}
-        >
-          {s.role}
-        </div>
-      ))}
-      {/* 自チーム（下） */}
+    <div className="npitch">
+      <svg className="npsvg" viewBox={viewBoxOf("full")} preserveAspectRatio="none" aria-hidden="true">
+        <Markings />
+      </svg>
+      <div className="nphint">敵陣 ↑</div>
+      {opp.map((s, i) => {
+        const { left, top } = fieldPct(100 - s.x, 100 - s.y * 0.46);
+        return (
+          <div key={"o" + i} className="nptok opp" style={{ left: left + "%", top: top + "%" }}>
+            {s.role}
+          </div>
+        );
+      })}
       {own.map((s, i) => {
         const sel = i === ownPositionIndex;
+        const { left, top } = fieldPct(s.x, showOpp ? s.y * 0.5 : s.y);
+        const style = { left: left + "%", top: top + "%" };
+        if (!onPickPosition) {
+          return (
+            <div key={"m" + i} className={`nptok own${sel ? " sel" : ""}`} style={style}>
+              {s.role}
+            </div>
+          );
+        }
         return (
           <button
             key={"m" + i}
             type="button"
-            className={`mtok own${sel ? " sel" : ""}`}
-            style={{ left: s.x + "%", top: 100 - s.y * 0.5 + "%" }}
-            onClick={onPickPosition ? () => onPickPosition(i) : undefined}
+            className={`nptok own${sel ? " sel" : ""}`}
+            style={style}
+            aria-pressed={sel}
+            onClick={() => onPickPosition(i)}
           >
             {s.role}
           </button>
@@ -76,52 +213,7 @@ export function FormationPitch({
   );
 }
 
-/** 軌道をSVGで描画（点[%]→viewBox 0..100 × 0..133.33 で歪みなく描く） */
-const VBH = 133.333;
-function pathD(path: Point[]): string {
-  return path.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)} ${((100 - p.y) * VBH / 100).toFixed(1)}`).join(" ");
-}
-/** 軌道の色（芝の上で見えるよう明色。ボタンの凡例・CSSと揃える） */
-const LINE_COLOR: Record<PlayLineKind, string> = {
-  dribble: "#4fc3f7",
-  pass: "#ffffff",
-  shot: "#ffd166",
-};
-
-function PlayLinesSvg({ lines, temp }: { lines: PlayLine[]; temp: { kind: PlayLineKind; path: Point[] } | null }) {
-  const all: (PlayLine | { kind: PlayLineKind; path: Point[] })[] = temp && temp.path.length > 1 ? [...lines, temp] : lines;
-  return (
-    <svg className="mplines" viewBox={`0 0 100 ${VBH}`} preserveAspectRatio="xMidYMid meet">
-      <defs>
-        {(Object.keys(LINE_COLOR) as PlayLineKind[]).map((k) => (
-          <marker key={k} id={`mparrow-${k}`} markerWidth="4.5" markerHeight="4.5" refX="3" refY="2.25" orient="auto">
-            <path d="M0,0 L3.8,2.25 L0,4.5 z" fill={LINE_COLOR[k]} />
-          </marker>
-        ))}
-      </defs>
-      {all.map((l, i) => {
-        const missed = "success" in l && l.success === false;
-        const end = l.path[l.path.length - 1];
-        return (
-          <g key={i} opacity={missed ? 0.55 : undefined}>
-            <path className={`mpline-path ${l.kind}`} d={pathD(l.path)} markerEnd={`url(#mparrow-${l.kind})`} />
-            {missed && end && (
-              <circle
-                cx={end.x}
-                cy={(100 - end.y) * VBH / 100}
-                r={2.6}
-                fill="none"
-                stroke="#ff5b6e"
-                strokeWidth={1.6}
-              />
-            )}
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
+/* ===== §1-6: プレーのピッチ ===== */
 /**
  * ② プレーエリア記録用ピッチ。
  * 点ツール（受けた/シュート/トラップミス）＝タップで点を追加、軌道ツール（ドリブル/パス）＝なぞって線を追加。
@@ -137,6 +229,8 @@ export function PlayAreaPitch({
   onAddLine,
   onPointClick,
   selectedIndex,
+  view = "full",
+  tone = "player",
 }: {
   points: PlayPoint[];
   lines?: PlayLine[];
@@ -145,18 +239,19 @@ export function PlayAreaPitch({
   onAddLine?: (path: Point[]) => void;
   onPointClick?: (index: number, p: PlayPoint) => void;
   selectedIndex?: number | null;
+  view?: PitchView;
+  tone?: "player" | "staff";
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const draw = useRef<{ active: boolean; pts: Point[]; moved: boolean }>({ active: false, pts: [], moved: false });
   const [temp, setTemp] = useState<Point[] | null>(null);
   const editable = !!tool && (!!onAddPoint || !!onAddLine);
+  const staff = tone === "staff";
 
   const toPct = (e: React.PointerEvent<HTMLDivElement>): Point | null => {
     const r = ref.current?.getBoundingClientRect();
-    if (!r) return null;
-    const x = clamp(((e.clientX - r.left) / r.width) * 100, 2, 98);
-    const y = clamp(100 - ((e.clientY - r.top) / r.height) * 100, 2, 98);
-    return { x, y };
+    if (!r || r.width === 0 || r.height === 0) return null;
+    return pointerToField(e, r, view);
   };
 
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -193,27 +288,41 @@ export function PlayAreaPitch({
       if (onAddPoint) onAddPoint(p.x, p.y);
     }
   };
+  const onCancel = () => {
+    draw.current = { active: false, pts: [], moved: false };
+    setTemp(null);
+  };
 
   return (
     <div
-      className={`mpitch play${editable ? " editable" : ""}`}
+      className={`npitch play${view === "half" ? " half" : ""}${staff ? " staff" : ""}${
+        editable ? ` editable ${tool!.mode === "line" ? "tline" : "tpoint"}` : ""
+      }`}
       ref={ref}
       onPointerDown={editable ? onDown : undefined}
       onPointerMove={editable ? onMove : undefined}
       onPointerUp={editable ? onUp : undefined}
+      onPointerCancel={editable ? onCancel : undefined}
     >
-      <Markings />
-      <div className="mpgoalhint">敵陣 ↑</div>
-      <PlayLinesSvg lines={lines} temp={temp && tool?.mode === "line" ? { kind: tool.kind, path: temp } : null} />
+      <svg className="npsvg" viewBox={viewBoxOf(view)} preserveAspectRatio="none" aria-hidden="true">
+        <Markings />
+        <PlayLinesSvg
+          lines={lines}
+          staff={staff}
+          temp={temp && tool?.mode === "line" ? { kind: tool.kind, path: temp } : null}
+        />
+      </svg>
+      <div className="nphint">敵陣 ↑</div>
       {points.map((p, i) => {
         const sel = selectedIndex === i ? " sel" : "";
-        const pos = { left: p.x + "%", top: 100 - p.y + "%" };
+        const { left, top } = fieldPct(p.x, p.y, view);
+        const pos = { left: left + "%", top: top + "%" };
         if (!editable && onPointClick && p.kind === "shot") {
           return (
             <button
               key={i}
               type="button"
-              className={`mdot shot tappable${sel}`}
+              className={`npdot shot tappable${sel}`}
               style={pos}
               title={PLAY_KIND_LABEL[p.kind]}
               aria-label="シュート"
@@ -221,7 +330,7 @@ export function PlayAreaPitch({
             />
           );
         }
-        return <span key={i} className={`mdot ${p.kind}${sel}`} style={pos} title={PLAY_KIND_LABEL[p.kind]} />;
+        return <span key={i} className={`npdot ${p.kind}${sel}`} style={pos} title={PLAY_KIND_LABEL[p.kind]} />;
       })}
     </div>
   );
