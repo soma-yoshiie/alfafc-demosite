@@ -2714,6 +2714,12 @@ function NoteDetail({
   if (!entry) return <div className="empty-msg">ノートが見つかりません。</div>;
   const who = board.state.players.find((p) => p.id === entry.playerId)?.name ?? "選手";
   const mine = !isCoach && entry.playerId === board.auth.playerId;
+  // note-play-chain §5: 試合ノートでプレーの記録があるとき、スタッフの図は詳細の最初のピッチに重ねて見せる
+  const overlaid =
+    entry.kind === "match" &&
+    ((entry.plays?.length ?? 0) > 0 || (entry.playLines?.length ?? 0) > 0) &&
+    !!entry.staffDrawing &&
+    (entry.staffDrawing.plays.length > 0 || entry.staffDrawing.playLines.length > 0);
   // ux-fix R3-5: コメントを書いた人（「岡本監督」）。送ったときの本人を覚える。古いコメントは代表のスタッフに寄せる
   const ident = staffIdentity(board.auth.name, team.team.coaches);
   const ownName = `${ident.name}${ident.role}`;
@@ -2764,7 +2770,7 @@ function NoteDetail({
         </div>
       </div>
 
-      {entry.kind === "match" && <MatchDetail note={entry} />}
+      {entry.kind === "match" && <MatchDetail note={entry} staffDrawing={entry.staffDrawing} viewer={isCoach ? "staff" : "player"} />}
       {entry.kind === "practice" && <PracticeDetail note={entry} />}
       {entry.kind === "solo" && <SoloDetail note={entry} />}
 
@@ -2844,22 +2850,25 @@ function NoteDetail({
           <div className="notesec-h">スタッフからのコメント</div>
           {entry.staffReaction && (
             <div className="reactpill">
-              <E n={REACTION_ICON[entry.staffReaction]} /> コーチから: {STAFF_REACTION_LABEL[entry.staffReaction]}
+              <E n={REACTION_ICON[entry.staffReaction]} /> スタッフから: {STAFF_REACTION_LABEL[entry.staffReaction]}
             </div>
           )}
           {entry.staffComment && <div className="notesec-b">{entry.staffComment}</div>}
           {byline && <div className="cmtby">{byline}</div>}
-          {entry.staffDrawing && (
-            <>
-              <div className="notesec-h" style={{ marginTop: 12 }}>コーチの図</div>
-              <div className="npwrap">
-                <PlayAreaPitch tone="staff" points={entry.staffDrawing.plays} lines={entry.staffDrawing.playLines} />
-              </div>
-            </>
-          )}
+          {entry.staffDrawing &&
+            (overlaid ? (
+              <div className="evnote" style={{ marginTop: 12 }}>図は上のピッチに重ねてあります</div>
+            ) : (
+              <>
+                <div className="notesec-h" style={{ marginTop: 12 }}>スタッフの図</div>
+                <div className="npwrap">
+                  <PlayAreaPitch tone="staff" points={entry.staffDrawing.plays} lines={entry.staffDrawing.playLines} />
+                </div>
+              </>
+            ))}
         </div>
       ) : entry.staffSeenAt ? (
-        <div className="seenpill"><E n="check" /> コーチが確認しました</div>
+        <div className="seenpill"><E n="check" /> スタッフが確認しました</div>
       ) : (
         <div className="evnote" style={{ margin: "12px 2px" }}>スタッフのコメントはまだありません。</div>
       )}
@@ -2872,7 +2881,7 @@ function NoteDetail({
             onClick={() => {
               // ux-fix R3-5: 確認してから消す。コーチのコメントがあれば、一緒に消えることを伝える
               const hasStaff = !!(entry.staffComment || entry.staffReaction || entry.staffDrawing);
-              const msg = `このノートを削除しますか？${hasStaff ? "コーチのコメントも消えます。" : ""}`;
+              const msg = `このノートを削除しますか？${hasStaff ? "スタッフのコメントも消えます。" : ""}`;
               if (!window.confirm(msg)) return;
               board.deleteNote(entry.id);
               onDeleted();

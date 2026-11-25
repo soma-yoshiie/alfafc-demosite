@@ -997,6 +997,12 @@ export interface PlayPoint {
   scored?: boolean;
   /** シュートの状況メモ。kind:"shot" 専用 */
   shotNote?: string;
+  /** note-play-chain §1: プレーの id。同じ id の印が 1 つのプレー（無ければ単独の印） */
+  chain?: string;
+  /** プレーの中の順番（0, 1, 2…） */
+  seq?: number;
+  /** ノートの中で置いた順の通し番号（1, 2, 3…。「1つ戻す」を時間順にする） */
+  ord?: number;
 }
 
 /** プレーの軌道（ドリブル／パス／シュートコース）。shot は既存保存データの表示互換のため型のみ残す */
@@ -1018,6 +1024,12 @@ export interface PlayLine {
   success?: boolean;
   /** 状況メモ（任意） */
   note?: string;
+  /** note-play-chain §1: プレーの id。同じ id の印が 1 つのプレー（無ければ単独の印） */
+  chain?: string;
+  /** プレーの中の順番（0, 1, 2…） */
+  seq?: number;
+  /** ノートの中で置いた順の通し番号（1, 2, 3…。「1つ戻す」を時間順にする） */
+  ord?: number;
 }
 
 /** 試合ノート */

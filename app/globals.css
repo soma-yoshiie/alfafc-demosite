@@ -10371,25 +10371,31 @@ body:has(.mhead) .noteapp .notedetail .notesec > .npwrap {
   stroke-width: 0.42;
 }
 /* スタッフの図：青に白いフチ */
-.noteapp .npitch.staff .npl {
+.noteapp .npitch.staff .npl,
+.noteapp .npstafflayer .npl {
   stroke: var(--accent);
 }
-.noteapp .npitch.staff .npl.under {
+.noteapp .npitch.staff .npl.under,
+.noteapp .npstafflayer .npl.under {
   stroke: #ffffff;
   stroke-width: 0.95;
 }
 /* パスの破線：白の下敷きは青のダッシュより前後に 0.2 ずつ長く取り、白と青の 2 本の縞に見せない */
-.noteapp .npitch.staff .npline.pass .npl.under {
+.noteapp .npitch.staff .npline.pass .npl.under,
+.noteapp .npstafflayer .npline.pass .npl.under {
   stroke-dasharray: 1.85 0.65;
   stroke-dashoffset: 0.2;
 }
-.noteapp .npitch.staff .npline.shot .npl.under {
+.noteapp .npitch.staff .npline.shot .npl.under,
+.noteapp .npstafflayer .npline.shot .npl.under {
   stroke-width: 1.2;
 }
-.noteapp .npitch.staff .nparrow {
+.noteapp .npitch.staff .nparrow,
+.noteapp .npstafflayer .nparrow {
   fill: var(--accent);
 }
-.noteapp .npitch.staff .nparrow.under {
+.noteapp .npitch.staff .nparrow.under,
+.noteapp .npstafflayer .nparrow.under {
   fill: #ffffff;
   stroke: #ffffff;
   stroke-width: 0.5;
@@ -10516,10 +10522,256 @@ body:has(.mhead) .noteapp .nptok.own::before {
 body:has(.mhead) .noteapp .npdot.tappable::before {
   inset: -17px;
 }
+
+/* ===== note-play-chain §6: つながる作図（続けて・プレーの一覧・番号・吸い付く輪・薄い表示・スタッフの図の重ね） ===== */
+/* 「続けて」の行は道具の列の下（承認図のとおり。行が出入りしても道具の列は動かない）。道具の列との間は 12px */
+.noteapp .nextstep {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 2px;
+}
+.noteapp .nextstep-t {
+  flex: none;
+  font-size: 12px;
+  color: var(--mut);
+}
+.noteapp .nextstep-b {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.noteapp .nsbtn {
+  flex: 1 1 0;
+  box-sizing: border-box;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.noteapp .nsbtn.on {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+.noteapp .nsbtn.end {
+  border-color: var(--outline);
+  color: var(--mut);
+}
+.noteapp .playlist {
+  margin-top: 12px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  overflow: hidden;
+}
+/* 一覧の見出し「プレーの一覧」（承認図 n_match_pitch・n_detail_match）。見出しのすぐ下に一覧 */
+.noteapp .playlist-h {
+  margin-top: 14px;
+}
+.noteapp .playlist-h + .playlist {
+  margin-top: 0;
+}
+.noteapp .playitem + .playitem {
+  border-top: 1px solid var(--outline);
+}
+.noteapp .playitem.on {
+  background: var(--accent-tint);
+}
+.noteapp .playrow {
+  border-radius: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.noteapp .playrow-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--mut);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.noteapp .playrow.on .playrow-tag {
+  background: var(--accent);
+  color: #ffffff;
+}
+.noteapp .playrow-b {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 2px;
+}
+.noteapp .playrow-t {
+  word-break: keep-all;
+  overflow-wrap: normal;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.noteapp .playrow-n {
+  font-size: 12px;
+  color: var(--mut);
+  line-height: 1.4;
+}
+.noteapp .playitem.on .playrow {
+  min-height: 44px;
+}
+.noteapp .playrow-acts {
+  display: flex;
+  gap: 8px;
+  margin-top: -6px;
+  padding: 0 12px 4px;
+}
+.noteapp .playrow-acts button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.noteapp .playrow-fix {
+  color: var(--accent);
+}
+.noteapp .playrow-del {
+  color: var(--danger);
+}
+.noteapp .npbadge {
+  position: absolute;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin: -23px 0 0 -23px;
+  border: 1.5px solid #ffffff;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 2;
+}
+.noteapp .npsnap {
+  position: absolute;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border: 2px dashed #ffffff;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.noteapp .npdot.dim {
+  opacity: 0.3;
+}
+/* スタッフの図を選手の記録に重ねる：青に白いフチ（押せない） */
+.noteapp .npdot.stf {
+  pointer-events: none;
+}
+.noteapp .npdot.stf.receive,
+.noteapp .npdot.stf.shot {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1.5px #ffffff;
+}
 /* モーダルが開いている間、そのシュートの点を --accent の輪で強調する（青の輪＋白の輪。緑の上でも見える） */
 .noteapp .npdot.sel {
   box-shadow: 0 0 0 2px var(--accent), 0 0 0 4px #ffffff;
   z-index: 1;
+}
+
+/* 行を選ぶとピッチを見える所まで寄せる（scrollIntoView）。上はヘッダーの分をあける */
+.noteapp .npitch {
+  scroll-margin-top: 64px;
+}
+/* 重ねたときの凡例「白＝自分の記録　青＝スタッフの図」。見本はピッチの緑の上の線と同じ色 */
+.noteapp .nplegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--mut);
+}
+.noteapp .nplegend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.noteapp .nplegend-sw {
+  flex: none;
+  position: relative;
+  width: 28px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--grass-b);
+}
+.noteapp .nplegend-sw::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 5px;
+  height: 2px;
+  border-radius: 999px;
+  background: #ffffff;
+}
+.noteapp .nplegend-sw.stf::after {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px #ffffff;
+}
+
+/* 詳細：スタッフの図の切り替え「自分の記録｜スタッフの図｜重ねる」（.canvaschip を 3 つ並べる） */
+.noteapp .npview {
+  display: flex;
+  gap: 6px;
+  max-width: 358px;
+  margin: 0 0 8px;
+}
+.noteapp .npview .canvaschip {
+  flex: 1;
+  min-width: 0;
+  border-color: var(--outline);
+  background: var(--surface-lowest);
+  white-space: nowrap;
+}
+.noteapp .npview .canvaschip.on {
+  border-color: var(--accent);
+  background: var(--accent-tint);
 }
 
 /* ゴール正面図（シュートコース） */

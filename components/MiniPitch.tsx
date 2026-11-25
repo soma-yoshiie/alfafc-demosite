@@ -6,6 +6,7 @@ import type { PlayLine, PlayLineKind, PlayPoint, Point } from "@/lib/types";
 import { PLAY_KIND_LABEL } from "@/lib/types";
 import { buildSlots } from "@/lib/formations";
 import { simplify } from "@/lib/animation";
+import { shotTarget } from "@/lib/plays";
 import { wavy } from "@/lib/drillDraw";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -110,7 +111,7 @@ function arrowPoints(mPath: Point[]): string | null {
 
 const WAVE_K = 4;
 
-function OneLine({ l, staff }: { l: LineLike; staff: boolean }) {
+function OneLine({ l, staff, dim }: { l: LineLike; staff: boolean; dim?: boolean }) {
   const mPath = l.path.map(toM);
   // wavy は約 1.2 単位ごとに点を取るので、波長 3.3m では 1 周期に 3 点弱しか無くぎざぎざになる。
   // WAVE_K 倍に拡大して掛け（振れ幅・波長も同じ倍率）、元の大きさに戻して点の密度だけ上げる（値は仕様のまま）
@@ -126,7 +127,7 @@ function OneLine({ l, staff }: { l: LineLike; staff: boolean }) {
   const missed = l.success === false;
   const end = mPath[mPath.length - 1];
   return (
-    <g>
+    <g opacity={dim ? 0.3 : undefined}>
       <g className={`npline ${l.kind}${missed ? " missed" : ""}`} opacity={missed ? 0.6 : undefined}>
         {staff && <path className="npl under" d={d} />}
         {staff && arrow && <polygon className="nparrow under" points={arrow} />}
@@ -139,13 +140,32 @@ function OneLine({ l, staff }: { l: LineLike; staff: boolean }) {
   );
 }
 
-function PlayLinesSvg({ lines, temp, staff }: { lines: PlayLine[]; temp: LineLike | null; staff: boolean }) {
-  const all: LineLike[] = temp && temp.path.length > 1 ? [...lines, temp] : lines;
+function PlayLinesSvg({
+  lines,
+  temp,
+  staff,
+  dimLines,
+  shotLines = [],
+}: {
+  lines: PlayLine[];
+  temp: LineLike | null;
+  staff: boolean;
+  /** note-play-chain §3: 薄くする軌道の番号（null＝全部濃い） */
+  dimLines?: Set<number> | null;
+  /** コースのあるシュートから出る線（保存しない。点とコースから毎回描く） */
+  shotLines?: { path: Point[]; dim: boolean; missed: boolean }[];
+}) {
   return (
     <g className="nplines">
-      {all.map((l, i) => (
-        <OneLine key={i} l={l} staff={staff} />
+      {lines.map((l, i) => (
+        <OneLine key={i} l={l} staff={staff} dim={!!dimLines && dimLines.has(i)} />
       ))}
+      {shotLines.map((s, i) => (
+        <g key={"s" + i} opacity={s.dim ? 0.3 : s.missed ? 0.6 : undefined}>
+          <OneLine l={{ kind: "shot", path: s.path }} staff={staff} />
+        </g>
+      ))}
+      {temp && temp.path.length > 1 && <OneLine l={temp} staff={staff} />}
     </g>
   );
 }
@@ -231,6 +251,10 @@ export function PlayAreaPitch({
   selectedIndex,
   view = "full",
   tone = "player",
+  strong = null,
+  badges,
+  snapAt = null,
+  staffLayer = null,
 }: {
   points: PlayPoint[];
   lines?: PlayLine[];
@@ -241,7 +265,23 @@ export function PlayAreaPitch({
   selectedIndex?: number | null;
   view?: PitchView;
   tone?: "player" | "staff";
+  /** note-play-chain §3: 渡した番号の印だけ濃く、ほかは薄く（null・省略は全部濃い） */
+  strong?: { points: number[]; lines: number[] } | null;
+  /** 点の左上に出す番号の丸 */
+  badges?: { point: number; n: number }[];
+  /** その位置に白い輪（作図中のプレーの終わり） */
+  snapAt?: Point | null;
+  /** スタッフの図を上に重ねる（押せない） */
+  staffLayer?: { points: PlayPoint[]; lines: PlayLine[] } | null;
 }) {
+  const strongPts = strong ? new Set(strong.points) : null;
+  const strongLines = strong ? new Set(strong.lines) : null;
+  const dimLines = strongLines ? new Set(lines.map((_, i) => i).filter((i) => !strongLines.has(i))) : null;
+  const shotLines = points.flatMap((p, i) =>
+    p.kind === "shot" && p.course
+      ? [{ path: [{ x: p.x, y: p.y }, shotTarget(p.course)], dim: !!strongPts && !strongPts.has(i), missed: p.scored === false }]
+      : []
+  );
   const ref = useRef<HTMLDivElement | null>(null);
   const draw = useRef<{ active: boolean; pts: Point[]; moved: boolean }>({ active: false, pts: [], moved: false });
   const [temp, setTemp] = useState<Point[] | null>(null);
@@ -309,12 +349,19 @@ export function PlayAreaPitch({
         <PlayLinesSvg
           lines={lines}
           staff={staff}
+          dimLines={dimLines}
+          shotLines={shotLines}
           temp={temp && tool?.mode === "line" ? { kind: tool.kind, path: temp } : null}
         />
+        {staffLayer && (
+          <g className="npstafflayer">
+            <PlayLinesSvg lines={staffLayer.lines} staff temp={null} />
+          </g>
+        )}
       </svg>
       <div className="nphint">敵陣 ↑</div>
       {points.map((p, i) => {
-        const sel = selectedIndex === i ? " sel" : "";
+        const sel = (selectedIndex === i ? " sel" : "") + (strongPts && !strongPts.has(i) ? " dim" : "");
         const { left, top } = fieldPct(p.x, p.y, view);
         const pos = { left: left + "%", top: top + "%" };
         if (!editable && onPointClick && p.kind === "shot") {
@@ -332,6 +379,24 @@ export function PlayAreaPitch({
         }
         return <span key={i} className={`npdot ${p.kind}${sel}`} style={pos} title={PLAY_KIND_LABEL[p.kind]} />;
       })}
+      {staffLayer?.points.map((p, i) => {
+        const { left, top } = fieldPct(p.x, p.y, view);
+        return <span key={"st" + i} className={`npdot stf ${p.kind}`} style={{ left: left + "%", top: top + "%" }} />;
+      })}
+      {(badges ?? []).map((b) => {
+        const p = points[b.point];
+        if (!p) return null;
+        const { left, top } = fieldPct(p.x, p.y, view);
+        return (
+          <span key={"b" + b.point} className="npbadge" style={{ left: left + "%", top: top + "%" }}>
+            {b.n}
+          </span>
+        );
+      })}
+      {snapAt && (() => {
+        const { left, top } = fieldPct(snapAt.x, snapAt.y, view);
+        return <span className="npsnap" style={{ left: left + "%", top: top + "%" }} />;
+      })()}
     </div>
   );
 }

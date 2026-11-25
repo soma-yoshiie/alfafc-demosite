@@ -1525,6 +1525,15 @@ function sampleNotebook(): NotebookEntry[] {
         { x: 52, y: 88, kind: "shot", phase: "1st", course: { x: 60, y: 20 }, scored: true, shotNote: "抜け出しから流し込んだ" },
         { x: 46, y: 80, kind: "shot", phase: "2nd", course: { x: 35, y: 30 }, scored: false, shotNote: "詰められて枠の外" },
         { x: 55, y: 85, kind: "shot", phase: "2nd", course: { x: 70, y: 22 }, scored: true, shotNote: "こぼれ球を押し込んだ" },
+        // note-play-chain §8: つながったプレー（前半）。試合記録の p10 の得点は 2 点なので、新しいシュートはノーゴールにして合わせる
+        { x: 48, y: 58, kind: "receive", phase: "1st", chain: "c1", seq: 0, ord: 1 },
+        { x: 56, y: 83, kind: "shot", phase: "1st", course: { x: 18, y: 40 }, scored: false, shotNote: "キーパーに止められた", chain: "c1", seq: 2, ord: 3 },
+        { x: 28, y: 52, kind: "receive", phase: "1st", chain: "c4", seq: 0, ord: 4 },
+        { x: 68, y: 44, kind: "miss", phase: "1st", ord: 6 },
+      ],
+      playLines: [
+        { kind: "dribble", path: [{ x: 48, y: 58 }, { x: 51, y: 66 }, { x: 54, y: 75 }, { x: 56, y: 83 }], phase: "1st", chain: "c1", seq: 1, ord: 2 },
+        { kind: "pass", path: [{ x: 28, y: 52 }, { x: 36, y: 60 }, { x: 46, y: 66 }], phase: "1st", success: false, note: "サイドへ出したが相手に読まれた", chain: "c4", seq: 1, ord: 5 },
       ],
       body: "前半から主導権。サイドからのクロスに反応できた。",
       staffComment: "終盤の一押しは冷静だった。次は逆足でのフィニッシュも増やしたい。",
