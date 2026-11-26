@@ -911,15 +911,16 @@ export const NOTE_CONDITION_LABEL: Record<NoteCondition, string> = {
 };
 
 /**
- * サッカーノートの種別（3バケツ）。
- * match=試合ノート / practice=練習ノート / solo=自主練ノート
+ * サッカーノートの種別（4バケツ）。
+ * match=試合ノート / practice=練習ノート / solo=自主練ノート / free=自由ノート（note-free §1）
  */
-export type NoteKind = "match" | "practice" | "solo";
+export type NoteKind = "match" | "practice" | "solo" | "free";
 
 export const NOTE_KIND_LABEL: Record<NoteKind, string> = {
   match: "試合",
   practice: "練習",
   solo: "自主練",
+  free: "自由",
 };
 
 /** コーチのワンタップリアクション */
@@ -945,6 +946,12 @@ export interface NoteFigure {
   texts: { x: number; y: number; t: string; by?: "staff" }[];
 }
 
+/** note-free §1: ノートに 1 枚だけ入れる写真（縮小済みの data URL と、本文の何文字目の後ろか） */
+export interface NotePhoto {
+  src: string;
+  at: number;
+}
+
 /** 全ノート共通の基底 */
 interface NoteBase {
   id: string;
@@ -958,6 +965,8 @@ interface NoteBase {
   body?: string;
   /** 本文の途中に挟む図（任意。note-reflection-figure §1） */
   figures?: NoteFigure[];
+  /** 本文の途中に挟む写真（任意。1 枚まで。note-free §1） */
+  photo?: NotePhoto;
   /** そのノートの日が入る週の目標の id（任意。提出のときに付ける。goals §1-2） */
   goalId?: string;
   /** スタッフからのコメント（任意） */
@@ -1126,8 +1135,14 @@ export interface SoloNote extends NoteBase {
   focus?: string;
 }
 
+/** 自由ノート（note-free §1）。題名＋本文・図（body・figures）。予定・目標にはひも付けない */
+export interface FreeNote extends NoteBase {
+  kind: "free";
+  title?: string;
+}
+
 /** サッカーノート1件（選手が記入・提出、スタッフが閲覧・コメント） */
-export type NotebookEntry = MatchNote | PracticeNote | SoloNote;
+export type NotebookEntry = MatchNote | PracticeNote | SoloNote | FreeNote;
 
 /* ===== コーチからの配信物（③練習メニュー / ⑤個人課題 / ⑦試合前ミーティング） ===== */
 

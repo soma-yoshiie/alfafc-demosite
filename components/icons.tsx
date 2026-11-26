@@ -670,7 +670,25 @@ export function IconNoteSolo(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** 自由ノート＝紙に線と波線 */
+export function IconNoteFree(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg32Note {...p}>
+      <path d="M8 4H20L26 10V28H8Z" />
+      <path d="M20 4V10H26M12 15H18M12 20Q14.5 16.5 17 20T22 20" />
+    </Svg32Note>
+  );
+}
+
 /** ノートの種類のアイコン（提出カード・詳細ヘッダー・検索結果で共用） */
-export function NoteKindIcon({ kind }: { kind: "match" | "practice" | "solo" }) {
-  return kind === "match" ? <IconNoteMatch /> : kind === "practice" ? <IconNotePractice /> : <IconNoteSolo />;
+export function NoteKindIcon({ kind }: { kind: "match" | "practice" | "solo" | "free" }) {
+  return kind === "match" ? (
+    <IconNoteMatch />
+  ) : kind === "practice" ? (
+    <IconNotePractice />
+  ) : kind === "free" ? (
+    <IconNoteFree />
+  ) : (
+    <IconNoteSolo />
+  );
 }

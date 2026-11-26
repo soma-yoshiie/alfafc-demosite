@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { MatchNote, NoteKind, NotebookEntry, Player, PracticeNote, SoloNote, TeamGroup } from "@/lib/types";
+import type { FreeNote, MatchNote, NoteKind, NotebookEntry, Player, PracticeNote, SoloNote, TeamGroup } from "@/lib/types";
 import { NOTE_KIND_LABEL, SOLO_KIND_LABEL } from "@/lib/types";
 import { E, ConditionIcon } from "./Emoji";
 import { IconChat, IconSend, NoteKindIcon } from "./icons";
@@ -145,7 +145,9 @@ export function NotificationsView({
 /** 検索対象テキストを連結 */
 function entryText(n: NotebookEntry): string {
   const parts: (string | undefined)[] = [n.body];
-  if (n.kind === "practice") {
+  if (n.kind === "free") {
+    parts.push((n as FreeNote).title);
+  } else if (n.kind === "practice") {
     const p = n as PracticeNote;
     parts.push(p.goalPre, ...(p.insights ?? []));
   } else if (n.kind === "match") {
@@ -216,7 +218,7 @@ export function NoteSearch({
           />
         </div>
         <div className="cmpbar" style={{ paddingTop: 0 }}>
-          {(["all", "match", "practice", "solo"] as const).map((k) => (
+          {(["all", "match", "practice", "solo", "free"] as const).map((k) => (
             <button key={k} className={`cmpchip${kind === k ? " on" : ""}`} onClick={() => setKind(k)}>
               {k === "all" ? "すべて" : NOTE_KIND_LABEL[k]}
             </button>
@@ -547,10 +549,13 @@ export function CoachDashboard({
 const PRACTICE_COLOR = "#10a15c";
 const MATCH_COLOR = "#3b82f6";
 const SOLO_COLOR = "#f59e0b";
+// note-free §4: 自由ノートの系列は灰（新しい有彩色は使わない）
+const FREE_COLOR = "var(--mut)";
 const PLAYER_COLORS = ["#3b82f6", "#10a15c", "#ec4899", "#8b5cf6"];
 const OTHER_COLOR = "#f59e0b";
 
-const PLAYER_TABS = ["すべて", "試合", "練習", "自主練"] as const;
+// note-free §4: 種類のタブにも「自由」（「すべて」の灰の線が何か分かるように）
+const PLAYER_TABS = ["すべて", "試合", "練習", "自主練", "自由"] as const;
 const COACH_TABS = ["選手ごと", "種類ごと"] as const;
 
 type AnalyticsSeries = { label: string; color: string; values: number[]; total: number };
@@ -598,6 +603,7 @@ export function AnalyticsPanel({
       practice: seriesFrom("練習", PRACTICE_COLOR, byKind("practice"), weeks),
       match: seriesFrom("試合", MATCH_COLOR, byKind("match"), weeks),
       solo: seriesFrom("自主練", SOLO_COLOR, byKind("solo"), weeks),
+      free: seriesFrom("自由", FREE_COLOR, byKind("free"), weeks),
     };
   }, [board.notebook, board.auth.playerId, weeks]);
 
@@ -608,6 +614,7 @@ export function AnalyticsPanel({
       practice: seriesFrom("練習", PRACTICE_COLOR, byKind("practice"), weeks),
       match: seriesFrom("試合", MATCH_COLOR, byKind("match"), weeks),
       solo: seriesFrom("自主練", SOLO_COLOR, byKind("solo"), weeks),
+      free: seriesFrom("自由", FREE_COLOR, byKind("free"), weeks),
     };
   }, [coachNotebook, weeks]);
 
@@ -653,9 +660,11 @@ export function AnalyticsPanel({
       ? [playerSeries.practice]
       : tab === 3
       ? [playerSeries.solo]
-      : [playerSeries.practice, playerSeries.match, playerSeries.solo]
+      : tab === 4
+      ? [playerSeries.free]
+      : [playerSeries.practice, playerSeries.match, playerSeries.solo, playerSeries.free]
     : tab === 1
-    ? [coachByKind.practice, coachByKind.match, coachByKind.solo]
+    ? [coachByKind.practice, coachByKind.match, coachByKind.solo, coachByKind.free]
     : coachByPlayer;
 
   const total = current.reduce((s, x) => s + x.total, 0);

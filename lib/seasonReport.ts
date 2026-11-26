@@ -29,7 +29,7 @@ export interface SeasonReportData {
   positions: [string, number][];
   attendancePct: number | null;
   attendance: { yes: number; total: number };
-  noteCounts: { match: number; practice: number; solo: number; total: number };
+  noteCounts: { match: number; practice: number; solo: number; free: number; total: number };
   soloCount: number;
   /** 自主練の最長連続週数 */
   soloBestStreak: number;
@@ -141,6 +141,7 @@ export function buildSeasonReport(
       match: matchNotes.length,
       practice: practiceNotes.length,
       solo: soloNotes.length,
+      free: mine.filter((n) => n.kind === "free").length,
       total: mine.length,
     },
     soloCount: soloNotes.length,

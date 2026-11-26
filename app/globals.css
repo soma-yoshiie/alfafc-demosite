@@ -29513,6 +29513,238 @@ body:has(.mhead) .figed-canvas {
   font-size: var(--fs-body);
 }
 
+/* ===== note-free §4・§6: 自由ノート（4 つ目の種類）の色・作成の 3 つのボタン（.freeadd）・題名の行（.freehead）・詳細の題名（.freedetail）。基底＝スマホと PC の両方 ===== */
+/* 種類の色は黒（--ink）。4 色目の有彩色は足さない（アイコンと札はほかの 3 つと同じ枠・同じ太さ） */
+.noteapp .notecond.k-free {
+  color: var(--ink);
+}
+.noteapp .statrow.sr-free .srb span {
+  background: var(--ink);
+}
+.noteapp .wsheetic.k-free {
+  background: var(--surface-low);
+  color: var(--ink);
+}
+.hp-ic.k-free {
+  color: var(--ink);
+}
+/* 作成：見出し「自由ノート」と、その右に練習ノートと同じ小さな日付 */
+.noteapp .freehead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.noteapp .freehead h2 {
+  min-width: 0;
+}
+.noteapp .freehead .datemini {
+  margin: 0;
+}
+.noteapp .freehead .datemini input {
+  width: auto;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--mut);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.noteapp .freeform .formfield {
+  margin: 0 0 12px;
+}
+/* 「＋ 文字」「＋ 図」「＋ 写真」：同じ幅 3 つを横に（目標の「＋ さらにそのために」と同じ形） */
+.noteapp .freeadd {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.noteapp .freeadd button {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  background: var(--surface-lowest);
+  border: 1px dashed var(--outline-strong);
+  border-radius: var(--r-md);
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.noteapp .freeadd button:disabled {
+  color: var(--mut);
+  opacity: 0.6;
+  cursor: default;
+}
+/* 選手の一覧の種類のチップ：スマホは 4 個（試合・練習・自主練・自由）を、文字を詰めずに幅を均等に割って 1 行に収める */
+body:has(.mhead) .noteapp .nbplchips .chip {
+  flex: 1 1 0;
+  min-width: 0;
+  justify-content: center;
+  padding: 0 4px;
+}
+/* 詳細：題名は 17px・700。本文と図は ReflectionView のまま */
+.noteapp .freedetail-t {
+  margin: 4px 2px 8px;
+  font-size: var(--fs-title);
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ink);
+}
+
+/* ===== note-free §3・§5・§6: 写真（.photobox・.photoview）・「図を入れる」の右の「写真を入れる」（.refl-addrow）・図の切り替え（.figswitch）・スタッフの「描き足す」（.figstaff）。基底＝スマホと PC の両方 ===== */
+.noteapp .refl-addrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 16px;
+}
+/* 写真の箱：幅いっぱい（最大 358px）・1px の線・角丸 --r-md。右上に「…」 */
+.photobox {
+  position: relative;
+  max-width: 358px;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  overflow: visible;
+}
+.photobox-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  overflow: hidden;
+  cursor: pointer;
+}
+.photobox-open img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 480px;
+  object-fit: contain;
+}
+/* 写真の上の「…」は、画像の色に依らず見えるよう白地＋1px の線 */
+.photobox .figbox-more {
+  top: 4px;
+  right: 4px;
+}
+.photobox .figbox-more .phubedit {
+  margin: 0;
+  border: 1px solid var(--outline);
+  background: var(--surface-lowest);
+}
+.photowrap {
+  margin: 8px 0;
+}
+.photowrap .photodel {
+  display: block;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+/* 大きく見る画面：暗幕の上に画像。右上「閉じる」・右下「拡大」（2 倍。縦横にスクロール） */
+.photoview {
+  position: fixed;
+  inset: 0;
+  z-index: 410;
+  background: var(--ink);
+  outline: none;
+}
+.photoview-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  display: flex;
+  overscroll-behavior: contain;
+}
+.photoview-scroll img {
+  display: block;
+  margin: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.photoview-scroll.big img {
+  flex: none;
+  max-width: none;
+  max-height: none;
+  width: 200%;
+  height: auto;
+  margin: 0;
+}
+.photoview-btn {
+  position: absolute;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.photoview-btn.close {
+  top: calc(12px + env(safe-area-inset-top));
+  right: 12px;
+}
+.photoview-btn.zoom {
+  right: 12px;
+  bottom: calc(12px + env(safe-area-inset-bottom));
+}
+/* 図の切り替え「自分の図｜スタッフの図｜重ねる」（試合ノートの .npview と同じ見た目） */
+.noteapp .figswitch {
+  display: flex;
+  gap: 6px;
+  max-width: 358px;
+  margin: 8px 0 0;
+}
+.noteapp .figswitch .canvaschip {
+  flex: 1;
+  min-width: 0;
+  border-color: var(--outline);
+  background: var(--surface-lowest);
+  white-space: nowrap;
+}
+.noteapp .figswitch .canvaschip.on {
+  border-color: var(--accent);
+  background: var(--accent-tint);
+}
+.noteapp .figwrap .figbox.view {
+  margin: 8px 0;
+}
+/* スタッフの「描き足す」：図の箱の下。青の文字・44px */
+.noteapp .figstaff {
+  display: block;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.figed span.figed-title {
+  cursor: default;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

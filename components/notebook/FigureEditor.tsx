@@ -16,6 +16,7 @@ import {
   PEN_PTS,
   UNDERLAYS,
   UNDERLAY_ORDER,
+  figureHasStaff,
   figureIsEmpty,
   roundFigure,
   thinPath,
@@ -105,11 +106,16 @@ export function FigureEditor({
   initial,
   onDone,
   onCancel,
+  as = "player",
 }: {
   /** 直す図（新しい図は空の図を渡す） */
   initial: NoteFigure;
-  /** 完了。何も描いていないときは null（今ある図なら消す・新しい図なら入れない） */
-  onDone: (fig: NoteFigure | null) => void;
+  /** note-free §5: "staff"＝スタッフの描き足し（描く物は by:"staff"。選手の物は見えるが動かせず消せない。下敷きは替えられない）。
+   *  "player"＝選手が自分の図を直す（スタッフの物は見えるが動かせず消せない） */
+  as?: "player" | "staff";
+  /** 完了。何も描いていないときは null（今ある図なら消す・新しい図なら入れない）。
+   *  false を返すと「保存できなかった」として、この画面を閉じずに知らせを出す（スタッフの描き足し） */
+  onDone: (fig: NoteFigure | null) => boolean | void;
   onCancel: () => void;
 }) {
   const initialJson = useMemo(() => JSON.stringify(initial), [initial]);
@@ -169,6 +175,12 @@ export function FigureEditor({
   );
 
   const H = UNDERLAYS[fig.underlay].h;
+  const isStaff = as === "staff";
+  /** 今の人が動かせる・消せる物（スタッフは by:"staff"、選手はそれ以外） */
+  const mine = (by?: "staff") => (isStaff ? by === "staff" : by !== "staff");
+  const byTag = isStaff ? ({ by: "staff" } as const) : {};
+  /** 上限は自分の物だけで数える（選手とスタッフで別。相手の数のせいで描けなくならないように） */
+  const ownCount = (xs: { by?: "staff" }[]) => xs.filter((x) => mine(x.by)).length;
   const changed = JSON.stringify(fig) !== initialJson;
 
   /* ---- 開いている間は後ろの画面をスクロールさせない ---- */
@@ -214,8 +226,15 @@ export function FigureEditor({
   }, [tryCancel, underlayOpen, textAt]);
 
   const done = () => {
+    // スタッフの描き足しで何も変えていなければ、保存も知らせもせずに閉じる
+    if (isStaff && !changed) {
+      onCancel();
+      return;
+    }
     const r = roundFigure(fig);
-    onDone(figureIsEmpty(r) ? null : r);
+    // スタッフの描き足しは、図ごと消すことはしない（スタッフの物を全部消した図もそのまま返す）
+    // 保存できなかったとき（false）は閉じない。画面の知らせはこの画面の裏に隠れるので、ここで出す
+    if (onDone(figureIsEmpty(r) && !isStaff ? null : r) === false) showToast("保存できませんでした");
   };
 
   /* ---- 指の位置 → 図の座標（拡大した後の見た目の矩形から求める） ---- */
@@ -239,8 +258,9 @@ export function FigureEditor({
     const take = (kind: "mark" | "text" | "line", idx: number, ratio: number) => {
       if (ratio <= 1 && (!best || ratio < best.ratio)) best = { kind, idx, ratio };
     };
-    figRef.current.marks.forEach((m, i) => take("mark", i, Math.hypot(m.x - p.x, m.y - p.y) / (16 * f)));
+    figRef.current.marks.forEach((m, i) => mine(m.by) && take("mark", i, Math.hypot(m.x - p.x, m.y - p.y) / (16 * f)));
     figRef.current.texts.forEach((t, i) => {
+      if (!mine(t.by)) return;
       const hw = (t.t.length * 12 + 8) / 2;
       const dx = Math.max(0, Math.abs(t.x - p.x) / f - hw);
       const dy = Math.max(0, Math.abs(t.y - p.y) / f - 10);
@@ -248,6 +268,7 @@ export function FigureEditor({
     });
     if (withLines)
       figRef.current.lines.forEach((l, i) => {
+        if (!mine(l.by)) return;
         let d = Infinity;
         if (l.p.length === 2) d = Math.hypot(l.p[0] - p.x, l.p[1] - p.y);
         for (let j = 0; j + 3 < l.p.length; j += 2) d = Math.min(d, distSeg(p, l.p[j], l.p[j + 1], l.p[j + 2], l.p[j + 3]));
@@ -287,7 +308,7 @@ export function FigureEditor({
 
   const addLine = (k: FigLineKind, raw: number[]) => {
     const cur = figRef.current;
-    if (cur.lines.length >= MAX_LINES) {
+    if (ownCount(cur.lines) >= MAX_LINES) {
       showToast(`線は 1 枚に ${MAX_LINES} 本までです`);
       return;
     }
@@ -296,15 +317,15 @@ export function FigureEditor({
     for (let i = 2; i + 1 < raw.length; i += 2) len += Math.hypot(raw[i] - raw[i - 2], raw[i + 1] - raw[i - 1]);
     if (raw.length < 4 || len < 20) return;
     const p = thinPath(raw, k === "pen" ? PEN_PTS : LINE_PTS);
-    commit({ ...cur, lines: [...cur.lines, { k, p }] });
+    commit({ ...cur, lines: [...cur.lines, { k, p, ...byTag }] });
   };
   const addMark = (k: FigMarkKind, at: Pt) => {
     const cur = figRef.current;
-    if (cur.marks.length >= MAX_MARKS) {
+    if (ownCount(cur.marks) >= MAX_MARKS) {
       showToast(`印は 1 枚に ${MAX_MARKS} 個までです`);
       return;
     }
-    commit({ ...cur, marks: [...cur.marks, { k, x: at.x, y: at.y }] });
+    commit({ ...cur, marks: [...cur.marks, { k, x: at.x, y: at.y, ...byTag }] });
   };
   const eraseAt = (at: Pt) => {
     const h = hitTest(at, true);
@@ -452,7 +473,7 @@ export function FigureEditor({
       if (tool === "erase") eraseAt(startFig);
       else if (tool === "mark") addMark(markKind, at);
       else if (tool === "text") {
-        if (figRef.current.texts.length >= MAX_TEXTS) showToast(`文字は 1 枚に ${MAX_TEXTS} 個までです`);
+        if (ownCount(figRef.current.texts) >= MAX_TEXTS) showToast(`文字は 1 枚に ${MAX_TEXTS} 個までです`);
         else {
           setTextVal("");
           setTextAt(at);
@@ -467,7 +488,13 @@ export function FigureEditor({
   };
 
   const chooseUnderlay = (u: FigUnderlay) => {
-    if (u === fig.underlay) return;
+    if (u === fig.underlay || isStaff) return;
+    // スタッフの線・印・文字がある図は、選手は下敷きを替えられない（描いた位置の意味が変わるため）
+    if (figureHasStaff(fig)) {
+      setUnderlayOpen(false);
+      showToast("スタッフの図があるので、下敷きは替えられません");
+      return;
+    }
     // 新しい下敷きの高さに収まらない物があるときは替えない（見えなくなって、保存で下の端に潰れるため）
     const h = UNDERLAYS[u].h;
     const out =
@@ -485,8 +512,8 @@ export function FigureEditor({
     const t = textVal.trim().slice(0, MAX_TEXT_LEN);
     if (t && textAt) {
       const cur = figRef.current;
-      if (cur.texts.length >= MAX_TEXTS) showToast(`文字は 1 枚に ${MAX_TEXTS} 個までです`);
-      else commit({ ...cur, texts: [...cur.texts, { x: textAt.x, y: textAt.y, t }] });
+      if (ownCount(cur.texts) >= MAX_TEXTS) showToast(`文字は 1 枚に ${MAX_TEXTS} 個までです`);
+      else commit({ ...cur, texts: [...cur.texts, { x: textAt.x, y: textAt.y, t, ...byTag }] });
     }
     setTextAt(null);
   };
@@ -500,7 +527,7 @@ export function FigureEditor({
 
   const subRow = tool === "line" ? "line" : tool === "mark" ? "mark" : null;
   const tempNode =
-    temp && temp.length >= 2 ? <FigLine k={tool === "pen" ? "pen" : lineKind} p={temp} /> : null;
+    temp && temp.length >= 2 ? <FigLine k={tool === "pen" ? "pen" : lineKind} p={temp} staff={isStaff} /> : null;
 
   const TOOLS: { t: Tool; label: string; icon: React.ReactNode }[] = [
     { t: "pen", label: "ペン", icon: <IconPen width={20} height={20} /> },
@@ -518,10 +545,16 @@ export function FigureEditor({
           <button type="button" className="figed-hbtn" onClick={tryCancel}>
             やめる
           </button>
-          <button type="button" className="figed-title" onClick={() => setUnderlayOpen(true)} aria-label="下敷きを選ぶ">
-            {UNDERLAYS[fig.underlay].label}
-            <IcoDown />
-          </button>
+          {isStaff ? (
+            <span className="figed-title">
+              描き足し
+            </span>
+          ) : (
+            <button type="button" className="figed-title" onClick={() => setUnderlayOpen(true)} aria-label="下敷きを選ぶ">
+              {UNDERLAYS[fig.underlay].label}
+              <IcoDown />
+            </button>
+          )}
           <button type="button" className="figed-hbtn done" onClick={done}>
             完了
           </button>
@@ -559,7 +592,7 @@ export function FigureEditor({
           </div>
           <div className="figed-legend" aria-hidden="true">
             {LINE_KINDS.map((k) => (
-              <span key={k} className="figed-lg">
+              <span key={k} className="figed-lg" style={isStaff ? { color: "var(--accent)" } : undefined}>
                 <LineSwatch k={k} />
                 {LINE_LABEL[k]}
               </span>

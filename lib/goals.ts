@@ -255,7 +255,8 @@ export function longLabelOf(pg: PlayerGoals, stage: SchoolStage): string {
 
 /** そのノートの「今日意識したこと」（練習は goalPre、試合・自主練は focus） */
 export function noteFocus(n: NotebookEntry): string {
-  const t = n.kind === "practice" ? n.goalPre : n.focus;
+  // note-free §4: 自由ノートには「今日意識したこと」の欄が無い（空を返す）
+  const t = n.kind === "practice" ? n.goalPre : n.kind === "free" ? undefined : n.focus;
   return (t ?? "").trim();
 }
 

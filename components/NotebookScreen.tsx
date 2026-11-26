@@ -6,8 +6,10 @@ import type {
   MatchPhaseLineup,
   NoteCondition,
   NoteFigure,
+  NotePhoto,
   NoteKind,
   NotebookEntry,
+  FreeNote,
   PlayLine,
   PlayPoint,
   Player,
@@ -37,17 +39,17 @@ import { MatchDetail } from "./notebook/MatchDetail";
 import { PlayRecorder } from "./notebook/PlayRecorder";
 import { ReflectionField } from "./notebook/ReflectionField";
 import { ReflectionView } from "./notebook/ReflectionView";
+import { DateMini, DraftBanner, SaveErr, todayStr, useNoteDraft } from "./notebook/formParts";
+import { FreeNoteForm } from "./notebook/FreeNoteForm";
+import { FreeDetail } from "./notebook/FreeDetail";
 import { bodyExcerpt, trimBody } from "@/lib/figures";
 import { LineChart } from "./Charts";
 import { addDaysStr, countByDay, daysAgoStr, localDateStr, longestWeeklyStreak, weekStart, weeklyCounts, weeklyStreak } from "@/lib/dates";
 import {
-  clearNoteDraft,
   loadNbSideOpen,
-  loadNoteDraft,
   loadNotifSeen,
   loadTeam,
   saveNbSideOpen,
-  saveNoteDraft,
   saveNotifSeen,
 } from "@/lib/storage";
 import { attendanceRate } from "@/lib/teamStats";
@@ -71,7 +73,7 @@ import { bandGoalFor } from "@/lib/goals";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
 import { MenuGroup, MenuRow } from "./MobileRows";
-import { IconAlertCircle, IconBell, IconCheck, IconChevronRight, IconClipboard, IconFilter, IconNote, IconPlus, IconShare, NoteKindIcon } from "./icons";
+import { IconBell, IconCheck, IconChevronRight, IconClipboard, IconFilter, IconNote, IconPlus, IconShare, NoteKindIcon } from "./icons";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const SOLO_KINDS: SoloKind[] = ["lifting", "running", "strength", "other"];
@@ -79,9 +81,6 @@ const WEEKDAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"];
 const STAFF_REACTIONS: StaffReaction[] = ["ok", "nice", "fire"];
 const REACTION_ICON: Record<StaffReaction, EmojiName> = { ok: "check", nice: "star", fire: "fire" };
 
-function todayStr(): string {
-  return localDateStr();
-}
 function fmt(d: string): string {
   const [y, m, day] = d.split("-").map(Number);
   if (!y) return d;
@@ -428,10 +427,10 @@ export default function NotebookScreen() {
     setView({ mode: "detail", id });
   };
   const noteKindOrder: NoteKind[] = todayEventKinds.has("match")
-    ? ["match", "practice", "solo"]
+    ? ["match", "practice", "solo", "free"]
     : todayEventKinds.has("practice")
-      ? ["practice", "match", "solo"]
-      : ["match", "practice", "solo"];
+      ? ["practice", "match", "solo", "free"]
+      : ["match", "practice", "solo", "free"];
 
   // notebook-staff-redesign §2: スタッフは提出(notes)と通知(notifs)だけ。「提出」のラベルは
   // 画面には出さない（スマホのセグメント行・PCのレールのサブナビはスタッフでは描画しない）
@@ -572,7 +571,7 @@ export default function NotebookScreen() {
               <div className="fbar nbplchips">
                 {/* hub-tiles §3: スマホは「試合／練習／自主練」の 3 個だけ（「すべて」のチップは外す＝どれも選んでいない状態がすべて。
                     選んだチップをもう一度押すと外れる。横スクロールが無くなる）。PC は今のまま「すべて」を含む 4 個 */}
-                {((pc ? ["all", "match", "practice", "solo"] : ["match", "practice", "solo"]) as (NoteKind | "all")[]).map((k) => (
+                {((pc ? ["all", "match", "practice", "solo", "free"] : ["match", "practice", "solo", "free"]) as (NoteKind | "all")[]).map((k) => (
                   <div
                     key={k}
                     className={`chip${noteKind === k ? " on" : ""}`}
@@ -803,7 +802,9 @@ export default function NotebookScreen() {
                         ? todayPractice
                           ? "今日は記入済み（開く）"
                           : "今日意識したことと振り返りを記録"
-                        : "実施した種目と量を記録"}
+                        : k === "solo"
+                          ? "実施した種目と量を記録"
+                          : "文字と図を自由に書く"}
                   </small>
                 </span>
               </button>
@@ -1079,7 +1080,7 @@ function PlayerAnalysis() {
 
   const weeklyChart = useMemo(() => weeklyCounts(dates), [dates]);
   const kindCounts = useMemo(() => {
-    const c: Record<NoteKind, number> = { match: 0, practice: 0, solo: 0 };
+    const c: Record<NoteKind, number> = { match: 0, practice: 0, solo: 0, free: 0 };
     myNotes.forEach((n) => { c[n.kind]++; });
     return c;
   }, [myNotes]);
@@ -1164,7 +1165,7 @@ function PlayerAnalysis() {
 
   const kindBreakdown = (
     <>
-      {(["match", "practice", "solo"] as NoteKind[]).map((k) => (
+      {(["match", "practice", "solo", "free"] as NoteKind[]).map((k) => (
         <div key={k} className={`statrow sr-${k}`}>
           <span className="srl">{NOTE_KIND_LABEL[k]}</span>
           <span className="srb">
@@ -1475,7 +1476,7 @@ function NoteList({
       .slice(0, 30)
       // スタッフが種類で絞っているときは、その種類の予定だけ並べる（「試合」で絞って練習の予定に
       // 「提出 0／M」を出さない。自主練は予定に紐づかないので予定行は0件）
-      .filter((e) => !isCoach || kind === "all" || (kind !== "solo" && (e.kind === "match") === (kind === "match")));
+      .filter((e) => !isCoach || kind === "all" || (kind !== "solo" && kind !== "free" && (e.kind === "match") === (kind === "match")));
     // レビュー: 予定の詳細から指示された予定が 30 件の外なら足す（その行が無いと何も開かない）
     if (pinnedEvent && !list.some((e) => e.id === pinnedEvent)) {
       const extra = all.find((e) => e.id === pinnedEvent);
@@ -1689,8 +1690,8 @@ function NoteList({
             <div className="evnote" style={{ margin: "2px 2px 8px" }}>
               {/* notebook-staff-redesign §3-4: スタッフが種類で絞って0件のときは、その旨を出す
                   （カレンダーに予定があるのに「予定がありません」と出さない） */}
-              {isCoach && kind === "solo"
-                ? "自主練は予定に紐づきません。下の「予定に紐づかない提出」を開いてください。"
+              {isCoach && (kind === "solo" || kind === "free")
+                ? `${NOTE_KIND_LABEL[kind]}${kind === "free" ? "ノート" : ""}は予定に紐づきません。下の「予定に紐づかない提出」を開いてください。`
                 : isCoach && kind !== "all"
                   ? `今日までの直近の予定に${NOTE_KIND_LABEL[kind]}はありません。`
                   : hasPastEvents
@@ -1849,7 +1850,7 @@ function NotebookFilterPanel({
         "種類",
         kind !== "all",
         () => onKind("all"),
-        (["match", "practice", "solo"] as NoteKind[]).map((k) =>
+        (["match", "practice", "solo", "free"] as NoteKind[]).map((k) =>
           row(`k-${k}`, NOTE_KIND_LABEL[k], kind === k, () => onKind(kind === k ? "all" : k))
         )
       )}
@@ -1885,6 +1886,10 @@ function summarize(n: NotebookEntry): string {
     ].filter(Boolean);
     return meta.length ? `${head} ・ ${meta.join(" / ")}` : head;
   }
+  if (n.kind === "free") {
+    // note-free §4: 題名（無ければ本文の頭。図だけなら「図あり」）
+    return n.title?.trim() || bodyExcerpt(n.body ?? "") || (figCount(n) > 0 ? "図あり" : n.photo ? "写真あり" : "自由ノート");
+  }
   if (n.kind === "solo") return (n as SoloNote).items.map((i) => `${SOLO_KIND_LABEL[i.kind]} ${i.value}`).join(" ・ ") || "自主練";
   const p = n as PracticeNote;
   const ex = bodyExcerpt(p.body ?? "");
@@ -1897,7 +1902,7 @@ function figCount(n: NotebookEntry): number {
 /** 一覧の要約の末尾：図があれば「 ・ 図 N 枚」（note-reflection-figure §7。種類・どの枝でも付ける。省略記号で切れないよう別の要素で出す） */
 function figSuffix(n: NotebookEntry): string {
   const c = figCount(n);
-  return c > 0 ? ` ・ 図 ${c} 枚` : "";
+  return (c > 0 ? ` ・ 図 ${c} 枚` : "") + (n.photo ? " ・ 写真 1 枚" : "");
 }
 
 function NoteCard({
@@ -2007,7 +2012,7 @@ function NoteCard({
         </div>
         <div className="notebody notebody-row">
           <span className="notebody-t">{summarize(entry)}</span>
-          {figCount(entry) > 0 && <span className="notebody-f">{figSuffix(entry)}</span>}
+          {(figCount(entry) > 0 || !!entry.photo) && <span className="notebody-f">{figSuffix(entry)}</span>}
         </div>
       </div>
       <span className="convchev">›</span>
@@ -2016,48 +2021,6 @@ function NoteCard({
 }
 
 /* ===================== 記入フォーム ===================== */
-
-/**
- * フォーム下書きの自動保存（新規作成時のみ。編集時は key=null で無効）。
- * 入力が止まって600ms後に localStorage へ退避し、再訪時に復元バナーを出す。
- */
-function useNoteDraft<T>(key: string | null, snapshot: T, hasContent: boolean) {
-  const [pending, setPending] = useState<T | null>(() => (key ? loadNoteDraft<T>(key) : null));
-  useEffect(() => {
-    if (!key || !hasContent) return;
-    const t = setTimeout(() => saveNoteDraft(key, snapshot), 600);
-    return () => clearTimeout(t);
-  }, [key, snapshot, hasContent]);
-  return {
-    /** 復元可能な下書き（バナー表示用） */
-    pending,
-    /** 復元した/しないに関わらずバナーを閉じる */
-    dismiss: () => setPending(null),
-    /** 下書きを破棄してバナーも閉じる */
-    discard: () => {
-      if (key) clearNoteDraft(key);
-      setPending(null);
-    },
-    /** 提出完了時に呼ぶ（下書き削除） */
-    clear: () => {
-      if (key) clearNoteDraft(key);
-    },
-  };
-}
-
-function DraftBanner({ onRestore, onDiscard }: { onRestore: () => void; onDiscard: () => void }) {
-  return (
-    <div className="aibox" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 0, marginBottom: 12 }}>
-      <span style={{ flex: 1 }}>書きかけの下書きがあります</span>
-      <button type="button" className="dynadd" style={{ width: "auto", marginTop: 0 }} onClick={onRestore}>
-        続きから書く
-      </button>
-      <button type="button" className="dynadd" style={{ width: "auto", marginTop: 0 }} onClick={onDiscard}>
-        破棄
-      </button>
-    </div>
-  );
-}
 
 function ConditionPicker({
   value,
@@ -2091,27 +2054,6 @@ function ConditionPicker({
   );
 }
 
-/** note-reflection-figure §5: 日付の小さな入力（文字 12px・灰。当たりは 44px） */
-function DateMini({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  return (
-    <div className="datemini">
-      <input type="date" aria-label="日付" value={value} onChange={(e) => onChange(e.target.value)} />
-    </div>
-  );
-}
-
-/** note-reflection-figure §6: 保存できなかったときの 1 行（「提出する」の上） */
-function SaveErr() {
-  return (
-    <div className="saveerr" role="alert">
-      <IconAlertCircle width={20} height={20} aria-hidden="true" />
-      <span>
-        <span className="nobreak">保存できませんでした。</span>
-        <span className="nobreak">図や写真を減らしてください</span>
-      </span>
-    </div>
-  );
-}
 
 /** 提出・更新のとき：そのノートの日が入る週の目標の id を付ける（無ければ外す。日付を別の週へ直したときに古い id を残さない） */
 function goalIdOf(pg: ReturnType<ReturnType<typeof useGoals>["get"]>, date: string): { goalId: string | undefined } {
@@ -2136,6 +2078,9 @@ function NoteForm({
   if (edit?.kind === "solo" || (!edit && kind === "solo")) {
     return <SoloForm edit={edit as SoloNote | undefined} onDone={onDone} />;
   }
+  if (edit?.kind === "free" || (!edit && kind === "free")) {
+    return <FreeNoteForm edit={edit as FreeNote | undefined} onDone={onDone} />;
+  }
   return <PracticeForm edit={edit as PracticeNote | undefined} initialMenuId={initialMenuId} onDone={onDone} />;
 }
 
@@ -2148,6 +2093,7 @@ type PracticeDraft = {
   insights: string[];
   body: string;
   figures?: NoteFigure[];
+  photo?: NotePhoto;
   isPublic: boolean;
   menuId?: string;
 };
@@ -2176,6 +2122,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
   const [insights, setInsights] = useState<string[]>(edit?.insights?.length ? edit.insights : [""]);
   const [body, setBody] = useState(edit?.body ?? "");
   const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
+  const [photo, setPhoto] = useState<NotePhoto | undefined>(edit?.photo);
   const [saveErr, setSaveErr] = useState(false);
   const [isPublic, setIsPublic] = useState(edit?.isPublic ?? false);
   const [menuId, setMenuId] = useState<string | undefined>(() => {
@@ -2212,10 +2159,10 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     ? board.deliverables.find((d): d is PracticeMenuDeliver => d.kind === "menu" && d.id === menuId)
     : undefined;
 
-  const hasContent = !!(goalPre.trim() || body.trim() || figures.length || insights.some((s) => s.trim()));
+  const hasContent = !!(goalPre.trim() || body.trim() || figures.length || !!photo || insights.some((s) => s.trim()));
   const draft = useNoteDraft<PracticeDraft>(
     edit ? null : `practice:${me}`,
-    { date, condition, goalPre, achievement, insights, body, figures, isPublic, menuId },
+    { date, condition, goalPre, achievement, insights, body, figures, photo, isPublic, menuId },
     hasContent
   );
   const restoreDraft = () => {
@@ -2228,6 +2175,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     setInsights(d.insights.length ? d.insights : [""]);
     setBody(d.body);
     setFigures(d.figures ?? []);
+    setPhoto(d.photo);
     setIsPublic(d.isPublic);
     setMenuId(d.menuId);
     setAutoSelected(false);
@@ -2252,7 +2200,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       board.toast("今日意識したことか振り返りを入力してください");
       return;
     }
-    const tb = trimBody(body, figures);
+    const tb = trimBody(body, figures, photo);
     const base = {
       playerId: board.auth.playerId ?? "",
       kind: "practice" as const,
@@ -2263,11 +2211,17 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       insights: ins,
       body: tb.body || undefined,
       figures: tb.figures.length ? tb.figures : undefined,
+      photo: tb.photo,
       isPublic,
       menuId,
       ...goalIdOf(goalsCtx.get(me), date),
     };
-    const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    let ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    // 下書きにも同じ写真が入っているので、新規で失敗したら下書きを消してもう一度だけ試す
+    if (!ok && !edit) {
+      draft.clear();
+      ok = board.addNote(base);
+    }
     if (!ok) {
       setSaveErr(true);
       return;
@@ -2323,10 +2277,13 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       <ReflectionField
         body={body}
         figures={figures}
+        photo={photo}
         variant="practice"
+        onToast={board.toast}
         onChange={(v) => {
           setBody(v.body);
           setFigures(v.figures);
+          setPhoto(v.photo);
         }}
       />
 
@@ -2418,7 +2375,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
 }
 
 /* --- 自主練ノート（⑩種目＋ストリーク） --- */
-type SoloDraft = { date: string; condition?: NoteCondition; items: SoloItem[]; body: string; figures?: NoteFigure[]; focus?: string };
+type SoloDraft = { date: string; condition?: NoteCondition; items: SoloItem[]; body: string; figures?: NoteFigure[]; photo?: NotePhoto; focus?: string };
 
 function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
   const board = useBoard();
@@ -2430,10 +2387,11 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
   const [items, setItems] = useState<SoloItem[]>(edit?.items?.length ? edit.items : [{ kind: "lifting", value: "" }]);
   const [body, setBody] = useState(edit?.body ?? "");
   const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
+  const [photo, setPhoto] = useState<NotePhoto | undefined>(edit?.photo);
   const [saveErr, setSaveErr] = useState(false);
 
-  const hasContent = !!(focus.trim() || body.trim() || figures.length || items.some((i) => i.value.trim()));
-  const draft = useNoteDraft<SoloDraft>(edit ? null : `solo:${me}`, { date, condition, items, body, figures, focus }, hasContent);
+  const hasContent = !!(focus.trim() || body.trim() || figures.length || !!photo || items.some((i) => i.value.trim()));
+  const draft = useNoteDraft<SoloDraft>(edit ? null : `solo:${me}`, { date, condition, items, body, figures, photo, focus }, hasContent);
   const restoreDraft = () => {
     const d = draft.pending;
     if (!d) return;
@@ -2443,6 +2401,7 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
     setFocus(d.focus ?? "");
     setBody(d.body);
     setFigures(d.figures ?? []);
+    setPhoto(d.photo);
     draft.dismiss();
   };
 
@@ -2452,7 +2411,7 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
       board.toast("種目と内容を入力してください");
       return;
     }
-    const tb = trimBody(body, figures);
+    const tb = trimBody(body, figures, photo);
     const base = {
       playerId: board.auth.playerId ?? "",
       kind: "solo" as const,
@@ -2462,9 +2421,15 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
       items: its,
       body: tb.body || undefined,
       figures: tb.figures.length ? tb.figures : undefined,
+      photo: tb.photo,
       ...goalIdOf(goalsCtx.get(me), date),
     };
-    const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    let ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    // 下書きにも同じ写真が入っているので、新規で失敗したら下書きを消してもう一度だけ試す
+    if (!ok && !edit) {
+      draft.clear();
+      ok = board.addNote(base);
+    }
     if (!ok) {
       setSaveErr(true);
       return;
@@ -2514,10 +2479,13 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
       <ReflectionField
         body={body}
         figures={figures}
+        photo={photo}
         variant="solo"
+        onToast={board.toast}
         onChange={(v) => {
           setBody(v.body);
           setFigures(v.figures);
+          setPhoto(v.photo);
         }}
       />
       {saveErr && <SaveErr />}
@@ -2536,6 +2504,7 @@ type MatchDraft = {
   bestPlay: string;
   body: string;
   figures?: NoteFigure[];
+  photo?: NotePhoto;
   halfMinutes: string;
   fullMatch: boolean;
   playFrom: string;
@@ -2561,6 +2530,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   const [bestPlay, setBestPlay] = useState(edit?.bestPlay ?? "");
   const [body, setBody] = useState(edit?.body ?? "");
   const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
+  const [photo, setPhoto] = useState<NotePhoto | undefined>(edit?.photo);
   const [saveErr, setSaveErr] = useState(false);
   // クイック記録：出場時間
   const [halfMinutes, setHalfMinutes] = useState(edit?.halfMinutes != null ? String(edit.halfMinutes) : "");
@@ -2593,6 +2563,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     bestPlay.trim() ||
     body.trim() ||
     figures.length > 0 ||
+    !!photo ||
     reflectPlay.trim() ||
     halfMinutes.trim() ||
     !fullMatch ||
@@ -2602,7 +2573,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   );
   const draft = useNoteDraft<MatchDraft>(
     edit ? null : `match:${me}`,
-    { date, opponent, condition, bestPlay, body, figures, halfMinutes, fullMatch, playFrom, playTo, lineups, plays, playLines, reflectPlay, videoUrl, detailed, focus },
+    { date, opponent, condition, bestPlay, body, figures, photo, halfMinutes, fullMatch, playFrom, playTo, lineups, plays, playLines, reflectPlay, videoUrl, detailed, focus },
     hasContent
   );
   const restoreDraft = () => {
@@ -2614,6 +2585,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     setBestPlay(d.bestPlay);
     setBody(d.body);
     setFigures(d.figures ?? []);
+    setPhoto(d.photo);
     // 旧スキーマの下書き（出場時間フィールドが無い）でも壊れないようフォールバック
     setHalfMinutes(d.halfMinutes ?? "");
     setFullMatch(d.fullMatch ?? true);
@@ -2650,7 +2622,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       board.toast("対戦相手を入力してください");
       return;
     }
-    const tb = trimBody(body, figures);
+    const tb = trimBody(body, figures, photo);
     const base = {
       playerId: board.auth.playerId ?? "",
       kind: "match" as const,
@@ -2670,9 +2642,15 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       videoUrl: videoUrl.trim() || undefined,
       body: tb.body || undefined,
       figures: tb.figures.length ? tb.figures : undefined,
+      photo: tb.photo,
       ...goalIdOf(goalsCtx.get(me), date),
     };
-    const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    let ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    // 下書きにも同じ写真が入っているので、新規で失敗したら下書きを消してもう一度だけ試す
+    if (!ok && !edit) {
+      draft.clear();
+      ok = board.addNote(base);
+    }
     if (!ok) {
       setSaveErr(true);
       return;
@@ -2751,10 +2729,13 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       <ReflectionField
         body={body}
         figures={figures}
+        photo={photo}
         variant="match"
+        onToast={board.toast}
         onChange={(v) => {
           setBody(v.body);
           setFigures(v.figures);
+          setPhoto(v.photo);
         }}
       />
 
@@ -2912,10 +2893,10 @@ function NoteDetail({
   const sharedNote = entry.kind === "practice" && !!(entry as PracticeNote).isPublic;
   // note-reflection-figure §7: 本文（振り返り）と図。置く場所は種類ごとの詳細が決める
   const reflection =
-    entry.body || (entry.figures?.length ?? 0) > 0 ? (
+    entry.body || (entry.figures?.length ?? 0) > 0 || entry.photo ? (
       <div className="notesec">
         <div className="notesec-h">振り返り</div>
-        <ReflectionView body={entry.body} figures={entry.figures} />
+        <ReflectionView body={entry.body} figures={entry.figures} photo={entry.photo} noteId={entry.id} viewer={isCoach ? "staff" : "player"} ownNote={mine} />
       </div>
     ) : null;
 
@@ -2928,11 +2909,12 @@ function NoteDetail({
         </div>
         <div>
           <div className="notewho">
-            {who}
+            {entry.kind === "free" && mine && !isCoach ? "自由ノート" : who}
             {sharedNote && <span className="notetag share notewho-tag">チームに共有中</span>}
           </div>
           <div className="notedate">
-            {NOTE_KIND_LABEL[entry.kind]}ノート ・ {fmt(entry.date)}
+            {entry.kind === "free" && mine && !isCoach ? "" : `${NOTE_KIND_LABEL[entry.kind]}ノート ・ `}
+            {fmt(entry.date)}
             {entry.condition && (
               <>
                 {" ・ "}
@@ -2947,10 +2929,11 @@ function NoteDetail({
       </div>
 
       {/* goals §4-2: 帯は本人とスタッフにだけ（チームに共有された練習ノートをほかの選手が見るときは出さない） */}
-      {(isCoach || mine) && <GoalBand playerId={entry.playerId} date={entry.date} viewer={isCoach ? "staff" : "player"} />}
+      {entry.kind !== "free" && (isCoach || mine) && <GoalBand playerId={entry.playerId} date={entry.date} viewer={isCoach ? "staff" : "player"} />}
       {entry.kind === "match" && <MatchDetail note={entry} staffDrawing={entry.staffDrawing} viewer={isCoach ? "staff" : "player"} reflection={reflection} />}
       {entry.kind === "practice" && <PracticeDetail note={entry} reflection={reflection} />}
       {entry.kind === "solo" && <SoloDetail note={entry} reflection={reflection} />}
+      {entry.kind === "free" && <FreeDetail note={entry} viewer={isCoach ? "staff" : "player"} ownNote={mine} />}
 
       {/* スタッフコメント */}
       {isCoach ? (

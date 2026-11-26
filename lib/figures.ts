@@ -1,5 +1,5 @@
 /* note-reflection-figure §1・§2: 本文の途中に挟む図（純粋な関数） */
-import type { FigLineKind, FigUnderlay, NoteFigure } from "./types";
+import type { FigLineKind, FigUnderlay, NoteFigure, NotePhoto } from "./types";
 
 /** 下敷きの幅（余白込み 74m）を 1000 とする */
 export const FIG_W = 1000;
@@ -35,7 +35,10 @@ export const LINE_LABEL: Record<FigLineKind, string> = {
   shot: "シュート",
 };
 
-export type Block = { type: "text"; text: string } | { type: "fig"; fig: NoteFigure };
+export type Block =
+  | { type: "text"; text: string }
+  | { type: "fig"; fig: NoteFigure }
+  | { type: "photo"; photo: NotePhoto };
 
 let figSeq = 0;
 /** ノートの中で重ならない図の id */
@@ -52,9 +55,24 @@ export function figureIsEmpty(f: NoteFigure): boolean {
   return f.lines.length === 0 && f.marks.length === 0 && f.texts.length === 0;
 }
 
-/** 本文を図の所で分ける。文字と図が交互に並び、最後は必ず文字（空でもよい） */
-export function splitBody(body: string, figures: NoteFigure[] | undefined): Block[] {
-  const figs = (figures ?? []).slice().sort((a, b) => a.at - b.at);
+/** スタッフが描き足した物（by:"staff"）がある図か（note-free §5） */
+export function figureHasStaff(f: NoteFigure): boolean {
+  return f.lines.some((l) => l.by === "staff") || f.marks.some((m) => m.by === "staff") || f.texts.some((t) => t.by === "staff");
+}
+
+/** 本文を図・写真の所で分ける。文字と図（写真）が交互に並び、最後は必ず文字（空でもよい）。同じ位置なら図が先、写真は最後 */
+export function splitBody(body: string, figures: NoteFigure[] | undefined, photo?: NotePhoto): Block[] {
+  type Item = { at: number; block: Block };
+  const items: Item[] = (figures ?? [])
+    .slice()
+    .sort((a, b) => a.at - b.at)
+    .map((fig) => ({ at: fig.at, block: { type: "fig", fig } as Block }));
+  if (photo) {
+    // 写真は、同じ位置の図より後ろ（図は at の昇順で安定に並び、写真を at の後ろへ差し込む）
+    let k = items.length;
+    while (k > 0 && items[k - 1].at > photo.at) k--;
+    items.splice(k, 0, { at: photo.at, block: { type: "photo", photo } });
+  }
   // 切れ目にできる位置：0・改行の直前・末尾
   const ends: number[] = [0];
   for (let i = 0; i < body.length; i++) if (body[i] === "\n") ends.push(i);
@@ -68,16 +86,16 @@ export function splitBody(body: string, figures: NoteFigure[] | undefined): Bloc
   const blocks: Block[] = [];
   let cursor = 0;
   let lastCut = -1;
-  for (const fig of figs) {
-    const cut = Math.max(lastCut, snap(fig.at));
+  for (const it of items) {
+    const cut = Math.max(lastCut, snap(it.at));
     if (cut === lastCut) {
       // 同じ切れ目に続く図：間の文字は空（区切りの改行は前の図で落とし済み）
       blocks.push({ type: "text", text: "" });
-      blocks.push({ type: "fig", fig });
+      blocks.push(it.block);
       continue;
     }
     blocks.push({ type: "text", text: body.slice(cursor, cut) });
-    blocks.push({ type: "fig", fig });
+    blocks.push(it.block);
     cursor = cut;
     // 切れ目の改行 1 つは区切りとして落とす。ただし本文の先頭（cut = 0）には joinBlocks が区切りを入れないので落とさない
     if (cut > 0 && body[cursor] === "\n") cursor += 1;
@@ -87,29 +105,35 @@ export function splitBody(body: string, figures: NoteFigure[] | undefined): Bloc
   return blocks;
 }
 
-/** 文字のブロックを改行でつないで body に、図の at はその図より前の文字の長さに */
-export function joinBlocks(blocks: Block[]): { body: string; figures: NoteFigure[] } {
+/** 文字のブロックを改行でつないで body に、図・写真の at はそれより前の文字の長さに */
+export function joinBlocks(blocks: Block[]): { body: string; figures: NoteFigure[]; photo?: NotePhoto } {
   let body = "";
   const figures: NoteFigure[] = [];
+  let photo: NotePhoto | undefined;
   for (const b of blocks) {
     if (b.type === "text") {
       if (!b.text) continue;
       body = body ? body + "\n" + b.text : b.text;
-    } else {
+    } else if (b.type === "fig") {
       figures.push({ ...b.fig, at: body.length });
+    } else {
+      photo = { ...b.photo, at: body.length };
     }
   }
-  return { body, figures };
+  return photo ? { body, figures, photo } : { body, figures };
 }
 
 /** 保存前の整え：前後の空白を落とし、図の at を同じ位置に合わせ直す */
-export function trimBody(body: string, figures: NoteFigure[]): { body: string; figures: NoteFigure[] } {
+export function trimBody(
+  body: string,
+  figures: NoteFigure[],
+  photo?: NotePhoto
+): { body: string; figures: NoteFigure[]; photo?: NotePhoto } {
   const lead = body.length - body.trimStart().length;
   const t = body.trim();
-  return {
-    body: t,
-    figures: figures.map((f) => ({ ...f, at: Math.max(0, Math.min(t.length, f.at - lead)) })),
-  };
+  const fix = (at: number) => Math.max(0, Math.min(t.length, at - lead));
+  const out = { body: t, figures: figures.map((f) => ({ ...f, at: fix(f.at) })) };
+  return photo ? { ...out, photo: { ...photo, at: fix(photo.at) } } : out;
 }
 
 /** 点（[x0,y0,x1,y1,…]）を max 個以下に間引く（始点と終点は残す） */
@@ -136,6 +160,13 @@ export function bodyExcerpt(body: string): string {
 
 const rnd = (v: number, max: number) => Math.max(0, Math.min(max, Math.round(Number.isFinite(v) ? v : 0)));
 
+/** 上限は、選手の物とスタッフの物（by:"staff"）を別に数える。並びは変えない（note-free §9 判断 21） */
+function capEach<T extends { by?: "staff" }>(xs: T[], max: number): T[] {
+  let own = 0;
+  let staff = 0;
+  return xs.filter((x) => (x.by === "staff" ? staff++ < max : own++ < max));
+}
+
 /** 保存前：座標を整数に丸め、点を間引き、上限を超えた分を落とす */
 export function roundFigure(f: NoteFigure): NoteFigure {
   const h = UNDERLAYS[f.underlay].h;
@@ -143,15 +174,15 @@ export function roundFigure(f: NoteFigure): NoteFigure {
     id: f.id,
     at: Math.max(0, Math.round(f.at)),
     underlay: f.underlay,
-    lines: f.lines.slice(0, MAX_LINES).map((l) => {
+    lines: capEach(f.lines, MAX_LINES).map((l) => {
       const p = thinPath(l.p, l.k === "pen" ? PEN_PTS : LINE_PTS).map((v, i) => rnd(v, i % 2 ? h : FIG_W));
       return l.by ? { k: l.k, p, by: l.by } : { k: l.k, p };
     }),
-    marks: f.marks.slice(0, MAX_MARKS).map((m) => {
+    marks: capEach(f.marks, MAX_MARKS).map((m) => {
       const r = { k: m.k, x: rnd(m.x, FIG_W), y: rnd(m.y, h) };
       return m.by ? { ...r, by: m.by } : r;
     }),
-    texts: f.texts.slice(0, MAX_TEXTS).map((t) => {
+    texts: capEach(f.texts, MAX_TEXTS).map((t) => {
       const r = { x: rnd(t.x, FIG_W), y: rnd(t.y, h), t: t.t.slice(0, MAX_TEXT_LEN) };
       return t.by ? { ...r, by: t.by } : r;
     }),

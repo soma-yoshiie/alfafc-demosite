@@ -1514,6 +1514,28 @@ export function loadNotebook(): NotebookEntry[] | null {
   }
 }
 
+/**
+ * あと chars 文字ぶん保存できるか（試しに書いて、すぐ消す）。保存の上限は端末・ブラウザごとに違うので、決め打ちの数字では見ない。
+ * 写真を入れる前に、ほかの保存（予定・出欠・チャットなど）のぶんが残るかを確かめるのに使う（note-free §9 判断 16）。
+ * 試し書きの鍵は残さない（万一残っても resetAppData が消す）
+ */
+export function storageHasRoom(chars: number): boolean {
+  if (typeof window === "undefined") return false;
+  const probe = "soccer_tactics_room_probe";
+  try {
+    window.localStorage.setItem(probe, "x".repeat(Math.max(0, Math.ceil(chars))));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      window.localStorage.removeItem(probe);
+    } catch {
+      /* 無視 */
+    }
+  }
+}
+
 /** 保存できたら true。できなかったら false（容量超過など。note-reflection-figure §6） */
 export function saveNotebook(entries: NotebookEntry[]): boolean {
   if (typeof window === "undefined") return false;
@@ -1585,12 +1607,13 @@ function loadDraftMap(): DraftMap {
   }
 }
 
-function saveDraftMap(map: DraftMap): void {
-  if (typeof window === "undefined") return;
+function saveDraftMap(map: DraftMap): boolean {
+  if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(NOTE_DRAFT_KEY, JSON.stringify(map));
+    return true;
   } catch {
-    /* 無視 */
+    return false;
   }
 }
 
@@ -1599,10 +1622,11 @@ export function loadNoteDraft<T>(key: string): T | null {
   return (map[key] as T) ?? null;
 }
 
-export function saveNoteDraft(key: string, data: unknown): void {
+/** 保存できたら true（重くて入らないときは false。呼ぶ側は写真を外して保存し直す） */
+export function saveNoteDraft(key: string, data: unknown): boolean {
   const map = loadDraftMap();
   map[key] = data;
-  saveDraftMap(map);
+  return saveDraftMap(map);
 }
 
 export function clearNoteDraft(key: string): void {

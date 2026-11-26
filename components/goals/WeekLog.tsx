@@ -7,6 +7,7 @@ import { NOTE_KIND_LABEL } from "@/lib/types";
 import { addDaysStr } from "@/lib/dates";
 import { fmtDayWd, fmtWeekRange, monthGoalFor, monthOf, weekDays } from "@/lib/goals";
 import type { Goal } from "@/lib/goals";
+import type { FreeNote, NotebookEntry } from "@/lib/types";
 
 /**
  * 今週のノート（specs/goals.md §2-5）。目標の画面の中の次の画面。上に今月へのつながり・その週の目標・7 つの丸、
@@ -48,7 +49,9 @@ export default function WeekLog({
   );
 
   const notes = (weekGoal ? pg.staffNotes.filter((n) => n.goalId === weekGoal.id) : []).sort((a, b) => a.ts - b.ts);
-  const rows = days.flatMap((d) => d.notes.map((n) => ({ d, n })));
+  // note-free §4: 自由ノートには「今日意識したこと」の欄が無いので、この一覧には出さない
+  const rows = days.flatMap((d) => d.notes.filter((n): n is Exclude<NotebookEntry, FreeNote> => n.kind !== "free").map((n) => ({ d, n })));
+  const hasFree = days.some((d) => d.notes.some((n) => n.kind === "free"));
   const focusCount = (m: string) => weekDays(board.notebook, playerId, m).filter((d) => d.focus).length;
 
   return (
@@ -83,7 +86,9 @@ export default function WeekLog({
 
       <h3 className="gweek-h">今日意識したこと</h3>
       {rows.length === 0 ? (
-        <div className="gweek-none">この週のノートはまだありません</div>
+        <div className="gweek-none">
+          {hasFree ? "練習・試合・自主練のノートはまだありません" : "この週のノートはまだありません"}
+        </div>
       ) : (
         <div className="gweek-list">
           {rows.map(({ d, n }) => {
