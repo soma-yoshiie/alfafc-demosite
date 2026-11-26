@@ -120,6 +120,8 @@ export function emptyProfile(playerId): PlayerProfile
 
 ## 3. 個人ページ `PlayerHub`（新設 `components/PlayerHub.tsx`。大きくなるなら `components/hub/*.tsx` に分割）
 
+> 【追記（2026-11-26、`goals.md` §5）】区画に「目標」（`goals`）を末尾へ足した（`hub/GoalsSection.tsx`）。直せるのは本人だけ。スタッフは詰めたはしごを読み、ひとことを送る。将来の目標・成績の目標は今の進路・成績表で直す。
+
 `PlayerHub({ playerId, viewer: "staff"|"player", nav: "inline"|"external", section?, onSection? })`。`nav="inline"` のときはハブ自身がメニューを持つ（PC＝左の縦メニュー `.phubnav` 160px、スマホ＝ヘッダー下の横スクロールのチップ列 `.phubtabs`、44px）。`nav="external"` のときはメニューを描かず、`section`/`onSection` で親（レールのサブナビ）が切り替える。最後に開いたセクションは state（保存しない）。
 
 **幅が狭いとき**：名簿の 3 列（絞り込み 220｜一覧 300｜個人ページ）は 1024〜1300px 台で個人ページが 250〜500px になり、縦メニュー 160px を置くと本文が潰れる。そこで `PlayerHub` は自分の幅を測り（`ProfileCharts` の `useWidth`。560px 未満で「狭い」、580px 以上で戻る）、狭いときは PC でも縦メニューをやめてチップ列 `.phubtabs` を出し、ルートに `.phub.narrow` を付ける（PC reset で KPI・数値カードを 2 列、種目・テストのカードを 1 列などにする。新しい `@media`・`@container` は使わない）。チップ列は KPI のマスや「シーズンレポートを見る ›」など、チップ以外から切り替えても選択中のチップが見える位置まで横に送る。

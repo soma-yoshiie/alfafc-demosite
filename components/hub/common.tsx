@@ -76,7 +76,8 @@ export type HubSection =
   | "career"
   | "injuries"
   | "activity"
-  | "report";
+  | "report"
+  | "goals";
 
 /** メニューの並び（PC の縦メニュー・スマホのチップ列・選手 PC のレールのサブナビで共通） */
 export const HUB_SECTIONS: { key: HubSection; label: string }[] = [
@@ -89,6 +90,7 @@ export const HUB_SECTIONS: { key: HubSection; label: string }[] = [
   { key: "career", label: "進路" },
   { key: "activity", label: "活動" },
   { key: "report", label: "レポート" },
+  { key: "goals", label: "目標" },
 ];
 
 /** 各セクションが受け取る値。PlayerHub が最新の Player・プロフィール・年齢などを計算して渡す */

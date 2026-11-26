@@ -85,6 +85,8 @@ export function useHomeTimeline(board: BoardCtx, team: TeamCtx): HomeTimelineSco
 
 ### 3-3 目標（選手）
 
+> 【書き換え済み（2026-11-26、`goals.md` §4-1）】この節の「専用の『目標』データは無い」「新しい入力画面は作らない」「3 行（練習の目標・成績の目標・将来の目標）」は古い。目標は新しい保存（`soccer_tactics_goals_v1`）と目標の画面を持ち、ホームの目標カードは「夢 → 今年 → 今週」の 3 行＋ 7 つの丸になった。以下は当時の記録。
+
 専用の「目標」データは無い（2026-10-02 時点）。既にある 3 つの目標をまとめて出す。新しい入力画面は作らない。
 
 `HomeGoals({ playerId, variant })`：器は PC `div.mdb-panel.hp-goals`／スマホ `div.mh-section.mh-panel.hp-goals`。見出し `.hp-h`「目標」。行は値があるものだけ（`dl.hp-goallist > div.hp-goal > dt + dd`。押せる行は `button.hp-goal`）：
@@ -165,6 +167,8 @@ div.mdb-root
 ---
 
 ## §7 実装時の判断（2026-10-02。以後はここが正）
+
+> 【追記（2026-11-26、`goals.md`）】「目標は専用のデータを作らない」「新しい入力画面は作らない」「選手の目標カードの 3 行」は `goals.md` で書き換えた（オーナー決定 9・11）。
 
 実画面の確認（受け入れ 37 項目）と、Opus 5.5 のレビュー（確定 9 件＝重複を除いて 6 件。どれも軽微）を受けて、統括が次のとおり決めた。
 

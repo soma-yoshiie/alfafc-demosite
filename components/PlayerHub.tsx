@@ -23,6 +23,7 @@ import GradesSection from "./hub/GradesSection";
 import CareerSection from "./hub/CareerSection";
 import ActivitySection from "./hub/ActivitySection";
 import ReportSection from "./hub/ReportSection";
+import GoalsSection from "./hub/GoalsSection";
 
 /**
  * 選手の個人ページ（ハブ。specs/player-hub.md §3）。1 人の選手の全データを、ページ内メニュー（セクション）で
@@ -74,6 +75,7 @@ const SECTION_VIEWS: Record<HubSection, React.ComponentType<HubSectionProps>> = 
   injuries: InjuriesSection,
   activity: ActivitySection,
   report: ReportSection,
+  goals: GoalsSection,
 };
 
 /** いちばん近いスクロールする祖先（セクション切替でスクロール位置を戻すのに使う） */

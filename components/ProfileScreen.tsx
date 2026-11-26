@@ -6,7 +6,7 @@ import { useConsoleSubnav } from "./ConsoleShell";
 import type { ConsoleSubnav } from "./ConsoleShell";
 import { MobileHeader } from "./MobileHeader";
 import { E } from "./Emoji";
-import { IconUser } from "./icons";
+import { IconFlag, IconUser } from "./icons";
 import PlayerHub from "./PlayerHub";
 import { HUB_SECTIONS, HubEmpty, usePc } from "./hub/common";
 import type { HubSection } from "./hub/common";
@@ -32,6 +32,8 @@ const SUBNAV_ICON: Record<HubSection, React.ReactNode> = {
   injuries: <E n="bandage" />,
   activity: <E n="calendar" />,
   report: <E n="doc" />,
+  // goals §5: 進路がすでに的の線画なので、目標は旗にする（並んだサブナビで見分けがつくように）
+  goals: <IconFlag />,
 };
 
 export default function ProfileScreen() {

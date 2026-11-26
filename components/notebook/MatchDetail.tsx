@@ -71,6 +71,12 @@ export function MatchDetail({
           return time ? <div className="notesec-b">{time}</div> : null;
         })()}
       </div>
+      {note.focus && (
+        <div className="notesec">
+          <div className="notesec-h"><E n="target" /> 今日意識したこと</div>
+          <div className="notesec-b">{note.focus}</div>
+        </div>
+      )}
       {note.bestPlay && (
         <div className="notesec">
           <div className="notesec-h">ベストプレー</div>

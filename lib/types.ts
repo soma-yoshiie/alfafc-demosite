@@ -958,6 +958,8 @@ interface NoteBase {
   body?: string;
   /** 本文の途中に挟む図（任意。note-reflection-figure §1） */
   figures?: NoteFigure[];
+  /** そのノートの日が入る週の目標の id（任意。提出のときに付ける。goals §1-2） */
+  goalId?: string;
   /** スタッフからのコメント（任意） */
   staffComment?: string;
   staffCommentTs?: number;
@@ -1055,6 +1057,8 @@ export interface MatchNote extends NoteBase {
   /** 紐付く試合記録ID（任意） */
   matchId?: string;
   opponent?: string;
+  /** 今日意識したこと（任意。goals §1-2） */
+  focus?: string;
   /** ◯分ハーフ（試合時間） */
   halfMinutes?: number;
   /** フル出場か（既定=true。false=途中出場） */
@@ -1118,6 +1122,8 @@ export interface SoloItem {
 export interface SoloNote extends NoteBase {
   kind: "solo";
   items: SoloItem[];
+  /** 今日意識したこと（任意。goals §1-2） */
+  focus?: string;
 }
 
 /** サッカーノート1件（選手が記入・提出、スタッフが閲覧・コメント） */

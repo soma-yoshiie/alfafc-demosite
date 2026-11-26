@@ -6,6 +6,7 @@ import { clearSession, loadSession, saveSession } from "@/lib/auth";
 import { BoardProvider } from "./BoardProvider";
 import { TeamProvider } from "./TeamProvider";
 import { ProfileProvider } from "./ProfileProvider";
+import { GoalsProvider } from "./GoalsProvider";
 import { MatchupProvider } from "./matchup/MatchupProvider";
 import AppRoot from "./AppRoot";
 import SplashScreen from "./SplashScreen";
@@ -66,9 +67,12 @@ export default function AppFlow() {
         {/* player-hub §1-1: 選手のプロフィール（記録）。BoardProvider の内側（board.auth・toast を使う）・TeamProvider の内側 */}
         <ProfileProvider>
           {/* matchup-demo §3: 練習試合（相手探し・申し込み）。useBoard／useTeam を使うので ProfileProvider と同じ階層 */}
-          <MatchupProvider>
-            <AppRoot />
-          </MatchupProvider>
+          {/* goals §1-2: 選手の目標。夢は進路の将来の目標（profile）を通すので ProfileProvider の内側 */}
+          <GoalsProvider>
+            <MatchupProvider>
+              <AppRoot />
+            </MatchupProvider>
+          </GoalsProvider>
         </ProfileProvider>
       </TeamProvider>
     </BoardProvider>

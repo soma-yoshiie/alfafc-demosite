@@ -8,6 +8,8 @@ import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
 import { useChatBadgeInput } from "./useChatBadgeInput";
 import LogoMark from "./Logo";
+import GoalOverlay from "./goals/GoalOverlay";
+import { useGoals } from "./GoalsProvider";
 import {
   IconCalendarCheck,
   IconChat,
@@ -195,6 +197,7 @@ function scrollActiveScreenToTop(): void {
 
 export default function ConsoleShell({ children }: { children: React.ReactNode }) {
   const board = useBoard();
+  const goalsCtx = useGoals();
   const teamCtx = useTeam();
   const coach = board.auth.role === "coach";
 
@@ -387,6 +390,8 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
       <div className="conmain">
         <ConsoleShellContext.Provider value={ctxValue}>{children}</ConsoleShellContext.Provider>
       </div>
+      {/* goals §4: どこからでも開く目標の画面（重ね表示）。下部タブより前に置き、スマホは下部タブの上までを覆う */}
+      <GoalOverlay />
       {/* 下部タブ（スマホ常設）。PCでは打ち消しリセット(.mtab{display:none})で隠す。
           全画面再生(FullPlayOverlay/.fp)中は隠す（mobile-redesign §1-1） */}
       {!board.fullplay && (
@@ -406,6 +411,12 @@ export default function ConsoleShell({ children }: { children: React.ReactNode }
                 // hub-tiles §0-3: 同じタブの再タップは受け手（TeamHub／NotebookScreen）へも知らせる。
                 // 先の画面・詳細にいれば目次へ戻り、目次にいれば何もしない（先頭へのスクロールはここ）
                 if (board.screen === it.key) {
+                  // goals §4: 目標の重ね表示が開いているときの再タップは、重ね表示を閉じるだけ
+                  // （下の画面へは知らせない。書きかけのノートのフォームを閉じないため）
+                  if (goalsCtx.overlay) {
+                    goalsCtx.closeGoals();
+                    return;
+                  }
                   window.dispatchEvent(new CustomEvent("alfa-tabreselect", { detail: { key: it.key } }));
                   scrollActiveScreenToTop();
                   return;

@@ -4,7 +4,7 @@
  * p18 §3: ホームの共通の部品（PC＝HomeMenu.tsx／スマホ＝MobileHome.tsx の両方から使う）。
  * - HomeTimeline：スタッフのホームの「サッカーノート・チャットのタイムライン」（すべて＋学年のタイル）
  * - HomeAnnouncements：最新のお知らせ（スタッフ・選手共通）
- * - HomeGoals：選手のホームの目標（練習の目標・成績の目標・将来の目標）
+ * - HomeGoals：選手のホームの目標（夢 → 今年 → 今週の 3 行＋ 7 つの丸。押すと目標の画面。specs/goals.md §4-1）
  * データの集計は homeData.tsx（useHomeTimeline）。クラスは hp-*（app/globals.css の基底）。
  */
 
@@ -12,14 +12,15 @@ import { useMemo, useState, type CSSProperties } from "react";
 import { announceSubject, announcedMessages, fmtListDate, messageReadStats, threadLabel } from "@/lib/chat";
 import { loadNotifSeen } from "@/lib/storage";
 import { unreadStaffComments } from "@/lib/badges";
-import { dmThreadKey, gradeLabel } from "@/lib/types";
-import type { ChatMessage, PracticeNote } from "@/lib/types";
-import { termLabel } from "@/lib/profile";
+import { dmThreadKey } from "@/lib/types";
+import type { ChatMessage } from "@/lib/types";
 import { useBoard } from "./BoardProvider";
 import { useTeam } from "./TeamProvider";
-import { useProfiles } from "./ProfileProvider";
-import { IconChat, NoteKindIcon } from "./icons";
-import { fmtEventDate, type HomeTimelineScope } from "./homeData";
+import { IconChat, IconChevronRight, NoteKindIcon } from "./icons";
+import { useGoals } from "./GoalsProvider";
+import { useGoalData } from "./goals/useGoalData";
+import { isBlank } from "@/lib/goals";
+import { type HomeTimelineScope } from "./homeData";
 import { notifIdentity } from "./NotebookTools";
 
 export type HomeVariant = "pc" | "mobile";
@@ -260,85 +261,110 @@ export function AnnouncementList({ viewer }: { viewer: "staff" | "player" }) {
 
 /* ===================== 3-3 目標（選手） ===================== */
 
-type GoalRow = { key: string; label: string; value: string; sub?: string; screen: "notebook" | "profile" };
-
 export function HomeGoals({ playerId, variant }: { playerId: string; variant: HomeVariant }) {
-  const board = useBoard();
-  const team = useTeam();
-  const profiles = useProfiles();
-  const profile = profiles.get(playerId);
+  const goals = useGoals();
+  const { rows, days, today, pg, profile } = useGoalData(playerId);
 
-  const rows = useMemo(() => {
-    const out: GoalRow[] = [];
-    // 練習の目標：自分の練習ノートのうち「今日の目標」があるもので活動日が最新のもの
-    let latest: PracticeNote | null = null;
-    for (const n of board.notebook) {
-      if (n.kind !== "practice" || n.playerId !== playerId || !n.goalPre?.trim()) continue;
-      if (!latest || n.date > latest.date || (n.date === latest.date && n.ts > latest.ts)) latest = n;
-    }
-    if (latest) {
-      out.push({
-        key: "practice",
-        label: "練習の目標",
-        value: latest.goalPre!.trim(),
-        sub: `${fmtEventDate(latest.date)}${typeof latest.achievement === "number" ? ` ・ 達成度 ${latest.achievement}%` : ""}`,
-        screen: "notebook",
-      });
-    }
-    // 成績の目標（プロフィールの成績表）
-    const gg = profile.gradeGoal;
-    const actions = gg.actions?.trim();
-    if (gg.targetAvg != null || actions) {
-      const dl = [
-        gg.deadlineGrade != null ? gradeLabel(team.schoolStage, gg.deadlineGrade) : "",
-        gg.deadlineTerm ? termLabel(gg.deadlineTerm) : "",
-      ].filter(Boolean);
-      const dlText = dl.length > 0 ? `（${dl.join("・")}まで）` : "";
-      out.push({
-        key: "grade",
-        label: "成績の目標",
-        value: gg.targetAvg != null ? `評定平均 ${gg.targetAvg.toFixed(1)}${dlText}` : (actions as string),
-        sub: gg.targetAvg != null ? actions || undefined : undefined,
-        screen: "profile",
-      });
-    }
-    // 将来の目標（プロフィールの進路）
-    const future = profile.career.futureGoal?.trim();
-    if (future) out.push({ key: "future", label: "将来の目標", value: future, screen: "profile" });
-    return out;
-  }, [board.notebook, playerId, profile, team.schoolStage]);
+  // goals §4-1: 夢 → 今年（無ければ大きな目標）→ 今週。何も無いときは「目標はまだありません」
+  const blank = isBlank(pg, profile);
+  const dream = rows.find((r) => r.kind === "dream" && !r.empty);
+  const mid = rows.find((r) => r.kind === "year" && !r.empty) ?? rows.find((r) => r.kind === "long" && !r.empty);
+  const week = rows.find((r) => r.kind === "week")!;
+  const open = () => goals.openGoals(playerId);
 
+  const dot = (cls = "") => <span className={`gl-dot${cls}`} aria-hidden="true" />;
   const body = (
     <>
       <div className="hp-h">
         <span>目標</span>
+        <button
+          type="button"
+          className="hp-goalopen"
+          onClick={(e) => {
+            e.stopPropagation();
+            open();
+          }}
+        >
+          目標を開く <IconChevronRight width={16} height={16} aria-hidden="true" />
+        </button>
       </div>
-      {rows.length === 0 ? (
-        <div className="hp-empty">
-          目標はまだありません。サッカーノートの「今日の目標」や、プロフィールの成績表・進路で設定できます。
+      {blank ? (
+        <div className="hp-goalblank">
+          <p>目標はまだありません。夢から今週までの目標を決められます。</p>
+          <button
+            type="button"
+            className="st-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              goals.openGoals(playerId, "setup");
+            }}
+          >
+            目標を決める
+          </button>
         </div>
       ) : (
-        <dl className="hp-goallist">
-          {rows.map((r) => (
-            <div className="hp-goalrow" key={r.key}>
-              <dt>{r.label}</dt>
-              <dd>
-                <button type="button" className="hp-goal" onClick={() => board.setScreen(r.screen)}>
-                  {r.value}
-                  {r.sub && <small>{r.sub}</small>}
-                </button>
-              </dd>
+        <div className="gl home">
+          {dream && (
+            <div className="gl-row k-dream">
+              {dot()}
+              <div className="gl-body">
+                <div className="gl-label">{dream.label}</div>
+                <div className="gl-text">{dream.text}</div>
+              </div>
             </div>
-          ))}
-        </dl>
+          )}
+          {mid && (
+            <div className="gl-row k-year">
+              {dot()}
+              <div className="gl-body">
+                <div className="gl-label">{mid.label}</div>
+                <div className="gl-text">{mid.text}</div>
+              </div>
+            </div>
+          )}
+          <div className="gl-row k-week">
+            {dot(" now")}
+            <div className="gl-body">
+              <div className="gl-label">今週</div>
+              {week.empty ? (
+                <button
+                  type="button"
+                  className="gl-add hp-goaldecide"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    goals.openGoals(playerId, "review-week");
+                  }}
+                >
+                  今週の目標を決める
+                </button>
+              ) : (
+                <div className="gl-text">{week.text}</div>
+              )}
+              <div className="gl-days" aria-label="今週のノート">
+                {days.map((d) => (
+                  <div key={d.date} className={`gl-day${d.written ? " on" : ""}${d.date === today ? " today" : ""}`}>
+                    <span className="gl-daydot" />
+                    <span className="gl-daywd">{d.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
 
-  return variant === "pc" ? (
-    <div className="mdb-panel hp-goals">{body}</div>
-  ) : (
-    <div className="mh-section mh-panel hp-goals">{body}</div>
+  // カード全体を押すと目標の画面（中のボタンは止めて自分の行き先へ）
+  const press = (e: React.MouseEvent) => {
+    if (!blank) open();
+    else if (e.target === e.currentTarget) open();
+  };
+  const cls = variant === "pc" ? "mdb-panel hp-goals" : "mh-section mh-panel hp-goals";
+  return (
+    <div className={cls} onClick={press}>
+      {body}
+    </div>
   );
 }
 

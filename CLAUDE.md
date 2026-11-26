@@ -69,16 +69,17 @@ npx tsc --noEmit   # コミット前に必ず通す
 |---|---|
 | `app/page.tsx` → `components/AppRoot.tsx` → `AppFlow.tsx` | 起動（スプラッシュ `SplashScreen.tsx`・`BrandMark.tsx`）→ ログイン `LoginScreen.tsx`（ロゴも `BrandMark`）→ 本体 `ConsoleShell.tsx` |
 | `app/icon0.svg`・`app/icon1.png`・`app/apple-icon.png` | アプリのアイコン（favicon・iOS のホーム画面）。`BrandMark` と同じ幾何で文字なし。名前を変えたら `scripts/relativize-export.cjs` も直す（`login-brand-icon.md` §2） |
-| `components/ConsoleShell.tsx` | 画面の切り替え・下部タブ（`STAFF_MTAB` / `PLAYER_MTAB`）・PC の左レール。同じタブの再タップは `alfa-tabreselect` イベント |
+| `components/ConsoleShell.tsx` | 画面の切り替え・下部タブ（`STAFF_MTAB` / `PLAYER_MTAB`）・PC の左レール。同じタブの再タップは `alfa-tabreselect` イベント。目標の重ね表示（`goals/GoalOverlay.tsx`）をここに 1 つだけ置く（開いている間の再タップは、重ね表示を閉じるだけ） |
 | `components/BoardProvider.tsx` | 戦術ボードの状態（`useReducer`）。`ScreenName` の型もここ |
 | `components/TeamProvider.tsx` | チーム（名簿・予定・出欠・試合記録・グループ・チャット・お知らせ）。`lib/sampleTeam.ts` がデモデータ |
 | `components/ProfileProvider.tsx` | 選手の個人ページ（成長・体力・成績・進路・怪我・レポート） |
+| `components/GoalsProvider.tsx`・`goals/`・`lib/goals.ts`・`lib/sampleGoals.ts` | 選手の目標（夢 → 大きな目標 → 足した段 → 今年 → 今月 → 今週 → 今日。`goals.md`）。保存は別の鍵 `soccer_tactics_goals_v1`、夢だけは進路の「将来の目標」そのもの（写しを持たない）。画面の中身は `goals/GoalBoard.tsx`（はしご `GoalLadder`・階段 `GoalStairs`（試作）・一覧 `GoalList`・直すシート `GoalEditSheet`・見直し `WeekReview`・今週のノート `WeekLog`・はじめての設定 `GoalSetup`）。置き場はプロフィールの区画（`hub/GoalsSection.tsx`）と、どこからでも開く重ね表示（`GoalOverlay`。ホームの目標カードとノートの帯 `GoalBand` から）。型と純粋な関数は `lib/goals.ts`（`ladderRows`・`weekDays`・`bandGoalFor`） |
 | `components/DrillProvider.tsx` | 練習メニュー（ドリル図） |
 | `components/TeamHub.tsx`・`team/` | 「チーム」タブ（スマホはタイルの目次、PC は 2 ペイン）。カレンダー・試合記録 `MatchHub.tsx`・名簿・チャット `ChatHome.tsx` / `ChatThread.tsx`。管理シートの部品は `team/manage` |
-| `components/PlayerHub.tsx`・`hub/` | 選手の個人ページ（基本・成長・体力・テスト・成績表・進路・怪我・活動・レポートの区画。各区画は `hub/*Section.tsx`）。共通部品は `hub/common.tsx`（`HubEditBtn` / `HubMenu`） |
+| `components/PlayerHub.tsx`・`hub/` | 選手の個人ページ（基本・成長・体力・テスト・成績表・進路・怪我・活動・レポート・目標の区画。各区画は `hub/*Section.tsx`）。共通部品は `hub/common.tsx`（`HubEditBtn` / `HubMenu`） |
 | `components/CoachingHub.tsx`・`OtherHub.tsx` | 「コーチング」「その他」タブの最初の画面（スマホだけ。PC は左レールで、`CoachingHub` は PC 幅ではホームへ戻す）。コーチングは「作る」の正方形 3 つ＋最近の保存＋ライブラリ（`coaching-hub-s1.md`）。CSS は `.chubapp` / `.chub-*` |
 | `components/NotebookScreen.tsx`・`NotebookTools.tsx`・`notebook/` | サッカーノート（選手が書く／スタッフがコメント）。試合ノートのピッチまわりは `notebook/`（出場した位置 `LineupPicker.tsx`、プレーの記録とスタッフの作図 `PlayRecorder.tsx`、詳細 `MatchDetail.tsx`、シート `PlaySheets.tsx`）、ピッチの部品は `MiniPitch.tsx`（実寸 68×105m の比・緑のベタ・白線。座標の写し方 `fieldPct` / `pointerToField`）、集計とプレーのつながりは `lib/plays.ts`（`playStats`・`groupPlays`）。振り返りの欄と本文に挟む図は `notebook/ReflectionField.tsx`（書く）・`ReflectionView.tsx`（読む）・`FigureEditor.tsx`（作図の画面）・`FigureView.tsx`（図の表示）、図の関数は `lib/figures.ts`（`splitBody`・`joinBlocks`・`bodyExcerpt`） |
-| `components/MobileHome.tsx`・`HomePanels.tsx`・`homeData.tsx` | ホーム（スタッフ＝お知らせ→学年別タイムライン、選手＝目標＋お知らせ。集計は `useMatchdayData`） |
+| `components/MobileHome.tsx`・`HomePanels.tsx`・`homeData.tsx` | ホーム（スタッフ＝お知らせ→学年別タイムライン、選手＝目標のカード（夢 → 今年 → 今週。押すと目標の画面）＋お知らせ。集計は `useMatchdayData`） |
 | `components/SettingsScreen.tsx`・`settings/` | 設定（グループ化リスト＋下層。管理シートは `team/manage`） |
 | `components/CoachLab/`・`lib/coachlab.ts` | コーチラボ（指導者の記事。内部キーは `articles`） |
 | `components/matchup/`・`lib/matchup.ts` | 練習試合のマッチング（デモ） |
@@ -97,7 +98,7 @@ npx tsc --noEmit   # コミット前に必ず通す
 
 ### 色・形
 - 有彩色は **青 `--accent` 1 色**。緑は「出席・勝ち・記入済み」など**状態の表示だけ**、赤は破壊操作とエラーだけ。紫・藍（色相 250〜280）・オレンジ・ライムを新しく使わない。
-- 背景は 3 段だけ：ページ `--surface`（#eef1f5）／面 `--surface-lowest`（白）／境界 `--outline`（#e3e6ea 1px）。グラデーション・ぼかし・色付きの影は禁止。カードは**影なし＋1px の線**、角丸は 10px（`--r-lg`）か 8px（`--r-md`）のどちらかに画面内で統一。ピルとアバターだけ 999px。
+- 背景は 3 段だけ：ページ `--surface`（#eef1f5）／面 `--surface-lowest`（白）／境界 `--outline`（#e3e6ea 1px）。グラデーション・ぼかし・色付きの影は禁止（今あるグラデーションは、ホームのヒーローと、目標の画面の階段（試作）の夢のカードの 2 つだけ。増やさない）。カードは**影なし＋1px の線**、角丸は 10px（`--r-lg`）か 8px（`--r-md`）のどちらかに画面内で統一。ピルとアバターだけ 999px。
 - 文字サイズは **12／14／15／17／20 の 5 段**。12px 未満は使わない（下部タブのラベルも 12）。太さは 400 と 700 だけ。数字は `tabular-nums`。
 - 余白は 左右 16／カード内 16／カード間 12／区画間 24。タップ対象は **44px 以上**。横はみ出しは 0。
 
@@ -122,7 +123,7 @@ npx tsc --noEmit   # コミット前に必ず通す
 - PC（≥1024px）の DOM・CSS・挙動（スマホの作業で PC が変わっていないことを撮影で確かめる）。PC の見た目や挙動を変えること自体が目的の作業だけは例外。その場合は先にオーナーに確認し、`specs/<name>.md` に「PC の変更」の節（どの画面の・どの規則を・なぜ）を書いてから、PC ブロックの該当規則だけを直す。PC reset 区画には書かず、新しい `@media` も足さない。PR には PC の変更前後のスクリーンショットを付ける。
 - 保存キー・集計・状態の内部ロジック（見た目の作業で `lib/` の計算を変えない）。
 - ピッチの緑、トークンの色、チャートの色。ノートのピッチ（`MiniPitch.tsx`）だけは `note-pitch-v2.md` で作り直した（緑はトークン `--grass-b` のベタ。戦術ボード・練習メニュー・セットプレーのピッチ `.pitch` は別の部品で、変えていない）。
-- 下部タブ（スタッフ：ホーム／コーチング／ノート／チーム／その他、選手：ホーム／ノート／チーム／プロフィール／その他）、青いクローム、白いカード、ホームの構成、作業画面（戦術ボード・練習メニュー・ノートの記入）の密度。
+- 下部タブ（スタッフ：ホーム／コーチング／ノート／チーム／その他、選手：ホーム／ノート／チーム／プロフィール／その他）、青いクローム、白いカード、ホームの構成、作業画面（戦術ボード・練習メニュー・ノートの記入）の密度。選手のホームの目標カードの中身と、プロフィールのチップ（10 個・末尾に「目標」）だけは `goals.md` で変えた。
 - デモデータの整合（日付・勝点・出席率が画面で食い違わないこと。数字は 1 か所から計算する）。
 
 ---
@@ -133,6 +134,7 @@ npx tsc --noEmit   # コミット前に必ず通す
 
 | 仕様 | 何が決まっているか |
 |---|---|
+| `goals.md` | 目標（オーナー決定 2026-11-26。同じ PDF の §10-3 の 8〜12）。夢から今日までを 6 段でつなぐ：夢（進路の「将来の目標」そのもの）→ 大きな目標（表示名は既定「高校」）→ 足した段（3 つまで）→ 今年（3 つまで）→ 今月 → 今週 → 今日意識したこと。新しい鍵 `soccer_tactics_goals_v1`、目標の画面（はしご。試作の階段に切り替えられる）、直すシート（続ける｜変える｜達成した）、週と月の見直し（できた・半分・まだ）、今週のノート、はじめての設定（4 歩）。置き場はプロフィールの区画「目標」と、どこからでも開く重ね表示（ホームの目標カード・ノートの帯から。スマホは下部タブの上まで、PC は中央のパネル）。ノートは練習の欄名を「今日意識したこと」に、試合・自主練に任意の `focus`、ノートに任意の `goalId`。スタッフは読むだけ＋ひとこと。`round5-home.md` §3-3 の「目標は専用のデータを作らない」を書き換えた。PC の変更は §8、実装時の判断は §10（未決は 30） |
 | `note-reflection-figure.md` | 振り返りを広く書く・本文に図を挟む・保存の失敗を知らせる（オーナー決定 2026-11-26。同じ PDF の §10-3 の 1・6・7・10）。練習・試合・自主練の作成フォームは白いカード＋カードの外の広い「振り返り」（問いのチップ 3 つ、5・6・3 行から 12 行まで伸びる）、本文の途中に図の箱（ノートに任意の項目 `figures`。1 ノート 4 枚まで。本文 `body` は 1 本のまま、図は「何文字目の後ろか」で持つ）、作図の画面（下敷き 4 種・ペン・線・印・文字・消しゴム。スマホは全画面、PC は中央のパネル）、試合は「ピッチに記録する（任意）」の畳む行、「気づき」→「ひとこと」、人を指す「コーチ」→「スタッフ」、`saveNotebook`・`addNote`・`updateNote` が成否を返し、失敗したらフォームを閉じずに赤い 1 行。必須の条件と集計は変えていない。実装時の判断は §11 |
 | `note-play-chain.md` | つながる作図（オーナー決定 2026-11-26。同じ PDF の §10-3 の 4〜6・12）。「受けた → ドリブル → シュート」を 1 つのプレーとして残す：印に任意の項目 `chain`・`seq`・`ord`、道具の列の下に「続けて：ドリブル｜パス｜シュート｜ここまで」、結果を聞くのは最後の 1 回、16px 以内は吸い付く、プレーの一覧（直す・削除）、「1つ戻す」は時間順で 1 つ前の状態に戻る。詳細はプレーの一覧と、スタッフの図の切り替え「自分の記録｜スタッフの図｜重ねる」（既定は重ねる）。集計の式は変えていない。実装時の判断は §10 |
 | `note-pitch-v2.md` | ノートのピッチの作り直し（オーナー決定 2026-11-26。分析 PDF「サッカーノートの中身の UI 案」§10-3 の 1〜3）。実寸の比 68:105・緑のベタ＋白線・全面／ハーフ、陣形は自分のチームだけ（「相手も表示」で両方）・選んだ位置は青、線の約束は練習メニューにそろえる（ドリブル＝白の波線、パス＝白の破線、受けた＝白い輪、トラップミス＝×）、道具は 1 列 5 つ・44px、スタッフの図は青に白フチ。PC にも出る（PC の変更は §5）。実装時の判断は §7 |
@@ -189,7 +191,7 @@ PR の説明に書くこと：目的／触った画面（スマホ・PC のス�
 ## 9. いまの状態（2026-11-26 時点）
 
 - `main` は安定。GitHub Pages は `main` の `docs/`。
-- **サッカーノートの中身を作り直している途中**（オーナー決定 2026-11-26。分析 PDF「サッカーノートの中身の UI 案」の 12 点をすべて採用）。順番は ①ピッチ（`specs/note-pitch-v2.md`、実装済み）→ ②つながる作図（`specs/note-play-chain.md`、実装済み）→ ③振り返りを広く＋図の箱（`specs/note-reflection-figure.md`、実装済み）→ ④目標（夢から今日まで）→ ⑤自由ノート。オーナーが `main` で直列に進めているので、ノート（`NotebookScreen.tsx`・`notebook/`・`MiniPitch.tsx`・`globals.css` の `.noteapp` の区画）を触る前に必ず相談する。
+- **サッカーノートの中身を作り直している途中**（オーナー決定 2026-11-26。分析 PDF「サッカーノートの中身の UI 案」の 12 点をすべて採用）。順番は ①ピッチ（`specs/note-pitch-v2.md`、実装済み）→ ②つながる作図（`specs/note-play-chain.md`、実装済み）→ ③振り返りを広く＋図の箱（`specs/note-reflection-figure.md`、実装済み）→ ④目標（夢から今日まで。`specs/goals.md`、実装済み）→ ⑤自由ノート。目標の画面の「階段」は試作で、はしごと切り替えて比べるために並べてある（オーナーが決めたら、使わない方を消す）。オーナーが `main` で直列に進めているので、ノート（`NotebookScreen.tsx`・`notebook/`・`MiniPitch.tsx`・`globals.css` の `.noteapp` の区画）を触る前に必ず相談する。
 - スマホ版の骨組みは **S1（コーチングの性格づけ）で止める**（オーナー決定 2026-11-07。`specs/coaching-hub-s1.md`、実装済み）。雰囲気（色・書体）は今の青のまま、設定の「外観」は作らない。分析 PDF「スマホ版の骨組みと雰囲気の UI 案」（2026-11-07）の S2〜S6・V2〜V7 は案だけで未実装。練習メニューの PDF（2026-11-06）の「案 D コーチング目次のタイル化」は取り下げ（S1 に置き換え）。
 - スマホ版 UI の分析（空きスペース・部品の揺れ・ブランドの不一致）の**提案 A〜G は未実装**。要点：チーム目次の下に「今週の予定／最新のお知らせ」、その他＋設定を 1 画面に、未入力を畳む、部品の統一、ログインを新ロゴに、選手ホームに「今日のノート」「了解がまだ」。広告や協賛の枠は仕様に無いので足さない（検討中）。着手するときはオーナーに順番を確認する（§2 の Draft PR で宣言する）。
 - 保留中：起動直後の「今日の予定」画面（ブランチ `feature/today-gate`、タグ `shelf/today-gate-v1`）。勝手に取り込まない。

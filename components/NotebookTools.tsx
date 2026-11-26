@@ -150,10 +150,10 @@ function entryText(n: NotebookEntry): string {
     parts.push(p.goalPre, ...(p.insights ?? []));
   } else if (n.kind === "match") {
     const m = n as MatchNote;
-    parts.push(m.opponent, m.bestPlay, m.reflectPlay, m.reportGood, m.reportImprove, m.reportSummary, m.aiSummary);
+    parts.push(m.opponent, m.focus, m.bestPlay, m.reflectPlay, m.reportGood, m.reportImprove, m.reportSummary, m.aiSummary);
   } else {
     const s = n as SoloNote;
-    parts.push(...s.items.map((i) => `${SOLO_KIND_LABEL[i.kind]} ${i.value}`));
+    parts.push(s.focus, ...s.items.map((i) => `${SOLO_KIND_LABEL[i.kind]} ${i.value}`));
   }
   return parts.filter(Boolean).join(" ");
 }

@@ -1516,7 +1516,7 @@ function sampleNotebook(): NotebookEntry[] {
       date: dayAgo(0),
       ts: ts(0),
       condition: "good",
-      goalPre: "ファーストタッチを前向きに置く",
+      goalPre: "受ける前に右と左を見る",
       achievement: 72,
       insights: ["相手を見る前に首を振る", "受ける前に体の向きを作る"],
       body: PRACTICE_DEMO_BODY,

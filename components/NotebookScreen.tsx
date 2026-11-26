@@ -65,6 +65,9 @@ import { useGroupFilter } from "./GroupChips";
 import { FilterRow, FilterSecHead } from "./FilterRow";
 import SeasonReport from "./SeasonReport";
 import { useConsoleSubnav } from "./ConsoleShell";
+import { useGoals } from "./GoalsProvider";
+import GoalBand from "./goals/GoalBand";
+import { bandGoalFor } from "@/lib/goals";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
 import { MenuGroup, MenuRow } from "./MobileRows";
@@ -237,6 +240,8 @@ export default function NotebookScreen() {
     // 戻るはホーム（ここで開いたタブ）に戻る
     if (!isCoach) {
       if (board.notebook.find((n) => n.id === noteId)?.playerId !== board.auth.playerId) return;
+      // goals §4: 目標の重ね表示の「今週のノート」から来たとき、編集中のノート（下書きに残らない）は確認してから離れる
+      if (view.mode === "form" && view.edit && !window.confirm("保存せずに終了しますか？")) return;
       setSheetOpen(false);
       setView({ mode: "detail", id: noteId });
       return;
@@ -797,7 +802,7 @@ export default function NotebookScreen() {
                       : k === "practice"
                         ? todayPractice
                           ? "今日は記入済み（開く）"
-                          : "目標の達成度と振り返りを記録"
+                          : "今日意識したことと振り返りを記録"
                         : "実施した種目と量を記録"}
                   </small>
                 </span>
@@ -2108,6 +2113,11 @@ function SaveErr() {
   );
 }
 
+/** 提出・更新のとき：そのノートの日が入る週の目標の id を付ける（無ければ外す。日付を別の週へ直したときに古い id を残さない） */
+function goalIdOf(pg: ReturnType<ReturnType<typeof useGoals>["get"]>, date: string): { goalId: string | undefined } {
+  return { goalId: bandGoalFor(pg, date)?.id };
+}
+
 function NoteForm({
   kind,
   edit,
@@ -2160,6 +2170,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
   );
   const [date, setDate] = useState(edit?.date ?? todayStr());
   const [condition, setCondition] = useState<NoteCondition | undefined>(edit?.condition);
+  const goalsCtx = useGoals();
   const [goalPre, setGoalPre] = useState(edit?.goalPre ?? "");
   const [achievement, setAchievement] = useState<number>(edit?.achievement ?? 60);
   const [insights, setInsights] = useState<string[]>(edit?.insights?.length ? edit.insights : [""]);
@@ -2223,7 +2234,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     draft.dismiss();
   };
 
-  // 前回の練習ノートの気づき・目標を「今日の目標」候補として引用
+  // 前回の練習ノートの気づき・目標を「今日意識したこと」候補として引用
   const prevTheme = useMemo(() => {
     if (edit) return undefined;
     const prev = board.notebook
@@ -2232,10 +2243,13 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     return prev?.insights?.find((s) => s.trim()) || prev?.goalPre || undefined;
   }, [board.notebook, me, edit]);
 
+  // 薄い例文：その週の目標があれば「例）（その文）」。案内の帯（前回のひとこと）が出ているときは今の例文のまま
+  const weekGoalText = bandGoalFor(goalsCtx.get(me), date)?.text;
+
   const submit = () => {
     const ins = insights.map((s) => s.trim()).filter(Boolean);
     if (!goalPre.trim() && !body.trim() && ins.length === 0) {
-      board.toast("目標か振り返りを入力してください");
+      board.toast("今日意識したことか振り返りを入力してください");
       return;
     }
     const tb = trimBody(body, figures);
@@ -2251,6 +2265,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       figures: tb.figures.length ? tb.figures : undefined,
       isPublic,
       menuId,
+      ...goalIdOf(goalsCtx.get(me), date),
     };
     const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
     if (!ok) {
@@ -2266,11 +2281,12 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     <div className="noteform">
       <h2>{edit ? "練習ノートを編集" : "練習ノート"}</h2>
       {draft.pending && !hasContent && <DraftBanner onRestore={restoreDraft} onDiscard={draft.discard} />}
+      <GoalBand playerId={me} date={date} />
       {prevTheme && (
         <div className="aibox" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 0, marginBottom: 12 }}>
           <span style={{ flex: 1 }}>前回のひとこと：{prevTheme}</span>
           <button type="button" className="dynadd" style={{ width: "auto", marginTop: 0 }} onClick={() => setGoalPre(prevTheme)}>
-            目標にセット
+            今日意識したことにセット
           </button>
         </div>
       )}
@@ -2295,8 +2311,12 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
           </div>
         )}
         <div className="formfield">
-          <label>今日の目標（練習前）</label>
-          <input value={goalPre} onChange={(e) => setGoalPre(e.target.value)} placeholder="例）声を出す / 逆足を使う" />
+          <label>今日意識したこと</label>
+          <input
+            value={goalPre}
+            onChange={(e) => setGoalPre(e.target.value)}
+            placeholder={weekGoalText && !prevTheme ? `例）${weekGoalText}` : "例）声を出す / 逆足を使う"}
+          />
         </div>
       </div>
 
@@ -2398,26 +2418,29 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
 }
 
 /* --- 自主練ノート（⑩種目＋ストリーク） --- */
-type SoloDraft = { date: string; condition?: NoteCondition; items: SoloItem[]; body: string; figures?: NoteFigure[] };
+type SoloDraft = { date: string; condition?: NoteCondition; items: SoloItem[]; body: string; figures?: NoteFigure[]; focus?: string };
 
 function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
   const board = useBoard();
   const me = board.auth.playerId ?? "";
   const [date, setDate] = useState(edit?.date ?? todayStr());
   const [condition, setCondition] = useState<NoteCondition | undefined>(edit?.condition);
+  const goalsCtx = useGoals();
+  const [focus, setFocus] = useState(edit?.focus ?? "");
   const [items, setItems] = useState<SoloItem[]>(edit?.items?.length ? edit.items : [{ kind: "lifting", value: "" }]);
   const [body, setBody] = useState(edit?.body ?? "");
   const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
   const [saveErr, setSaveErr] = useState(false);
 
-  const hasContent = !!(body.trim() || figures.length || items.some((i) => i.value.trim()));
-  const draft = useNoteDraft<SoloDraft>(edit ? null : `solo:${me}`, { date, condition, items, body, figures }, hasContent);
+  const hasContent = !!(focus.trim() || body.trim() || figures.length || items.some((i) => i.value.trim()));
+  const draft = useNoteDraft<SoloDraft>(edit ? null : `solo:${me}`, { date, condition, items, body, figures, focus }, hasContent);
   const restoreDraft = () => {
     const d = draft.pending;
     if (!d) return;
     setDate(d.date);
     setCondition(d.condition);
     setItems(d.items.length ? d.items : [{ kind: "lifting", value: "" }]);
+    setFocus(d.focus ?? "");
     setBody(d.body);
     setFigures(d.figures ?? []);
     draft.dismiss();
@@ -2435,9 +2458,11 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
       kind: "solo" as const,
       date,
       condition,
+      focus: focus.trim() || undefined,
       items: its,
       body: tb.body || undefined,
       figures: tb.figures.length ? tb.figures : undefined,
+      ...goalIdOf(goalsCtx.get(me), date),
     };
     const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
     if (!ok) {
@@ -2453,8 +2478,13 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
     <div className="noteform">
       <h2>{edit ? "自主練ノートを編集" : "自主練ノート"}</h2>
       {draft.pending && !hasContent && <DraftBanner onRestore={restoreDraft} onDiscard={draft.discard} />}
+      <GoalBand playerId={me} date={date} />
       <div className="formgroup">
       <ConditionPicker value={condition} onChange={setCondition} right={<DateMini value={date} onChange={setDate} />} />
+      <div className="formfield">
+        <label>今日意識したこと（任意）</label>
+        <input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="例）左足の甲で当てる" />
+      </div>
       <div className="formfield">
         <label>実施した種目</label>
         {items.map((it, i) => (
@@ -2516,6 +2546,7 @@ type MatchDraft = {
   reflectPlay: string;
   videoUrl: string;
   detailed: boolean;
+  focus?: string;
 };
 
 function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
@@ -2525,6 +2556,8 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   const [opponent, setOpponent] = useState(edit?.opponent ?? "");
   const [condition, setCondition] = useState<NoteCondition | undefined>(edit?.condition);
   // クイック記録（既定）：ベストプレー＋ひとこと
+  const goalsCtx = useGoals();
+  const [focus, setFocus] = useState(edit?.focus ?? "");
   const [bestPlay, setBestPlay] = useState(edit?.bestPlay ?? "");
   const [body, setBody] = useState(edit?.body ?? "");
   const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
@@ -2556,6 +2589,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
 
   const hasContent = !!(
     opponent.trim() ||
+    focus.trim() ||
     bestPlay.trim() ||
     body.trim() ||
     figures.length > 0 ||
@@ -2568,7 +2602,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   );
   const draft = useNoteDraft<MatchDraft>(
     edit ? null : `match:${me}`,
-    { date, opponent, condition, bestPlay, body, figures, halfMinutes, fullMatch, playFrom, playTo, lineups, plays, playLines, reflectPlay, videoUrl, detailed },
+    { date, opponent, condition, bestPlay, body, figures, halfMinutes, fullMatch, playFrom, playTo, lineups, plays, playLines, reflectPlay, videoUrl, detailed, focus },
     hasContent
   );
   const restoreDraft = () => {
@@ -2591,6 +2625,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     setReflectPlay(d.reflectPlay);
     setVideoUrl(d.videoUrl);
     setDetailed(d.detailed);
+    setFocus(d.focus ?? "");
     draft.dismiss();
   };
 
@@ -2622,6 +2657,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       date,
       opponent: opponent.trim(),
       condition,
+      focus: focus.trim() || undefined,
       halfMinutes: halfMinutes.trim() ? +halfMinutes : undefined,
       fullMatch,
       playFrom: !fullMatch && playFrom.trim() ? +playFrom : undefined,
@@ -2634,6 +2670,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       videoUrl: videoUrl.trim() || undefined,
       body: tb.body || undefined,
       figures: tb.figures.length ? tb.figures : undefined,
+      ...goalIdOf(goalsCtx.get(me), date),
     };
     const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
     if (!ok) {
@@ -2649,6 +2686,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     <div className="noteform">
       <h2>{edit ? "試合ノートを編集" : "試合ノート"}</h2>
       {draft.pending && !hasContent && <DraftBanner onRestore={restoreDraft} onDiscard={draft.discard} />}
+      <GoalBand playerId={me} date={date} />
       {prevImprove && (
         <div className="aibox" style={{ marginTop: 0, marginBottom: 12 }}>
           <E n="target" /> 前回の改善点：{prevImprove}
@@ -2697,6 +2735,10 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
           </div>
         )}
         <ConditionPicker value={condition} onChange={setCondition} />
+        <div className="formfield">
+          <label>今日意識したこと（任意）</label>
+          <input value={focus} onChange={(e) => setFocus(e.target.value)} placeholder="例）受ける前に首を振る" />
+        </div>
       </div>
 
       <div className="formgroup">
@@ -2904,6 +2946,8 @@ function NoteDetail({
         </div>
       </div>
 
+      {/* goals §4-2: 帯は本人とスタッフにだけ（チームに共有された練習ノートをほかの選手が見るときは出さない） */}
+      {(isCoach || mine) && <GoalBand playerId={entry.playerId} date={entry.date} viewer={isCoach ? "staff" : "player"} />}
       {entry.kind === "match" && <MatchDetail note={entry} staffDrawing={entry.staffDrawing} viewer={isCoach ? "staff" : "player"} reflection={reflection} />}
       {entry.kind === "practice" && <PracticeDetail note={entry} reflection={reflection} />}
       {entry.kind === "solo" && <SoloDetail note={entry} reflection={reflection} />}
@@ -3040,7 +3084,7 @@ function PracticeDetail({ note, reflection }: { note: PracticeNote; reflection: 
       )}
       {note.goalPre && (
         <div className="notesec">
-          <div className="notesec-h"><E n="target" /> 今日の目標</div>
+          <div className="notesec-h"><E n="target" /> 今日意識したこと</div>
           <div className="notesec-b">{note.goalPre}</div>
         </div>
       )}
@@ -3068,6 +3112,12 @@ function PracticeDetail({ note, reflection }: { note: PracticeNote; reflection: 
 function SoloDetail({ note, reflection }: { note: SoloNote; reflection: React.ReactNode }) {
   return (
     <>
+    {note.focus && (
+      <div className="notesec">
+        <div className="notesec-h"><E n="target" /> 今日意識したこと</div>
+        <div className="notesec-b">{note.focus}</div>
+      </div>
+    )}
     <div className="notesec">
       <div className="notesec-h"><E n="run" /> 実施した種目</div>
       {note.items.map((it, i) => (

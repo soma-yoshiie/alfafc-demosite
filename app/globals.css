@@ -14127,47 +14127,6 @@ body:has(.mhead) .noteapp .canvaschip {
   padding-left: 16px;
   padding-right: 16px;
 }
-.hp-goallist {
-  margin: 0;
-}
-.hp-goalrow {
-  border-bottom: 1px solid var(--outline);
-}
-.hp-goalrow:last-child {
-  border-bottom: 0;
-}
-.hp-goallist dt {
-  margin: 0;
-  padding: 8px 2px 0;
-  font-size: 12px;
-  color: var(--mut);
-}
-.hp-goallist dd {
-  margin: 0;
-}
-.hp-goal {
-  /* 1 行だけの目標でも、見出しのすぐ下から始める（button の既定は上下中央） */
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: flex-start;
-  width: 100%;
-  min-height: 44px;
-  padding: 2px 2px 8px;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font-family: var(--font-ui);
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-}
-.hp-goal small {
-  display: block;
-  margin-top: 2px;
-  font-size: 12px;
-  color: var(--mut);
-}
 /* タイルの内訳「ノート N ・ メッセージ M」は狭いタイル（スマホは 2 列）で折り返せるようにする */
 .hp-scopes .mdb-kpidelta,
 .hp-scopes .kpitile.on .mdb-kpidelta {
@@ -28364,6 +28323,1194 @@ body:has(.mhead) .figed-canvas {
 }
 .noteapp .saveerr .nobreak {
   display: inline-block;
+}
+
+/* ===== goals §2-1・§5・§7: 目標の画面の入れ物（.gb 系）とはしご（.gl 系）。基底＝スマホと PC の両方 ===== */
+/* 上の帯（戻る・題名・鉛筆）。重ね表示ではいちばん上の帯、プロフィールの区画では 2 つ目以降の画面にだけ出る */
+.gb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 0 8px;
+  background: var(--surface-lowest);
+  border-bottom: 1px solid var(--outline);
+  box-sizing: border-box;
+}
+.gb-section > .gb-head {
+  margin-bottom: 4px;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.gb-back {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: var(--r-md);
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+}
+.gb-back svg {
+  width: 22px;
+  height: 22px;
+}
+.gb-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 700;
+}
+.gb-overlay .gb-body {
+  padding: 12px 16px 24px;
+}
+.gb-section > .phubh {
+  margin-bottom: 8px;
+}
+
+.gl {
+  position: relative;
+  min-width: 0;
+}
+.gl-row {
+  position: relative;
+  padding: 0 0 20px 34px;
+  min-width: 0;
+}
+/* 縦の線：段ごとに丸の中心から下へ。いちばん下の段には引かない */
+.gl-row::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 9px;
+  bottom: 0;
+  width: 1px;
+  background: var(--outline-strong);
+}
+.gl-row:last-child {
+  padding-bottom: 0;
+}
+.gl-row:last-child::before {
+  display: none;
+}
+.gl-row.done::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 9px;
+  bottom: 0;
+  width: 2px;
+  background: var(--primary);
+}
+.gl-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--outline-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+}
+.gl-dot.ghost {
+  visibility: hidden;
+}
+.gl-dot.now {
+  border-color: var(--accent);
+}
+.gl-dot.today {
+  width: 10px;
+  height: 10px;
+  left: 4px;
+  top: 4px;
+  border: 0;
+  background: var(--accent);
+}
+.gl-dot.done {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--surface-lowest);
+}
+.gl-dot svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 3;
+}
+.gl-body {
+  min-width: 0;
+}
+.gl-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gl-label {
+  font-size: var(--fs-label);
+  color: var(--mut);
+  line-height: 18px;
+}
+.gl-due {
+  flex: none;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+.gl-text {
+  margin-top: 2px;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.gl-text.dream {
+  margin-top: 6px;
+  font-size: var(--fs-headline);
+  line-height: 1.45;
+}
+.gl-text.gl-grade {
+  margin-top: 0;
+}
+.gl-gradebtn {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gl-text.withbadge {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gl-badge {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--primary-container);
+  color: var(--primary-dim);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  line-height: 18px;
+}
+.gl-donelabel {
+  margin-top: 2px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+}
+.gl-none {
+  margin-top: 2px;
+  font-size: var(--fs-body);
+  color: var(--mut);
+  line-height: 1.5;
+}
+.gl-note {
+  margin-top: 4px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.gl-add {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  color: var(--accent);
+  text-align: left;
+  cursor: pointer;
+}
+.gl-row.k-addstep {
+  margin-top: -12px;
+  padding-bottom: 0;
+}
+.gl-row.k-addstep::before {
+  top: 0;
+}
+/* 達成した段のすぐ下に「ここに段を足す」の行が来るときも、次の段の丸まで緑の線を通す */
+.gl-row.done + .gl-row.k-addstep::before {
+  left: 8px;
+  width: 2px;
+  background: var(--primary);
+}
+.gl-gradebtn.gl-text {
+  font-family: var(--font-ui);
+  font-weight: 700;
+}
+.gl-hit {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* 今週の段：青い 1px 枠の白いカード */
+.gl-week {
+  padding: 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-lg);
+  min-width: 0;
+}
+.gl-week .gl-meta .gl-label {
+  color: var(--accent);
+  font-weight: 700;
+}
+.gl-week .gl-due {
+  color: var(--mut);
+}
+.gl-week .gl-text {
+  margin-top: 4px;
+  font-size: var(--fs-title);
+}
+.gl-week > .st-btn {
+  margin-top: 12px;
+}
+.gl-wtext {
+  font-size: var(--fs-title);
+  font-weight: 700;
+}
+.gl-week > .gl-wtext:not(.gl-text) {
+  line-height: 1.5;
+}
+.gl-if {
+  margin-top: 2px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.gl-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+}
+.gl-day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.gl-daydot {
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--outline-strong);
+  border-radius: 999px;
+  background: var(--surface-lowest);
+}
+.gl-day.on .gl-daydot {
+  border-color: var(--primary);
+  background: var(--primary);
+}
+.gl-day.today .gl-daydot {
+  border-color: var(--accent);
+}
+.gl-daywd {
+  font-size: var(--fs-label);
+  color: var(--mut);
+  line-height: 16px;
+}
+.gl-day.today .gl-daywd {
+  color: var(--accent);
+  font-weight: 700;
+}
+.gl-focus {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--outline);
+}
+.gl-focus-t {
+  font-size: var(--fs-title-s);
+  color: var(--ink);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.gl-more {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.gl-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+}
+.gl-link svg {
+  width: 16px;
+  height: 16px;
+}
+/* 何も無いとき */
+.gl-empty {
+  padding: 4px 0;
+}
+.gl-empty p {
+  margin: 0 0 12px;
+  font-size: var(--fs-title-s);
+  line-height: 1.6;
+  color: var(--ink);
+}
+.gl-empty.compact {
+  padding: 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+/* スタッフのカードは文だけ（ボタンが無い）ので、文の下の余白を取らない */
+.gl-empty.compact p {
+  margin: 0;
+}
+/* スタッフの名簿：白いカードの中の詰めたはしご（読むだけ） */
+.gl.compact {
+  padding: 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.gl.compact .gl-row {
+  padding-bottom: 12px;
+  padding-left: 30px;
+}
+.gl.compact .gl-row:last-child {
+  padding-bottom: 0;
+}
+.gl.compact .gl-dot {
+  width: 16px;
+  height: 16px;
+  background: var(--surface-lowest);
+}
+.gl.compact .gl-row::before {
+  left: 8px;
+  top: 8px;
+}
+.gl.compact .gl-row.done::after {
+  left: 7px;
+  top: 8px;
+}
+.gl.compact .gl-dot.today {
+  width: 16px;
+  height: 16px;
+  left: 0;
+  top: 0;
+  border: 2px solid var(--accent);
+  background: var(--surface-lowest);
+}
+.gl.compact .gl-text {
+  margin-top: 0;
+  font-weight: 400;
+  line-height: 1.5;
+}
+.gl.compact .gl-row.k-week .gl-text {
+  font-weight: 700;
+}
+/* 詰めたはしごの今週の文は、ほかの段と同じ大きさで太さだけ変える（図 gs_staff.png） */
+.gl.compact .gl-wtext {
+  font-size: var(--fs-title-s);
+}
+.gl.compact .gl-text.dream {
+  margin-top: 0;
+  font-size: var(--fs-title-s);
+}
+.gl.compact .gl-label {
+  line-height: 18px;
+}
+.gl.compact .gl-days {
+  margin-top: 8px;
+}
+/* スタッフのひとこと：送り先を選べるときは、選んだ段の丸だけが青の輪（今日の丸も灰の輪） */
+.gl.pick .gl-dot.today {
+  border-color: var(--outline-strong);
+}
+/* 区画の中（PC では幅が広い）：段の文と期限、入力欄とボタンが離れすぎないよう、中身の幅を抑える（はしご・階段・一覧・見直し・今週のノート・設定に共通） */
+.gb-section .gb-body {
+  max-width: 600px;
+}
+/* 今日の期限の全角の閉じ括弧の右の空きを詰めて、期限の右端をそろえる */
+.gl-row.k-today .gl-due,
+.gs-step.today .gl-due {
+  margin-right: -6px;
+}
+
+/* ===== goals §2-2〜2-5・§3・§5・§7: 階段（.gs 系）・切り替え・一覧（.glist 系）・見直し（.greview 系）・今週のノート（.gweek 系）・はじめての設定（.gsetup 系）・スタッフの入力（.gstaff 系）。基底＝スマホと PC の両方 ===== */
+/* はしご｜階段の切り替え（選手の画面だけ。上の帯のすぐ下・右寄せ） */
+.gs-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.gb-resume {
+  margin-bottom: 8px;
+}
+
+/* 階段：紺の夢のカード（グラデーションの例外はここだけ。ホームのヒーローと同じ値）と、12px ずつ左へずれる白いカード */
+.gs {
+  min-width: 0;
+}
+.gs-dream {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 16px;
+  border: 0;
+  border-radius: var(--r-lg);
+  background: linear-gradient(135deg, #0b1f4d 0%, var(--accent-strong) 100%);
+  color: var(--surface-lowest);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.gs-dream .gl-label {
+  color: var(--surface-lowest);
+  opacity: 0.75;
+}
+.gs-dreamt {
+  margin: 8px 0;
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.gs-dreamadd {
+  display: block;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  color: var(--surface-lowest);
+  cursor: pointer;
+}
+.gs-remain {
+  font-size: var(--fs-label);
+  opacity: 0.75;
+}
+.gs-link {
+  width: 12px;
+  height: 14px;
+  box-sizing: border-box;
+  border-top: 1px solid var(--mut);
+  border-left: 1px solid var(--mut);
+}
+.gs-step {
+  box-sizing: border-box;
+  padding: 12px 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  min-width: 0;
+}
+.gs-step.week {
+  padding: 16px;
+  border-color: var(--accent);
+}
+.gs-step.empty {
+  padding: 0 16px;
+}
+.gs-step.today {
+  padding: 12px 16px;
+}
+.gs-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.gs-weeklab {
+  color: var(--accent);
+  font-weight: 700;
+}
+.gs-text {
+  margin-top: 2px;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.gs-step.week .gs-text {
+  font-size: var(--fs-title);
+}
+.gs-text.sm {
+  font-weight: 400;
+}
+.gs-text.withbadge {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gs-btn {
+  margin-top: 12px;
+}
+.gs-addstep {
+  margin-top: 8px;
+}
+.gs-step.empty .gs-text {
+  margin-top: 0;
+  padding-bottom: 12px;
+}
+
+/* 一覧：設定のグループ化リストと同じ形の行を白いカード 1 枚に */
+.glist-card {
+  overflow: hidden;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.glist-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  background: none;
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.glist-row:last-child {
+  border-bottom: 0;
+}
+.glist-row:active {
+  background: var(--surface-low);
+}
+/* 読むだけの行（重ね表示の中の成績の目標） */
+.glist-row.static,
+.glist-row.static:active {
+  background: none;
+  cursor: default;
+}
+.glist-tx {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.glist-label {
+  font-size: var(--fs-label);
+  line-height: 18px;
+  color: var(--mut);
+}
+.glist-text {
+  font-size: var(--fs-title-s);
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.glist-text.none {
+  color: var(--mut);
+}
+.glist-due {
+  flex: none;
+  max-width: 40%;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.glist-chev {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--mut);
+}
+.glist-adds {
+  margin-top: 8px;
+}
+
+/* 週と月の見直し */
+.greview {
+  min-width: 0;
+}
+.greview-card {
+  margin-bottom: 12px;
+  padding: 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.greview-h {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--mut);
+}
+.greview-t {
+  margin: 4px 0 12px;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.greview-btns {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.greview-btns button {
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--mut);
+  cursor: pointer;
+}
+.greview-btns button.on {
+  border: 2px solid var(--accent);
+  color: var(--accent);
+}
+.greview-hint {
+  margin-top: 8px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+}
+.greview-month {
+  margin: 0 4px 12px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.greview-card .phubseg {
+  margin-top: 8px;
+}
+.greview-input {
+  margin-top: 12px;
+  resize: none;
+}
+.greview-lab {
+  display: block;
+  margin: 12px 0 6px;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--mut);
+}
+/* 「決める」は全幅（PC の .st-btn は幅が中身に合うので、ここで全幅に戻す） */
+.greview > .st-btn {
+  width: 100%;
+  margin-top: 12px;
+}
+.greview-later {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--mut);
+  text-align: center;
+  cursor: pointer;
+}
+
+/* 今週のノート */
+.gweek {
+  min-width: 0;
+}
+.gweek-month {
+  margin: 0 4px 8px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.gweek-card {
+  padding: 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.gweek-goal {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.gweek-goal.none {
+  color: var(--mut);
+  font-weight: 400;
+}
+.gweek-due,
+.gweek-if {
+  margin-top: 4px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+  overflow-wrap: anywhere;
+}
+.gweek-if b {
+  font-weight: 700;
+  color: var(--ink);
+}
+.gweek-days {
+  margin-top: 12px;
+}
+.gweek-h {
+  margin: 24px 4px 8px;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--mut);
+}
+.gweek-list {
+  overflow: hidden;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.gweek-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--outline);
+  background: none;
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.gweek-row:last-child {
+  border-bottom: 0;
+}
+.gweek-rowtx {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gweek-rowh {
+  font-size: var(--fs-label);
+  line-height: 18px;
+  color: var(--mut);
+}
+.gweek-rowt {
+  font-size: var(--fs-title-s);
+  line-height: 1.5;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.gweek-rowt.none {
+  color: var(--mut);
+}
+.gweek-ach {
+  flex: none;
+  align-self: flex-start;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.gweek-none {
+  font-size: var(--fs-body);
+  color: var(--mut);
+  margin: 0 4px;
+}
+.gweek-staff {
+  margin-bottom: 8px;
+  padding: 12px 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.gweek-stafft {
+  font-size: var(--fs-title-s);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.gweek-staffby {
+  margin-top: 4px;
+  font-size: var(--fs-label);
+  color: var(--mut);
+}
+
+/* はじめての設定 */
+.gsetup {
+  min-width: 0;
+}
+.gsetup-prog {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.gsetup-dot {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--outline-strong);
+  border-radius: 999px;
+  background: var(--surface-lowest);
+}
+.gsetup-dot.done {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.gsetup-dot.now {
+  border-color: var(--accent);
+}
+.gsetup-n {
+  margin-left: 4px;
+  font-size: var(--fs-body);
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+.gsetup-sofar {
+  padding: 4px 16px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+}
+.gsetup-srow {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--outline);
+}
+.gsetup-srow:last-child {
+  border-bottom: 0;
+}
+.gsetup-sofar.one .gsetup-srow {
+  display: block;
+}
+.gsetup-sofar.one .gsetup-stx {
+  font-weight: 700;
+}
+.gsetup-slab {
+  font-size: var(--fs-label);
+  color: var(--mut);
+}
+.gsetup-stx {
+  display: block;
+  font-size: var(--fs-body);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gsetup-link {
+  width: 1px;
+  height: 16px;
+  margin: 0 0 8px 20px;
+  background: var(--outline-strong);
+}
+.gsetup-q {
+  margin: 8px 0 4px;
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.gsetup-sub {
+  margin: 0 0 12px;
+  font-size: var(--fs-body);
+  color: var(--mut);
+}
+.gsetup-sub.tight {
+  margin-bottom: 4px;
+}
+.gsetup-area {
+  display: block;
+  resize: none;
+}
+.gsetup-lab,
+.gsetup-exh {
+  margin: 16px 0 6px;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  color: var(--mut);
+}
+.gsetup-exh {
+  margin-bottom: 8px;
+}
+.gsetup-ex {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin: 0 0 8px;
+  padding: 0 12px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.gsetup-due {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.gsetup-mid {
+  margin-top: 8px;
+}
+.gsetup-addstep {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  margin: 8px 0 0;
+  background: var(--surface-lowest);
+  border: 1px dashed var(--outline-strong);
+  border-radius: var(--r-md);
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+}
+.gsetup-btns {
+  display: grid;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* スタッフ：はしごの下の入力 1 行と注意書き */
+.gstaff {
+  margin-top: 12px;
+}
+.gstaff-form {
+  display: flex;
+  gap: 8px;
+}
+.gstaff-form .st-input {
+  flex: 1;
+  min-width: 0;
+}
+.gstaff-send {
+  flex: none;
+  width: auto;
+  padding: 0 20px;
+}
+.gstaff-note {
+  margin: 12px 4px 0;
+  font-size: var(--fs-label);
+  line-height: 1.5;
+  color: var(--mut);
+}
+.gstaff-link {
+  margin: 0 4px;
+}
+
+/* ===== goals §4・§7: どこからでも開く目標の画面（.goalov）・ノートの今週の目標の帯（.goalband）・ホームの目標カード（.hp-goals の中身）。基底＝スマホと PC の両方 ===== */
+/* 重ね表示：基底は PC（中央のパネル・幅 520px・暗幕つき）。スマホ（.m）は下部タブの上までの全面で、下部タブは見えたまま */
+.goalov {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(21, 35, 60, 0.4);
+}
+.goalov-panel {
+  display: flex;
+  flex-direction: column;
+  width: 520px;
+  max-width: 100%;
+  max-height: min(86dvh, 820px);
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  /* 開いたときにフォーカスを受けるが、パネル自体には輪郭を出さない */
+  outline: none;
+}
+.goalov-panel > .gb {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.goalov-panel .gb-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.goalov.m {
+  bottom: calc(56px + env(safe-area-inset-bottom));
+  padding: env(safe-area-inset-top) 0 0;
+  background: none;
+  align-items: stretch;
+}
+.goalov.m .goalov-panel {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+/* ノートの今週の目標の帯 */
+.goalband {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  min-height: 52px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  box-sizing: border-box;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  font-family: var(--font-ui);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.goalband-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+}
+.goalband-ic svg {
+  width: 24px;
+  height: 24px;
+}
+.goalband-tx {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.goalband-lb {
+  font-size: var(--fs-label);
+  line-height: 18px;
+  color: var(--mut);
+}
+.goalband-t {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.goalband-decide {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--accent);
+}
+.goalband-chev {
+  flex: none;
+  color: var(--mut);
+}
+
+/* ホームの目標カード（夢 → 今年 → 今週。縦線と丸は .gl の部品をそのまま使う） */
+.hp-goals {
+  cursor: pointer;
+}
+.hp-goalopen {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -8px -4px -8px 0;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--accent);
+  cursor: pointer;
+}
+.hp-goalopen svg {
+  width: 16px;
+  height: 16px;
+}
+.hp-goalblank {
+  cursor: default;
+}
+.hp-goalblank p {
+  margin: 0 0 12px;
+  font-size: var(--fs-body);
+  line-height: 1.5;
+  color: var(--mut);
+}
+.gl.home .gl-row {
+  padding-bottom: 16px;
+}
+.gl.home .gl-row:last-child {
+  padding-bottom: 0;
+}
+.gl.home .gl-text {
+  margin-top: 0;
+  font-size: var(--fs-body);
+  font-weight: 400;
+}
+.gl.home .k-dream .gl-text {
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+.gl.home .k-week .gl-label {
+  color: var(--accent);
+  font-weight: 700;
+}
+.gl.home .hp-goaldecide {
+  min-height: 44px;
+  font-size: var(--fs-body);
 }
 
 @media (prefers-reduced-motion: reduce) {

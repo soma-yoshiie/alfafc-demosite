@@ -30,6 +30,7 @@ import { emptyCoachLabState } from "./coachlab";
 import { ensureGradeGroups, ensureGroupColors, gradeGroupsFor } from "./groups";
 import { isStandardKey, STANDARD_KEYS, standardKeyForName, standardTestId } from "./fitnessScore";
 import { normalizeProfile, type PlayerProfile } from "./profile";
+import { normalizeGoals, type PlayerGoals } from "./goals";
 import {
   DEFAULT_FITNESS_TESTS,
   FITNESS_TEST_1000M,
@@ -81,6 +82,11 @@ const COACHLAB_KEY = "soccer_tactics_coachlab_v1";
 const PROFILE_KEY = "soccer_tactics_profile_v1";
 // player-hub §1-5: デモのサンプル(3 人分)を入れ終えたマーカー。消したあとに勝手に再投入しないため
 const PROFILE_SEED_KEY = "soccer_tactics_profile_seed_v1";
+// goals §1-2: 選手の目標（大きな目標・今年・今月・今週・スタッフのひとこと）。Record<playerId, PlayerGoals>。
+// 夢は進路の将来の目標（profile.career.futureGoal）そのもので、ここには持たない
+const GOALS_KEY = "soccer_tactics_goals_v1";
+// goals §1-2: デモの目標(佐藤 蒼空)を入れ終えたマーカー。消したあとに勝手に再投入しないため
+const GOALS_SEED_KEY = "soccer_tactics_goals_seed_v1";
 
 /* ---- 体力測定：旧形式(id/name/value:string)→新形式(testId/value:number)の後方互換変換 ---- */
 
@@ -958,6 +964,56 @@ export function markProfileSeeded(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PROFILE_SEED_KEY, "1");
+  } catch {
+    /* 無視 */
+  }
+}
+
+/* ---- 選手の目標（goals §1-2） ---- */
+
+/** 全選手の目標。形の壊れ・配列の欠落は normalizeGoals で補う（名簿から消えた選手の記録も捨てない） */
+export function loadGoals(): Record<string, PlayerGoals> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(GOALS_KEY);
+    if (!raw) return {};
+    const data = JSON.parse(raw);
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+    const out: Record<string, PlayerGoals> = {};
+    for (const [id, v] of Object.entries(data as Record<string, unknown>)) {
+      if (v && typeof v === "object") out[id] = normalizeGoals(v, id);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/** 目標を保存する。成否を返す（容量超過などで書けなかったら false。呼び出し側がトーストで知らせる） */
+export function saveGoals(goals: Record<string, PlayerGoals>): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    window.localStorage.setItem(GOALS_KEY, JSON.stringify(goals));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** デモの目標(lib/sampleGoals.ts)を入れ終えたか */
+export function hasGoalsSeedMarker(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(GOALS_SEED_KEY) !== null;
+  } catch {
+    return true;
+  }
+}
+
+export function markGoalsSeeded(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(GOALS_SEED_KEY, "1");
   } catch {
     /* 無視 */
   }
