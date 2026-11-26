@@ -1458,12 +1458,14 @@ export function loadNotebook(): NotebookEntry[] | null {
   }
 }
 
-export function saveNotebook(entries: NotebookEntry[]): void {
-  if (typeof window === "undefined") return;
+/** 保存できたら true。できなかったら false（容量超過など。note-reflection-figure §6） */
+export function saveNotebook(entries: NotebookEntry[]): boolean {
+  if (typeof window === "undefined") return false;
   try {
     window.localStorage.setItem(NOTEBOOK_KEY, JSON.stringify(entries));
+    return true;
   } catch {
-    /* 無視 */
+    return false;
   }
 }
 

@@ -541,6 +541,35 @@ export function IconChevronLeft(p: SVGProps<SVGSVGElement>) {
   );
 }
 
+/** 右向きの山形（行の右端。note-reflection-figure §5） */
+export function IconChevronRight(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="m9 5 7 7-7 7" />
+    </Svg>
+  );
+}
+
+/** チェックの印（選ばれている行の右端） */
+export function IconCheck(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </Svg>
+  );
+}
+
+/** 「！」の丸（保存できなかったときの 1 行） */
+export function IconAlertCircle(p: SVGProps<SVGSVGElement>) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5.5" />
+      <path d="M12 16.5h.01" />
+    </Svg>
+  );
+}
+
 /** 左右反転（中央の軸線を挟んで内向きの矢印） */
 export function IconFlipH(p: SVGProps<SVGSVGElement>) {
   return (

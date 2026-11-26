@@ -5,6 +5,7 @@ import type {
   MatchNote,
   MatchPhaseLineup,
   NoteCondition,
+  NoteFigure,
   NoteKind,
   NotebookEntry,
   PlayLine,
@@ -34,6 +35,9 @@ import { PLAY_PHASES, markCanvas, markPhase } from "@/lib/plays";
 import { LineupPicker, emptyLineup } from "./notebook/LineupPicker";
 import { MatchDetail } from "./notebook/MatchDetail";
 import { PlayRecorder } from "./notebook/PlayRecorder";
+import { ReflectionField } from "./notebook/ReflectionField";
+import { ReflectionView } from "./notebook/ReflectionView";
+import { bodyExcerpt, trimBody } from "@/lib/figures";
 import { LineChart } from "./Charts";
 import { addDaysStr, countByDay, daysAgoStr, localDateStr, longestWeeklyStreak, weekStart, weeklyCounts, weeklyStreak } from "@/lib/dates";
 import {
@@ -64,7 +68,7 @@ import { useConsoleSubnav } from "./ConsoleShell";
 import { MobileHeader, MobileHeaderAction } from "./MobileHeader";
 import { MobileSegments } from "./MobileSegments";
 import { MenuGroup, MenuRow } from "./MobileRows";
-import { IconBell, IconClipboard, IconFilter, IconNote, IconShare, NoteKindIcon } from "./icons";
+import { IconAlertCircle, IconBell, IconCheck, IconChevronRight, IconClipboard, IconFilter, IconNote, IconPlus, IconShare, NoteKindIcon } from "./icons";
 
 const CONDITIONS: NoteCondition[] = ["great", "good", "normal", "tired", "bad"];
 const SOLO_KINDS: SoloKind[] = ["lifting", "running", "strength", "other"];
@@ -793,7 +797,7 @@ export default function NotebookScreen() {
                       : k === "practice"
                         ? todayPractice
                           ? "今日は記入済み（開く）"
-                          : "目標の達成度と気づきを記録"
+                          : "目標の達成度と振り返りを記録"
                         : "実施した種目と量を記録"}
                   </small>
                 </span>
@@ -1627,7 +1631,7 @@ function NoteList({
       {/* ux-fix R2-2: 選手の検索は親の 2 段目（検索＋種類チップ）に移した。スタッフはここ */}
       {isCoach && (
         <button className="searchbar" onClick={onSearch}>
-          <E n="search" /> 気づき・目標・相手名などで検索
+          <E n="search" /> 振り返り・目標・相手名などで検索
         </button>
       )}
 
@@ -1868,7 +1872,7 @@ function summarize(n: NotebookEntry): string {
   if (n.kind === "match") {
     const m = n as MatchNote;
     const head = `vs ${m.opponent || "—"}`;
-    const detail = m.bestPlay?.trim() || m.body?.trim();
+    const detail = m.bestPlay?.trim() || bodyExcerpt(m.body ?? "") || undefined;
     if (detail) return `${head} ・ ${detail}`;
     const meta = [
       (m.lineups?.length ?? 0) > 0 ? `${m.lineups!.length}フェーズ` : null,
@@ -1878,7 +1882,17 @@ function summarize(n: NotebookEntry): string {
   }
   if (n.kind === "solo") return (n as SoloNote).items.map((i) => `${SOLO_KIND_LABEL[i.kind]} ${i.value}`).join(" ・ ") || "自主練";
   const p = n as PracticeNote;
-  return p.body || p.goalPre || (p.insights?.[0] ?? "練習ノート");
+  const ex = bodyExcerpt(p.body ?? "");
+  if (ex) return ex;
+  return p.goalPre || (p.insights?.[0] ?? (figCount(n) > 0 ? "図あり" : "練習ノート"));
+}
+function figCount(n: NotebookEntry): number {
+  return n.figures?.length ?? 0;
+}
+/** 一覧の要約の末尾：図があれば「 ・ 図 N 枚」（note-reflection-figure §7。種類・どの枝でも付ける。省略記号で切れないよう別の要素で出す） */
+function figSuffix(n: NotebookEntry): string {
+  const c = figCount(n);
+  return c > 0 ? ` ・ 図 ${c} 枚` : "";
 }
 
 function NoteCard({
@@ -1986,7 +2000,10 @@ function NoteCard({
             <span className="notetag">未読</span>
           ) : null}
         </div>
-        <div className="notebody">{summarize(entry)}</div>
+        <div className="notebody notebody-row">
+          <span className="notebody-t">{summarize(entry)}</span>
+          {figCount(entry) > 0 && <span className="notebody-f">{figSuffix(entry)}</span>}
+        </div>
       </div>
       <span className="convchev">›</span>
     </button>
@@ -2037,10 +2054,26 @@ function DraftBanner({ onRestore, onDiscard }: { onRestore: () => void; onDiscar
   );
 }
 
-function ConditionPicker({ value, onChange }: { value: NoteCondition | undefined; onChange: (c: NoteCondition) => void }) {
+function ConditionPicker({
+  value,
+  onChange,
+  right,
+}: {
+  value: NoteCondition | undefined;
+  onChange: (c: NoteCondition) => void;
+  /** ラベルの行の右端に置く物（練習・自主練は日付の小さな入力） */
+  right?: React.ReactNode;
+}) {
   return (
     <div className="formfield">
-      <label>コンディション</label>
+      {right ? (
+        <div className="fieldhead">
+          <label>コンディション</label>
+          {right}
+        </div>
+      ) : (
+        <label>コンディション</label>
+      )}
       <div className="condrow">
         {CONDITIONS.map((c) => (
           <button key={c} type="button" className={`condbtn${value === c ? " on" : ""}`} onClick={() => onChange(c)}>
@@ -2049,6 +2082,28 @@ function ConditionPicker({ value, onChange }: { value: NoteCondition | undefined
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** note-reflection-figure §5: 日付の小さな入力（文字 12px・灰。当たりは 44px） */
+function DateMini({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="datemini">
+      <input type="date" aria-label="日付" value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  );
+}
+
+/** note-reflection-figure §6: 保存できなかったときの 1 行（「提出する」の上） */
+function SaveErr() {
+  return (
+    <div className="saveerr" role="alert">
+      <IconAlertCircle width={20} height={20} aria-hidden="true" />
+      <span>
+        <span className="nobreak">保存できませんでした。</span>
+        <span className="nobreak">図や写真を減らしてください</span>
+      </span>
     </div>
   );
 }
@@ -2082,6 +2137,7 @@ type PracticeDraft = {
   achievement: number;
   insights: string[];
   body: string;
+  figures?: NoteFigure[];
   isPublic: boolean;
   menuId?: string;
 };
@@ -2108,6 +2164,8 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
   const [achievement, setAchievement] = useState<number>(edit?.achievement ?? 60);
   const [insights, setInsights] = useState<string[]>(edit?.insights?.length ? edit.insights : [""]);
   const [body, setBody] = useState(edit?.body ?? "");
+  const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
+  const [saveErr, setSaveErr] = useState(false);
   const [isPublic, setIsPublic] = useState(edit?.isPublic ?? false);
   const [menuId, setMenuId] = useState<string | undefined>(() => {
     // 編集時は保存値をそのまま採用（未設定なら未設定のまま。勝手に紐付けない）
@@ -2123,6 +2181,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
   });
   // 自動選択が効いている間だけ案内を表示。ユーザーが選び直す/解除すると消える
   const [autoSelected, setAutoSelected] = useState<boolean>(() => !edit && !initialMenuId && menuId !== undefined);
+  const [menuSheet, setMenuSheet] = useState(false);
 
   // コーチが配信した練習メニュー（自分宛て・新しい順に最大5件）から今日の練習を選べる。
   // 選択中のメニューが5件から漏れる場合は先頭に含めて、選択解除が常にできるようにする
@@ -2142,10 +2201,10 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     ? board.deliverables.find((d): d is PracticeMenuDeliver => d.kind === "menu" && d.id === menuId)
     : undefined;
 
-  const hasContent = !!(goalPre.trim() || body.trim() || insights.some((s) => s.trim()));
+  const hasContent = !!(goalPre.trim() || body.trim() || figures.length || insights.some((s) => s.trim()));
   const draft = useNoteDraft<PracticeDraft>(
     edit ? null : `practice:${me}`,
-    { date, condition, goalPre, achievement, insights, body, isPublic, menuId },
+    { date, condition, goalPre, achievement, insights, body, figures, isPublic, menuId },
     hasContent
   );
   const restoreDraft = () => {
@@ -2157,6 +2216,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
     setAchievement(d.achievement);
     setInsights(d.insights.length ? d.insights : [""]);
     setBody(d.body);
+    setFigures(d.figures ?? []);
     setIsPublic(d.isPublic);
     setMenuId(d.menuId);
     setAutoSelected(false);
@@ -2178,6 +2238,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       board.toast("目標か振り返りを入力してください");
       return;
     }
+    const tb = trimBody(body, figures);
     const base = {
       playerId: board.auth.playerId ?? "",
       kind: "practice" as const,
@@ -2186,12 +2247,17 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       goalPre: goalPre.trim() || undefined,
       achievement,
       insights: ins,
-      body: body.trim() || undefined,
+      body: tb.body || undefined,
+      figures: tb.figures.length ? tb.figures : undefined,
       isPublic,
       menuId,
     };
-    if (edit) board.updateNote({ ...edit, ...base });
-    else board.addNote(base);
+    const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    if (!ok) {
+      setSaveErr(true);
+      return;
+    }
+    setSaveErr(false);
     draft.clear();
     onDone();
   };
@@ -2202,7 +2268,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       {draft.pending && !hasContent && <DraftBanner onRestore={restoreDraft} onDiscard={draft.discard} />}
       {prevTheme && (
         <div className="aibox" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 0, marginBottom: 12 }}>
-          <span style={{ flex: 1 }}>前回の気づき：{prevTheme}</span>
+          <span style={{ flex: 1 }}>前回のひとこと：{prevTheme}</span>
           <button type="button" className="dynadd" style={{ width: "auto", marginTop: 0 }} onClick={() => setGoalPre(prevTheme)}>
             目標にセット
           </button>
@@ -2210,71 +2276,53 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
       )}
 
       <div className="formgroup">
-        <div className="formgroup-h">基本</div>
-        <div className="formgrid">
-          <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>日付</label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <ConditionPicker value={condition} onChange={setCondition} right={<DateMini value={date} onChange={setDate} />} />
+        {menuOptions.length > 0 && (
+          <div className="formfield">
+            <label>練習メニュー</label>
+            {selectedMenu ? (
+              <button type="button" className="menupick on" onClick={() => setMenuSheet(true)}>
+                <span className="dlvtag menu">{selectedMenu.category || "練習メニュー"}</span>
+                <span>{selectedMenu.title}</span>
+                <IconCheck className="mpk-check" width={20} height={20} aria-hidden="true" />
+              </button>
+            ) : (
+              <button type="button" className="menupick" onClick={() => setMenuSheet(true)}>
+                <span>練習メニューを選ぶ</span>
+                <IconChevronRight className="mpk-check" width={20} height={20} aria-hidden="true" />
+              </button>
+            )}
           </div>
-        </div>
-        <ConditionPicker value={condition} onChange={setCondition} />
-      </div>
-
-      <div className="formgroup">
-        <div className="formgroup-h">コーチの練習メニュー</div>
-        {autoSelected && (
-          <div className="evnote" style={{ marginBottom: 8 }}>
-            今日のメニューを自動で選択しています（押すと解除できます）
-          </div>
         )}
-        {menuOptions.length === 0 ? (
-          <div className="evnote">配信された練習メニューはまだありません。</div>
-        ) : (
-          menuOptions.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              className={`menupick${menuId === d.id ? " on" : ""}`}
-              onClick={() => {
-                setMenuId(menuId === d.id ? undefined : d.id);
-                setAutoSelected(false);
-              }}
-            >
-              <span className="dlvtag menu">練習メニュー</span>
-              <span>{d.title}</span>
-              {menuId === d.id && <span className="mpk-check">✓</span>}
-            </button>
-          ))
-        )}
-        {selectedMenu && (
-          <>
-            <div className="menuview">
-              <b>{selectedMenu.title}</b>
-              {[selectedMenu.category ? `区分: ${selectedMenu.category}` : null, selectedMenu.desc || null]
-                .filter(Boolean)
-                .join("\n")}
-            </div>
-            <div className="evnote" style={{ marginTop: 6 }}>メニューを見ながら振り返りを書けます</div>
-          </>
-        )}
-      </div>
-
-      <div className="formgroup">
-        <div className="formgroup-h">今日の目標と達成度</div>
         <div className="formfield">
           <label>今日の目標（練習前）</label>
           <input value={goalPre} onChange={(e) => setGoalPre(e.target.value)} placeholder="例）声を出す / 逆足を使う" />
         </div>
-        <div className="formfield" style={{ marginBottom: 0 }}>
-          <label>達成度：{achievement}%</label>
+      </div>
+
+      <ReflectionField
+        body={body}
+        figures={figures}
+        variant="practice"
+        onChange={(v) => {
+          setBody(v.body);
+          setFigures(v.figures);
+        }}
+      />
+
+      <div className="formgroup">
+        <div className="formfield">
+          <div className="fieldhead">
+            <label>達成度</label>
+            <span className="fieldval">{achievement}%</span>
+          </div>
           <input type="range" min={0} max={100} step={10} value={achievement} onChange={(e) => setAchievement(+e.target.value)} />
         </div>
       </div>
 
       <div className="formgroup">
-        <div className="formgroup-h">振り返り</div>
         <div className="formfield">
-          <label>気づき（できるようになったこと・課題）</label>
+          <label>ひとこと（任意）</label>
           {insights.map((v, i) => (
             <div key={i} className="dynrow">
               <input
@@ -2287,24 +2335,61 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
               </button>
             </div>
           ))}
-          <button className="dynadd" onClick={() => setInsights([...insights, ""])}>
-            ＋ 気づきを追加
+          <button type="button" className="refl-add" onClick={() => setInsights([...insights, ""])}>
+            <IconPlus width={18} height={18} />
+            ひとことを追加
           </button>
-        </div>
-        <div className="formfield" style={{ marginBottom: 0 }}>
-          <label>自由メモ</label>
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={3} placeholder="練習全体の振り返り" />
         </div>
       </div>
 
       <div className="formgroup">
-        <div className="formgroup-h">共有</div>
-        <label className="sharetoggle" style={{ margin: 0 }}>
+        <label className="sharetoggle">
           <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
           <span>チームに共有する（他の選手も見られます）</span>
         </label>
       </div>
 
+      {menuSheet && (
+        <div className="wsheetback" onClick={() => setMenuSheet(false)}>
+          <div className="wsheet" onClick={(e) => e.stopPropagation()}>
+            <div className="wsheet-h kindsheet-h">練習メニュー</div>
+            {autoSelected && (
+              <div className="evnote" style={{ marginBottom: 8 }}>
+                今日のメニューを自動で選択しています（押すと解除できます）
+              </div>
+            )}
+            {menuOptions.map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className={`menupick${menuId === d.id ? " on" : ""}`}
+                onClick={() => {
+                  setMenuId(menuId === d.id ? undefined : d.id);
+                  setAutoSelected(false);
+                }}
+              >
+                <span className="dlvtag menu">{d.category || "練習メニュー"}</span>
+                <span>{d.title}</span>
+                {menuId === d.id && <IconCheck className="mpk-check" width={20} height={20} aria-hidden="true" />}
+              </button>
+            ))}
+            {selectedMenu && (
+              <>
+                <div className="menuview">
+                  <b>{selectedMenu.title}</b>
+                  {[selectedMenu.category ? `区分: ${selectedMenu.category}` : null, selectedMenu.desc || null]
+                    .filter(Boolean)
+                    .join("\n")}
+                </div>
+                <div className="evnote" style={{ marginTop: 6 }}>メニューを見ながら振り返りを書けます</div>
+              </>
+            )}
+            <button type="button" className="wsheetcancel" onClick={() => setMenuSheet(false)}>閉じる</button>
+          </div>
+        </div>
+      )}
+
+      {saveErr && <SaveErr />}
       <button className="bigbtn" onClick={submit}>
         {edit ? "更新する" : "提出する"}
       </button>
@@ -2313,7 +2398,7 @@ function PracticeForm({ edit, initialMenuId, onDone }: { edit?: PracticeNote; in
 }
 
 /* --- 自主練ノート（⑩種目＋ストリーク） --- */
-type SoloDraft = { date: string; condition?: NoteCondition; items: SoloItem[]; body: string };
+type SoloDraft = { date: string; condition?: NoteCondition; items: SoloItem[]; body: string; figures?: NoteFigure[] };
 
 function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
   const board = useBoard();
@@ -2322,9 +2407,11 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
   const [condition, setCondition] = useState<NoteCondition | undefined>(edit?.condition);
   const [items, setItems] = useState<SoloItem[]>(edit?.items?.length ? edit.items : [{ kind: "lifting", value: "" }]);
   const [body, setBody] = useState(edit?.body ?? "");
+  const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
+  const [saveErr, setSaveErr] = useState(false);
 
-  const hasContent = !!(body.trim() || items.some((i) => i.value.trim()));
-  const draft = useNoteDraft<SoloDraft>(edit ? null : `solo:${me}`, { date, condition, items, body }, hasContent);
+  const hasContent = !!(body.trim() || figures.length || items.some((i) => i.value.trim()));
+  const draft = useNoteDraft<SoloDraft>(edit ? null : `solo:${me}`, { date, condition, items, body, figures }, hasContent);
   const restoreDraft = () => {
     const d = draft.pending;
     if (!d) return;
@@ -2332,6 +2419,7 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
     setCondition(d.condition);
     setItems(d.items.length ? d.items : [{ kind: "lifting", value: "" }]);
     setBody(d.body);
+    setFigures(d.figures ?? []);
     draft.dismiss();
   };
 
@@ -2341,16 +2429,22 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
       board.toast("種目と内容を入力してください");
       return;
     }
+    const tb = trimBody(body, figures);
     const base = {
       playerId: board.auth.playerId ?? "",
       kind: "solo" as const,
       date,
       condition,
       items: its,
-      body: body.trim() || undefined,
+      body: tb.body || undefined,
+      figures: tb.figures.length ? tb.figures : undefined,
     };
-    if (edit) board.updateNote({ ...edit, ...base });
-    else board.addNote(base);
+    const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    if (!ok) {
+      setSaveErr(true);
+      return;
+    }
+    setSaveErr(false);
     draft.clear();
     onDone();
   };
@@ -2359,11 +2453,8 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
     <div className="noteform">
       <h2>{edit ? "自主練ノートを編集" : "自主練ノート"}</h2>
       {draft.pending && !hasContent && <DraftBanner onRestore={restoreDraft} onDiscard={draft.discard} />}
-      <div className="formfield">
-        <label>日付</label>
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-      </div>
-      <ConditionPicker value={condition} onChange={setCondition} />
+      <div className="formgroup">
+      <ConditionPicker value={condition} onChange={setCondition} right={<DateMini value={date} onChange={setDate} />} />
       <div className="formfield">
         <label>実施した種目</label>
         {items.map((it, i) => (
@@ -2389,10 +2480,17 @@ function SoloForm({ edit, onDone }: { edit?: SoloNote; onDone: () => void }) {
           ＋ 種目を追加
         </button>
       </div>
-      <div className="formfield">
-        <label>メモ</label>
-        <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={2} placeholder="自己ベストや気づきなど" />
       </div>
+      <ReflectionField
+        body={body}
+        figures={figures}
+        variant="solo"
+        onChange={(v) => {
+          setBody(v.body);
+          setFigures(v.figures);
+        }}
+      />
+      {saveErr && <SaveErr />}
       <button className="bigbtn" onClick={submit}>
         {edit ? "更新する" : "記録する"}
       </button>
@@ -2407,6 +2505,7 @@ type MatchDraft = {
   condition?: NoteCondition;
   bestPlay: string;
   body: string;
+  figures?: NoteFigure[];
   halfMinutes: string;
   fullMatch: boolean;
   playFrom: string;
@@ -2428,6 +2527,8 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   // クイック記録（既定）：ベストプレー＋ひとこと
   const [bestPlay, setBestPlay] = useState(edit?.bestPlay ?? "");
   const [body, setBody] = useState(edit?.body ?? "");
+  const [figures, setFigures] = useState<NoteFigure[]>(edit?.figures ?? []);
+  const [saveErr, setSaveErr] = useState(false);
   // クイック記録：出場時間
   const [halfMinutes, setHalfMinutes] = useState(edit?.halfMinutes != null ? String(edit.halfMinutes) : "");
   const [fullMatch, setFullMatch] = useState(edit?.fullMatch ?? true);
@@ -2445,9 +2546,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     edit &&
     ((edit.lineups?.length ?? 0) > 0 ||
       (edit.plays?.length ?? 0) > 0 ||
-      (edit.playLines?.length ?? 0) > 0 ||
-      edit.reflectPlay ||
-      edit.videoUrl)
+      (edit.playLines?.length ?? 0) > 0)
   );
   const [detailed, setDetailed] = useState(hasDetail);
   const openDetailed = () => {
@@ -2459,6 +2558,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     opponent.trim() ||
     bestPlay.trim() ||
     body.trim() ||
+    figures.length > 0 ||
     reflectPlay.trim() ||
     halfMinutes.trim() ||
     !fullMatch ||
@@ -2468,7 +2568,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
   );
   const draft = useNoteDraft<MatchDraft>(
     edit ? null : `match:${me}`,
-    { date, opponent, condition, bestPlay, body, halfMinutes, fullMatch, playFrom, playTo, lineups, plays, playLines, reflectPlay, videoUrl, detailed },
+    { date, opponent, condition, bestPlay, body, figures, halfMinutes, fullMatch, playFrom, playTo, lineups, plays, playLines, reflectPlay, videoUrl, detailed },
     hasContent
   );
   const restoreDraft = () => {
@@ -2479,6 +2579,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
     setCondition(d.condition);
     setBestPlay(d.bestPlay);
     setBody(d.body);
+    setFigures(d.figures ?? []);
     // 旧スキーマの下書き（出場時間フィールドが無い）でも壊れないようフォールバック
     setHalfMinutes(d.halfMinutes ?? "");
     setFullMatch(d.fullMatch ?? true);
@@ -2514,6 +2615,7 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       board.toast("対戦相手を入力してください");
       return;
     }
+    const tb = trimBody(body, figures);
     const base = {
       playerId: board.auth.playerId ?? "",
       kind: "match" as const,
@@ -2530,10 +2632,15 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
       bestPlay: bestPlay.trim() || undefined,
       reflectPlay: reflectPlay.trim() || undefined,
       videoUrl: videoUrl.trim() || undefined,
-      body: body.trim() || undefined,
+      body: tb.body || undefined,
+      figures: tb.figures.length ? tb.figures : undefined,
     };
-    if (edit) board.updateNote({ ...edit, ...base });
-    else board.addNote(base);
+    const ok = edit ? board.updateNote({ ...edit, ...base }) : board.addNote(base);
+    if (!ok) {
+      setSaveErr(true);
+      return;
+    }
+    setSaveErr(false);
     draft.clear();
     onDone();
   };
@@ -2548,94 +2655,113 @@ function MatchForm({ edit, onDone }: { edit?: MatchNote; onDone: () => void }) {
         </div>
       )}
 
-      {/* ===== 30秒クイック記録（既定） ===== */}
-      <div className="formgrid">
-        <div className="formfield" style={{ flex: 2, margin: 0 }}>
+      <div className="formgroup">
+        <div className="formfield">
           <label>対戦相手</label>
           <input value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="例）青空FC" />
         </div>
-        <div className="formfield" style={{ flex: 1, margin: 0 }}>
-          <label>日付</label>
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-        </div>
-      </div>
-
-      <div className="formgrid">
-        <div className="formfield" style={{ flex: 1, margin: 0 }}>
-          <label>◯分ハーフ</label>
-          <input type="number" min={0} value={halfMinutes} onChange={(e) => setHalfMinutes(e.target.value)} placeholder="35" />
-        </div>
-      </div>
-      <div className="scopebar">
-        <button type="button" className={`scopechip${fullMatch ? " on" : ""}`} onClick={() => setFullMatch(true)}>
-          フル出場
-        </button>
-        <button type="button" className={`scopechip${!fullMatch ? " on" : ""}`} onClick={() => setFullMatch(false)}>
-          途中出場
-        </button>
-      </div>
-      {!fullMatch && (
         <div className="formgrid">
           <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>出場開始（分）</label>
-            <input type="number" min={0} value={playFrom} onChange={(e) => setPlayFrom(e.target.value)} placeholder="0" />
+            <label>日付</label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </div>
           <div className="formfield" style={{ flex: 1, margin: 0 }}>
-            <label>出場終了（分）</label>
-            <input type="number" min={0} value={playTo} onChange={(e) => setPlayTo(e.target.value)} placeholder="35" />
+            <label>時間</label>
+            <div className="suffixwrap">
+              <input type="number" min={0} value={halfMinutes} onChange={(e) => setHalfMinutes(e.target.value)} placeholder="35" />
+              <span aria-hidden="true">分ハーフ</span>
+            </div>
           </div>
         </div>
-      )}
-
-      <ConditionPicker value={condition} onChange={setCondition} />
-      <div className="formfield">
-        <label><E n="star" /> 今日のベストプレー</label>
-        <input value={bestPlay} onChange={(e) => setBestPlay(e.target.value)} placeholder="例）右サイドの突破からアシスト" />
+        <div className="formfield">
+          <label>出場</label>
+          <div className="scopebar">
+            <button type="button" className={`scopechip${fullMatch ? " on" : ""}`} onClick={() => setFullMatch(true)}>
+              フル出場
+            </button>
+            <button type="button" className={`scopechip${!fullMatch ? " on" : ""}`} onClick={() => setFullMatch(false)}>
+              途中出場
+            </button>
+          </div>
+        </div>
+        {!fullMatch && (
+          <div className="formgrid">
+            <div className="formfield" style={{ flex: 1, margin: 0 }}>
+              <label>出場開始（分）</label>
+              <input type="number" min={0} value={playFrom} onChange={(e) => setPlayFrom(e.target.value)} placeholder="0" />
+            </div>
+            <div className="formfield" style={{ flex: 1, margin: 0 }}>
+              <label>出場終了（分）</label>
+              <input type="number" min={0} value={playTo} onChange={(e) => setPlayTo(e.target.value)} placeholder="35" />
+            </div>
+          </div>
+        )}
+        <ConditionPicker value={condition} onChange={setCondition} />
       </div>
-      <div className="formfield">
-        <label>メモ（任意）</label>
-        <input value={body} onChange={(e) => setBody(e.target.value)} placeholder="試合の振り返りをひとことで" />
+
+      <div className="formgroup">
+        <div className="formfield">
+          <label><E n="star" /> 今日のベストプレー</label>
+          <input value={bestPlay} onChange={(e) => setBestPlay(e.target.value)} placeholder="例）右サイドの突破からアシスト" />
+        </div>
       </div>
 
+      <ReflectionField
+        body={body}
+        figures={figures}
+        variant="match"
+        onChange={(v) => {
+          setBody(v.body);
+          setFigures(v.figures);
+        }}
+      />
+
+      {/* note-reflection-figure §5-2: ピッチの記録は畳んだ 1 行。反省・動画は畳んだままでも見える */}
       {!detailed ? (
-        <button className="detailtoggle" type="button" onClick={openDetailed}>
-          ＋ 詳細を記録する（任意）
-          <span className="detailtoggle-sub">フォーメーション・プレーエリア・反省</span>
+        <button className="pitchfold" type="button" onClick={openDetailed}>
+          <IconPlus width={20} height={20} aria-hidden="true" />
+          <span className="pitchfold-t">
+            <b>ピッチに記録する（任意）</b>
+            <small>出場した位置・自分のプレー</small>
+          </span>
+          <IconChevronRight className="pitchfold-chev" width={20} height={20} aria-hidden="true" />
         </button>
       ) : (
-        <div className="detailwrap">
-          <div className="detailwrap-h">
-            <span>詳細記録</span>
-            <button className="detailhide" type="button" onClick={() => setDetailed(false)}>簡易表示に戻す</button>
+        <div className="pitchfold-open">
+          <div className="pitchfold-h">
+            <span>ピッチに記録する</span>
+            <button className="drawclose" type="button" onClick={() => setDetailed(false)}>閉じる</button>
           </div>
+          <div className="pitchfold-body">
+            {/* 出場した位置 */}
+            <LineupPicker lineups={lineups} onChange={setLineups} />
 
-          {/* 出場した位置 */}
-          <LineupPicker lineups={lineups} onChange={setLineups} />
-
-          {/* 自分のプレー */}
-          <PlayRecorder
-            mode="player"
-            plays={plays}
-            playLines={playLines}
-            onPlays={setPlays}
-            onLines={setPlayLines}
-            phases={playPhases}
-          />
-
-          {/* 反省・動画 */}
-          <div className="notesec-h" style={{ marginTop: 14 }}>反省・動画</div>
-          <div className="formfield">
-            <label>今日の反省プレー</label>
-            <input value={reflectPlay} onChange={(e) => setReflectPlay(e.target.value)} placeholder="例）中盤でのパスミス" />
-          </div>
-          <div className="formfield">
-            <label>動画URL（任意）</label>
-            <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://..." />
+            {/* 自分のプレー */}
+            <PlayRecorder
+              mode="player"
+              plays={plays}
+              playLines={playLines}
+              onPlays={setPlays}
+              onLines={setPlayLines}
+              phases={playPhases}
+            />
           </div>
         </div>
       )}
 
-      <button className="bigbtn" style={{ marginTop: 14 }} onClick={submit}>
+      <div className="formgroup">
+        <div className="formfield">
+          <label>今日の反省プレー</label>
+          <input value={reflectPlay} onChange={(e) => setReflectPlay(e.target.value)} placeholder="例）中盤でのパスミス" />
+        </div>
+        <div className="formfield">
+          <label>動画URL（任意）</label>
+          <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="https://..." />
+        </div>
+      </div>
+
+      {saveErr && <SaveErr />}
+      <button className="bigbtn" onClick={submit}>
         {edit ? "更新する" : "提出する"}
       </button>
     </div>
@@ -2742,6 +2868,14 @@ function NoteDetail({
     return `${entry.staffCommentBy ?? `${first.name}${first.role}`}・${fmtStamp(entry.staffCommentTs)}`;
   })();
   const sharedNote = entry.kind === "practice" && !!(entry as PracticeNote).isPublic;
+  // note-reflection-figure §7: 本文（振り返り）と図。置く場所は種類ごとの詳細が決める
+  const reflection =
+    entry.body || (entry.figures?.length ?? 0) > 0 ? (
+      <div className="notesec">
+        <div className="notesec-h">振り返り</div>
+        <ReflectionView body={entry.body} figures={entry.figures} />
+      </div>
+    ) : null;
 
   return (
     <div className="notedetail">
@@ -2770,16 +2904,9 @@ function NoteDetail({
         </div>
       </div>
 
-      {entry.kind === "match" && <MatchDetail note={entry} staffDrawing={entry.staffDrawing} viewer={isCoach ? "staff" : "player"} />}
-      {entry.kind === "practice" && <PracticeDetail note={entry} />}
-      {entry.kind === "solo" && <SoloDetail note={entry} />}
-
-      {entry.body && (
-        <div className="notesec">
-          <div className="notesec-h"><E n="note" /> メモ</div>
-          <div className="notesec-b">{entry.body}</div>
-        </div>
-      )}
+      {entry.kind === "match" && <MatchDetail note={entry} staffDrawing={entry.staffDrawing} viewer={isCoach ? "staff" : "player"} reflection={reflection} />}
+      {entry.kind === "practice" && <PracticeDetail note={entry} reflection={reflection} />}
+      {entry.kind === "solo" && <SoloDetail note={entry} reflection={reflection} />}
 
       {/* スタッフコメント */}
       {isCoach ? (
@@ -2895,7 +3022,7 @@ function NoteDetail({
   );
 }
 
-function PracticeDetail({ note }: { note: PracticeNote }) {
+function PracticeDetail({ note, reflection }: { note: PracticeNote; reflection: React.ReactNode }) {
   const board = useBoard();
   const menu = note.menuId
     ? board.deliverables.find((d): d is PracticeMenuDeliver => d.kind === "menu" && d.id === note.menuId)
@@ -2925,9 +3052,10 @@ function PracticeDetail({ note }: { note: PracticeNote }) {
           </div>
         </div>
       )}
+      {reflection}
       {note.insights && note.insights.length > 0 && (
         <div className="notesec">
-          <div className="notesec-h"><E n="bulb" /> 気づき</div>
+          <div className="notesec-h"><E n="bulb" /> ひとこと</div>
           {note.insights.map((s, i) => (
             <div key={i} className="notesec-b">・{s}</div>
           ))}
@@ -2937,13 +3065,16 @@ function PracticeDetail({ note }: { note: PracticeNote }) {
   );
 }
 
-function SoloDetail({ note }: { note: SoloNote }) {
+function SoloDetail({ note, reflection }: { note: SoloNote; reflection: React.ReactNode }) {
   return (
+    <>
     <div className="notesec">
       <div className="notesec-h"><E n="run" /> 実施した種目</div>
       {note.items.map((it, i) => (
         <div key={i} className="notesec-b">・{SOLO_KIND_LABEL[it.kind]}：{it.value}</div>
       ))}
     </div>
+    {reflection}
+    </>
   );
 }

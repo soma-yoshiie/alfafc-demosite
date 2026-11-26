@@ -211,7 +211,7 @@ export function NoteSearch({
             className="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="気づき・目標・メモ・相手名などで検索"
+            placeholder="振り返り・目標・相手名などで検索"
             autoFocus
           />
         </div>
@@ -366,7 +366,7 @@ export function CoachDashboard({
 
   return (
     <div className="notetools">
-      <h2><E n="chart" /> コーチ・ダッシュボード</h2>
+      <h2><E n="chart" /> スタッフ・ダッシュボード</h2>
       <div className="dashmeta">今週 {fmt(monday)} – {fmt(sunday)} ・ 週は月曜起点</div>
 
       {/* PCでは左=スタッツ列 / 右=分析パネル以下の2カラム（モバイルは縦一列） */}

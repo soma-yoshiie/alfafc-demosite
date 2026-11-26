@@ -90,7 +90,7 @@ export function buildEventNotifications(input: NotifInput): Notification[] {
           id: "dlv-" + d.id,
           ts: d.ts,
           level: answered ? "good" : "warn",
-          text: `コーチから${DELIVER_KIND_LABEL[d.kind]}「${d.title}」${answered ? "（回答済み）" : "が届いています"}`,
+          text: `スタッフから${DELIVER_KIND_LABEL[d.kind]}「${d.title}」${answered ? "（回答済み）" : "が届いています"}`,
           target: { kind: "deliver", id: d.id },
         });
       });
@@ -115,7 +115,7 @@ export function buildEventNotifications(input: NotifInput): Notification[] {
           id: "cmt-" + n.id,
           ts: n.staffCommentTs!,
           level: "good",
-          text: `${NOTE_KIND_LABEL[n.kind]}ノートにコーチのコメントが付きました`,
+          text: `${NOTE_KIND_LABEL[n.kind]}ノートにスタッフのコメントが付きました`,
           target: { kind: "note", id: n.id },
         });
       });

@@ -9473,6 +9473,19 @@ button.annreadrow.pick:active {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.noteapp .notebody.notebody-row {
+  display: flex;
+}
+.noteapp .notebody-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 図 N 枚は省略記号で切れないよう、縮まない別の要素にする（note-reflection-figure §7） */
+.noteapp .notebody-f {
+  flex: none;
+  white-space: pre;
+}
 
 /* =========================================================
    記入フォーム
@@ -9488,32 +9501,6 @@ button.annreadrow.pick:active {
 }
 .noteapp .notetools h2 {
   margin: 10px 2px 10px;
-}
-/* 「詳細を記録する」トグル（詳細モードの入口） */
-.noteapp .detailtoggle {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  width: 100%;
-  margin-top: 14px;
-  padding: 13px;
-  border-radius: var(--r-md);
-  border: 1px dashed var(--outline-strong);
-  background: var(--surface-low);
-  color: var(--ink);
-  font-size: var(--fs-body);
-  font-weight: 700;
-  cursor: pointer;
-  font-family: var(--font-ui);
-}
-.noteapp .detailtoggle:active {
-  opacity: 0.7;
-}
-.noteapp .detailtoggle-sub {
-  font-size: var(--fs-label);
-  font-weight: 600;
-  color: var(--mut);
 }
 /* notebook-staff-redesign §5: 描画エリアの上の見出し行（「ピッチに描いて伝える」＋右端「× 閉じる」）。
    閉じるは押すと畳む（描いた点・線は残る）。タップ領域は44px、PCは下の PC reset で32px */
@@ -9545,29 +9532,6 @@ button.annreadrow.pick:active {
   border-radius: var(--r-lg);
   border: 0;
   background: var(--surface-low);
-}
-.noteapp .detailwrap-h {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  font-size: var(--fs-label);
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--mut);
-}
-.noteapp .detailhide {
-  border: 0;
-  background: transparent;
-  color: var(--accent);
-  font-size: var(--fs-body-s);
-  font-weight: 700;
-  cursor: pointer;
-  padding: 4px 6px;
-  font-family: var(--font-ui);
-}
-.noteapp .detailhide:active {
-  opacity: 0.6;
 }
 .noteapp .condrow {
   display: flex;
@@ -10817,13 +10781,6 @@ body:has(.mhead) .noteapp .notedetail .shotrow { min-height: 44px; }
   padding: 14px 12px 6px;
   margin-bottom: 12px;
   background: var(--surface-lowest);
-}
-.noteapp .formgroup-h {
-  font-size: var(--fs-label);
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: var(--mut);
-  margin-bottom: 8px;
 }
 .noteapp .formgroup .formfield label {
   color: var(--mut);
@@ -12214,7 +12171,6 @@ body:has(.mhead) .noteapp .canvaschip {
 .noteapp .notifrow,
 .noteapp .kpicard,
 .noteapp .searchbar,
-.noteapp .detailtoggle,
 .noteapp .sendtgt label,
 .noteapp .nptok.own,
 .noteapp .formfield input,
@@ -27776,6 +27732,639 @@ textarea.st-input.mt-msg {
   }
 }
 @keyframes wdialogin { from { transform: translateY(16px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ===== note-reflection-figure §4・§8: 振り返りの欄（.refl 系）と図の箱（.figbox 系）。基底＝スマホと PC の両方 ===== */
+.noteapp .refl {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+.noteapp .refl-h {
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--mut);
+  margin: 0 2px;
+}
+.noteapp .refl-hint {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  margin: -4px 2px 0;
+}
+.noteapp .refl-chips {
+  display: flex;
+  gap: 6px;
+}
+.noteapp .refl-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 7px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.noteapp .refl-ta {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  line-height: 1.5;
+  outline: none;
+}
+.noteapp .refl-ta:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-tint);
+}
+.noteapp .refl-add {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 2px;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.noteapp .refl-add:disabled {
+  color: var(--mut);
+  opacity: 0.6;
+  cursor: default;
+}
+.noteapp .refl-limit {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  margin: -6px 2px 0;
+}
+.figview {
+  width: 100%;
+  max-width: 358px;
+  box-sizing: border-box;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  overflow: hidden;
+}
+.figbox {
+  position: relative;
+  max-width: 358px;
+}
+.figbox.view {
+  margin: 8px 0;
+}
+.figbox-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.figbox-cap {
+  position: absolute;
+  top: 6px;
+  left: 10px;
+  padding: 0 4px;
+  background: var(--surface-lowest);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--mut);
+  pointer-events: none;
+}
+.figbox-more {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+}
+/* 図の箱の中の「…」は枠なし（PC の .phubedit の枠は図の線と重なって読みにくいので、スマホと同じ見え方にする） */
+.figbox-more .phubedit {
+  border: 0;
+}
+
+/* ===== note-reflection-figure §3-2・§8: 作図の画面（.figed 系）。PC＝中央のパネル（420px）、スマホ＝全画面 ===== */
+.figed {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(21, 35, 60, 0.4);
+  overscroll-behavior: contain;
+  font-family: var(--font-ui);
+  color: var(--ink);
+}
+.figed-panel {
+  position: relative;
+  width: 420px;
+  max-width: 100%;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+body:has(.mhead) .figed {
+  background: var(--surface);
+  align-items: stretch;
+}
+body:has(.mhead) .figed-panel {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+}
+body:has(.mhead) .figed-canvas {
+  flex: 1;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+}
+.figed-head {
+  flex: none;
+  height: 52px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  background: var(--surface-lowest);
+  border-bottom: 1px solid var(--outline);
+}
+.figed-hbtn {
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-title-s);
+  cursor: pointer;
+}
+.figed-hbtn.done {
+  justify-self: end;
+  color: var(--accent);
+  font-weight: 700;
+}
+.figed-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-title);
+  font-weight: 700;
+  cursor: pointer;
+}
+.figed-canvas {
+  flex: none;
+  height: auto;
+  max-height: min(640px, 70vh);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+.figed-stagewrap {
+  position: relative;
+  margin: 0 auto;
+}
+.figed-stage {
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  background: var(--surface-lowest);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: crosshair;
+}
+.figed-stage[data-tool="erase"] {
+  cursor: pointer;
+}
+.figed-zoom {
+  transform-origin: 0 0;
+}
+.figed-reset {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-height: 44px;
+  padding: 0 12px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-strong);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  font-weight: 700;
+  cursor: pointer;
+}
+.figed-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 4px;
+  margin: 0 auto;
+  width: 100%;
+  max-width: 358px;
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+/* 凡例の線と文字は承認図（fn1_draw.png）と同じ濃い色 */
+.figed-lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--ink);
+}
+.figed-foot {
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 16px calc(16px + env(safe-area-inset-bottom));
+}
+.figed-toast {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: calc(100% + 4px);
+  padding: 10px 12px;
+  background: var(--ink);
+  color: #ffffff;
+  border-radius: var(--r-md);
+  font-size: var(--fs-body);
+}
+.figed-sub {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+.figed-undo {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.figed-tools {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.figtool {
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 2px 4px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-md);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.figtool.on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #ffffff;
+  font-weight: 700;
+}
+.figtool.sq {
+  width: 44px;
+}
+.figtool:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.figed-sheetback {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(21, 35, 60, 0.4);
+}
+.figed-sheet {
+  background: var(--surface-lowest);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+}
+.figed-sheet::before {
+  content: "";
+  display: block;
+  width: 32px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--outline-strong);
+  margin: 0 auto 14px;
+}
+.figed-sheet-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-title);
+  margin-bottom: 8px;
+}
+.figed-sheet-h .figed-hbtn {
+  padding-right: 0;
+}
+.figed-cnt {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.figed-ulgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.figed-ul {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  font-weight: 700;
+  cursor: pointer;
+}
+.figed-ul.on {
+  border: 2px solid var(--accent);
+  padding: 10px;
+  color: var(--accent);
+}
+.figed-ulpv {
+  height: 136px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.figed-textok {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+}
+
+/* ===== note-reflection-figure §5・§8: 作成フォームの並び（白いカード・日付・練習メニューの 1 行・畳む行・保存の失敗）。基底＝スマホと PC の両方 ===== */
+/* 白いカードの中：欄の左右は既定の 16px ではなくカードの内側 16px だけ（カードの左右がページの左右 16px にそろう） */
+.noteapp .noteform .formgroup {
+  padding: 16px 16px 4px;
+}
+.noteapp .noteform .formgroup .formfield,
+.noteapp .noteform .formgroup .formgrid {
+  margin: 0 0 12px;
+}
+.noteapp .noteform .formgroup .formgrid .formfield {
+  margin: 0;
+  min-width: 0;
+}
+.noteapp .noteform .bigbtn {
+  width: 100%;
+  margin: 6px 0 14px;
+}
+.noteapp .noteform .formgroup .sharetoggle {
+  margin: 0 0 12px;
+}
+.noteapp .noteform .formgroup .scopebar {
+  padding: 0;
+}
+.noteapp .noteform .formgroup .formfield input[type="range"] {
+  margin: 4px 0 0;
+}
+/* ラベルの行：右端に日付（練習・自主練）か達成度の数字 */
+.noteapp .fieldhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 6px;
+}
+.noteapp .fieldhead label {
+  margin: 0 2px;
+}
+.noteapp .fieldval {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+  font-variant-numeric: tabular-nums;
+}
+/* 日付の小さな入力：文字 12px・灰。当たりは 44px（行の高さは変えないよう上下の余白を打ち消す） */
+.noteapp .datemini {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -14px 0;
+}
+.noteapp .noteform .formgroup .formfield .datemini input {
+  width: auto;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--mut);
+  font-family: var(--font-ui);
+  font-size: var(--fs-body-s);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.noteapp .datemini input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+/* 時間の欄：右端に添え字「分ハーフ」 */
+.noteapp .suffixwrap {
+  position: relative;
+}
+/* 日付｜時間の 2 つの欄は、高い方に高さをそろえる */
+.noteapp .noteform .formgrid:has(.suffixwrap) {
+  align-items: stretch;
+}
+.noteapp .noteform .formgrid:has(.suffixwrap) > .formfield {
+  display: flex;
+  flex-direction: column;
+}
+.noteapp .noteform .formgrid:has(.suffixwrap) > .formfield > input,
+.noteapp .noteform .formgrid:has(.suffixwrap) > .formfield > .suffixwrap {
+  flex: 1;
+}
+.noteapp .noteform .formgrid:has(.suffixwrap) .suffixwrap input {
+  height: 100%;
+}
+.noteapp .noteform .formgroup .formfield .suffixwrap input {
+  padding-right: 76px;
+  -moz-appearance: textfield;
+}
+.noteapp .suffixwrap input::-webkit-inner-spin-button,
+.noteapp .suffixwrap input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.noteapp .suffixwrap span {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: var(--fs-title-s);
+  color: var(--mut);
+  pointer-events: none;
+}
+/* 練習メニューの 1 行（押すとシート） */
+.noteapp .noteform .formfield .menupick {
+  min-height: 44px;
+  margin-bottom: 0;
+}
+.noteapp .menupick .mpk-check {
+  flex: none;
+}
+/* 選んだメニューの名前は札より目立たせる（15px・700） */
+.noteapp .noteform .formfield .menupick > span:not(.dlvtag) {
+  min-width: 0;
+  font-size: var(--fs-title-s);
+  font-weight: 700;
+}
+.noteapp .wsheet .menuview {
+  margin-top: 8px;
+}
+/* ピッチに記録する：畳んだ 1 行（白いカード・最小 56px） */
+.noteapp .pitchfold {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 0 0 12px;
+  padding: 8px 16px;
+  box-sizing: border-box;
+  border: 1px solid var(--outline);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--accent);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.noteapp .pitchfold-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.noteapp .pitchfold-t b {
+  font-size: var(--fs-body);
+  font-weight: 700;
+  color: var(--ink);
+}
+.noteapp .pitchfold-t small {
+  font-size: var(--fs-body-s);
+  color: var(--mut);
+}
+.noteapp .pitchfold-chev {
+  flex: none;
+  color: var(--mut);
+}
+.noteapp .pitchfold-open {
+  margin: 0 0 12px;
+}
+.noteapp .pitchfold-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--fs-headline);
+  font-weight: 700;
+  color: var(--ink);
+}
+/* 開いた中身：ページの幅のまま（灰色の箱なし）。note-pitch-v2・note-play-chain が .detailwrap を前提に書いた規則と同じ寸法にそろえる */
+.noteapp .pitchfold-body .npwrap {
+  width: 100%;
+  max-width: 358px;
+  left: auto;
+  transform: none;
+  margin-left: auto;
+  margin-right: auto;
+}
+.noteapp .pitchfold-body .formgrid.lu {
+  margin: 0 0 12px;
+}
+.noteapp .pitchfold-body .sharetoggle.lu {
+  margin: 4px 0 12px;
+}
+.noteapp .pitchfold-body .sharetoggle.lu input {
+  margin: 0;
+}
+/* 保存できなかったときの 1 行（「提出する」の上） */
+.noteapp .saveerr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--danger);
+  border-radius: var(--r-lg);
+  background: var(--surface-lowest);
+  color: var(--danger);
+  font-size: var(--fs-body);
+}
+.noteapp .saveerr svg {
+  flex: none;
+}
+.noteapp .saveerr span {
+  min-width: 0;
+}
+.noteapp .saveerr .nobreak {
+  display: inline-block;
+}
 
 @media (prefers-reduced-motion: reduce) {
   *,

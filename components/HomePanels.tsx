@@ -363,7 +363,7 @@ export function HomeCoachComment({ variant }: { variant: HomeVariant }) {
         board.setScreen("notebook");
       }}
     >
-      <span className="hp-cmt-t">コーチからコメント {unread.length} 件</span>
+      <span className="hp-cmt-t">スタッフからコメント {unread.length} 件</span>
       <span className="hp-cmt-chev" aria-hidden="true">›</span>
     </button>
   );

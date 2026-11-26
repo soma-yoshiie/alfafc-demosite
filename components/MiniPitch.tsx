@@ -48,8 +48,15 @@ const toM = (p: Point): Point => ({ x: p.x * 0.68, y: (100 - p.y) * 1.05 });
 
 /* ===== §1-2: 線（マーキング） ===== */
 const GX = PW / 2;
-function Markings() {
+/** note-reflection-figure §3-1: 紙の色（白地）で描くときの線の色と太さ。渡さなければ緑のピッチ用（クラスで色が付く） */
+export type MarkPaint = { stroke: string; width: number };
+/** ピッチの線の絵（全面。原点は余白込みで −3,−3）。FigureView が紙の色で使う */
+export function PitchMarkings({ paint }: { paint?: MarkPaint }) {
+  return <Markings paint={paint} />;
+}
+function Markings({ paint }: { paint?: MarkPaint } = {}) {
   // 敵陣側（y=0 のゴールライン）を基準に書き、自陣側は上下反転して同じ式で作る
+  const spotStyle = paint ? { fill: paint.stroke, stroke: "none" } : undefined;
   const side = (flip: boolean) => {
     const fy = (y: number) => (flip ? PH - y : y);
     const rectD = (x: number, y: number, w: number, h: number) => {
@@ -64,16 +71,16 @@ function Markings() {
         <path d={rectD(GX - 9.16, 0, 18.32, 5.5)} />
         <path d={rectD(GX - 3.66, -2, 7.32, 2)} />
         <path d={`M${GX - dx} ${fy(16.5)}A9.15 9.15 0 0 ${flip ? 1 : 0} ${GX + dx} ${fy(16.5)}`} />
-        <circle className="spot" cx={GX} cy={fy(11)} r={0.35} />
+        <circle className="spot" cx={GX} cy={fy(11)} r={0.35} style={spotStyle} />
       </g>
     );
   };
   return (
-    <g className="npmk">
+    <g className="npmk" style={paint ? { fill: "none", stroke: paint.stroke, strokeWidth: paint.width } : undefined}>
       <rect x={0} y={0} width={PW} height={PH} />
       <path d={`M0 ${PH / 2}H${PW}`} />
       <circle cx={GX} cy={PH / 2} r={9.15} />
-      <circle className="spot" cx={GX} cy={PH / 2} r={0.35} />
+      <circle className="spot" cx={GX} cy={PH / 2} r={0.35} style={spotStyle} />
       {side(false)}
       {side(true)}
       <path d="M1 0A1 1 0 0 1 0 1" />
@@ -85,11 +92,11 @@ function Markings() {
 }
 
 /* ===== §1-3: 軌道（線） ===== */
-const ptsD = (pts: Point[]) => pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join("");
+export const ptsD = (pts: Point[]) => pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join("");
 
 type LineLike = { kind: PlayLineKind; path: Point[]; success?: boolean };
 
-function arrowPoints(mPath: Point[]): string | null {
+export function arrowPoints(mPath: Point[]): string | null {
   if (mPath.length < 2) return null;
   const end = mPath[mPath.length - 1];
   let from = mPath[mPath.length - 2];
@@ -109,7 +116,7 @@ function arrowPoints(mPath: Point[]): string | null {
   return `${end.x.toFixed(2)},${end.y.toFixed(2)} ${(bx + hx).toFixed(2)},${(by + hy).toFixed(2)} ${(bx - hx).toFixed(2)},${(by - hy).toFixed(2)}`;
 }
 
-const WAVE_K = 4;
+export const WAVE_K = 4;
 
 function OneLine({ l, staff, dim }: { l: LineLike; staff: boolean; dim?: boolean }) {
   const mPath = l.path.map(toM);

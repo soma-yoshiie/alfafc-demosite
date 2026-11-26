@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import type { MatchNote, PlayLine, PlayPoint } from "@/lib/types";
 import { MATCH_PHASE_LABEL } from "@/lib/types";
 import { buildSlots } from "@/lib/formations";
@@ -18,10 +18,13 @@ export function MatchDetail({
   note,
   staffDrawing,
   viewer = "player",
+  reflection,
 }: {
   note: MatchNote;
   staffDrawing?: StaffDrawing;
   viewer?: "staff" | "player";
+  /** 振り返り（本文と図）。ベストプレーの次に置く */
+  reflection?: ReactNode;
 }) {
   const allPlays = note.plays ?? [];
   const allPlayLines = note.playLines ?? [];
@@ -68,6 +71,13 @@ export function MatchDetail({
           return time ? <div className="notesec-b">{time}</div> : null;
         })()}
       </div>
+      {note.bestPlay && (
+        <div className="notesec">
+          <div className="notesec-h">ベストプレー</div>
+          <div className="notesec-b">{note.bestPlay}</div>
+        </div>
+      )}
+      {reflection}
       {lineups.length > 0 && (
         <div className="notesec">
           <div className="notesec-h">出場した位置</div>
@@ -260,10 +270,9 @@ export function MatchDetail({
         </div>
       )}
 
-      {(note.bestPlay || note.reflectPlay || note.videoUrl) && (
+      {(note.reflectPlay || note.videoUrl) && (
         <div className="notesec">
-          <div className="notesec-h">ベストプレー・反省</div>
-          {note.bestPlay && <div className="notesec-b"><E n="star" /> ベスト：{note.bestPlay}</div>}
+          <div className="notesec-h">反省・動画</div>
           {note.reflectPlay && <div className="notesec-b"><E n="repeat" /> 反省：{note.reflectPlay}</div>}
           {note.videoUrl && (
             <a className="videolink" href={note.videoUrl} target="_blank" rel="noreferrer"><E n="video" /> 動画を見る</a>

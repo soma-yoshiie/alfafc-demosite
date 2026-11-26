@@ -123,7 +123,7 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
         </RepSec>
 
         {data.insights.length > 0 && (
-          <RepSec h="代表的な気づき">
+          <RepSec h="代表的なひとこと">
             {data.insights.map((t, i) => <div key={i} className="repline">・{t}</div>)}
           </RepSec>
         )}
@@ -133,7 +133,7 @@ export default function SeasonReport({ playerId }: { playerId: string }) {
           </RepSec>
         )}
         {data.staffComments.length > 0 && (
-          <RepSec h="コーチからのコメント">
+          <RepSec h="スタッフからのコメント">
             {data.staffComments.map((t, i) => <div key={i} className="repline"><E n="comment" /> {t}</div>)}
           </RepSec>
         )}

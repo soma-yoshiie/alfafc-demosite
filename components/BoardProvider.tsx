@@ -37,6 +37,7 @@ import type {
   Point,
   Position,
   SavedDrill,
+  NoteFigure,
   SavedPlay,
   SavedSetPiece,
   Session,
@@ -1231,8 +1232,9 @@ interface BoardContextValue {
   openDrillData: (drill: SavedDrill) => void;
   // サッカーノート（選手提出）
   notebook: NotebookEntry[];
-  addNote: (entry: Omit<NotebookEntry, "id" | "ts">) => void;
-  updateNote: (entry: NotebookEntry) => void;
+  /** 保存できたら true。できなかったら状態を変えず false（note-reflection-figure §6） */
+  addNote: (entry: Omit<NotebookEntry, "id" | "ts">) => boolean;
+  updateNote: (entry: NotebookEntry) => boolean;
   /** トーストを出さない部分更新（既読・リアクション等の暗黙更新用） */
   patchNote: (id: string, patch: Partial<NotebookEntry>) => void;
   deleteNote: (id: string) => void;
@@ -1467,6 +1469,41 @@ function newNoteId(): string {
   return `note_${Date.now().toString(36)}_${noteSeq}`;
 }
 
+/** note-reflection-figure §8-2: デモの図（ハーフ。自分 1・味方 2・相手 3・ボール 1、パス 2・ドリブル 1・動き 1・ペンの丸 1、文字 2「ここで前を向く」「自分」、ペンの下線 1）。座標は整数 */
+function demoFigure(id: string, at: number): NoteFigure {
+  return {
+    id,
+    at,
+    underlay: "half",
+    lines: [
+      { k: "pass", p: [500, 607, 219, 545] },
+      { k: "pass", p: [219, 545, 440, 298] },
+      { k: "dribble", p: [440, 298, 462, 262, 488, 238, 520, 206, 560, 172, 604, 132] },
+      { k: "run", p: [500, 607, 598, 695] },
+      { k: "pen", p: [648, 125, 650, 169, 622, 208, 572, 231, 512, 233, 460, 212, 428, 175, 426, 131, 454, 92, 504, 69, 564, 67, 616, 88, 648, 125] },
+      { k: "pen", p: [145, 726, 205, 710, 265, 722, 325, 708, 385, 718] },
+    ],
+    marks: [
+      { k: "me", x: 500, y: 607 },
+      { k: "ball", x: 529, y: 569 },
+      { k: "mate", x: 219, y: 545 },
+      { k: "mate", x: 440, y: 298 },
+      { k: "opp", x: 538, y: 155 },
+      { k: "opp", x: 360, y: 452 },
+      { k: "opp", x: 619, y: 404 },
+    ],
+    texts: [
+      { x: 265, y: 683, t: "ここで前を向く" },
+      { x: 500, y: 655, t: "自分" },
+    ],
+  };
+}
+
+const PRACTICE_DEMO_BODY =
+  "うまくいった場面：\n3対2 で受ける前に首を振れた。前を向けた。\nうまくいかなかった場面：\nプレスが速いと下を向いてしまう。\n次にやること：\n受ける前に 2 回見る。";
+/** 図は 1 段目（見出しと 1 行）の後ろ */
+const PRACTICE_DEMO_AT = "うまくいった場面：\n3対2 で受ける前に首を振れた。前を向けた。".length;
+
 function sampleNotebook(): NotebookEntry[] {
   const dayAgo = daysAgoStr;
   const ts = (n: number) => Date.now() - n * 86400_000;
@@ -1482,7 +1519,8 @@ function sampleNotebook(): NotebookEntry[] {
       goalPre: "ファーストタッチを前向きに置く",
       achievement: 72,
       insights: ["相手を見る前に首を振る", "受ける前に体の向きを作る"],
-      body: "ポゼッション練習で前を向く回数が増えた。",
+      body: PRACTICE_DEMO_BODY,
+      figures: [demoFigure("fig_demo_p08", PRACTICE_DEMO_AT)],
       isPublic: true,
       menuId: "dlv_menu1",
       staffComment: "首振りのタイミングは合っていた。次はファーストタッチの置き所も安定させよう。",
@@ -1535,7 +1573,8 @@ function sampleNotebook(): NotebookEntry[] {
         { kind: "dribble", path: [{ x: 48, y: 58 }, { x: 51, y: 66 }, { x: 54, y: 75 }, { x: 56, y: 83 }], phase: "1st", chain: "c1", seq: 1, ord: 2 },
         { kind: "pass", path: [{ x: 28, y: 52 }, { x: 36, y: 60 }, { x: 46, y: 66 }], phase: "1st", success: false, note: "サイドへ出したが相手に読まれた", chain: "c4", seq: 1, ord: 5 },
       ],
-      body: "前半から主導権。サイドからのクロスに反応できた。",
+      body: "うまくいった場面：\n前半から主導権。サイドからのクロスに反応できた。\nうまくいかなかった場面：\n後半は足が止まった。\n次にやること：\n最後まで走り切る。",
+      figures: [demoFigure("fig_demo_p10", "うまくいった場面：\n前半から主導権。サイドからのクロスに反応できた。".length)],
       staffComment: "終盤の一押しは冷静だった。次は逆足でのフィニッシュも増やしたい。",
       staffCommentTs: ts(10),
       staffSeenAt: ts(11) + 3600_000,
@@ -3031,20 +3070,37 @@ export function BoardProvider({
   );
 
   // ---- サッカーノート ----
-  const addNote = useCallback(
-    (entry: Omit<NotebookEntry, "id" | "ts">) => {
-      const full = { ...entry, id: newNoteId(), ts: Date.now() } as NotebookEntry;
-      setNotebook((list) => [full, ...list]);
-      showToast("ノートを提出しました");
+  // 提出・更新は先に保存を試す（state の更新関数の中では書かない。Strict Mode で 2 回走るため）。
+  // 最新の配列は ref から読む。保存できたときだけ state を変える
+  const notebookRef = useRef(notebook);
+  notebookRef.current = notebook;
+  const commitNotebook = useCallback(
+    (next: NotebookEntry[], okMsg: string): boolean => {
+      if (!saveNotebook(next)) {
+        showToast("保存できませんでした。図や写真を減らしてください");
+        return false;
+      }
+      notebookRef.current = next;
+      setNotebook(next);
+      showToast(okMsg);
+      return true;
     },
     [showToast]
   );
-  const updateNote = useCallback(
-    (entry: NotebookEntry) => {
-      setNotebook((list) => list.map((n) => (n.id === entry.id ? entry : n)));
-      showToast("ノートを更新しました");
+  const addNote = useCallback(
+    (entry: Omit<NotebookEntry, "id" | "ts">) => {
+      const full = { ...entry, id: newNoteId(), ts: Date.now() } as NotebookEntry;
+      return commitNotebook([full, ...notebookRef.current], "ノートを提出しました");
     },
-    [showToast]
+    [commitNotebook]
+  );
+  const updateNote = useCallback(
+    (entry: NotebookEntry) =>
+      commitNotebook(
+        notebookRef.current.map((n) => (n.id === entry.id ? entry : n)),
+        "ノートを更新しました"
+      ),
+    [commitNotebook]
   );
   const patchNote = useCallback((id: string, patch: Partial<NotebookEntry>) => {
     setNotebook((list) =>

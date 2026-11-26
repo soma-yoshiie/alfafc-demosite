@@ -165,7 +165,7 @@ export function generateSeasonSummary(d: Omit<SeasonReportData, "summary">): str
   if (d.noteCounts.total > 0) s.push(`ノートを${d.noteCounts.total}件提出し、振り返りを継続できています。`);
   if (d.soloCount > 0) s.push(`自主練は${d.soloCount}回（最長${d.soloBestStreak}週連続）。`);
   if (d.assignmentTotal > 0) s.push(`個人課題は${d.assignmentDone}/${d.assignmentTotal}件を達成。`);
-  if (d.insights[0]) s.push(`代表的な気づき：「${d.insights[0]}」。`);
+  if (d.insights[0]) s.push(`代表的なひとこと：「${d.insights[0]}」。`);
   if (s.length === 0) s.push("この期間の記録はまだ少なめです。まずはノート提出から始めましょう。");
   return s.join("");
 }
@@ -261,7 +261,7 @@ export function renderSeasonImage(d: SeasonReportData): string {
     y += 14;
     ctx.fillStyle = "#9ec92a";
     ctx.font = "700 14px sans-serif";
-    ctx.fillText("気づき", 28, y);
+    ctx.fillText("ひとこと", 28, y);
     y += 22;
     ctx.fillStyle = "#eafff0";
     ctx.font = "400 14px sans-serif";

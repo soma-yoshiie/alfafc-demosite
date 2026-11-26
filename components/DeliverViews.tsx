@@ -26,7 +26,7 @@ import { GroupChips } from "./GroupChips";
 /* ====== 一覧ブロック（ホーム・配信タブに埋め込む） ====== */
 export function DeliverBlock({
   kinds,
-  heading = "コーチから",
+  heading = "スタッフから",
   onOpen,
   onCreate,
   selectedId,
@@ -74,7 +74,7 @@ export function DeliverBlock({
       )}
       {items.length === 0 ? (
         <div className="empty-msg" style={{ padding: "10px 0" }}>
-          {isCoach ? "まだ配信はありません。" : "コーチからの配信はまだありません。"}
+          {isCoach ? "まだ配信はありません。" : "スタッフからの配信はまだありません。"}
         </div>
       ) : (
         items.map((d) => (

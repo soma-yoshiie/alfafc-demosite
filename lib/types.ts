@@ -930,6 +930,21 @@ export const STAFF_REACTION_LABEL: Record<StaffReaction, string> = {
   fire: "アツい",
 };
 
+/** note-reflection-figure §1: 本文の途中に挟む図 */
+export type FigUnderlay = "blank" | "full" | "half" | "box";
+export type FigLineKind = "pen" | "pass" | "dribble" | "run" | "shot";
+export type FigMarkKind = "me" | "mate" | "opp" | "ball";
+export interface NoteFigure {
+  id: string;
+  /** 本文の何文字目の後ろに入るか */
+  at: number;
+  underlay: FigUnderlay;
+  /** p = [x0, y0, x1, y1, …]（整数。幅 74m＝1000、原点は下敷きの左上） */
+  lines: { k: FigLineKind; p: number[]; by?: "staff" }[];
+  marks: { k: FigMarkKind; x: number; y: number; by?: "staff" }[];
+  texts: { x: number; y: number; t: string; by?: "staff" }[];
+}
+
 /** 全ノート共通の基底 */
 interface NoteBase {
   id: string;
@@ -941,6 +956,8 @@ interface NoteBase {
   condition?: NoteCondition;
   /** 自由メモ */
   body?: string;
+  /** 本文の途中に挟む図（任意。note-reflection-figure §1） */
+  figures?: NoteFigure[];
   /** スタッフからのコメント（任意） */
   staffComment?: string;
   staffCommentTs?: number;
