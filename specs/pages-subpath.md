@@ -89,7 +89,7 @@ HTML の置換（`/_next/` → `../_next/`）は、2 回かけると `404/index.
 9. Safari と同じエンジン（WebKit）：`webkit_check.swift`（macOS の WKWebView を画面の外で動かす）で、起動で落ちない・公開パスが `_next/`・サブパスの外への要求 0・ページ本体の取得 1 回・フォントの `error` 0・「3D」（部品 5 本とモデル 2 つ、canvas あり）。同じ道具を直す前の版に当てると、公開パス `/_next/`・サブパスの外へ 43 回・ページ本体の取得 2 回・フォントの `error` 46・「3D」で「Application error」。済。
 10. `grep -c "^@media" app/globals.css` ＝ 9、`npx tsc --noEmit` 0（アプリのコードは触っていない）。済。
 
-公開サイトでの確認は、反映の後に `pages_smoke.js`・`pages_lazy.js`・`pages_race.js` を公開サイトの URL に流す（§7）。
+公開サイトでの確認（2026-11-28。`c758c1c` の反映後、公開サイトの URL に同じ道具を流した）：`pages_smoke.js` は 23 項目すべて通過（手元の配信だけで数える 1 項目を除く）。`pages_lazy.js` は通過（「3D」の部品 5 本とモデル 2 つが 200、「2Dに戻る」→ もう一度「3D」も開く）。`pages_race.js` は、1.6Mbps・150ms・CPU 4 倍遅で 12 回、4G 相当で 9 回、絞らない回線で 12 回、どれも失敗 0（直す前は 1.6Mbps で 4 回中 4 回落ちた）。`webkit_check.swift` も通過。済。
 
 ## 6. 実装時の判断・直さなかったこと
 
