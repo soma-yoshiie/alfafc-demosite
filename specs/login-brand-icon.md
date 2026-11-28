@@ -57,6 +57,6 @@
 2. **アイコンの地は #f4f5f9**：#f4f5f9・白・#1b1c1e の 3 つを 180/64/32/16 で見比べた。参考画像（`sp_ref_logo.jpg`）と起動画面が明るい地なので同じにした。黒地は映えるがボールの黒い縁が地に溶け、「同じロゴ」から離れる。白は明るいタブ上でタイルの形が消える。
 3. **PNG も置く**：Safari（Mac・iPhone）は SVG の favicon を読まないので、SVG だけだとタブとホーム画面に何も出ない。`icon1.png` と `apple-icon.png` を足した。
 4. **番号付きのファイル名**：§2 のとおり Next は `icon.*` を 1 つしか拾わない。`icon.svg` の名前が変わるので `relativize-export.cjs` も直した。
-5. **relativize-export.cjs は冪等でない**（`../_next/` の中の `/_next/` をもう一度置換して `../../_next/` にする）。`npm run export` の中で `next build` の直後に 1 回だけ動かすもので、単独で実行しない（作業中に誤って実行して `docs/404/index.html` が壊れたので `git checkout -- docs` で戻した）。
+5. **relativize-export.cjs は冪等でない**（`../_next/` の中の `/_next/` をもう一度置換して `..../_next/` にする）。`npm run export` の中で `next build` の直後に 1 回だけ動かすもので、単独で実行しない（作業中に誤って実行して `docs/404/index.html` が壊れたので `git checkout -- docs` で戻した）。2026-11-28 から、加工済みの `out/` にもう一度かけると、何も書き換えずに止まる（`pages-subpath.md` §2-4）。
 6. **レールのロゴは触らない**：依頼はログインとアイコン。PC レールの `LogoMark`（22px / 16px）は旧ロゴのまま。替えるなら `Logo.tsx` を消して `BrandMark` にし、`.rail-mark` の寸法（PC ブロック）を箱の比率 510/400 に合わせる作業が要る。
 7. `themeColor`（#15803d・旧緑）は依頼外で未変更。
